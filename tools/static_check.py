@@ -24,6 +24,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INC  = os.path.join(ROOT, "MQL5", "Include", "QSMC")
 FILES = sorted(f for f in os.listdir(INC) if f.endswith(".mqh"))
 
+# --- PART C sources outside the include folder (companion EA, scripts).
+EXTRA = [
+    os.path.join(ROOT, "MQL5", "Scripts", "QSMC_ArbiterTest.mq5"),
+    os.path.join(ROOT, "MQL5", "Experts", "KLJ_DataFeeder.mq5"),
+]
+EXTRA = [e for e in EXTRA if os.path.exists(e)]
+
 # ---------------------------------------------------------------- keywords
 KEYWORDS = set("""
 if else for while do return break continue switch case default
