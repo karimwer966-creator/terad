@@ -292,8 +292,8 @@ private:
       n=0;
       int ci=bars.ClosedIndex();
       if(ci<0 || !(atr>0.0)) return 0;
-      int from=MathMax(1,m_pivot_left);
-      int to=MathMax(from,ci-m_pivot_right);
+      int from=(int)MathMax(1,m_pivot_left);
+      int to=(int)MathMax(from,ci-m_pivot_right);
       double half=m_zone_half_atr*atr;
 
       for(int i=to;i>=from;i--)
@@ -422,21 +422,21 @@ public:
            { r.status=QSS_NO_DATA; r.note=m_md.Reason(); Push(r); continue; }
 
          const CBarSeries *ch=m_md.Chart();
-         if(ch==NULL || !ch->Ready())
+         if(ch==NULL || !ch.Ready())
            { r.status=QSS_NO_DATA; r.note="chart series not ready";
              Push(r); continue; }
 
-         double atr=ch->ATR();
+         double atr=ch.ATR();
          if(!(atr>0.0))
            { r.status=QSS_NO_DATA; r.note="ATR unavailable"; Push(r); continue; }
 
-         int ci=ch->ClosedIndex();
+         int ci=ch.ClosedIndex();
          if(ci<1)
            { r.status=QSS_NO_DATA; r.note="no closed bar"; Push(r); continue; }
-         double price=ch->C(ci);
+         double price=ch.C(ci);
          if(!(price>0.0))
            { r.status=QSS_NO_DATA; r.note="no price"; Push(r); continue; }
-         if(ch->Count()<m_cfg.min_bars)
+         if(ch.Count()<m_cfg.min_bars)
            { r.status=QSS_NO_DATA; r.note="not enough bars"; Push(r); continue; }
 
          //--- Zones
@@ -479,7 +479,12 @@ public:
          string bias_txt="";
          if(m_use_bias)
            {
-            m_bias.Update(*m_md,m_cfg);
+            //--- Caches on closed_index ONLY, and this scanner reuses one
+            //--- provider for every symbol: two symbols with the same bar
+            //--- count share a closed index, so without this Reset() the
+            //--- second row would show the first symbol's bias.
+            m_bias.Reset();
+            m_bias.Update(*m_md,m_cfg,ci);
             bias_txt=m_bias.ShortText();
            }
 
@@ -504,7 +509,7 @@ public:
          r.zone_strength=z.strength;
          r.entry=price;
          r.score=score;
-         r.as_of=ch->T(ci);
+         r.as_of=ch.T(ci);
          r.evidence=QSMC_EvidenceList(f.evidence_mask);
          r.missing=f.missing;      // already computed by the detector
 
@@ -620,7 +625,7 @@ public:
       //--- z-score against this symbol's own ROC history over m_hist
       //--- bars. No look-ahead: every sample uses bars strictly at or
       //--- before the bar it describes.
-      int first=MathMax(m_lookback+1, ci-m_hist+1);
+      int first=(int)MathMax(m_lookback+1, ci-m_hist+1);
       int cnt=0;
       double hist[];
       int cap=ci-first+1;
@@ -681,7 +686,7 @@ private:
    double            Percentile(const CBarSeries &bars,const int ci,
                                 const int window,const double value) const
      {
-      int from=MathMax(1,ci-window+1);
+      int from=(int)MathMax(1,ci-window+1);
       int n=ci-from+1;
       if(n<10 || !(value>0.0)) return -1.0;
       int below=0, valid=0;
@@ -809,7 +814,7 @@ private:
 
    //--- Buckets are 0-based, because they index a fixed array of
    //--- BucketCount() slots. That is a rule, not a style choice: the first
-   //--- version returned st.mon (1..12) and (dayofyear+6)/7 (1..53), so every
+   //--- version returned st.mon (1..12) and (day_of_year+6)/7 (1..53), so every
    //--- December and every 53rd week fell outside 0..buckets-1 and was
    //--- discarded by the range test in Accumulate() - silently, in a file whose
    //--- own header promises nothing is dropped in silence. Bucket 0 was then a
@@ -824,7 +829,7 @@ private:
         { case QSEAS_MONTH: return st.mon-1;               // 0..11
           case QSEAS_DOW:   return st.day_of_week;         // 0..6
           case QSEAS_HOUR:  return st.hour;                // 0..23
-          default:          return ((st.dayofyear+6)/7)-1; // 0..52 (all of W53)
+          default:          return ((st.day_of_year+6)/7)-1; // 0..52 (all of W53)
         }
      }
 

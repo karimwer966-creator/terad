@@ -346,6 +346,25 @@ bool FetchSource(SSource &src,string &rows)
   }
 
 //+------------------------------------------------------------------+
+//| Last directory separator in a path, or -1.                        |
+//|                                                                   |
+//| MQL5 has no StringFindRev(): a reverse search does not exist in   |
+//| the language, and the compiler reports it as an undeclared        |
+//| identifier, then loses the rest of the line ("',' - unexpected    |
+//| token"). Scanning backwards is three lines and accepts both        |
+//| separators, because the input is a path typed by a human.          |
+//+------------------------------------------------------------------+
+int FindLastSeparator(const string path)
+  {
+   for(int i=StringLen(path)-1;i>=0;i--)
+     {
+      ushort c=StringGetCharacter(path,i);
+      if(c=='\\' || c=='/') return i;
+     }
+   return -1;
+  }
+
+//+------------------------------------------------------------------+
 //| Atomic write: build the whole file under a .tmp name, then move   |
 //| it over the target. A reader therefore sees either the old file   |
 //| or the complete new one, never a half-written one.                |
@@ -356,7 +375,7 @@ bool WriteFeed(const string rows)
    string tmp=InpOutputFile+".tmp";
 
    //--- make sure the target directory exists
-   int slash=StringFindRev(InpOutputFile,"\\");
+   int slash=FindLastSeparator(InpOutputFile);
    if(slash>0)
      {
       string dir=StringSubstr(InpOutputFile,0,slash);
@@ -376,10 +395,14 @@ bool WriteFeed(const string rows)
    FileWriteString(h,rows);
    FileClose(h);
 
-   //--- MQL5 FileMove overwrites; delete the target first so the move
-   //--- cannot fail on an existing file.
-   FileDelete(InpOutputFile,common);
-   if(!FileMove(tmp,InpOutputFile,common))
+   //--- FileMove() takes FOUR arguments in MQL5:
+   //---   (source, source_location, destination, destination_flags).
+   //--- The three-argument form used here before does not exist.
+   //--- FILE_COMMON appears twice because BOTH files are in the shared
+   //--- folder, and FILE_REWRITE lets the rename replace the target in one
+   //--- step - so the reader never sees a moment with no file at all
+   //--- (the FileDelete() that used to sit here created exactly that gap).
+   if(!FileMove(tmp,common,InpOutputFile,common|FILE_REWRITE))
      { g_gen_errors+=" [rename "+tmp+" -> "+InpOutputFile+" failed]";
        return false; }
    return true;
@@ -479,7 +502,9 @@ int OnInit()
    if(InpApiKey!="" && InpAuthHeader=="")
      Print("[KLJ_FEED] WARNING: a key is set but InpAuthHeader is empty.");
 
-   EventSetTimer(MathMax(1,InpRefreshMinutes)*60);
+   //--- MathMax() returns double; EventSetTimer() takes int seconds.
+   //--- Without the cast this is the file's "possible loss of data" warning.
+   EventSetTimer((int)MathMax(1,InpRefreshMinutes)*60);
    Print("[KLJ_FEED] started with ",g_src_n," source(s), period ",
          InpRefreshMinutes," min");
    RefreshAll();

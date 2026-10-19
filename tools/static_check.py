@@ -338,7 +338,7 @@ TIME_MINUTES TIME_DATE SYMBOL_TRADE_TICK_SIZE SYMBOL_DIGITS
         errs.append("possibly undeclared function: %s  (used in %s)"
                     % (name, ",".join(sorted(where))))
 
-    # 8) MQL5 dialect rules (D1-D11) - the classes of mistake that made the
+    # 8) MQL5 dialect rules (D1-D16) - the classes of mistake that made the
     #    v6.6.0 build fail: a returned reference, an integer literal suffix,
     #    a Print()-style comma chain. See tools/mql5_rules.py.
     dialect_e, dialect_w = [], []
@@ -376,7 +376,7 @@ TIME_MINUTES TIME_DATE SYMBOL_TRADE_TICK_SIZE SYMBOL_DIGITS
         print("  file: %-26s %6d bytes" % (f, os.path.getsize(os.path.join(INC,f))))
     print("-"*72)
     if dialect_e or dialect_w:
-        print("  --- MQL5 dialect rules (D1-D11) " + "-"*28)
+        print("  --- MQL5 dialect rules (D1-D16) " + "-"*28)
     for e in dialect_e:
         print("  ERROR " + e)
     for w in dialect_w:
