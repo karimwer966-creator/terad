@@ -108,6 +108,8 @@ layer able to trade or reach the network, and no log line on the per-bar path.
 | `'0xFF' - invalid number` + `undeclared identifier 'u'` | integer literal suffix `u` — MQL5 has none | v6.6.1 `CAlertManager::HashHex()` uses plain hex literals |
 | `'>' - operand expected` + `'Ready' - undeclared identifier` + `')' - expression expected` on a line containing `p->M()` | MQL5 has no `->`, not even for class-object pointers; the compiler splits it into `-` and `>` and then reports the member as undeclared | dereference with `.`: `p.M()` — this was the v6.6.4 `QSMC_Scanners.mqh` failure, now caught by rule **D13** |
 | `undeclared identifier 'dayofyear'` (or `dayofweek`) | the member of `MqlDateTime` is `day_of_year`, not `dayofyear` | use `st.day_of_year` / `st.day_of_week` — rule **D14** now checks every `MqlDateTime` member |
+| `undeclared identifier 'StringFindRev'` + `',' - unexpected token` on the same line | MQL5 has no reverse string search; the undeclared name makes the parser lose the argument list, so one bad call yields five errors | scan backwards with `StringGetCharacter()` (see `FindLastSeparator()` in `KLJ_DataFeeder.mq5`) — rule **D15** |
+| `wrong parameters count` + `built-in: bool FileMove(const string,int,const string,int)` | `FileMove`/`FileCopy` are 4-argument calls — source, source location, destination, destination flags — and have no defaults | `FileMove(tmp,FILE_COMMON,InpOutputFile,FILE_COMMON\|FILE_REWRITE)` — rule **D16** |
 
 `nadir2.mq5` is CRLF. If you patch it with an editor that rewrites line
 endings, `git diff` will show 39,800 changed lines; keep CRLF.
@@ -116,7 +118,7 @@ endings, `git diff` will show 39,800 changed lines; keep CRLF.
 
 `python3 tools/static_check.py` runs the mechanical part of a compiler pass
 (balance, includes, interface coverage, struct members, new/delete) **and** the
-MQL5 dialect rules D1–D14 from `tools/mql5_rules.py`, per translation unit
+MQL5 dialect rules D1–D16 from `tools/mql5_rules.py`, per translation unit
 (the indicator, the self-test script, the feeder, the new scanner probe, and
 `QSMC_Scanners.mqh` as a synthetic unit too, so the module stays linted even if
 its host is ever removed). It is not a type checker: a clean run still needs F7.
@@ -219,7 +221,7 @@ failure count (visible in the last line `RESULT: x passed, y failed`).
 ## 5. Run the offline checks (any machine, no terminal)
 
 ```bash
-python3 tools/static_check.py            # mechanical pass + dialect rules D1-D14
+python3 tools/static_check.py            # mechanical pass + dialect rules D1-D16
 python3 tools/test_arbiter.py            # independent Python mirror of the gates
 python3 tools/test_arbiter.py -v         # every scenario, printed
 python3 tools/check_scenario_geometry.py # predicts the ATR geometry of every T0x

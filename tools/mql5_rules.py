@@ -58,6 +58,16 @@ prove that the whole class of mistake that broke the first build is gone.
                      The real names are `day_of_year` and `day_of_week`; every
                      other field (year, mon, day, hour, min, sec) is checked
                      against the same fixed list.
+  D15 no-builtin     a call to a name that LOOKS like an MQL5 string function
+                     but does not exist (`StringFindRev`, `StringReverse`).
+                     MetaEditor: "undeclared identifier 'StringFindRev'", and
+                     the rest of the line collapses into "',' - unexpected
+                     token" - five errors for one invented name.
+  D16 builtin-arity  a built-in file function called with the wrong number of
+                     arguments. MetaEditor prints the real signature right
+                     under the error: `bool FileMove(const string,int,const
+                     string,int)`. FileMove/FileCopy are exactly 4-argument
+                     calls and have no defaults, so 3 is always wrong.
 
 Library use:   from mql5_rules import check_unit
 Standalone:    python3 tools/mql5_rules.py [--root DIR] [--quiet]
@@ -92,6 +102,19 @@ NUM_SUFFIX_RE = re.compile(r'\b(?:0[xX][0-9a-fA-F]+|\d+)([uUlL])(?![0-9A-Za-z_.]
 # check its members. These are the only legal fields (MQL5 Reference / MqlDateTime).
 MQL_DATETIME_FIELDS = {"year", "mon", "day", "hour", "min", "sec",
                        "day_of_week", "day_of_year"}
+
+# Names that read like MQL5 string functions but do not exist in the language.
+# StringFindRev() was used by KLJ_DataFeeder.mq5; there is no reverse search.
+NOT_IN_MQL5 = {
+    "StringFindRev": "MQL5 has no reverse search - scan backwards with "
+                     "StringGetCharacter() from StringLen(s)-1",
+    "StringReverse": "MQL5 has no StringReverse() - reverse with a loop over "
+                     "StringGetCharacter()",
+}
+
+# Built-in file functions with a FIXED arity (no default arguments).
+# FileMove/FileCopy: (src, common_flag, dst, mode_flags).
+BUILTIN_EXACT_ARITY = {"FileMove": 4, "FileCopy": 4}
 
 
 # --------------------------------------------------------------------------
@@ -854,6 +877,42 @@ def check_unit(files, types=None, base=None):
                         % (rel(p), idx[p].line(m.start(2)), mem, mem,
                            ", ".join(sorted(MQL_DATETIME_FIELDS))))
 
+    # ---- D15 names that do not exist in MQL5 -------------------------------
+    #   MetaEditor's message is only "undeclared identifier", which reads like a
+    #   scope problem; the parser then loses the argument list, so one invented
+    #   function name produces five errors on one line.
+    for p, code in codes.items():
+        for m in re.finditer(r'\b([A-Za-z_]\w*)\s*\(', code):
+            name = m.group(1)
+            if name not in NOT_IN_MQL5:
+                continue
+            errs.append("%s:%d  D15 no-builtin: %s() does not exist in MQL5 "
+                        "(MetaEditor: undeclared identifier '%s', then five parse "
+                        "errors on the same line). %s."
+                        % (rel(p), idx[p].line(m.start()), name, name,
+                           NOT_IN_MQL5[name]))
+
+    # ---- D16 built-in file functions with a fixed arity --------------------
+    #   The compiler prints the real signature beneath the error. A 3-argument
+    #   FileMove() is not a variation, it is a different function: the third
+    #   argument is read as the destination and the missing fourth as a syntax
+    #   problem at the start of the line.
+    for p, code in codes.items():
+        for m in re.finditer(r'\b(FileMove|FileCopy)\s*\(', code):
+            o = code.find('(', m.end() - 1)
+            c = match_paren(code, o)
+            if c < 0:
+                continue
+            given = len([a for a in split_top(code[o + 1:c]) if a.strip()])
+            want = BUILTIN_EXACT_ARITY[m.group(1)]
+            if given == want:
+                continue
+            errs.append("%s:%d  D16 builtin-arity: %s() takes %d argument(s) - "
+                        "(source, common_flag, destination, mode_flags) - but %d "
+                        "were passed. FILE_REWRITE in mode_flags is what allows "
+                        "the target to be replaced."
+                        % (rel(p), idx[p].line(m.start()), m.group(1), want, given))
+
     # ---- D10 version drift -------------------------------------------------
     #   main file first in the closure order, and the layer banner sits in
     #   QSMC_Root.mqh next to it.
@@ -974,7 +1033,7 @@ def main(argv):
     reported = set()                                # a shared .mqh is in 2 units
     if not quiet:
         print("=" * 74)
-        print(" MQL5 DIALECT RULES D1-D14  root: %s" % root)
+        print(" MQL5 DIALECT RULES D1-D16  root: %s" % root)
         print("=" * 74)
     for label, relp in UNITS:
         path = os.path.join(root, relp)

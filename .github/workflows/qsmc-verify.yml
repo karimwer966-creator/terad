@@ -36,7 +36,7 @@ jobs:
           mkdir -p out
           python3 -m py_compile tools/*.py
 
-      - name: Mechanical pass + MQL5 dialect rules D1-D14
+      - name: Mechanical pass + MQL5 dialect rules D1-D16
         run: python3 tools/static_check.py 2>&1 | tee out/static_check.log
 
       - name: Arbiter decision logic vs the MQL5 self-test (1:1)
