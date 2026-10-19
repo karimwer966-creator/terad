@@ -233,7 +233,7 @@ stored, not a dialect mistake about how MQL5 spells things:
 Two of the four were invisible to `tools/test_scanners.py` for the same reason:
 the mirror re-derived the **formula** from a Python `dict`, which grows, so the
 array bound that discards December simply did not exist there. The mirror now
-models `SLOTS`, the reservoir and the LCG, and asserts them (39 checks, was 26).
+models `SLOTS`, the reservoir and the LCG, and asserts them (40 checks, was 23).
 
 The three `const SRow *Row(int)` accessors were a compile error waiting for its
 first build — MQL5 has no pointer to a structure — which is what **D12** is for.
@@ -339,8 +339,8 @@ Not changed, checked line by line:
   was declared and never used, so the scripts and the feeder took part in no
   check); `OnDeinit()` accepted as a release site for a program file, which is the
   one legitimate pattern the `new`-without-destructor rule kept flagging.
-* `tools/test_scanners.py` — mirrors `SLOTS`, the reservoir and the LCG: 39
-  assertions, was 26.
+* `tools/test_scanners.py` — mirrors `SLOTS`, the reservoir and the LCG: 40
+  assertions, was 23.
 * `nadir2.mq5` — `#property copyright` no longer hard-codes `v6.5.5`; version
   closed at `6.63` / `"v6.6.3"`, banner and companion files with it (D10/D12 run
   on every unit and report 0 errors, 0 warnings).

@@ -263,8 +263,8 @@ Two API changes came with them:
 * `CMomentumHeatmap` gained `History()`, because a caller cannot print a z-score
   window it is not allowed to read.
 
-`t_scanners` prints `RESULT: all scanner arithmetic checks passed` over 39
-assertions (was 26). The probe is compiled by `F7` like any other file here, and
+`t_scanners` prints `RESULT: all scanner arithmetic checks passed` over 40
+assertions (was 23). The probe is compiled by `F7` like any other file here, and
 it is the first thing in this repo that makes the Phase 7 module part of a build.
 
 ---
