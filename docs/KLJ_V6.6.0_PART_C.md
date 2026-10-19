@@ -207,6 +207,10 @@ The brief says to reuse the host's volatility class. That global lives in `nadir
 `tools/test_scanners.py` is an independent re-implementation of the seasonality, percentile and z-score arithmetic. Two findings:
 
 1. **Degenerate z-score (real bug, fixed).** For a constant-growth series the true standard deviation is 0, but floating point leaves ~1e-13, so the obvious guard `sd > 0.0` passed and dividing by it converted rounding noise into an O(1) number — a +1%/bar ramp reported **z = −1.13 instead of 0**. `CMomentumHeatmap` now requires `sd > max(|mean|, 1e-8) * 1e-6` before computing a z-score, and returns 0 otherwise. The same guard is mirrored in the Python test.
+   *(A third class of finding came later, in v6.6.3 — see §7.6: a mirror of the
+   arithmetic cannot see a bug in the** storage**, so the Python side had to learn
+   the array bounds too.)*
+
 2. **Off-by-one in my own test data (test bug, fixed).** Storing the month's close before applying that month's move put every return in the wrong bucket. The corrected fixture asserts `n = 19` for 20 Januaries, because the first bar has no prior close — asserted explicitly so the convention cannot drift.
 
 ### 7.4 Test cases (Phase 7)
@@ -224,6 +228,44 @@ The brief says to reuse the host's volatility class. That global lives in `nadir
 ### 7.5 Time basis and DST — stated, not hidden
 
 `QTB_SERVER` buckets by the broker's bar timestamp as stored. `QTB_UTC` applies a **single** offset, `TimeGMT() - TimeCurrent()`, sampled at scan time. Broker servers usually run a fixed offset, but some shift with DST. **This scanner applies one offset to the whole history and therefore does not retroactively correct historical DST transitions.** Where a broker's offset has changed in the past, hour-of-day rows spanning that change are approximations.
+
+### 7.6 v6.6.3 — the module gets a host, and four defects come out with it
+
+Until this release nothing included `QSMC_Scanners.mqh`: no build compiled it, no
+harness called it. `tools/static_check.py` listed the companion sources in an
+`EXTRA` array and then **never read it**, which is the same failure one level up —
+a source no check touches is a source no check protects. That array is wired into
+the checks now, and `MQL5/Indicators/QSMC_ScannerProbe.mq5` is the module's host:
+it drives the universe, the time-boxed `Scan()`, the two heatmaps and the
+seasonality table, and prints text only — no objects, no orders, no files.
+
+Four defects were found by reading that file with an eye to *how the data is
+stored*, not to whether it looks like C++:
+
+| # | Defect | Why it survived a glance | Fix |
+|---|---|---|---|
+| 1 | `SQZone z=zs[hit.index];` — `hit.index` is an index into `CZoneRegistry::m_zones`, which `Rebuild()` has already **filtered, merged and re-sorted by midpoint**. The row reported the band, role, strength and id of a *different* zone, and fed that zone to `QSMC_BuildGeometry`. | Nothing crashes, the values are plausible, and when no merge happens the indices coincide — so a manual test on a clean chart passes. | `m_zones.At(hit.index,z)`, the same pattern `CQuantumRoot::BuildContext()` uses. A miss is reported as `QSS_NO_SETUP` with a reason, never swallowed. |
+| 2 | `BucketOf()` returned **1-based** months (1..12) and weeks (1..53) into a **0-based** 12/53-slot array. December (index 12) and every 53rd week were dropped by the range test, and slot 0 was an empty phantom row labelled `?`. | The table looked complete: 12 rows, 12 names — January..November shifted by one. A file whose header promises "never silently dropped" was dropping a month silently. | Buckets are 0-based for all four kinds; `QSeasBucketName()` adds the `+1` back for the label. `tools/test_scanners.py` now models `SLOTS` and asserts December, W53 and `dropped == 0`. |
+| 3 | The median was computed over "the first 512 values of the bucket", i.e. the **oldest** slice, while `n` reported the full count. | The median of a bucket is only read as a number; nothing says it is 30 years old. | Reservoir sampling (Algorithm R) with the LCG seeded per pass: unbiased 512-sample median, **identical for identical bars** (no clock), and `n` still the full bucket. When the bucket fits in 512 the sample *is* the bucket, so the median is exact. |
+| 4 | `Percentile()` divided by the **window length** while skipping bars whose ATR is not defined yet. | Every warm-up hole pushed the number down; a genuine 80th percentile printed as 64th and still landed in a plausible regime bucket. | Divide by the values actually compared, and refuse below 10 of them. |
+
+Two API changes came with them:
+
+* `CTopSetupsScanner::Row`, `CMomentumHeatmap::Row`, `CVolatilityHeatmap::Row`
+  returned `const SRow *` built from `&m_rows[i]`. **MQL5 has no pointer to a
+  structure** — only to class objects — so those three declarations could never
+  have compiled; they read like the legal `CBarSeries *Chart()`, which is why no
+  review caught them. They are now `bool Row(const int i,SRow &out) const`, the
+  form `CZoneRegistry::At()` and `CSeasonalityScanner::Row()` already used in this
+  same file. Rule **D12** in `tools/mql5_rules.py` now rejects the pointer form
+  anywhere in the subsystem, and the conversion is no-regret: reference-out is
+  unambiguously legal whether or not a future build ever allows the other.
+* `CMomentumHeatmap` gained `History()`, because a caller cannot print a z-score
+  window it is not allowed to read.
+
+`t_scanners` prints `RESULT: all scanner arithmetic checks passed` over 40
+assertions (was 23). The probe is compiled by `F7` like any other file here, and
+it is the first thing in this repo that makes the Phase 7 module part of a build.
 
 ---
 

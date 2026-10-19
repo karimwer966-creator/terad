@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Static consistency check for the QSMC v6.6.0 arbitration subsystem.
+Static consistency check for the QSMC v6.6.4 arbitration subsystem.
 
 This is NOT a compiler. It cannot replace F7 in MetaEditor. What it does
 is catch the classes of mistake a human reviewer makes when writing a
@@ -24,10 +24,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INC  = os.path.join(ROOT, "MQL5", "Include", "QSMC")
 FILES = sorted(f for f in os.listdir(INC) if f.endswith(".mqh"))
 
-# --- PART C sources outside the include folder (companion EA, scripts).
+# --- PART C sources outside the include folder (companion EA, scripts, and the
+# Phase 7 scanner host added in v6.6.3). These used to be listed and then never
+# read, which is the same mistake this whole release is about: a source no check
+# touches is a source no check protects.
 EXTRA = [
     os.path.join(ROOT, "MQL5", "Scripts", "QSMC_ArbiterTest.mq5"),
     os.path.join(ROOT, "MQL5", "Experts", "KLJ_DataFeeder.mq5"),
+    os.path.join(ROOT, "MQL5", "Indicators", "QSMC_ScannerProbe.mq5"),
 ]
 EXTRA = [e for e in EXTRA if os.path.exists(e)]
 
@@ -99,8 +103,9 @@ def main():
         p = os.path.join(INC, f)
         texts[f] = read(p)
 
+    for e in EXTRA:                      # companion sources join the same checks
+        texts[os.path.relpath(e, ROOT)] = read(e)
     all_src = "\n".join(texts.values())
-    all_src += "\n" + read(os.path.join(ROOT, "MQL5", "Scripts", "QSMC_ArbiterTest.mq5"))
     host = read(os.path.join(ROOT, "nadir2.mq5"))
 
     # 1) balance -------------------------------------------------------
@@ -277,8 +282,12 @@ def main():
             errs.append("%s: %d 'new' and no 'delete' in this file" % (f, n_new))
         elif n_new:
             # every allocation site must be matched by a delete inside a
-            # destructor, Shutdown(), Clear() or an explicit counter.
-            if not re.search(r'~\w+\s*\(', code) and not re.search(r'void\s+Shutdown\s*\(', code):
+            # destructor, Shutdown(), Clear() or an explicit counter - and for a
+            # program file (EA / indicator / script) the release site is
+            # OnDeinit(), which is exactly what QSMC_ScannerProbe.mq5 does.
+            if not re.search(r'~\w+\s*\(', code) \
+               and not re.search(r'void\s+Shutdown\s*\(', code) \
+               and not re.search(r'void\s+OnDeinit\s*\(', code):
                 errs.append("%s: 'new' present but no destructor/Shutdown()" % f)
             else:
                 warns.append("%s: %d new site(s), %d delete site(s); "
@@ -329,22 +338,61 @@ TIME_MINUTES TIME_DATE SYMBOL_TRADE_TICK_SIZE SYMBOL_DIGITS
         errs.append("possibly undeclared function: %s  (used in %s)"
                     % (name, ",".join(sorted(where))))
 
+    # 8) MQL5 dialect rules (D1-D11) - the classes of mistake that made the
+    #    v6.6.0 build fail: a returned reference, an integer literal suffix,
+    #    a Print()-style comma chain. See tools/mql5_rules.py.
+    dialect_e, dialect_w = [], []
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import mql5_rules
+        inc_root = os.path.join(ROOT, "MQL5", "Include")
+        types = {}
+        for label, relp in mql5_rules.UNITS:
+            upath = os.path.join(ROOT, relp)
+            if not os.path.exists(upath):
+                continue
+            files = mql5_rules.closure(upath, inc_root)
+            de, dw, types = mql5_rules.check_unit(files, types, ROOT)
+            dialect_e += de
+            dialect_w += dw
+        # a .mqh shared by two units would otherwise be reported twice
+        def _dedup(seq):
+            out, seen = [], set()
+            for x in seq:
+                if x not in seen:
+                    seen.add(x); out.append(x)
+            return out
+        dialect_e = _dedup(dialect_e)
+        dialect_w = _dedup(dialect_w)
+    except Exception as exc:                      # the linter must never hide
+        dialect_w.append("mql5_rules could not run (%s) - run "
+                         "python3 tools/mql5_rules.py separately" % exc)
+
     # ---------------------------------------------------------------- report
     print("="*72)
-    print(" QSMC v6.6.0 - STATIC CONSISTENCY CHECK (not a compiler)")
+    print(" QSMC v6.6.4 - STATIC CONSISTENCY CHECK (not a compiler)")
     print("="*72)
     for f in FILES:
         print("  file: %-26s %6d bytes" % (f, os.path.getsize(os.path.join(INC,f))))
     print("-"*72)
+    if dialect_e or dialect_w:
+        print("  --- MQL5 dialect rules (D1-D11) " + "-"*28)
+    for e in dialect_e:
+        print("  ERROR " + e)
+    for w in dialect_w:
+        print("  WARN  " + w)
+    print("  --- own checks " + "-"*55)
     for w in warns:
         print("  WARN  " + w)
-    if errs:
+    all_e = errs + dialect_e
+    all_w = warns + dialect_w
+    if all_e:
         for e in errs:
             print("  ERROR " + e)
         print("-"*72)
-        print("  %d error(s), %d warning(s)" % (len(errs), len(warns)))
+        print("  %d error(s), %d warning(s)" % (len(all_e), len(all_w)))
         return 1
-    print("  no errors, %d warning(s)" % len(warns))
+    print("  no errors, %d warning(s)" % len(all_w))
     print("-"*72)
     print("  This check does NOT prove the code compiles. Press F7.")
     return 0

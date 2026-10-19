@@ -374,6 +374,7 @@ Everything else in the 39,655 lines is byte-identical. `git diff` on `nadir2.mq5
 ### 5.2 MQL5 conformance (Phase 3 rules)
 
 * MQL5 only. **No** STL, lambdas, exceptions, multiple inheritance, operator overloading, `dynamic_cast`, `template`. Verified mechanically by `tools/static_check.py` (rule 2).
+* MQL5 is **not** C++ in four specific ways that this release originally got wrong, and that are now rule-checked by `tools/mql5_rules.py` (v6.6.1): a function **cannot return a reference** (use a pointer built with `GetPointer`, or copy out through a reference parameter), **no integer literal suffix** (`0xFFu` is not a number to MQL5), **no comma operator** (a `,` after a declarator starts a *second* declaration, which is how one Print-style line produced 19 errors), and **no assignment between class objects** (structs are value types, classes are not). See `docs/QSMC_REVIEW_v6.6.1.md` §2.
 * Every `CopyRates` return is compared against the requested count; a short copy sets `Ready()=false` and the bar is **not** consumed (`CBarSeries::Refresh`).
 * Every array access is bounds-guarded; every division is guarded (`atr>0.0`, `risk>0.0`, `range>0.0`).
 * Series orientation is set explicitly and documented per array: `ArraySetAsSeries(m_o,false)` … — index 0 = oldest. `CopyRates` results are re-written into that orientation at the boundary.
@@ -389,13 +390,42 @@ Everything else in the 39,655 lines is byte-identical. `git diff` on `nadir2.mq5
 
 ```
 $ python3 tools/static_check.py
+  --- MQL5 dialect rules (D1-D11) ----------------------------
+  (nothing)
+  --- own checks -------------------------------------------------------
   WARN  QSMC_Arbiter.mqh: 10 new site(s), 3 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
   WARN  QSMC_MarketData.mqh: 5 new site(s), 1 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
   WARN  QSMC_Root.mqh: 1 new site(s), 1 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
-  no errors, 3 warning(s)
+  WARN  QSMC_Scanners.mqh: 1 new site(s), 1 delete site(s); ...
+  no errors, 4 warning(s)
 ```
 
-The three warnings are expected: the `delete` sites sit in loops/destructors, and the runtime `AllocCalls()/FreeCalls()` counters are the real check (printed on Deinit).
+Since v6.6.1 the report is **per translation unit**, not per file: `static_check.py`
+also runs the eleven dialect rules (D1–D11) of `tools/mql5_rules.py` over the
+indicator unit, the self-test unit, the feeder unit and `QSMC_Scanners.mqh` (a
+synthetic unit — nothing includes it yet). Each rule is anchored to a MetaEditor
+message, and the set was validated by re-running it against the pre-v6.6.1 tree,
+where it reports 13 findings: exactly the 12 real defects behind the 30 reported
+errors (8 ref-returns, 3 literal-suffixes, 1 comma-chain) plus the version drift
+AUDIT-04 had only been warned about — and it reports **nothing** against this tree.
+
+The 4 warnings are the `new`/`delete` counters (the `delete` sites sit in
+loops/destructors and the runtime `AllocCalls()/FreeCalls()` counters are the
+real check, printed on Deinit). D6 and D11 are inference-based and therefore
+skip `nadir2.mq5` (`LEGACY_HOST`); they run over the 15 subsystem files, both
+scripts and `QSMC_Scanners.mqh`.
+
+In v6.6.2 the seven D3 notes that used to sit under this line are gone: the
+decimal literals in the legacy host that exceed `INT_MAX` — two FNV seeds and
+five multipliers — are written as their exact hex equivalents (`0x811C9DC5`,
+`0x14650FB0739D0383`, `0x100000001B3`), **same values, same hashes**, so
+`PMI_*` digests and causal fingerprints stay comparable across the upgrade. What
+that pass also recorded, in a comment next to the seed: `1469598103934665603`
+is the canonical FNV-1a 64-bit basis `14695981039346656037` with one digit
+missing. It is left as it is on purpose — a fingerprint is only ever compared
+with a value recomputed in the same session, never with a stored one, so
+"fixing" the constant would invalidate nothing and buy nothing. The comment says
+what it is, which is what a reader needs.
 
 **Identifier ledger — every identifier this release introduces, and where it is declared:**
 
@@ -433,7 +463,11 @@ The three warnings are expected: the `delete` sites sit in loops/destructors, an
 5. **No name collision with the host file.** The host already declares `struct SZone` (`nadir2.mq5:3196`) and `SZone g_zones[]` (`3500`); the new zone record was renamed `SQZone` for this reason. A 60-identifier collision scan against `nadir2.mq5` returned only that one hit.
 6. Every input name used in code is declared in `QSMC_Preset.mqh`; `InpArbCSVLog`, `InpArbMinSample`, `InpArbTacticalMayConfirm`, `InpArbGateCore` are read in `QSMC_RootCreate()`; `InpArbEnabled`, `InpArbGateTactical`, `InpAlertOnMTFExecutionEntry` (host input) are read in the patched `UpdateMTFExecutionEntry`.
 
-**What this pass cannot do:** it is not a type checker. It cannot catch a wrong argument order, an implicit conversion the compiler rejects, a missing `const`, or an MQL5-specific restriction on returning a class by value. **Press F7.**
+**What this pass cannot do:** it is not a type checker. It cannot catch a wrong
+argument order, an implicit conversion the compiler rejects, or a type error in
+an expression. It CAN now catch a missing `const` (D5) and the reference-return
+restriction (D1) — both were blind spots in v6.6.0 and both cost the first
+build. **Press F7.**
 
 ---
 
@@ -679,3 +713,42 @@ Audit query you can run on it: `SELECT count(*) WHERE published=1 GROUP BY day` 
 1. Set `InpArbEnabled=false` — the subsystem becomes inert, the indicator behaves as v6.5.5. (Keep the include folder installed.)
 2. Or revert `nadir2.mq5` to the pre-patch file; `git diff` isolates the change.
 3. Or delete the `MQL5/Include/QSMC` folder **and** revert — but the include is now required by the patched file, so do both together or the compile fails.
+
+---
+
+## 10. v6.6.1 / v6.6.2 — THE BUILD THAT COMPILES, AND THE GATE THAT KEEPS IT THAT WAY
+
+The first release of this layer never survived MetaEditor: 30 errors / 4 warnings, and `tools/static_check.py` said "no errors". That gap is closed and documented:
+
+| Doc | Purpose |
+|---|---|
+| `docs/QSMC_REVIEW_v6.6.1.md` | every error, the three root causes, the fixes, what was reviewed and found correct, and the known weaknesses deliberately left open (7 recorded, #4 closed in v6.6.2) |
+| `docs/QSMC_BUILD_AND_RUN.md` | where the files must sit, F7 order, the expected log lines, the self-test, the offline harnesses, the troubleshooting table, rollback (Arabic quick-start at the top) |
+| `docs/KLJ_V6.6.0_PART_C.md` §7.6 | v6.6.3: `QSMC_Scanners.mqh` gets a host and four defects surface with it — a merged-zone index, a December that was never counted, a median over the oldest 512 bars, a diluted percentile |
+| `.github/workflows/qsmc-verify.yml` | the offline gates as a CI gate on every push/PR, with the manual F7 step printed at the end |
+| `tools/mql5_rules.py` | rules D1–D12, the MQL5-dialect linter that now runs inside `static_check.py` |
+
+Two things changed beyond the compile fixes: `CQuantumRoot::Refresh()` no longer
+rebuilds a **locked** configuration from the preset (a host's `LockConfig()` was
+silently discarded on the next bar), and the build text, `#property version` and
+the layer banner are one value again (AUDIT-04 of `nadir2.mq5`), enforced by D10.
+
+The API note for hosts: `Ctx()`, `Cfg()`, `Report()` and `MutableConfig()` are gone
+(MQL5 forbids returning a reference). `Market()`, `Zones()`, `Arbiter()`, `Stats()`
+now return pointers — call syntax unchanged — and the read-only data comes from
+`Ctx*()` / `Report*()` / `Primary*()` accessors or from `GetContext()` /
+`GetPrimaryCandidate()` / `CopyConfig()`.
+
+v6.6.2 is not a behaviour release: the offline checks became a CI gate.
+`.github/workflows/qsmc-verify.yml` runs, on every push and PR, exactly the five
+commands the review asked for (v6.6.3 added nothing to that list: the new
+`QSMC_ScannerProbe.mq5` unit is picked up through `mql5_rules.UNITS`, and the
+companion sources are now actually read by `static_check.py` instead of only being
+listed in an `EXTRA` array that nothing consumed) — `py_compile` of the tooling, `static_check.py`
+(which includes D1–D11), `test_arbiter.py`, `test_scanners.py`,
+`check_scenario_geometry.py`, `apply_qsmc_arb_patch.py --check` — plus a guard
+that the same header name is not committed twice under `MQL5/` (two copies, one
+silently winning the build, was how this layer's first report got so confusing),
+and uploads the logs as an artifact. Its last step prints the thing CI cannot do:
+**open `nadir2.mq5` and press F7**. The version triple moved to `6.62` /
+`"v6.6.2"` / the layer banner, and D10 is what makes those three move together.

@@ -1,0 +1,10 @@
+# The MQL5 sources are stored byte-exactly: no EOL conversion, no renormalising.
+# nadir2.mq5 is CRLF because MetaEditor wrote it that way (39 792 lines), every
+# QSMC header is LF. `text` would normalise the index to LF and turn the next
+# `git pull` on a Windows box with core.autocrlf=true into a whole-file diff -
+# the exact noise that hides a real change in a file this size.
+*.mq5  -text
+*.mqh  -text
+*.py   text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
