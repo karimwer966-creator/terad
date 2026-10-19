@@ -214,9 +214,9 @@ public:
       Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
       if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
         { Check(false,"T00 synthetic load",""); return; }
-      if(!r.BuildContext(0.0)) { Check(false,"T00 context",r.Ctx().data_reason); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T00 context",r.CtxDataReason()); return; }
 
-      double measured=r.Ctx().atr;
+      double measured=r.CtxAtr();
       double err=MathAbs(measured-QST_ATR)/QST_ATR;
       Check(err<=QST_ATR_TOL,"T00 the synthetic ATR matches QST_ATR",
             StringFormat("expected %.2f measured %.4f err %.1f%%",
@@ -247,7 +247,7 @@ public:
 
       if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
         { Check(false,"T01 synthetic load",""); return; }
-      if(!r.BuildContext(0.0)) { Check(false,"T01 context",r.Ctx().data_reason); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T01 context",r.CtxDataReason()); return; }
 
       SQZone zs[2];
       MakeZone(zs[0],ZR_RESISTANCE,108.00,109.00,80);
@@ -262,12 +262,11 @@ public:
       r.TacticalObserve(f);
       r.FinalizeBar(false);
 
-      const SArbiterReport rep=r.Report();
-      bool dir_ok=rep.primary.valid && rep.primary.dir<0;
-      Check(rep.published && dir_ok,"T01a SELL published at resistance",
-            "state="+QSMC_StateName(rep.primary.state)+" trace="+rep.trace);
-      Check(dir_ok && rep.primary.zone_role==ZR_RESISTANCE,"T01b zone role is RESISTANCE",
-            QSMC_RoleName(rep.primary.zone_role));
+      bool dir_ok=r.PrimaryValid() && r.PrimaryDir()<0;
+      Check(r.ReportPublished() && dir_ok,"T01a SELL published at resistance",
+            "state="+QSMC_StateName(r.PrimaryState())+" trace="+r.ReportTrace());
+      Check(dir_ok && r.PrimaryZoneRole()==ZR_RESISTANCE,"T01b zone role is RESISTANCE",
+            QSMC_RoleName(r.PrimaryZoneRole()));
 
       //--- the SAME bar re-submitted must not publish again
       int before=r.Published();
@@ -322,7 +321,7 @@ public:
       Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
       if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
         { Check(false,"T02 synthetic load",""); return; }
-      if(!r.BuildContext(0.0)) { Check(false,"T02 context",r.Ctx().data_reason); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T02 context",r.CtxDataReason()); return; }
 
       SQZone zs[2];
       MakeZone(zs[0],ZR_RESISTANCE,108.00,109.00,80);
@@ -337,11 +336,10 @@ public:
       r.TacticalObserve(f);
       r.FinalizeBar(false);
 
-      const SArbiterReport rep=r.Report();
-      Check(rep.published && rep.primary.dir>0,
+      Check(r.ReportPublished() && r.PrimaryDir()>0,
             "T02a BUY continuation published above a broken resistance",
-            "state="+QSMC_StateName(rep.primary.state)+" trace="+rep.trace);
-      Check(!(rep.primary.valid && rep.primary.dir<0),
+            "state="+QSMC_StateName(r.PrimaryState())+" trace="+r.ReportTrace());
+      Check(!(r.PrimaryValid() && r.PrimaryDir()<0),
             "T02b no SELL is emitted at the same zone","");
      }
 
@@ -365,7 +363,7 @@ public:
       Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
       if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
         { Check(false,"T03 synthetic load",""); return; }
-      if(!r.BuildContext(0.0)) { Check(false,"T03 context",r.Ctx().data_reason); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T03 context",r.CtxDataReason()); return; }
 
       SQZone zs[2];
       MakeZone(zs[0],ZR_SUPPORT,90.00,91.00,85);
@@ -381,9 +379,8 @@ public:
       r.TacticalObserve(f);
       r.FinalizeBar(false);
 
-      const SArbiterReport rep=r.Report();
-      Check(!rep.published,"T03a no SELL alert inside a SUPPORT zone",
-            "trace="+rep.trace);
+      Check(!r.ReportPublished(),"T03a no SELL alert inside a SUPPORT zone",
+            "trace="+r.ReportTrace());
       bool mentioned=(StringFind(r.LastText(),"BETWEEN ZONES")>=0 ||
                       StringFind(r.LastText(),"did not reject")>=0 ||
                       StringFind(r.LastText(),"no candidate")>=0 ||
@@ -410,7 +407,7 @@ public:
       Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
       if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
         { Check(false,"T04 synthetic load",""); return; }
-      if(!r.BuildContext(0.0)) { Check(false,"T04 context",r.Ctx().data_reason); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T04 context",r.CtxDataReason()); return; }
 
       SQZone zs[2];
       MakeZone(zs[0],ZR_RESISTANCE,108.00,109.00,80);
@@ -425,8 +422,7 @@ public:
       r.TacticalObserve(f);
       r.FinalizeBar(false);
 
-      const SArbiterReport rep=r.Report();
-      Check(!rep.published,"T04a no signal between zones","trace="+rep.trace);
+      Check(!r.ReportPublished(),"T04a no signal between zones","trace="+r.ReportTrace());
       Check(StringFind(r.LastText(),"BETWEEN ZONES")>=0,
             "T04b reason names BETWEEN ZONES",r.LastText());
      }
@@ -453,7 +449,7 @@ public:
       Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
       if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
         { Check(false,"T05 synthetic load",""); return; }
-      if(!r.BuildContext(0.0)) { Check(false,"T05 context",r.Ctx().data_reason); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T05 context",r.CtxDataReason()); return; }
 
       SQZone zs[2];
       MakeZone(zs[0],ZR_RESISTANCE,108.00,109.00,80);
@@ -469,14 +465,13 @@ public:
       r.TacticalObserve(f);
       r.FinalizeBar(false);
 
-      const SArbiterReport rep=r.Report();
       bool forming=(f.exec_bar_time>t[38]);
       Check(forming,"T05a the fact really cites the forming bar",
             TimeToString(f.exec_bar_time,TIME_MINUTES));
-      Check(!rep.published || rep.primary.state!=(int)SIG_CONFIRMED,
+      Check(!r.ReportPublished() || r.PrimaryState()!=(int)SIG_CONFIRMED,
             "T05b a forming-bar fact never publishes CONFIRMED",
-            "state="+QSMC_StateName(rep.primary.state)+" trace="+rep.trace);
-      Check(StringFind(r.LastText(),"CONFIRMED")<0 || !rep.published,
+            "state="+QSMC_StateName(r.PrimaryState())+" trace="+r.ReportTrace());
+      Check(StringFind(r.LastText(),"CONFIRMED")<0 || !r.ReportPublished(),
             "T05c no alert text is named CONFIRMED here",r.LastText());
      }
 
@@ -561,7 +556,7 @@ public:
       Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
       if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
         { Check(false,"T07 synthetic load",""); return; }
-      if(!r.BuildContext(0.0)) { Check(false,"T07 context",r.Ctx().data_reason); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T07 context",r.CtxDataReason()); return; }
       r.SetZones(zs,2);
       r.SetExternalBias(0,0,0);
 
@@ -678,7 +673,7 @@ public:
       Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
       if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
         { Check(false,"T09 synthetic load",""); return; }
-      if(!r.BuildContext(0.0)) { Check(false,"T09 context",r.Ctx().data_reason); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T09 context",r.CtxDataReason()); return; }
 
       SQZone zs[2];
       MakeZone(zs[0],ZR_RESISTANCE,108.00,109.00,80);
@@ -694,14 +689,13 @@ public:
       r.TacticalObserve(f);
       r.FinalizeBar(false);
 
-      const SArbiterReport rep=r.Report();
       string txt=r.LastText();
       bool counter_mentioned=(StringFind(txt,"COUNTER-TREND")>=0 ||
-                              StringFind(rep.trace,"suppressed")>=0 ||
-                              StringFind(rep.trace,"no candidate")>=0);
-      Check(!(rep.published && rep.primary.state==(int)SIG_CONFIRMED),
+                              StringFind(r.ReportTrace(),"suppressed")>=0 ||
+                              StringFind(r.ReportTrace(),"no candidate")>=0);
+      Check(!(r.ReportPublished() && r.PrimaryState()==(int)SIG_CONFIRMED),
             "T09a an opposed candidate is never published as CONFIRMED",
-            "state="+QSMC_StateName(rep.primary.state)+" trace="+rep.trace);
+            "state="+QSMC_StateName(r.PrimaryState())+" trace="+r.ReportTrace());
       Check(counter_mentioned,"T09b the counter-trend is named in the text",txt);
      }
 

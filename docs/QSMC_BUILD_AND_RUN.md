@@ -1,0 +1,236 @@
+# QSMC v6.6.1 — BUILD, RUN, VERIFY
+
+Operational guide for `nadir2.mq5` + the `MQL5/Include/QSMC` arbitration layer.
+Design and root-cause analysis live in `docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md`;
+the v6.6.1 compile fixes are in `docs/QSMC_REVIEW_v6.6.1.md`.
+
+---
+
+## 0. العربية — البدء السريع
+
+**ما هو هذا المستودع:** مؤشر `nadir2.mq5` (MetaTrader 5) وطبقة قرار اسمها QSMC
+موجودة في `MQL5/Include/QSMC/*.mqh`. الطبقة تجمّع كل مسارات الإشارات في قائمة
+واحدة، تمرّرها على 10 بوابات (gates)، وتنشر إشارة واحدة لكل شمعة مغلقة فقط.
+
+**خطوات التشغيل:**
+
+1. افتح MT5 ← `File` ← `Open Data Folder` (ملف البيانات).
+2. انسخ الملفات إلى هذه الأماكن داخل ملف البيانات:
+   - `MQL5/Include/QSMC/*.mqh` → `<Data Folder>/MQL5/Include/QSMC/`
+   - `nadir2.mq5` → `<Data Folder>/MQL5/Indicators/`
+   - `MQL5/Scripts/QSMC_ArbiterTest.mq5` → `<Data Folder>/MQL5/Scripts/`
+   - `MQL5/Experts/KLJ_DataFeeder.mq5` → `<Data Folder>/MQL5/Experts/`
+   (المجلد `QSMC` داخل `Include` **ضروري**: الملفات تُضمَّن هكذا
+   `#include <QSMC/QSMC_Root.mqh>`.)
+3. افتح `MetaEditor` (F4 داخل MT5) واضغط **F7** على كل ملف بالترتيب:
+   `nadir2.mq5` ثم `QSMC_ArbiterTest.mq5` ثم `KLJ_DataFeeder.mq5`.
+   النتيجة المطلوبة: `0 errors, 0 warnings`.
+4. في MT5: `Navigator` ← `Indicators` ← `nadir2` اسحبه على مخطط M5/M15.
+5. راجع تبويب `Experts`/`Journal`: السطر الأول يجب أن يكون
+   `[QSMC_ARB] v6.6.1 arbitration layer ON | preset …`.
+6. للاختبار الذاتي: اسحب `QSMC_ArbiterTest` (Scripts) على أي مخطط —
+   النتيجة المطلوبة `RESULT: 22 passed, 0 failed`.
+7. للتحقق بدون MT5 (من الطرفية، داخل المستودع):
+   `python3 tools/static_check.py` ثم `python3 tools/test_arbiter.py`.
+
+**زر الإيقاف:** `InpArbEnabled = false` → الطبقة تصبح معطّلة تمامًا ويتصرف
+المؤشر مثل v6.5.5 (بدون إعادة تجميع، بدون تغيير في لوحة العرض).
+
+**أخطاء الترجمة التي كانت تظهر** (`reference cannot used`, `'0xFF' - invalid number`,
+`'IntegerToString' - class type expected`) تم إصلاحها في v6.6.1 — راجع
+`docs/QSMC_REVIEW_v6.6.1.md` القسم 2.
+
+---
+
+## 1. What has to be where
+
+MetaEditor resolves `#include <QSMC/QSMC_Root.mqh>` **only** under the data
+folder's own `MQL5\Include`. There is no per-project include path in MQL5.
+
+```
+<Data Folder>\MQL5\
+├─ Include\QSMC\QSMC_Types.mqh          <- all 15 headers go here, flat
+├─ Include\QSMC\QSMC_MarketData.mqh
+├─ Include\QSMC\…  (QSMC_Zones, _Reaction, _Bias, _Preset, _Gates,
+│                   _AlertManager, _Arbiter, _Stats, _Renderer, _Root,
+│                   _Selftest, _Scanners, _DataProvider)
+├─ Indicators\nadir2.mq5                <- the indicator itself
+├─ Scripts\QSMC_ArbiterTest.mq5         <- deterministic self-test harness
+└─ Experts\KLJ_DataFeeder.mq5           <- optional CSV data feeder (PART C)
+```
+
+`tools/apply_qsmc_arb_patch.py --check` prints `already patched (marker
+present)` when `nadir2.mq5` already carries the arbitration hook. It is the
+command to run after re-downloading a raw host file.
+
+---
+
+## 2. Compile
+
+1. MetaEditor → `File → Open Data Folder` → copy the files as above.
+2. Open `nadir2.mq5`, press **F7**. Then `QSMC_ArbiterTest.mq5`, then
+   `KLJ_DataFeeder.mq5`.
+3. Target: **`0 errors, 0 warnings`** in the Results tab.
+
+| Symptom in the Results tab | Cause | Fix |
+|---|---|---|
+| `cannot open include file 'QSMC/QSMC_Root.mqh'` | the `QSMC` folder is not under `MQL5\Include` of the **data folder** (it is not enough that it sits in the git checkout) | copy `MQL5/Include/QSMC` into `<Data Folder>/MQL5/Include/` |
+| `unknown identifier 'InpArb…'` | an old copy of `QSMC_Preset.mqh` (which owns the 40 `InpArb*` inputs) is shadowing the new one | re-copy **all** `.mqh`, they are one release unit |
+| `reference cannot used` | pre-v6.6.1 headers: a getter returned a reference (illegal in MQL5) | use the v6.6.1 headers, see `docs/QSMC_REVIEW_v6.6.1.md` §2 |
+| `'IntegerToString' - class type expected` | a Print-style `,` chain inside a declaration | v6.6.1 `LeakReport()` uses `StringFormat()` |
+| `'0xFF' - invalid number` + `undeclared identifier 'u'` | integer literal suffix `u` — MQL5 has none | v6.6.1 `CAlertManager::HashHex()` uses plain hex literals |
+
+`nadir2.mq5` is CRLF. If you patch it with an editor that rewrites line
+endings, `git diff` will show 39,800 changed lines; keep CRLF.
+
+### Pre-flight without MetaEditor
+
+`python3 tools/static_check.py` runs the mechanical part of a compiler pass
+(balance, includes, interface coverage, struct members, new/delete) **and** the
+MQL5 dialect rules D1–D11 from `tools/mql5_rules.py`, per translation unit
+(the indicator, the self-test script, the feeder, and `QSMC_Scanners.mqh` as a
+synthetic unit). It is not a type checker: a clean run still needs F7.
+
+---
+
+## 3. Run the indicator
+
+1. MT5 → open a chart (M5 or M15 is the intended lane; `InpArbPreset=AUTO`
+   picks SCALPER / INTRADAY / SWING from the chart timeframe).
+2. `Navigator → Indicators → nadir2` → drop it on the chart.
+3. Journal must show, in this order:
+
+```
+[QSMC_ARB] v6.6.1 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
+             | exec TF M1 | tactical may confirm: NO (informational only)
+```
+
+On removal (`OnDeinit`) the layer prints its own audit:
+
+```
+[QSMC_ARB] stop | bars 412 | published 3 | suppressed 7
+[QSMC_ARB] outcomes: ...                       (only with InpArbCSVLog=true)
+[QSMC_ARB] alloc/free: market 5/5 | gates 10/10 | chart objects created/deleted 18/18 => no leak
+```
+
+`=> no leak` is the memory assertion of this layer: every `new` is matched by
+a `delete`. Anything after `=>` that is not `no leak` is a bug — report the
+whole line.
+
+### Inputs that matter on day one
+
+| Input | Default | Set it to |
+|---|---|---|
+| `InpArbEnabled` | `true` | `false` = inert, the indicator behaves as v6.5.5 |
+| `InpArbGateTactical` | `true` | keep `true`; this is the anti-spam path for MTF entries |
+| `InpArbTacticalMayConfirm` | `false` | `true` only if you accept a tactical alert labelled CONFIRMED (R7) |
+| `InpArbGateCore` | `false` | `true` also re-gates the CORE path |
+| `InpArbVerboseLog` | `false` | `true` while validating: one log line per gate verdict per closed bar |
+| `InpArbCSVLog` | `false` | `true` to journal signals + outcomes to `MQL5\Files\QSMC_arb_*` |
+| `InpArbPopup` | `true` | `false` on a chart you only want to draw on |
+
+### The 10-minute validation protocol
+
+1. `InpArbVerboseLog=true`, 24 h of M5 history on one symbol.
+2. Count the published alerts: the old tactical path produced ~30 per 5 h;
+   with the gate chain the expected order is 0–3 per 5 h.
+3. For every published alert, read the `trace=` field: it must name the zone
+   role and the state (`PUBLISHED | CONFIRMED SELL ZR_RESISTANCE …`).
+4. For every *suppressed* candidate there must be a reason line
+   (`cooldown 3/10`, `BETWEEN ZONES …`, `HTF_BIAS: COUNTER-TREND …`).
+   A silence with no reason is a defect (rule R6).
+5. Remove and re-attach the indicator: `=> no leak` twice.
+
+---
+
+## 4. Run the self-test (no market data needed)
+
+`QSMC_ArbiterTest.mq5` drives the **production** path
+(`CQuantumRoot → CReactionDetector → CSignalArbiter → gates → CAlertManager`)
+against a synthetic 40-bar series, so its result is deterministic and does not
+depend on the symbol or the broker feed.
+
+Compile it (F7), drop it on any chart, read the Experts tab:
+
+```
+QSMC v6.6.0 SIGNAL ARBITRATION - DETERMINISTIC SELF-TEST
+PASS  T00 the synthetic ATR matches QST_ATR              [expected 0.60 ...]
+PASS  T01a SELL published at resistance                  [state=CONFIRMED ...]
+...
+---------------------------------------------------------
+ RESULT: 22 passed, 0 failed
+---------------------------------------------------------
+```
+
+| Scenario | What it pins down |
+|---|---|
+| T00 | the harness really produces the ATR the other scenarios are written against |
+| T01 | a closed rejection at resistance publishes **one** SELL, and never a second one on the same or the next 20 bars |
+| T02 | a closed break above resistance publishes a BUY, not a SELL at the same level |
+| T03 | the reported defect: a SELL inside a **support** zone is refused |
+| T04 | price between zones → `BETWEEN ZONES`, no alert |
+| T05 | a fact citing the **forming** bar can never be CONFIRMED |
+| T06 | 30 M1 fires inside one zone collapse to ≤ 1 alert, with a named suppression reason |
+| T07 | flip-flop guard: the opposite direction on the same zone is refused |
+| T08 | two charts of one symbol publish at most one alert (GlobalVariable lock) |
+| T09 | a candidate opposed by the HTF bias is downgraded and the reason says COUNTER-TREND |
+| T10 | empty series → `BuildContext()` returns false, no signal, reason = data not ready |
+
+Any `FAIL` line prints the measured value; the exit code of the script is the
+failure count (visible in the last line `RESULT: x passed, y failed`).
+
+---
+
+## 5. Run the offline checks (any machine, no terminal)
+
+```bash
+python3 tools/static_check.py            # mechanical pass + dialect rules D1-D11
+python3 tools/test_arbiter.py            # independent Python mirror of the gates
+python3 tools/test_arbiter.py -v         # every scenario, printed
+python3 tools/check_scenario_geometry.py # predicts the ATR geometry of every T0x
+python3 tools/test_scanners.py           # arithmetic of QSMC_Scanners.mqh
+python3 tools/mql5_rules.py --root DIR   # dialect rules only, for another tree
+python3 tools/apply_qsmc_arb_patch.py --check
+```
+
+`test_arbiter.py` is an **independent** re-implementation of rules R1–R7, not a
+translation. If it and the MQL5 self-test ever disagree, one of them has a
+defect — that is the point of keeping both. None of these scripts is a
+backtest: no statistics, no win rate, no profitability claim.
+
+Expected: `RESULT: 22 passed, 0 failed` (arbiter), `all geometry checks
+passed`, `all scanner arithmetic checks passed`, and for `static_check.py`
+`no errors` with 4–11 warnings (new/delete site counting is coarse on purpose;
+the runtime `AllocCalls()/FreeCalls()` ledger is the real check; the D3
+literal warnings are in the legacy host file).
+
+---
+
+## 6. `KLJ_DataFeeder.mq5` (optional, PART C)
+
+A companion EA whose only job is to publish the series the scanners want into
+`MQL5\Files\qsmc_feed\*.csv`, so the indicator never calls `CopyRates` on other
+symbols.
+
+1. Attach it to a **dedicated** chart (any symbol; it reads the symbol list from
+   its own inputs).
+2. Allow file writing on the common tab of the EA dialog; **no** trade
+   permissions are needed — it contains no trading call.
+3. Check `MQL5\Files\qsmc_feed\` for `series_id,as_of,value,prev,label` rows.
+4. `QSMC_DataProvider.mqh` is the reader; it validates `as_of` freshness and
+   returns `valid=false` for anything stale — the indicator then says
+   `data not ready: …` instead of inventing a number.
+
+The feeder is not required for the arbitration layer; the layer is fully
+functional without it.
+
+---
+
+## 7. Rollback
+
+* **Soft:** `InpArbEnabled=false`. The root is still created, but every entry
+  point returns immediately; the indicator behaves as v6.5.5.
+* **Hard:** delete `<Data Folder>/MQL5/Include/QSMC` and recompile
+  `nadir2.mq5`. Compilation fails on the missing include, which is why the
+  include sits behind the marker — restore the pre-v6.6.0 host file if you need
+  a build with no arbitration source at all.

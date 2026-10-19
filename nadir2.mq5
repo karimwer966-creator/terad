@@ -88,7 +88,9 @@
 //| AUDIT-03 [WARNING] FireSetupAlert consumed its "|ALERT" dedup key  |
 //|     BEFORE the publish guards, so a suppressed alert could never   |
 //|     fire later. The key is now taken only when the alert is sent.  |
-//| AUDIT-04 [WARNING] Version drift (see QSMC_VERSION_TEXT below).    |
+//| AUDIT-04 [RESOLVED v6.6.1] Version drift: QSMC_VERSION_TEXT and     |
+//|     #property version now both read v6.6.1, the build that carries   |
+//|     the arbitration layer and its MQL5-dialect compile fixes.         |
 //| AUDIT-05 [STYLE] Dead declarations removed (4 unused entry-mark     |
 //|     buffer arrays, 1 undefined prototype) and the preview plot      |
 //|     arrows now use the documented hollow diamond (108/109) that     |
@@ -603,7 +605,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine v6.5.5"
-#property version   "6.55"
+#property version   "6.61"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -613,8 +615,8 @@
 // 13 v6.5.1 and 23 v6.5.2 fixes in its body, so every dashboard title, the
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
-// #property version and the banner now use this release's v6.5.5 value.
-#define QSMC_VERSION_TEXT "v6.5.5"
+// #property version and the banner now use this release's value (v6.6.1).
+#define QSMC_VERSION_TEXT "v6.6.1"
 #property indicator_chart_window
 #property indicator_buffers 19   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (SigLog, INDICATOR_CALCULATIONS)
 #property indicator_plots   7

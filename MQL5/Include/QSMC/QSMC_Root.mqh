@@ -3,6 +3,15 @@
 //|  CQuantumRoot - the single root object. This is the ONLY global    |
 //|  mutable state the v6.6.0 subsystem adds to the host indicator.   |
 //|                                                                   |
+//|  v6.6.1 - MetaEditor compile fixes for this layer (MQL5 dialect): |
+//|   - no getter may RETURN a reference: sub-objects are handed out  |
+//|     as pointers (GetPointer), the structs as snapshots/accessors. |
+//|   - LeakReport() built its text with ',' (a Print argument list   |
+//|     inside a declaration) -> it now uses StringFormat().          |
+//|   - CAlertManager::HashHex() used integer literals with a 'u'     |
+//|     suffix, which MQL5 does not have -> plain hex literals.       |
+//|   - Refresh() no longer rebuilds a LOCKED config from the preset. |
+//|                                                                   |
 //|  Ownership: every member is created in Init() and destroyed in    |
 //|  Deinit()/the destructor. AllocCalls()/FreeCalls() counters let   |
 //|  the user verify there is no leak (printed on Deinit).            |
@@ -129,13 +138,81 @@ public:
 
    bool              Ready() const { return m_ready; }
    int               Bars()  const { return m_bars;  }
-   const SGateCtx   &Ctx()   const { return m_ctx;   }
-   const SQsmcArbConfig &Cfg() const { return m_cfg; }
-   const SArbiterReport &Report() const { return m_rep; }
-   CZoneRegistry    &Zones() { return m_zones; }
-   CMarketData      &Market() { return m_md; }
-   CSignalArbiter   &Arbiter() { return m_arbiter; }
-   CStatsLogger     &Stats() { return m_stats; }
+
+   //------------------------------------------------------------------
+   // ACCESSORS - MQL5 DIALECT NOTE (v6.6.1)
+   //  MQL5 does not allow a function to RETURN a reference: `CMarketData
+   //  &Market()` is a hard compile error ("reference cannot used"), even
+   //  though a reference PARAMETER (`void F(CMarketData &md)`) is legal.
+   //  So the sub-objects are handed out as POINTERS - member access with
+   //  '.' is identical, so `root.Market().Bars()` keeps working - and the
+   //  plain-data structs are handed out as read-only snapshots through
+   //  narrow accessors instead of as a copyable struct reference.
+   //------------------------------------------------------------------
+   CZoneRegistry    *Zones()    { return GetPointer(m_zones);   }
+   CMarketData      *Market()   { return GetPointer(m_md);      }
+   CSignalArbiter   *Arbiter()  { return GetPointer(m_arbiter); }
+   CStatsLogger     *Stats()    { return GetPointer(m_stats);   }
+   CAlertManager    *Alerts()   { return GetPointer(m_alerts);  }
+   CChartRenderer   *Renderer() { return GetPointer(m_render);  }
+
+   //--- per-bar decision context (SGateCtx holds strings -> never copied)
+   string            CtxSymbol()      const { return m_ctx.symbol;       }
+   ENUM_TIMEFRAMES   CtxTF()          const { return m_ctx.tf;           }
+   double            CtxAtr()         const { return m_ctx.atr;         }
+   double            CtxPrice()       const { return m_ctx.price;        }
+   double            CtxPoint()       const { return m_ctx.point;        }
+   double            CtxTickSize()    const { return m_ctx.tick_size;    }
+   double            CtxSpreadPoints()const { return m_ctx.spread_points;}
+   int               CtxDigits()      const { return m_ctx.digits;       }
+   int               CtxClosedIndex() const { return m_ctx.closed_index; }
+   int               CtxBarIndex()    const { return m_ctx.bar_index;    }
+   datetime          CtxClosedTime()  const { return m_ctx.closed_time;  }
+   datetime          CtxBarTime()     const { return m_ctx.bar_time;     }
+   bool              CtxBarClosed()   const { return m_ctx.bar_closed;   }
+   int               CtxBiasScore()   const { return m_ctx.bias_score;   }
+   int               CtxHtfBias()     const { return m_ctx.htf_bias;     }
+   int               CtxD1Bias()      const { return m_ctx.d1_bias;      }
+   int               CtxH4Bias()      const { return m_ctx.h4_bias;      }
+   int               CtxH1Bias()      const { return m_ctx.h1_bias;      }
+   int               CtxSessionOK()   const { return m_ctx.session_ok;   }
+   ENUM_VOL_REGIME   CtxRegime()      const { return m_ctx.regime;       }
+   bool              CtxDataReady()   const { return m_ctx.data_ready;   }
+   string            CtxDataReason()  const { return m_ctx.data_reason;  }
+
+   //--- the arbiter verdict for the last finalized bar (read-only)
+   int               ReportSubmitted()  const { return m_rep.submitted;  }
+   int               ReportEvaluated()  const { return m_rep.evaluated;  }
+   int               ReportRejected()   const { return m_rep.rejected;   }
+   int               ReportDowngraded() const { return m_rep.downgraded; }
+   bool              ReportPublished()  const { return m_rep.published;  }
+   string            ReportTrace()      const { return m_rep.trace;      }
+   int               ReportGateLines()  const { return m_rep.gate_line_count; }
+   string            ReportGateLine(const int i) const
+     { return (i>=0 && i<m_rep.gate_line_count ? m_rep.gate_lines[i] : ""); }
+
+   //--- the ONE published candidate of the last bar (valid=false => none)
+   bool              PrimaryValid()     const { return m_rep.primary.valid;   }
+   int               PrimaryDir()       const { return m_rep.primary.dir;     }
+   int               PrimaryScore()     const { return m_rep.primary.score;   }
+   int               PrimaryState()     const { return m_rep.primary.state;   }
+   string            PrimaryZoneId()    const { return m_rep.primary.zone_id; }
+   ENUM_ZR_ROLE      PrimaryZoneRole()  const { return m_rep.primary.zone_role; }
+   double            PrimaryEntry()     const { return m_rep.primary.entry;   }
+   double            PrimaryStop()      const { return m_rep.primary.sl;      }
+   double            PrimaryTP1()       const { return m_rep.primary.tp1;     }
+   double            PrimaryRR()        const { return m_rep.primary.rr;      }
+   string            PrimaryReason()    const { return m_rep.primary.reason;  }
+   string            PrimaryEvidence()  const { return m_rep.primary.evidence_text; }
+   double            PrimaryZoneLo()    const { return m_rep.primary.zone_lo; }
+   double            PrimaryZoneHi()    const { return m_rep.primary.zone_hi; }
+   double            PrimaryDistanceATR() const { return m_rep.primary.distance_atr; }
+   bool              PrimaryDowngraded()  const { return m_rep.primary.downgraded; }
+   //--- Full snapshots for a host that wants everything at once. A struct IS
+   //--- a value type in MQL5, so copying it out is legal (the arbiter does the
+   //--- same thing internally); only RETURNING a reference is not.
+   void              GetContext(SGateCtx &out) const { out=m_ctx; }
+   void              GetPrimaryCandidate(SSignalCandidate &out) const { out=m_rep.primary; }
 
    //=================================================================
    // Init / Deinit
@@ -155,7 +232,7 @@ public:
       if(csv_log) m_stats.Open(symbol,chart_tf,min_sample);
       m_ready=true;
       m_bars=0;
-      Print("[QSMC_ARB] v6.6.0 arbitration layer ON | preset ",m_preset.EffectiveName(),
+      Print("[QSMC_ARB] v6.6.1 arbitration layer ON | preset ",m_preset.EffectiveName(),
             " | gates ",IntegerToString(m_arbiter.GateCount()),
             " | exec TF ",QSMC_TFName(exec_tf),
             " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"));
@@ -187,18 +264,21 @@ public:
    //--- Leak verification: every `new` must be matched by a `delete`.
    //--- Called AFTER Shutdown(), so alloc == free when this returns
    //--- "no leak".
+   //--- MQL5 DIALECT NOTE: the ',' operator does not exist. A comma chain
+   //--- is only legal inside a call's argument list or inside a declaration
+   //--- list (`int a=1,b=2;`), which is why the old Print()-style body of
+   //--- this function was parsed as a second variable NAMED IntegerToString.
+   //--- Building text here therefore means '+' concatenation or StringFormat.
    string            LeakReport() const
      {
       int a=m_md.AllocCalls()+m_arbiter.AllocCalls();
       int f=m_md.FreeCalls()+m_arbiter.FreeCalls();
-      string s="alloc/free: market ",IntegerToString(m_md.AllocCalls()),"/",
-             IntegerToString(m_md.FreeCalls()),
-             " | gates ",IntegerToString(m_arbiter.AllocCalls()),"/",
-             IntegerToString(m_arbiter.FreeCalls()),
-             " | chart objects created/deleted ",IntegerToString(m_render.Created()),"/",
-             IntegerToString(m_render.Deleted());
-      s+=(a==f ? " => no leak" : " => LEAK (alloc "+IntegerToString(a)+
-          " vs free "+IntegerToString(f)+")");
+      string s=StringFormat("alloc/free: market %d/%d | gates %d/%d | chart objects created/deleted %d/%d",
+                            m_md.AllocCalls(),m_md.FreeCalls(),
+                            m_arbiter.AllocCalls(),m_arbiter.FreeCalls(),
+                            m_render.Created(),m_render.Deleted());
+      if(a==f) s+=" => no leak";
+      else     s+=StringFormat(" => LEAK (alloc %d vs free %d)",a,f);
       return s;
      }
 
@@ -206,11 +286,15 @@ public:
    // Per-bar pipeline
    //=================================================================
 
-   //--- 1a. Refresh the series from the terminal, then build the context.
-   bool              Refresh(const double external_atr,const double spread_points)
-     {
-      if(!m_ready) return false;
-      m_preset.Build(m_cfg,(ENUM_TIMEFRAMES)_Period);
+    //--- 1a. Refresh the series from the terminal, then build the context.
+    bool              Refresh(const double external_atr,const double spread_points)
+      {
+       if(!m_ready) return false;
+       //--- A LOCKED config is the host's, not the preset's. Rebuilding it
+       //--- here used to silently discard whatever LockConfig() installed on
+       //--- the very first bar, because BuildContext() honours the lock and
+       //--- this line did not.
+       if(!m_cfg_locked) m_preset.Build(m_cfg,(ENUM_TIMEFRAMES)_Period);
       if(!m_cfg.enabled)
         {
          ResetContext("arbitration disabled (InpArbEnabled=false)");
@@ -343,7 +427,20 @@ public:
    void              LockConfig(const SQsmcArbConfig &cfg) { m_cfg=cfg; m_cfg_locked=true; }
    void              UnlockConfig() { m_cfg_locked=false; }
    bool              ConfigLocked() const { return m_cfg_locked; }
-   SQsmcArbConfig   &MutableConfig() { return m_cfg; }
+   //--- Read/write the configuration WITHOUT returning a reference (illegal
+   //--- in MQL5). Read into a caller-owned struct, change it, write it back:
+   //---    SQsmcArbConfig c; root.CopyConfig(c); c.min_evidence=4; root.SetConfig(c);
+   //--- SetConfig() is refused while the config is locked (LockConfig() or the
+   //--- self-test); use UnlockConfig() first if a host really wants to edit a
+   //--- locked config. An unlocked config is re-derived from the preset on
+   //--- every closed bar, so edits made there are temporary by design.
+   void              CopyConfig(SQsmcArbConfig &out) const { out=m_cfg; }
+   bool              SetConfig(const SQsmcArbConfig &cfg)
+     {
+      if(m_cfg_locked) return false;
+      m_cfg=cfg;
+      return true;
+     }
 
    //--- d1/h4/h1 are +1 / -1 / 0. `h1_known=false` removes H1 from the
    //--- weight sum instead of counting an unknown timeframe as neutral

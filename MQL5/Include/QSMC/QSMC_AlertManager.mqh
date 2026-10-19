@@ -57,18 +57,24 @@ private:
    int               m_suppressed;
    bool              m_enabled_channels;
 
-   //--- deterministic FNV-1a 32-bit hash -> hex, for GlobalVariable names
-   string            HashHex(const string s) const
-     {
-      uint h=2166136261u;
-      int n=StringLen(s);
-      for(int i=0;i<n;i++)
-        {
-         uint c=(uint)StringGetCharacter(s,i);
-         h=(h ^ (c & 0xFFu))*16777619u;
-        }
-      return StringFormat("%08X",h);
-     }
+    //--- deterministic FNV-1a 32-bit hash -> hex, for GlobalVariable names
+    //--- MQL5 DIALECT NOTE: integer literals have NO suffix in MQL5, so
+    //--- `0xFFu` / `2166136261u` do not compile ('invalid number' + an
+    //--- undeclared identifier 'u'). The offset basis is therefore written as
+    //--- a hex literal (which MQL5 types as uint when it does not fit an int),
+    //--- and every operation stays inside `uint`, where overflow wraps.
+    string            HashHex(const string s) const
+      {
+       uint h=0x811C9DC5;            // FNV-1a 32-bit offset basis (2166136261)
+       uint p=0x01000193;            // FNV-1a 32-bit prime      (  16777619)
+       int n=StringLen(s);
+       for(int i=0;i<n;i++)
+         {
+          uint c=(uint)StringGetCharacter(s,i);
+          h=(h ^ (c & (uint)0xFF))*p;
+         }
+       return StringFormat("%08X",h);
+      }
 
    int               FindRing(const string key) const
      {
