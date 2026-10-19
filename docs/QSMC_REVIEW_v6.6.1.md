@@ -1,8 +1,12 @@
-# QSMC review + fix report — v6.6.1
+# QSMC review + fix report — v6.6.1 → v6.6.3
 
 Reviewed: `nadir2.mq5` (39 792 lines, CRLF) + the 15 headers of
 `MQL5/Include/QSMC` + `MQL5/Scripts/QSMC_ArbiterTest.mq5` +
 `MQL5/Experts/KLJ_DataFeeder.mq5` + the 5 tools in `tools/`.
+
+§§1–5 are the v6.6.1 compile pass, and they stay as they were written. §3.5 is
+v6.6.3, the part that came from asking a different question: not "why did this
+fail to compile" but "what is in the file that no compiler has ever seen".
 
 Trigger: MetaEditor rejected the v6.6.0 build with **30 errors, 4 warnings**,
 all of them inside `QSMC_Root.mqh` and `QSMC_AlertManager.mqh`.
@@ -151,7 +155,7 @@ mechanically from now on.
 
 ---
 
-## 3. Prevention: rules D1–D11 (`tools/mql5_rules.py`)
+## 3. Prevention: rules D1–D12 (`tools/mql5_rules.py`)
 
 A new linter, run standalone or as part of `tools/static_check.py`, over the
 **translation unit** rather than over one file — the indicator, the self-test
@@ -169,7 +173,7 @@ is linted as a synthetic unit so it cannot rot).
 | D7 fmt-args | `StringFormat` specifier count vs argument count; `%d` inside `Print()` | wrong text at runtime, not a compile error |
 | D8 dyn-array-copy | a struct that owns a dynamic array copied by value (warn) | — |
 | D9 dup-symbol | the same global function/variable defined twice in one unit | `already defined` |
-| D10 version-drift | build text vs `#property version` vs the layer banner | silent misreporting |
+| D10 version-drift | build text vs `#property version` vs the layer banner; **v6.6.3**: also a companion file's own `#property version` and any version rotting inside a `#property copyright` string (warn) | silent misreporting |
 | D11 member-chain | `a.b.c` where `b`/`c` is neither a member nor a method of `a`'s type (`a.x.F()` too) | `'zone_idx' is not a member of 'SSignalCandidate'` |
 
 Validation: against the **pre-fix** tree it reports exactly the 12 real defects
@@ -207,6 +211,37 @@ Four hardening notes from writing it, all recorded in the code:
 
 ---
 
+### 3.5 v6.6.3 — the header no compiler ever saw
+
+`QSMC_Scanners.mqh` had **0 errors** from D1–D12 the whole time and still held four
+defects, because every one of them is a *semantic* mistake about how the data is
+stored, not a dialect mistake about how MQL5 spells things:
+
+1. `SQZone z=zs[hit.index];` — `hit.index` indexes the registry after
+   `Rebuild()` has filtered, merged and **re-sorted by midpoint**, so the row read
+   a different zone than the one that matched. Indices coincide when nothing was
+   merged, which is why it passes a look. Now `m_zones.At(hit.index,z)`, the
+   pattern the arbiter path uses.
+2. 1-based months/weeks into a 0-based 12/53-slot array: **December and every 53rd
+   week were dropped** by the range test and slot 0 was an empty `?` row.
+3. The median came from the first 512 values of a bucket — the oldest slice —
+   while `n` advertised the whole bucket. Now Algorithm R with a per-pass fixed
+   seed: unbiased, and identical bars give an identical median.
+4. `Percentile()` divided by the window while skipping bars with no ATR yet, so
+   every warm-up hole pushed the percentile down (a true 80th printed as 64th).
+
+Two of the four were invisible to `tools/test_scanners.py` for the same reason:
+the mirror re-derived the **formula** from a Python `dict`, which grows, so the
+array bound that discards December simply did not exist there. The mirror now
+models `SLOTS`, the reservoir and the LCG, and asserts them (39 checks, was 26).
+
+The three `const SRow *Row(int)` accessors were a compile error waiting for its
+first build — MQL5 has no pointer to a structure — which is what **D12** is for.
+And the module now has a host, `MQL5/Indicators/QSMC_ScannerProbe.mq5`, so a
+future regression fails a build instead of sitting unread in `Include/`.
+
+---
+
 ## 4. What was reviewed and found correct
 
 Not changed, checked line by line:
@@ -241,7 +276,7 @@ Not changed, checked line by line:
 
 | # | Finding | Why it is not urgent | Suggested step |
 |---|---|---|---|
-| 1 | `QSMC_Scanners.mqh` (899 lines) is included by nobody | it is Phase 7 code waiting for a host; it lints and its arithmetic is tested | either attach it to a `CFX*` panel or move it to `docs/` as a design draft — dead source in `Include/` invites drift |
+| 1 | ~~`QSMC_Scanners.mqh` is included by nobody~~ **closed in v6.6.3** — `MQL5/Indicators/QSMC_ScannerProbe.mq5` is its host, and four defects came out with it (§3.5) | it is Phase 7 code waiting for a host; the probe keeps it compiled and its arithmetic is tested offline | next step is the `CFX*` panel the phase brief wanted, so the rows reach the dashboard instead of a `Comment()` |
 | 2 | `BuildContext()` reads `_Symbol`/`_Period` instead of the values passed to `Init()` | an indicator instance is per-chart, so they always agree today | keep `m_symbol`/`m_tf` fields and use them, if the root is ever reused by a service EA |
 | 3 | `static_check.py`'s new/delete count is a per-file heuristic (4 warnings forever) | the runtime ledger is the real check | make the warning disappear only by teaching it about `Shutdown()` pairs — cosmetic |
 | 4 | ~~no CI gate~~ **closed in v6.6.2** — `.github/workflows/qsmc-verify.yml` runs the five offline checks on every push/PR | F7 still cannot be automated here | a Windows runner with MetaEditor, or the manual attestation the workflow prints |
@@ -265,8 +300,8 @@ Not changed, checked line by line:
   `tools/test_arbiter.py` still cross-checks 1:1.
 * `nadir2.mq5` — `QSMC_VERSION_TEXT` → `"v6.6.1"`, `#property version` →
   `"6.61"`, AUDIT-04 marked resolved. No logic change.
-* `tools/mql5_rules.py` — new: dialect rules D1–D11, one run per translation unit.
-* `tools/static_check.py` — runs D1–D11 and merges the report; de-duplicates a
+* `tools/mql5_rules.py` — new: dialect rules D1–D12, one run per translation unit.
+* `tools/static_check.py` — runs D1–D12 and merges the report; de-duplicates a
   shared header across units.
 * `docs/QSMC_BUILD_AND_RUN.md` — new: install → compile → run → self-test →
   offline checks → rollback (Arabic quick-start at the top).
@@ -284,6 +319,33 @@ Not changed, checked line by line:
   (+ duplicate-header guard, + artifact of every log, + the manual F7 step).
 * `.gitignore` — `__pycache__/`, `*.pyc`, `out/`.
 * Version closed at `6.62` / `"v6.6.2"` in the host and in the banner (D10).
+
+### 6.3 v6.6.3 — the never-compiled module
+
+* `MQL5/Include/QSMC/QSMC_Scanners.mqh` — zone read via `CZoneRegistry::At()`
+  (was an index into a re-sorted array); 0-based month/week buckets (December and
+  week 53 were being discarded); median by reservoir sampling instead of "the
+  oldest 512"; ATR percentile divided by the valid sample count; three
+  `const SRow *Row()` accessors converted to `bool Row(int,SRow&)` because MQL5
+  has no pointer to a structure; `CMomentumHeatmap::History()` added.
+* `MQL5/Indicators/QSMC_ScannerProbe.mq5` — **new**: the host that makes the
+  module part of a build. OnTimer-only, text-only, no orders, no files, no
+  objects; 13 inputs; prints `[QSMC_SCAN] probe ON ...` / `probe OFF ... alloc/free`.
+* `tools/mql5_rules.py` — **D12 ptr-to-struct**; D10 extended to a companion's
+  own `#property version` and to a version inside a prose `#property` string, with
+  `6.63` and `v6.6.3` normalised to one tuple; `QSMC_ScannerProbe.mq5` added to
+  `UNITS`; the dead `#define QSC_SEAS_SAMPLE` note.
+* `tools/static_check.py` — the `EXTRA` companion list is now actually read (it
+  was declared and never used, so the scripts and the feeder took part in no
+  check); `OnDeinit()` accepted as a release site for a program file, which is the
+  one legitimate pattern the `new`-without-destructor rule kept flagging.
+* `tools/test_scanners.py` — mirrors `SLOTS`, the reservoir and the LCG: 39
+  assertions, was 26.
+* `nadir2.mq5` — `#property copyright` no longer hard-codes `v6.5.5`; version
+  closed at `6.63` / `"v6.6.3"`, banner and companion files with it (D10/D12 run
+  on every unit and report 0 errors, 0 warnings).
+* `.gitattributes` — `*.mq5`/`*.mqh` pinned `-text`, so no `core.autocrlf` box can
+  turn the 39 792-line CRLF host into a whole-file diff.
 
 **Still required from you:** F7 in MetaEditor. Everything in this file is either a
 mechanical check or a reading; only the compiler is the proof. What v6.6.2 did **not**

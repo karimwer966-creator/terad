@@ -43,6 +43,9 @@
 #define QSC_SEAS_WEEKS     53
 #define QSC_SEAS_DOW       7
 #define QSC_SEAS_HOURS     24
+#define QSC_SEAS_SAMPLE    512      // median sample per bucket: 512 x 64 doubles
+                                    // = 256 KB static, and the bound the reservoir
+                                    // in CSeasonalityScanner enforces
 
 //--------------------------------------------------------------------
 enum ENUM_ASSET_GROUP
@@ -173,11 +176,11 @@ string QSeasBucketName(const int bucket,const ENUM_SEAS_BUCKET kind)
    if(kind==QSEAS_MONTH)
      { string m[12]={"Jan","Feb","Mar","Apr","May","Jun",
                      "Jul","Aug","Sep","Oct","Nov","Dec"};
-       return (bucket>=1 && bucket<=12 ? m[bucket-1] : "?"); }
+       return (bucket>=0 && bucket<12 ? m[bucket] : "?"); }   // buckets are 0-based
    if(kind==QSEAS_DOW)
      { string d[7]={"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
        return (bucket>=0 && bucket<7 ? d[bucket] : "?"); }
-   if(kind==QSEAS_WEEK) return "W"+IntegerToString(bucket);
+   if(kind==QSEAS_WEEK) return "W"+IntegerToString(bucket+1);   // display is 1-based
    return IntegerToString(bucket)+"h";
   }
 
@@ -368,8 +371,12 @@ public:
    int               Rows() const { return m_rows_n; }
    bool              PassDone() const { return m_pass_done; }
 
-   const SSetupRow   *Row(const int i) const
-     { return (i>=0 && i<m_rows_n ? &m_rows[i] : NULL); }
+   //--- Row access. MQL5 has NO pointer to a structure - only to class objects -
+   //--- so returning &m_rows[i] was never compilable. Reference-out is the form
+   //--- this file already uses for CZoneRegistry::At() and for a seasonality row,
+   //--- and it is the form rule D12 in tools/mql5_rules.py now enforces.
+   bool              Row(const int i,SSetupRow &out) const
+     { if(i<0 || i>=m_rows_n) return false; out=m_rows[i]; return true; }
 
    void              BeginPass()
      { m_rows_n=0; m_cursor=0; m_pass_done=false; }
@@ -445,7 +452,19 @@ public:
          if(!m_zones.Nearest(price,hit) || hit.index<0)
            { r.status=QSS_NO_SETUP; r.note="no zone in reach";
              Push(r); continue; }
-         SQZone z=zs[hit.index];
+         //--- The zone comes back from the REGISTRY, not from zs[]. Rebuild()  
+         //--- drops invalid bands, merges nearby ones and then sorts by      
+         //--- midpoint, so hit.index indexes m_zones and has NO relationship  
+         //--- to the order in which the swing bands were built. Reading        
+         //--- zs[hit.index] returned a plausible but different zone (band,     
+         //--- role, strength and id all from another band) whenever a merge    
+         //--- or a reorder happened - which is most of the time, and exactly   
+         //--- the case that survives a manual glance. This is the same pattern  
+         //--- the arbiter path uses in CQuantumRoot::BuildContext().             
+         SQZone z;
+         if(!m_zones.At(hit.index,z))
+           { r.status=QSS_NO_SETUP; r.note="zone vanished between rebuild and read";
+             Push(r); continue; }
 
          //--- Reaction on the CLOSED bar only. Shift 0 is refused by the
          //--- detector itself; this is the read-only use of PART A.
@@ -464,6 +483,14 @@ public:
             bias_txt=m_bias.ShortText();
            }
 
+         //--- Display floor, and it is only that. Score() is 0..60 evidence
+         //--- points + 0..30 zone-strength points + 0..10 bounded-penetration
+         //--- points, so min_evidence*10 can be reached with FEWER groups than
+         //--- the arbiter's gate requires if the zone is strong. A row that
+         //--- survives this line has therefore NOT passed the evidence gate, and
+         //--- must not be labelled as if it had - see the gate in
+         //--- CGateEvidence (QSMC_Gates.mqh), which compares evidence_count
+         //--- itself and is the only place that decides.
          int score=m_react.Score(f,z.strength);
          if(score<m_cfg.min_evidence*10)
            { r.status=QSS_NO_SETUP; r.note="evidence below the display floor";
@@ -560,9 +587,11 @@ public:
    void              SetHistory(const int hist)
      { m_hist=(int)MathMax(10,MathMin(1000,hist)); }
    int               Lookback() const { return m_lookback; }
+   int               History()  const { return m_hist; }
    int               Rows() const { return m_rows_n; }
-   const SMomentumRow *Row(const int i) const
-     { return (i>=0 && i<m_rows_n ? &m_rows[i] : NULL); }
+   //--- No pointer to a struct in MQL5: reference-out (see D12).
+   bool              Row(const int i,SMomentumRow &out) const
+     { if(i<0 || i>=m_rows_n) return false; out=m_rows[i]; return true; }
 
    void              BeginPass() { m_rows_n=0; }
 
@@ -655,21 +684,30 @@ private:
       int from=MathMax(1,ci-window+1);
       int n=ci-from+1;
       if(n<10 || !(value>0.0)) return -1.0;
-      int below=0;
+      int below=0, valid=0;
       for(int i=from;i<=ci;i++)
         {
          double a=bars.ATRAt(i);
          if(!(a>0.0)) continue;
+         valid++;
          if(a<value) below++;
         }
-      return (double)below/(double)n*100.0;
+      //--- Divide by the ATRs actually compared, not by the window. Counting
+      //--- the bars where ATR is not defined yet in the denominator diluted the
+      //--- result toward zero (a 100-bar window with 20 warm-up bars reported a
+      //--- true 80th percentile as 64th - still plausible, still wrong).
+      if(valid<10) return -1.0;
+      return (double)below/(double)valid*100.0;
      }
 
 public:
                      CVolatilityHeatmap() { m_rows_n=0; }
    int               Rows() const { return m_rows_n; }
-   const SVolatilityRow *Row(const int i) const
-     { return (i>=0 && i<m_rows_n ? &m_rows[i] : NULL); }
+   //--- No pointer to a struct in MQL5: reference-out (see D12).
+   //--- No pointer to a struct in MQL5: reference-out (see D12).
+   //--- No pointer to a struct in MQL5: reference-out (see D12).
+   bool              Row(const int i,SVolatilityRow &out) const
+     { if(i<0 || i>=m_rows_n) return false; out=m_rows[i]; return true; }
    void              BeginPass() { m_rows_n=0; }
 
    bool              Evaluate(const string symbol,const ENUM_ASSET_GROUP group,
@@ -746,12 +784,15 @@ private:
    int               m_pos[64];
    int               m_year_mask[64];   // bit i = year (base + i) present
    int               m_base_year;
-   double            m_vals[64][512];   // for the median; bounded
+   double            m_vals[64][512];   // median sample - see Accumulate()
    int               m_vals_n[64];
    int               m_buckets;
+   uint              m_rng;             // reservoir RNG, same seed every pass
 
    void              Reset()
      {
+      m_rng=0x811C9DC5;                // FNV-1a basis as a fixed seed: same bars,
+                                       // same sample, same median, every pass
       for(int i=0;i<64;i++)
         { m_sum[i]=0.0; m_sq[i]=0.0; m_cnt[i]=0; m_pos[i]=0;
           m_year_mask[i]=0; m_vals_n[i]=0; }
@@ -766,16 +807,24 @@ private:
           default:          return QSC_SEAS_HOURS; }
      }
 
+   //--- Buckets are 0-based, because they index a fixed array of
+   //--- BucketCount() slots. That is a rule, not a style choice: the first
+   //--- version returned st.mon (1..12) and (dayofyear+6)/7 (1..53), so every
+   //--- December and every 53rd week fell outside 0..buckets-1 and was
+   //--- discarded by the range test in Accumulate() - silently, in a file whose
+   //--- own header promises nothing is dropped in silence. Bucket 0 was then a
+   //--- phantom empty row. Months are now 0..11, weeks 0..52, dow 0..6,
+   //--- hour 0..23, and QSeasBucketName() adds the +1 back for display.
    int               BucketOf(const datetime t,const ENUM_SEAS_BUCKET kind) const
      {
       datetime tt=t+(datetime)m_utc_offset;
       MqlDateTime st;
       TimeToStruct(tt,st);
       switch(kind)
-        { case QSEAS_MONTH: return st.mon;                 // 1..12
+        { case QSEAS_MONTH: return st.mon-1;               // 0..11
           case QSEAS_DOW:   return st.day_of_week;         // 0..6
           case QSEAS_HOUR:  return st.hour;                // 0..23
-          default:          return (st.dayofyear+6)/7;     // ISO-ish week 1..53
+          default:          return ((st.dayofyear+6)/7)-1; // 0..52 (all of W53)
         }
      }
 
@@ -841,7 +890,27 @@ public:
          int yr=st.year-m_base_year;
          if(yr>=0 && yr<31) m_year_mask[b]|=(1<<yr);
 
-         if(m_vals_n[b]<512) { m_vals[b][m_vals_n[b]]=ret; m_vals_n[b]++; }
+         //--- Median sample. Keeping the FIRST 512 observations of a bucket would
+         //--- make the median the median of the OLDEST slice of that bucket - a
+         //--- time-window bias, not a sample. Algorithm R (Vitter) with a fixed
+         //--- seed keeps an unbiased 512-sized sample of the whole bucket, and it
+         //--- is deterministic: identical bars produce an identical median, which
+         //--- is the property every other part of this layer is built on.
+         //--- n, mean, std and pos_share are streaming and therefore exact.
+         if(m_vals_n[b]<QSC_SEAS_SAMPLE)
+           { m_vals[b][m_vals_n[b]]=ret; m_vals_n[b]++; }
+         else
+           {
+            //--- No 'u' suffix anywhere: MQL5 has none (D3). The LCG constants are
+            //--- plain literals and m_rng is a uint, so the wrap is the modulus.
+            m_rng=1664525*m_rng+1013904223;   // Numerical Recipes / ANSI C LCG
+            ulong span=(ulong)m_cnt[b];
+            if(span>0)
+              {
+               ulong j=((ulong)m_rng>>1)%span;
+               if(j<(ulong)QSC_SEAS_SAMPLE) m_vals[b][(int)j]=ret;
+              }
+           }
         }
       return true;
      }
@@ -867,10 +936,29 @@ public:
 
       double mu=m_sum[b]/(double)n;
       out.mean_ret=mu;
-      double var=m_sq[b]/(double)n-mu*mu;
-      out.std_ret=(var>0.0 ? MathSqrt(var) : 0.0);
+      //--- Dispersion. E[X^2]-E[X]^2 cancels badly when the mean is of the same
+      //--- order as the spread (daily returns in a quiet month: mean 0.03%,
+      //--- std 0.05%), and it can even land slightly negative. When the reservoir
+      //--- holds the whole bucket the exact two-pass form costs nothing, so use
+      //--- it there and fall back to the streaming form - clamped - otherwise.
+      double var=0.0;
+      if(n==m_vals_n[b] && n>0)
+        {
+         double s2=0.0;
+         for(int i=0;i<n;i++){ double d=m_vals[b][i]-mu; s2+=d*d; }
+         var=s2/(double)n;
+        }
+      else
+        {
+         var=m_sq[b]/(double)n-mu*mu;
+         if(!(var>0.0)) var=0.0;
+        }
+      out.std_ret=MathSqrt(var);
       out.pos_share=(double)m_pos[b]/(double)n*100.0;
 
+      //--- Median over the sample. When n > QSC_SEAS_SAMPLE this is the median
+      //--- of a 512-sized unbiased sample, not of the full bucket: state it, do
+      //--- not let the number look exact.
       int vn=m_vals_n[b];
       if(vn>0)
         {

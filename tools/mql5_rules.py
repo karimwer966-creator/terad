@@ -37,6 +37,16 @@ prove that the whole class of mistake that broke the first build is gone.
                      inside ONE translation unit (the indicator, the test
                      script and the feeder are three separate units).
 
+  D10 version-drift  the host's `#property version`, QSMC_VERSION_TEXT and the
+                     layer banner must be ONE version - in every file of the unit
+                     that claims a version at all, including a version that has
+                     rotted inside a `#property copyright` string.
+  D11 member-chain   `a.b.c` where b or c is neither a member nor a method of the
+                     type of `a` (subsystem files only - see LEGACY_HOST).
+  D12 ptr-to-struct  MQL5 has pointers only to CLASS objects. `Struct *p`, a
+                     function returning `Struct *`, and GetPointer(struct) all
+                     look legal next to `Class *Foo()` and D1 cannot see them.
+
 Library use:   from mql5_rules import check_unit
 Standalone:    python3 tools/mql5_rules.py [--root DIR] [--quiet]
 """
@@ -756,10 +766,43 @@ def check_unit(files, types=None, base=None):
                     break                      # builtin, or an unknown type
                 ty = ty2
 
+    # ---- D12 pointer to a struct -------------------------------------------
+    #   QSMC_Scanners.mqh had `const SSetupRow *Row(int i){ return &m_rows[i]; }`
+    #   in three classes. It reads exactly like the legal `CBarSeries *Chart()`,
+    #   and because the module had no host nothing ever objected. Reference-out
+    #   (`bool Row(int i,SSetupRow &out)`) is what the same file already does for
+    #   CZoneRegistry::At() and for a seasonality row, and it is unambiguously
+    #   legal - so the conversion is no-regret even if a later build ever did
+    #   allow the pointer form.
+    ptr_ret_re = re.compile(r'(?:^|(?<=[;{}\n]))\s*(?:(?:const|static|virtual|explicit)\s+)*'
+                            r'([A-Za-z_][\w:]*)\s*\*\s*(~?[A-Za-z_]\w*)?\s*\(')
+    ptr_decl_re = re.compile(r'(?:^|(?<=[;{}\n]))\s*(?:const\s+)?([A-Za-z_][\w:]*)\s*\*\s*'
+                             r'([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*(?:=[^;]*)?[;{]')
+    for pd_, code in codes.items():
+        for m in ptr_ret_re.finditer(code):
+            if types.get(m.group(1), {}).get("kind") != "struct":
+                continue
+            name = m.group(2) or "an operator"
+            errs.append("%s:%d  D12 ptr-to-struct: %s() returns %s*, but MQL5 has no pointer "
+                        "to a structure - only to class objects. Give the caller a reference-out "
+                        "instead: bool %s(int i,%s &out)."
+                        % (rel(pd_), idx[pd_].line(m.start()), name, m.group(1), name,
+                           m.group(1)))
+        for m in ptr_decl_re.finditer(code):
+            if types.get(m.group(1), {}).get("kind") != "struct":
+                continue
+            if re.search(r'\breturn\b', code[max(0, m.start()-40):m.start()]):
+                continue
+            errs.append("%s:%d  D12 ptr-to-struct: '%s *%s' - you cannot take the address of a "
+                        "structure in MQL5. Pass it by reference, or copy it."
+                        % (rel(pd_), idx[pd_].line(m.start()), m.group(1), m.group(2)))
+
     # ---- D10 version drift -------------------------------------------------
     #   main file first in the closure order, and the layer banner sits in
     #   QSMC_Root.mqh next to it.
     main = files[0] if files else None
+    vt = None
+    ref = None                                  # the version this unit must print
     if main and main.lower().endswith((".mq5", ".mq4")):
         host = raws[main]
         vt = re.search(r'#define\s+QSMC_VERSION_TEXT\s+"v?(\d+)\.(\d+)\.(\d+)"', host)
@@ -772,20 +815,73 @@ def check_unit(files, types=None, base=None):
                             % (rel(main), line_of_host(host, pv.start()),
                                pv.group(1), pv.group(2),
                                vt.group(1), vt.group(2), vt.group(3), want))
+        bv = None
         for p, code in keepcodes.items():
             for m in re.finditer(r'\[QSMC_ARB\]\s+v(\d+)\.(\d+)(?:\.(\d+))?\s+arbitration layer ON',
                                  code):
+                got = (m.group(1), m.group(2), m.group(3) or "0")
+                if bv is None:
+                    bv = got
                 if not vt:
                     continue
-                got = (m.group(1), m.group(2), m.group(3) or "0")
                 if got != (vt.group(1), vt.group(2), vt.group(3)):
                     errs.append("%s:%d  D10 version-drift: the layer banner says v%s.%s.%s but the "
                                 "host QSMC_VERSION_TEXT says v%s.%s.%s - one of them is lying about "
                                 "what is compiled." % (rel(p), idx[p].line(m.start()),
                                                        got[0], got[1], got[2],
                                                        vt.group(1), vt.group(2), vt.group(3)))
+        # A script or an EA that only includes the layer has no host macro to
+        # agree with, so the banner it will print alongside is the reference.
+        ref = norm_ver(vt.group(1), vt.group(2), vt.group(3)) if vt else bv
+        if ref:
+            # RAW text, not a mask: mask() blanks preprocessor lines, and every
+            # #property in the world begins with '#'. That is why D10a reads
+            # raws[main] - and why these two sub-checks must too.
+            for pc_, text in raws.items():
+                # The host's own #property version is D10a's job (it has a macro
+                # to agree with). Every other file - including a companion that
+                # is main of its own unit - is compared here.
+                if pc_ != main or not vt:
+                    for m in re.finditer(
+                            r'^\s*#property\s+version\s+"(\d+)\.(\d+)(?:\.(\d+))?"',
+                            text, re.M):
+                        got = norm_ver(m.group(1), m.group(2), m.group(3))
+                        if got == ref:
+                            continue
+                        warns.append("%s:%d  D10 version-drift: this file calls itself %s.%s.%s "
+                                     "while the layer it drives prints v%s.%s.%s - if the two ship "
+                                     "together, say so with one number."
+                                     % (rel(pc_), line_of_host(text, m.start()),
+                                        got[0], got[1], got[2],
+                                        ref[0], ref[1], ref[2]))
+                for m in re.finditer(r'^\s*#property\s+(copyright|description|link|legend)\s+'
+                                     r'"([^"]*)"', text, re.M):
+                    vm = re.search(r'v?(\d+)\.(\d+)(?:\.(\d+))?', m.group(2))
+                    if not vm or norm_ver(vm.group(1), vm.group(2), vm.group(3)) == ref:
+                        continue
+                    warns.append("%s:%d  D10 version-drift: `#property %s` hard-codes v%s.%s.%s "
+                                 "while this build is v%s.%s.%s. A version inside a prose string "
+                                 "cannot be kept in sync - take the number out of it."
+                                 % (rel(pc_), line_of_host(text, m.start()), m.group(1),
+                                    vm.group(1), vm.group(2), vm.group(3) or "0",
+                                    ref[0], ref[1], ref[2]))
 
     return errs, warns, types
+
+
+def norm_ver(major, minor, patch=None):
+    """One comparable tuple for the two ways MQL5 writes a version.
+
+    `#property version` takes the MT5 form 6.63 (patch folded into the minor,
+    two components), while the source text uses v6.6.3. D10a already compares
+    them as "%s.%s" % (major, minor + patch); the companion checks need the same
+    normalisation or every correctly-numbered file looks stale.
+    """
+    major, minor = str(major), str(minor)
+    patch = str(patch) if patch else ""
+    if patch in ("", "0") and len(minor) > 1:
+        return (major, minor[0], minor[1:])
+    return (major, minor, patch or "0")
 
 
 def line_of_host(text, pos):
@@ -800,8 +896,11 @@ UNITS = [
     ("nadir2.mq5 (indicator)",            "nadir2.mq5"),
     ("QSMC_ArbiterTest.mq5 (self-test)",  "MQL5/Scripts/QSMC_ArbiterTest.mq5"),
     ("KLJ_DataFeeder.mq5 (companion)",    "MQL5/Experts/KLJ_DataFeeder.mq5"),
-    # QSMC_Scanners.mqh is included by nobody today (Phase 7 module, waiting
-    # for a host) - it is linted as a synthetic unit so it cannot rot.
+    # Since v6.6.3 QSMC_Scanners.mqh has a host (QSMC_ScannerProbe.mq5). The
+    # synthetic unit stays anyway: if that host is ever removed, the module must
+    # still be linted, because an unincluded header is exactly how this file
+    # accumulated four bugs that no build could see.
+    ("QSMC_ScannerProbe.mq5 (Phase 7 host)","MQL5/Indicators/QSMC_ScannerProbe.mq5"),
     ("(virtual) QSMC_Scanners.mqh",       "MQL5/Include/QSMC/QSMC_Scanners.mqh"),
 ]
 
@@ -818,7 +917,7 @@ def main(argv):
     reported = set()                                # a shared .mqh is in 2 units
     if not quiet:
         print("=" * 74)
-        print(" MQL5 DIALECT RULES D1-D11  root: %s" % root)
+        print(" MQL5 DIALECT RULES D1-D12  root: %s" % root)
         print("=" * 74)
     for label, relp in UNITS:
         path = os.path.join(root, relp)

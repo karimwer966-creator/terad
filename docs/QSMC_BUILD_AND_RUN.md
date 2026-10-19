@@ -1,4 +1,4 @@
-# QSMC v6.6.2 — BUILD, RUN, VERIFY
+# QSMC v6.6.3 — BUILD, RUN, VERIFY
 
 Operational guide for `nadir2.mq5` + the `MQL5/Include/QSMC` arbitration layer.
 Design and root-cause analysis live in `docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md`;
@@ -21,18 +21,28 @@ v6.6.2: literal hygiene + the CI gate).
    - `nadir2.mq5` → `<Data Folder>/MQL5/Indicators/`
    - `MQL5/Scripts/QSMC_ArbiterTest.mq5` → `<Data Folder>/MQL5/Scripts/`
    - `MQL5/Experts/KLJ_DataFeeder.mq5` → `<Data Folder>/MQL5/Experts/`
+   - `MQL5/Indicators/QSMC_ScannerProbe.mq5` → `<Data Folder>/MQL5/Indicators/`
+     (اختياري: مضيف طبقة الماسحات Phase 7 — لا يرسم ولا يتداول، فقط نصّ)
    (المجلد `QSMC` داخل `Include` **ضروري**: الملفات تُضمَّن هكذا
    `#include <QSMC/QSMC_Root.mqh>`.)
 3. افتح `MetaEditor` (F4 داخل MT5) واضغط **F7** على كل ملف بالترتيب:
-   `nadir2.mq5` ثم `QSMC_ArbiterTest.mq5` ثم `KLJ_DataFeeder.mq5`.
+   `nadir2.mq5` ثم `QSMC_ArbiterTest.mq5` ثم `KLJ_DataFeeder.mq5`
+   ثم `QSMC_ScannerProbe.mq5` إن أردت الماسحات.
    النتيجة المطلوبة: `0 errors, 0 warnings`.
+   ترجمة `QSMC_ScannerProbe.mq5` هي الوحيدة التي تُثبت أن
+   `QSMC_Scanners.mqh` يُترجم فعلًا — قبل v6.6.3 لم يكن لهذا الملف أي مضيف.
 4. في MT5: `Navigator` ← `Indicators` ← `nadir2` اسحبه على مخطط M5/M15.
 5. راجع تبويب `Experts`/`Journal`: السطر الأول يجب أن يكون
-   `[QSMC_ARB] v6.6.2 arbitration layer ON | preset …`.
+   `[QSMC_ARB] v6.6.3 arbitration layer ON | preset …`.
 6. للاختبار الذاتي: اسحب `QSMC_ArbiterTest` (Scripts) على أي مخطط —
    النتيجة المطلوبة `RESULT: 22 passed, 0 failed`.
 7. للتحقق بدون MT5 (من الطرفية، داخل المستودع):
    `python3 tools/static_check.py` ثم `python3 tools/test_arbiter.py`.
+
+**الماسح (اختياري):** بعد رفع `QSMC_ScannerProbe` على أي مخطط يجب أن تبدأ
+الـ Journal بـ `[QSMC_SCAN] probe ON | … | observational only, no gate is decided
+here`، ويظهر جدول `top setups by EVIDENCE SCORE` مع قائمة «not shown, and why»
+أسفله. الترتيب هنا للاطلاع فقط ولا يُتّخذ عليه قرار دخول.
 
 **زر الإيقاف:** `InpArbEnabled = false` → الطبقة تصبح معطّلة تمامًا ويتصرف
 المؤشر مثل v6.5.5 (بدون إعادة تجميع، بدون تغيير في لوحة العرض).
@@ -55,7 +65,8 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 ├─ Include\QSMC\…  (QSMC_Zones, _Reaction, _Bias, _Preset, _Gates,
 │                   _AlertManager, _Arbiter, _Stats, _Renderer, _Root,
 │                   _Selftest, _Scanners, _DataProvider)
-├─ Indicators\nadir2.mq5                <- the indicator itself
+├─ Indicators\nadir2.mq5                <- the indicator itself (repo root)
+├─ Indicators\QSMC_ScannerProbe.mq5      <- PART C Phase 7 scanner host (v6.6.3)
 ├─ Scripts\QSMC_ArbiterTest.mq5         <- deterministic self-test harness
 └─ Experts\KLJ_DataFeeder.mq5           <- optional CSV data feeder (PART C)
 ```
@@ -70,7 +81,10 @@ command to run after re-downloading a raw host file.
 
 1. MetaEditor → `File → Open Data Folder` → copy the files as above.
 2. Open `nadir2.mq5`, press **F7**. Then `QSMC_ArbiterTest.mq5`, then
-   `KLJ_DataFeeder.mq5`.
+   `KLJ_DataFeeder.mq5`, then — if you want the Phase 7 scanners —
+   `QSMC_ScannerProbe.mq5`. Every one of them pulls in the same 15 headers, so
+   compiling any of them proves those headers; compiling the probe is the only
+   thing that proves `QSMC_Scanners.mqh`.
 3. Target: **`0 errors, 0 warnings`** in the Results tab.
 
 | Symptom in the Results tab | Cause | Fix |
@@ -88,9 +102,10 @@ endings, `git diff` will show 39,800 changed lines; keep CRLF.
 
 `python3 tools/static_check.py` runs the mechanical part of a compiler pass
 (balance, includes, interface coverage, struct members, new/delete) **and** the
-MQL5 dialect rules D1–D11 from `tools/mql5_rules.py`, per translation unit
-(the indicator, the self-test script, the feeder, and `QSMC_Scanners.mqh` as a
-synthetic unit). It is not a type checker: a clean run still needs F7.
+MQL5 dialect rules D1–D12 from `tools/mql5_rules.py`, per translation unit
+(the indicator, the self-test script, the feeder, the new scanner probe, and
+`QSMC_Scanners.mqh` as a synthetic unit too, so the module stays linted even if
+its host is ever removed). It is not a type checker: a clean run still needs F7.
 
 ---
 
@@ -102,7 +117,7 @@ synthetic unit). It is not a type checker: a clean run still needs F7.
 3. Journal must show, in this order:
 
 ```
-[QSMC_ARB] v6.6.2 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
+[QSMC_ARB] v6.6.3 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
              | exec TF M1 | tactical may confirm: NO (informational only)
 ```
 
@@ -201,13 +216,48 @@ backtest: no statistics, no win rate, no profitability claim.
 
 Expected: `RESULT: 22 passed, 0 failed` (arbiter), `all geometry checks
 passed`, `all scanner arithmetic checks passed`, and for `static_check.py`
-`no errors` with 4 warnings (new/delete site counting is coarse on purpose; the
-runtime `AllocCalls()/FreeCalls()` ledger is the real check).
+`no errors` with 5 warnings (new/delete site counting is coarse on purpose; the
+runtime `AllocCalls()/FreeCalls()` ledger is the real check; the fifth is the
+probe's own single `new CMarketData`, freed in `OnDeinit`).
 
 Those five commands are also a CI gate since v6.6.2:
 `.github/workflows/qsmc-verify.yml` runs exactly them on every push and PR, adds
 a check that one header name is never committed twice under `MQL5/`, uploads the
 logs, and ends with the step it cannot run for you — **F7 in MetaEditor**.
+
+---
+
+## 5b. `QSMC_ScannerProbe.mq5` — the Phase 7 scanners (v6.6.3)
+
+This is the host that `QSMC_Scanners.mqh` never had. Nothing in it decides a
+trade: it ranks, describes, and prints text into the chart's `Comment()` — no
+objects, no files, no orders.
+
+1. F7, then drop it on any chart. The one warning that is *expected* here is
+   `no indicator plot defined for indicator` — the probe declares
+   `indicator_buffers 0 / indicator_plots 0` on purpose, because it draws text and
+   nothing else. Every other file still targets `0 errors, 0 warnings`. Journal:
+   `[QSMC_SCAN] probe ON | 6 symbols | tf PERIOD_H1 | bars 400 | budget 30ms | basis SERVER | observational only, no gate is decided here`
+2. The first `Comment()` update can take a few timer ticks: `Scan()` is time-boxed
+   by `InpProbeBudgetMs` (30 ms) and resumes from its cursor, so a 64-symbol
+   universe costs nothing per tick. The panel says `pass in progress - n of m
+   symbols` while it works.
+3. Read the bottom of the panel, not just the table: every symbol that produced
+   no row is listed with its reason (`MISSING SYMBOL`, `HISTORY NOT SYNCED`,
+   `NO DATA`, `NO SETUP`). An empty table with no reasons below it is a bug report,
+   not "no opportunities".
+4. `InpProbeSymbols` takes `NAME` or `NAME:GROUP` (`FX`, `INDEX`, `COMMODITY`,
+   `METAL`, `RATE`, `OTHER`). The mapping is an input because broker naming is not
+   standardised — the probe never guesses a group.
+5. Seasonality is withheld below `InpProbeMinN` and always shows `n`, years and
+   dispersion. That is the module's honesty rule, not a formatting choice; do not
+   lower `InpProbeMinN` to make a table appear.
+6. `OnDeinit` prints `probe OFF after N pass(es) | alloc/free a/b => no leak`.
+
+It is a triage tool. Its zones are swing-derived from price alone, **not** the
+chart's ZRE zones, and a row surviving the score floor does **not** mean the
+arbiter would accept it — the floor is a display threshold on a composite score
+that includes zone strength, while the gate compares `evidence_count` itself.
 
 ---
 

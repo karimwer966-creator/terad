@@ -724,7 +724,9 @@ The first release of this layer never survived MetaEditor: 30 errors / 4 warning
 |---|---|
 | `docs/QSMC_REVIEW_v6.6.1.md` | every error, the three root causes, the fixes, what was reviewed and found correct, and the known weaknesses deliberately left open (7 recorded, #4 closed in v6.6.2) |
 | `docs/QSMC_BUILD_AND_RUN.md` | where the files must sit, F7 order, the expected log lines, the self-test, the offline harnesses, the troubleshooting table, rollback (Arabic quick-start at the top) |
-| `tools/mql5_rules.py` | rules D1–D11, the MQL5-dialect linter that now runs inside `static_check.py` |
+| `docs/KLJ_V6.6.0_PART_C.md` §7.6 | v6.6.3: `QSMC_Scanners.mqh` gets a host and four defects surface with it — a merged-zone index, a December that was never counted, a median over the oldest 512 bars, a diluted percentile |
+| `.github/workflows/qsmc-verify.yml` | the offline gates as a CI gate on every push/PR, with the manual F7 step printed at the end |
+| `tools/mql5_rules.py` | rules D1–D12, the MQL5-dialect linter that now runs inside `static_check.py` |
 
 Two things changed beyond the compile fixes: `CQuantumRoot::Refresh()` no longer
 rebuilds a **locked** configuration from the preset (a host's `LockConfig()` was
@@ -739,7 +741,10 @@ now return pointers — call syntax unchanged — and the read-only data comes f
 
 v6.6.2 is not a behaviour release: the offline checks became a CI gate.
 `.github/workflows/qsmc-verify.yml` runs, on every push and PR, exactly the five
-commands the review asked for — `py_compile` of the tooling, `static_check.py`
+commands the review asked for (v6.6.3 added nothing to that list: the new
+`QSMC_ScannerProbe.mq5` unit is picked up through `mql5_rules.UNITS`, and the
+companion sources are now actually read by `static_check.py` instead of only being
+listed in an `EXTRA` array that nothing consumed) — `py_compile` of the tooling, `static_check.py`
 (which includes D1–D11), `test_arbiter.py`, `test_scanners.py`,
 `check_scenario_geometry.py`, `apply_qsmc_arb_patch.py --check` — plus a guard
 that the same header name is not committed twice under `MQL5/` (two copies, one

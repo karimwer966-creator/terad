@@ -604,8 +604,8 @@
 //|    ZRE_SelfTest() at init. No orders, no trading functions, no   |
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
-#property copyright "Quantum SMC Intelligence Engine v6.5.5"
-#property version   "6.62"
+#property copyright "Quantum SMC Intelligence Engine"
+#property version   "6.63"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -615,8 +615,8 @@
 // 13 v6.5.1 and 23 v6.5.2 fixes in its body, so every dashboard title, the
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
-// #property version and the banner now use this release's value (v6.6.2).
-#define QSMC_VERSION_TEXT "v6.6.2"
+// #property version and the banner now use this release's value (v6.6.3).
+#define QSMC_VERSION_TEXT "v6.6.3"
 #property indicator_chart_window
 #property indicator_buffers 19   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (SigLog, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
