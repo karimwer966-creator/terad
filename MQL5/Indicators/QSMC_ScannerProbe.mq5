@@ -137,7 +137,7 @@ int OnInit()
    g_seas.SetMinN(InpProbeMinN);
    g_seas.SetBasis(InpProbeUtc?QTB_UTC:QTB_SERVER);
 
-   EventSetTimer((uint)MathMax(1,InpProbeTimerSec));
+   EventSetTimer((int)MathMax(1,InpProbeTimerSec));
    Print("[QSMC_SCAN] probe ON | ",g_uni.Count()," symbols | tf ",
          EnumToString(g_tf)," | bars ",IntegerToString(InpProbeBars),
          " | budget ",IntegerToString(InpProbeBudgetMs),"ms | basis ",
@@ -221,7 +221,7 @@ void RenderHeatmaps(string &txt)
      { txt+="\nheatmaps: "+g_md.Reason()+"\n"; return; }
 
    const CBarSeries *ch=g_md.Chart();
-   if(ch==NULL || !ch->Ready())
+   if(ch==NULL || !ch.Ready())
      { txt+="\nheatmaps: chart series not ready\n"; return; }
 
    //--- The heatmaps run on THIS chart's symbol only. The module holds one
