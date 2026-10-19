@@ -3,6 +3,8 @@
 **Status: Phase 6 written. Static review only — nothing compiled. Press F7.**
 Phases 7-9 are specified at the end of this document but not yet implemented.
 
+**Phase status: 6 and 7 implemented. 8 and 9 not started.**
+
 **Gating note.** Your brief says *"Do not start PART C until PART A passes its test scenarios."*
 PART A passes its **offline** checks (`tools/test_arbiter.py` 22/22; `tools/check_scenario_geometry.py` all pass), but the MQL5 Script has never run in a terminal. I asked whether to wait or proceed and the question was skipped, so I took the conservative branch: **proceed, with every external provider disabled by default** so no endpoint or key is invented, and with all PART C code isolated from PART A/B. You can stop me at any point.
 
@@ -156,15 +158,84 @@ Phase 8 (COT, retail sentiment, equity sentiment, macro dashboard) reads entirel
 
 ---
 
-## 7. Phases 7-9 — specified, not yet implemented
+## 7. PHASE 7 — scanners and heatmaps (IMPLEMENTED)
+
+`MQL5/Include/QSMC/QSMC_Scanners.mqh` — MT5 data only, no external feed.
+
+| Class | What it does | Complexity | Memory |
+|---|---|---|---|
+| `CAssetScanner` | Holds the universe (broker symbol + asset group). `Validate()` asks the terminal whether the symbol exists and whether its history is synchronised. | `Validate` O(1) per symbol | O(N), N ≤ 64 |
+| `CTopSetupsScanner` | Per symbol: builds swing zones from that symbol's own bars, then runs the **PART A** `CZoneRegistry` / `CReactionDetector` / `CBiasProvider` **read-only** over the last closed bar. Ranked by evidence score. | O(bars) per symbol, **resumable and time-boxed** (`GetTickCount64`, default 30 ms) | **O(1) in the symbol count** — one `CMarketData` is re-`Init()`ed per symbol instead of one per symbol |
+| `CMomentumHeatmap` | ROC over a selectable lookback, ATR-normalised, z-scored against **that symbol's own** history — never against the universe. | O(lookback × hist) | O(N) |
+| `CVolatilityHeatmap` | ATR percentile within 100 and 250 bars + a five-bucket regime label. | O(window) | O(N) |
+| `CSeasonalityScanner` | Mean/median/std/positive-share returns by month, week-of-year, day-of-week and hour-of-day. Always shows `n`, years covered and dispersion. | O(bars) | O(1) — bounded flat accumulators |
+
+### 7.1 Two things I want to flag explicitly
+
+**(a) The scanner's zones are NOT the chart's ZRE zones.**
+The brief asks the scanner to "run the same zone/reaction/bias engine". It does reuse `CZoneRegistry`, `CReactionDetector` and `CBiasProvider` verbatim — but the *zones* fed into that registry are swing-derived from price alone (`BuildScanZones`), because the host's ZRE zones live in `g_zre_zones` and depend on the host's structure / order-block / FVG machinery, which is not callable per-symbol from an include. **This scanner is a triage tool that tells you where to look. Its rows are not signals and must not be traded from.** That is stated in the header comment, not buried.
+
+**(b) Deviation: `g_quant.vol_class` is not reused.**
+The brief says to reuse the host's volatility class. That global lives in `nadir2.mq5`; reading it from an include would couple this header to the host's globals and make the module untestable. The percentile is therefore computed here and mapped onto the **same five bucket names** the host uses (`LOW / NORMAL / HIGH / EXTREME / UNKNOWN`). The numbers will **not** be identical to the host's classifier, which uses its own thresholds. Treat it as a second opinion, not a mirror.
+
+### 7.2 Manual compiler pass
+
+**Introduced identifiers:**
+
+| Kind | Identifiers | Declared in |
+|---|---|---|
+| Macros | `QSC_MAX_SYMBOLS`, `QSC_MAX_ZONES`, `QSC_MAX_LOOKBACKS`, `QSC_MAX_ROWS`, `QSC_SEAS_MONTHS`, `QSC_SEAS_WEEKS`, `QSC_SEAS_DOW`, `QSC_SEAS_HOURS` | `QSMC_Scanners.mqh` |
+| Enums | `ENUM_ASSET_GROUP`, `ENUM_SCAN_STATUS`, `ENUM_SEAS_BUCKET`, `ENUM_TIME_BASIS` | `QSMC_Scanners.mqh` |
+| Structs | `SSetupRow`, `SMomentumRow`, `SVolatilityRow`, `SSeasonRow` | `QSMC_Scanners.mqh` |
+| Classes | `CAssetScanner`, `CTopSetupsScanner`, `CMomentumHeatmap`, `CVolatilityHeatmap`, `CSeasonalityScanner` | `QSMC_Scanners.mqh` |
+| Free functions | `QScanGroupName`, `QScanStatusName`, `QSeasBucketName` | `QSMC_Scanners.mqh` |
+
+**Checks performed:**
+
+1. Includes resolve and stay acyclic: `QSMC_Types` → `QSMC_MarketData` → `QSMC_Zones` / `QSMC_Reaction` / `QSMC_Bias` → `QSMC_Scanners`. Nothing in PART A/B includes `QSMC_Scanners`, so PART C cannot break PART A.
+2. **`QSMC_BuildGeometry` signature corrected during review.** I first called it with a `double barrier`; the real signature is `(z, dir, entry, atr, const CZoneRegistry&, cfg, tick, sl, tp1, tp2, tp3, rr, room_atr)`. The scanner now passes the registry and the symbol's `SYMBOL_TRADE_TICK_SIZE`, falling back to `SYMBOL_POINT` then `_Point` — the tick size differs between XAUUSD and BTCUSD, so a hard-coded `_Point` would have produced wrong geometry.
+3. `SReactionFacts::missing` is a pre-built string; the scanner no longer recomputes it.
+4. Every array write is bounded (`QSC_MAX_ZONES`, `QSC_MAX_ROWS`, 64 buckets × 512 samples).
+5. `new`/`delete`: one `CMarketData` per scanner, freed in `Shutdown()` with `AllocCalls()`/`FreeCalls()` counters. No allocation inside `Scan()`.
+6. No recursion: `SortByScore` and the median sort are insertion sorts; JSON/CSV parsing is not used here.
+7. No `OrderSend`, no `WebRequest`, no trade function.
+
+**What this pass cannot catch:** whether `SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_SIZE)` is populated for every symbol your broker offers; whether `SeriesInfoInteger(..., SERIES_SYNCHRONIZED)` behaves as expected on your build. **Press F7.**
+
+### 7.3 A bug the Python mirror caught
+
+`tools/test_scanners.py` is an independent re-implementation of the seasonality, percentile and z-score arithmetic. Two findings:
+
+1. **Degenerate z-score (real bug, fixed).** For a constant-growth series the true standard deviation is 0, but floating point leaves ~1e-13, so the obvious guard `sd > 0.0` passed and dividing by it converted rounding noise into an O(1) number — a +1%/bar ramp reported **z = −1.13 instead of 0**. `CMomentumHeatmap` now requires `sd > max(|mean|, 1e-8) * 1e-6` before computing a z-score, and returns 0 otherwise. The same guard is mirrored in the Python test.
+2. **Off-by-one in my own test data (test bug, fixed).** Storing the month's close before applying that month's move put every return in the wrong bucket. The corrected fixture asserts `n = 19` for 20 Januaries, because the first bar has no prior close — asserted explicitly so the convention cannot drift.
+
+### 7.4 Test cases (Phase 7)
+
+| Case | Covered by | Status |
+|---|---|---|
+| **Missing symbol** | `CAssetScanner::Validate()` returns `QSS_MISSING` with a reason string | Implemented; **needs a terminal to verify** |
+| **History not synchronised** | returns `QSS_NOT_SYNCED`, retried next pass | Implemented; **needs a terminal** |
+| **Partial history** | `QSS_NO_DATA` when bars < `min_bars` or ATR unavailable | Implemented; **needs a terminal** |
+| **n below minimum** | `CSeasonalityScanner` withholds the row entirely | ✅ verified offline (`T2a`: n=19 < 30 → withheld; `T2b`: n=19 ≥ 10 → shown) |
+| **Dispersion always shown** | `std_ret`, `median_ret`, `pos_share`, `years` on every row | ✅ verified offline (`T1e`, `T2c`, `T2d`) |
+| **Percentile edge cases** | −1 (not 0.0) when history is short or ATR = 0 | ✅ verified offline (`T5a`, `T5b`) |
+| **Degenerate distribution** | z = 0, never NaN | ✅ verified offline (`T6a`, `T7a`) |
+
+### 7.5 Time basis and DST — stated, not hidden
+
+`QTB_SERVER` buckets by the broker's bar timestamp as stored. `QTB_UTC` applies a **single** offset, `TimeGMT() - TimeCurrent()`, sampled at scan time. Broker servers usually run a fixed offset, but some shift with DST. **This scanner applies one offset to the whole history and therefore does not retroactively correct historical DST transitions.** Where a broker's offset has changed in the past, hour-of-day rows spanning that change are approximations.
+
+---
+
+## 8. Phases 8-9 — not yet implemented
 
 | Module | Data source | Status | Note |
 |---|---|---|---|
-| `CAssetScanner` | MT5 only | Specified | Broker symbol mapping table as inputs; missing symbols skipped with a visible note, never silently dropped. |
-| `CTopSetupsScanner` | MT5 only | Specified | Reuses the PART A zone/reaction/bias engine **read-only**; ranked by evidence score, never "probability"; `OnTimer`, a few symbols per tick, cached per closed bar. |
-| `CMomentumHeatmap` | MT5 only | Specified | ROC over selectable lookbacks, ATR-normalised, z-score vs own history, colour legend. |
-| `CVolatilityHeatmap` | MT5 only | Specified | ATR percentile (100/250-bar), regime label, colour legend. |
-| `CSeasonalityScanner` | MT5 only | Specified | By month / week-of-year / day-of-week / hour-of-day; **always** shows `n`, years covered and dispersion; withheld below minimum n; labelled descriptive history, never a forecast; server time vs UTC handled explicitly. |
+| `CAssetScanner` | MT5 only | **Implemented (§7)** | Broker symbol mapping table as inputs; missing symbols skipped with a visible note, never silently dropped. |
+| `CTopSetupsScanner` | MT5 only | **Implemented (§7)** | Reuses the PART A zone/reaction/bias engine **read-only**; ranked by evidence score, never "probability"; `OnTimer`, a few symbols per tick, cached per closed bar. |
+| `CMomentumHeatmap` | MT5 only | **Implemented (§7)** | ROC over selectable lookbacks, ATR-normalised, z-score vs own history, colour legend. |
+| `CVolatilityHeatmap` | MT5 only | **Implemented (§7)** | ATR percentile (100/250-bar), regime label, colour legend. |
+| `CSeasonalityScanner` | MT5 only | **Implemented (§7)** | By month / week-of-year / day-of-week / hour-of-day; **always** shows `n`, years covered and dispersion; withheld below minimum n; labelled descriptive history, never a forecast; server time vs UTC handled explicitly. |
 | `CCotModule`, `CRetailSentimentModule`, `CEquitySentimentModule`, `CMacroDashboard`, `CContextAggregator` | Companion-EA files | Blocked on §6 | Will ship as `NO DATA` stubs if no provider is chosen. `CContextAggregator` may add `ALIGNED / CONFLICT / NEUTRAL` **labels only** — it never creates, removes or confirms a signal. |
 | `CScenarioBacktester` | MT5 only | Specified | Closed bars only, no look-ahead, no optimisation; reports n, wins/losses, avg RR, expectancy (R), profit factor (withheld with no losing sample), MAE, MFE, time to target, censored count, TRAIN/VALIDATION/OUT-OF-SAMPLE split; states spread/commission assumptions; shows losing periods. |
 

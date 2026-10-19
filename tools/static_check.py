@@ -216,24 +216,45 @@ def main():
 
     for f, t in texts.items():
         code = strip_code(t)
-        # per-file variable -> type map from declarations
-        varmap = {}
+        # Variable -> type, resolved by LINE. The same name is routinely
+        # declared with different types in different functions of one file
+        # (e.g. `SSeasonRow r` and `SVolatilityRow r`), so the nearest
+        # declaration at or before the use line is the right one.
+        def line_of(pos):
+            return code[:pos].count("\n") + 1
+
+        decls = []   # (line, var, type)
         for m in re.finditer(r'(?:^|[;{}\n])\s*((?:const\s+)?[A-Za-z_]\w*(?:\s*<[^>]*>)?)\s+(\w+)\s*(?:\[\s*\]|=[^;]*)?;', code):
-            ty, var = m.group(1), m.group(2)
-            varmap[var] = type_of_decl(ty)
+            decls.append((line_of(m.start()), m.group(2), type_of_decl(m.group(1))))
         for m in re.finditer(r'(?:^|[;{}\n])\s*((?:const\s+)?[A-Za-z_]\w*)\s*\*\s*(\w+)\s*(?:=|;|\))', code):
-            varmap[m.group(2)] = type_of_decl(m.group(1))
+            decls.append((line_of(m.start()), m.group(2), type_of_decl(m.group(1))))
         # function parameters  (Type &name, const Type &name, Type *name)
         for m in re.finditer(r'\(\s*([^)]*)\)\s*(?:const\s*)?\{', code):
+            pline = line_of(m.start())
             for param in m.group(1).split(','):
                 pm = re.search(r'([A-Za-z_]\w*)\s*[&*]?\s*(\w+)\s*$', param.strip())
                 if pm:
                     ty, var = pm.group(1), pm.group(2)
                     if ty in structs or ty in class_methods:
-                        varmap[var] = ty
+                        decls.append((pline, var, ty))
+        decls.sort(key=lambda d: d[0])
+
+        def resolve(var, use_line):
+            best = None
+            for dline, dvar, dty in decls:
+                if dvar == var and dline <= use_line:
+                    best = dty
+                elif dvar == var and dline > use_line:
+                    break
+            if best is None:      # fall back: declared later in the file
+                for dline, dvar, dty in decls:
+                    if dvar == var:
+                        best = dty
+            return best
+
         for m in re.finditer(r'\b(\w+)\.(\w+)', code):
             var, mem = m.group(1), m.group(2)
-            ty = varmap.get(var)
+            ty = resolve(var, line_of(m.start()))
             if ty is None: continue
             if ty in structs:
                 if mem not in structs[ty]:
