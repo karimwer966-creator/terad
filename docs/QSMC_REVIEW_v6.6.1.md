@@ -145,8 +145,8 @@ real defect, not a theoretical one.
 
 `nadir2.mq5` carried `QSMC_VERSION_TEXT "v6.5.5"` / `#property version "6.55"`
 while shipping the v6.6.0 layer — an `[WARNING]` the file itself listed as
-unresolved. Both now read **v6.6.1 / 6.61**, the layer banner says
-`[QSMC_ARB] v6.6.1 arbitration layer ON`, and rule D10 keeps the three in sync
+unresolved. They read **v6.6.2 / 6.62** (v6.6.1 for the compile fixes), the banner says
+`[QSMC_ARB] v6.6.2 arbitration layer ON`, and rule D10 keeps the three in sync
 mechanically from now on.
 
 ---
@@ -244,14 +244,16 @@ Not changed, checked line by line:
 | 1 | `QSMC_Scanners.mqh` (899 lines) is included by nobody | it is Phase 7 code waiting for a host; it lints and its arithmetic is tested | either attach it to a `CFX*` panel or move it to `docs/` as a design draft — dead source in `Include/` invites drift |
 | 2 | `BuildContext()` reads `_Symbol`/`_Period` instead of the values passed to `Init()` | an indicator instance is per-chart, so they always agree today | keep `m_symbol`/`m_tf` fields and use them, if the root is ever reused by a service EA |
 | 3 | `static_check.py`'s new/delete count is a per-file heuristic (4 warnings forever) | the runtime ledger is the real check | make the warning disappear only by teaching it about `Shutdown()` pairs — cosmetic |
-| 4 | no CI gate: a broken build is discovered by hand, in MetaEditor | this repo has no workflow files at all | add a GitHub Action running `python3 tools/static_check.py` + the three `test_*.py`; F7 still has to happen on a Windows runner or manually |
+| 4 | ~~no CI gate~~ **closed in v6.6.2** — `.github/workflows/qsmc-verify.yml` runs the five offline checks on every push/PR | F7 still cannot be automated here | a Windows runner with MetaEditor, or the manual attestation the workflow prints |
 | 5 | `nadir2.mq5` is 39.8 k lines of legacy code around 6.6 k lines of clean subsystem | the audit trail (AUDIT-01…05) is inside the file and useful | extract the ZRE / RXN / SigLog sections into `Include/QSMC/` one layer at a time, each with its own self-test |
 | 6 | the self-test lives in the terminal only | `tools/test_arbiter.py` covers the decision logic offline, but not the MQL5 harness wiring | keep both; run `tools/check_scenario_geometry.py` whenever a scenario's numbers change |
 | 7 | D6 and D11 infer a variable's type from the nearest *visible* declaration, so they are heuristic, and they skip `nadir2.mq5` | they never fire on the current subsystem and each was proved with an injected typo | only worth replacing with a real declaration table if a rule starts lying; until then F7 is the proof |
 
 ---
 
-## 6. Changelog v6.6.1
+## 6. Changelog
+
+### 6.1 v6.6.1
 
 * `QSMC_Root.mqh` — all 8 reference-returning getters replaced by pointers /
   accessors; `LeakReport()` rebuilt with `StringFormat()`; `Refresh()` honours
@@ -269,5 +271,20 @@ Not changed, checked line by line:
 * `docs/QSMC_BUILD_AND_RUN.md` — new: install → compile → run → self-test →
   offline checks → rollback (Arabic quick-start at the top).
 
-**Still required from you:** F7 in MetaEditor. Every claim in this file is
-either a mechanical check or a reading; only the compiler is the proof.
+### 6.2 v6.6.2 (behaviour-neutral)
+
+* `nadir2.mq5` — the 7 decimal literals that exceed `INT_MAX` rewritten as their
+  exact hex values: `2166136261` → `0x811C9DC5`, `1099511628211` →
+  `0x100000001B3` (×5), `1469598103934665603` → `0x14650FB0739D0383`. Values
+  identical ⇒ `PMI_*` digests and `CausalGraphFingerprint()` stay comparable
+  across the upgrade. The 19-vs-20-digit FNV basis is now commented in place.
+  Effect on the report: `no dialect errors, 0 warning(s)` instead of 7 — a clean
+  run is now unambiguous rather than "clean except the usual noise".
+* `.github/workflows/qsmc-verify.yml` — new: the offline gates as a CI gate
+  (+ duplicate-header guard, + artifact of every log, + the manual F7 step).
+* `.gitignore` — `__pycache__/`, `*.pyc`, `out/`.
+* Version closed at `6.62` / `"v6.6.2"` in the host and in the banner (D10).
+
+**Still required from you:** F7 in MetaEditor. Everything in this file is either a
+mechanical check or a reading; only the compiler is the proof. What v6.6.2 did **not**
+do: change a decision, a gate, an input or a drawing — see §5 for what is still open.

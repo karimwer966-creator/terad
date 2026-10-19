@@ -1,0 +1,74 @@
+name: QSMC offline gates
+
+# Everything that can be proven without a terminal. This is deliberately NOT a
+# compile: there is no MetaEditor here, so a green run means "the mechanical
+# invariants and the offline decision-logic parity hold", and F7 in MetaEditor
+# still has to happen by a human. The job says so at the end, and the tools say
+# it in their own output, so nobody mistakes green for "it builds".
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  offline-gates:
+    name: static + dialect + self-test parity
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -o pipefail -e {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: The checkers themselves must parse
+        run: |
+          mkdir -p out
+          python3 -m py_compile tools/*.py
+
+      - name: Mechanical pass + MQL5 dialect rules D1-D11
+        run: python3 tools/static_check.py 2>&1 | tee out/static_check.log
+
+      - name: Arbiter decision logic vs the MQL5 self-test (1:1)
+        run: python3 tools/test_arbiter.py 2>&1 | tee out/test_arbiter.log
+
+      - name: Scanner arithmetic (fixed-point, no float drift)
+        run: python3 tools/test_scanners.py 2>&1 | tee out/test_scanners.log
+
+      - name: Scenario geometry (self-test numbers must still describe zones)
+        run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
+
+      - name: Host patch must stay idempotent (marker in nadir2.mq5)
+        run: python3 tools/apply_qsmc_arb_patch.py --check 2>&1 | tee out/patch_check.log
+
+      - name: No stale copy of a header may be committed
+        run: |
+          dup=$(git ls-files 'MQL5/**' | while read -r f; do basename "$f"; done | sort | uniq -d)
+          if [ -n "$dup" ]; then
+            echo "duplicated file names in two places (one build silently wins): $dup" >&2
+            exit 1
+          fi
+
+      - name: Manual gate
+        run: |
+          echo "NOT COMPILED HERE. Open nadir2.mq5 in MetaEditor and press F7."
+          echo "The init log must read:"
+          echo '  [QSMC_ARB] v6.6.2 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ...'
+          echo "Any other version in that line means a stale copy is in the Data Folder."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: offline-gates
+          path: out/
+          if-no-files-found: ignore

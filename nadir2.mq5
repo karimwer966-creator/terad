@@ -605,7 +605,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine v6.5.5"
-#property version   "6.61"
+#property version   "6.62"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -615,8 +615,8 @@
 // 13 v6.5.1 and 23 v6.5.2 fixes in its body, so every dashboard title, the
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
-// #property version and the banner now use this release's value (v6.6.1).
-#define QSMC_VERSION_TEXT "v6.6.1"
+// #property version and the banner now use this release's value (v6.6.2).
+#define QSMC_VERSION_TEXT "v6.6.2"
 #property indicator_chart_window
 #property indicator_buffers 19   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (SigLog, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -7859,7 +7859,7 @@ void PMI_CopyStructEvent(StructureEvent &dst,const StructureEvent &src)
 // combined; fixed-point arithmetic only, identical on every platform).
 ulong PMI_HashString(const string s)
 {
-   ulong h1=2166136261;
+   ulong h1=0x811C9DC5;              // FNV-1a 32-bit offset basis
    ulong h2=5381;
    int n=StringLen(s);
    for(int i=0;i<n;i++)
@@ -16309,7 +16309,14 @@ ulong CausalGraphFingerprint()
       order[j+1]=key;
    }
 
-   ulong hash=1469598103934665603;
+   //--- FNV-1a 64-bit. The seed is the value this file has always used; it is NOT
+   //    the canonical basis 0xCBF29CE484222325 (the original wrote 19 digits where
+   //    the canonical number has 20). Harmless here, and deliberately left alone:
+   //    a fingerprint is only ever compared with a value recomputed in the same
+   //    session (g_replay_expected_hash), never with a stored one - so changing it
+   //    buys nothing. Hex form, on the other hand, does not depend on how a long
+   //    decimal literal is typed, and is the same number: 0x14650FB0739D0383.
+   ulong hash=0x14650FB0739D0383;
    for(int oi=0;oi<n;oi++)
    {
       int i=order[oi];
@@ -16347,7 +16354,7 @@ ulong CausalGraphFingerprint()
       for(int k=0;k<StringLen(row);k++)
       {
          hash^=(ulong)StringGetCharacter(row,k);
-         hash*=1099511628211;
+         hash*=0x100000001B3;
       }
    }
    string setup_row=StringFormat("LIFECYCLE|%s|%d|%s|%d|%d",
@@ -16383,7 +16390,7 @@ ulong CausalGraphFingerprint()
    for(int k=0;k<StringLen(setup_row);k++)
    {
       hash^=(ulong)StringGetCharacter(setup_row,k);
-      hash*=1099511628211;
+      hash*=0x100000001B3;
    }
    for(int ji=0;ji<ArraySize(g_confirmed_signal_journal);ji++)
    {
@@ -16401,7 +16408,7 @@ ulong CausalGraphFingerprint()
       for(int k=0;k<StringLen(journal_row);k++)
       {
          hash^=(ulong)StringGetCharacter(journal_row,k);
-         hash*=1099511628211;
+         hash*=0x100000001B3;
       }
    }
    string selected_sweep=(g_active_setup.active ? g_active_setup.sweep_event_id :
@@ -16428,7 +16435,7 @@ ulong CausalGraphFingerprint()
    for(int k=0;k<StringLen(state_row);k++)
    {
       hash^=(ulong)StringGetCharacter(state_row,k);
-      hash*=1099511628211;
+      hash*=0x100000001B3;
    }
    // v6.1.0 (audit finding W9): fold the PMI research state into the causal
    // fingerprint so the existing replay/invariant audit also covers the new
@@ -16437,7 +16444,7 @@ ulong CausalGraphFingerprint()
    for(int k=0;k<StringLen(pmi_row);k++)
    {
       hash^=(ulong)StringGetCharacter(pmi_row,k);
-      hash*=1099511628211;
+      hash*=0x100000001B3;
    }
    return hash;
 }

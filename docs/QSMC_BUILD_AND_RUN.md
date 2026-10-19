@@ -1,8 +1,9 @@
-# QSMC v6.6.1 — BUILD, RUN, VERIFY
+# QSMC v6.6.2 — BUILD, RUN, VERIFY
 
 Operational guide for `nadir2.mq5` + the `MQL5/Include/QSMC` arbitration layer.
 Design and root-cause analysis live in `docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md`;
-the v6.6.1 compile fixes are in `docs/QSMC_REVIEW_v6.6.1.md`.
+the v6.6.1 compile fixes are in `docs/QSMC_REVIEW_v6.6.1.md` (its §6.5 covers
+v6.6.2: literal hygiene + the CI gate).
 
 ---
 
@@ -27,7 +28,7 @@ the v6.6.1 compile fixes are in `docs/QSMC_REVIEW_v6.6.1.md`.
    النتيجة المطلوبة: `0 errors, 0 warnings`.
 4. في MT5: `Navigator` ← `Indicators` ← `nadir2` اسحبه على مخطط M5/M15.
 5. راجع تبويب `Experts`/`Journal`: السطر الأول يجب أن يكون
-   `[QSMC_ARB] v6.6.1 arbitration layer ON | preset …`.
+   `[QSMC_ARB] v6.6.2 arbitration layer ON | preset …`.
 6. للاختبار الذاتي: اسحب `QSMC_ArbiterTest` (Scripts) على أي مخطط —
    النتيجة المطلوبة `RESULT: 22 passed, 0 failed`.
 7. للتحقق بدون MT5 (من الطرفية، داخل المستودع):
@@ -101,7 +102,7 @@ synthetic unit). It is not a type checker: a clean run still needs F7.
 3. Journal must show, in this order:
 
 ```
-[QSMC_ARB] v6.6.1 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
+[QSMC_ARB] v6.6.2 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
              | exec TF M1 | tactical may confirm: NO (informational only)
 ```
 
@@ -200,9 +201,13 @@ backtest: no statistics, no win rate, no profitability claim.
 
 Expected: `RESULT: 22 passed, 0 failed` (arbiter), `all geometry checks
 passed`, `all scanner arithmetic checks passed`, and for `static_check.py`
-`no errors` with 4–11 warnings (new/delete site counting is coarse on purpose;
-the runtime `AllocCalls()/FreeCalls()` ledger is the real check; the D3
-literal warnings are in the legacy host file).
+`no errors` with 4 warnings (new/delete site counting is coarse on purpose; the
+runtime `AllocCalls()/FreeCalls()` ledger is the real check).
+
+Those five commands are also a CI gate since v6.6.2:
+`.github/workflows/qsmc-verify.yml` runs exactly them on every push and PR, adds
+a check that one header name is never committed twice under `MQL5/`, uploads the
+logs, and ends with the step it cannot run for you — **F7 in MetaEditor**.
 
 ---
 

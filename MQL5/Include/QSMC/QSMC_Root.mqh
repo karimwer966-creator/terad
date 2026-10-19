@@ -232,7 +232,7 @@ public:
       if(csv_log) m_stats.Open(symbol,chart_tf,min_sample);
       m_ready=true;
       m_bars=0;
-      Print("[QSMC_ARB] v6.6.1 arbitration layer ON | preset ",m_preset.EffectiveName(),
+      Print("[QSMC_ARB] v6.6.2 arbitration layer ON | preset ",m_preset.EffectiveName(),
             " | gates ",IntegerToString(m_arbiter.GateCount()),
             " | exec TF ",QSMC_TFName(exec_tf),
             " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"));

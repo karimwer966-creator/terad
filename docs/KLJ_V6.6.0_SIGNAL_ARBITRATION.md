@@ -391,12 +391,13 @@ Everything else in the 39,655 lines is byte-identical. `git diff` on `nadir2.mq5
 ```
 $ python3 tools/static_check.py
   --- MQL5 dialect rules (D1-D11) ----------------------------
-  WARN  nadir2.mq5:7862  D3 literal 2166136261 does not fit an int; ...
+  (nothing)
   --- own checks -------------------------------------------------------
   WARN  QSMC_Arbiter.mqh: 10 new site(s), 3 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
   WARN  QSMC_MarketData.mqh: 5 new site(s), 1 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
   WARN  QSMC_Root.mqh: 1 new site(s), 1 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
-  no errors, 11 warning(s)
+  WARN  QSMC_Scanners.mqh: 1 new site(s), 1 delete site(s); ...
+  no errors, 4 warning(s)
 ```
 
 Since v6.6.1 the report is **per translation unit**, not per file: `static_check.py`
@@ -408,13 +409,23 @@ where it reports 13 findings: exactly the 12 real defects behind the 30 reported
 errors (8 ref-returns, 3 literal-suffixes, 1 comma-chain) plus the version drift
 AUDIT-04 had only been warned about — and it reports **nothing** against this tree.
 
-Of the 11 warnings: 4 are `new`/`delete` counters (the `delete` sites sit in
+The 4 warnings are the `new`/`delete` counters (the `delete` sites sit in
 loops/destructors and the runtime `AllocCalls()/FreeCalls()` counters are the
-real check, printed on Deinit), and 7 are D3 notes about decimal literals that
-exceed `INT_MAX` in the legacy host — MQL5 picks the first type that fits, so
-they are style, not bugs. D6 and D11 are inference-based and therefore skip
-`nadir2.mq5` (`LEGACY_HOST`); they run over the 15 subsystem files, both
+real check, printed on Deinit). D6 and D11 are inference-based and therefore
+skip `nadir2.mq5` (`LEGACY_HOST`); they run over the 15 subsystem files, both
 scripts and `QSMC_Scanners.mqh`.
+
+In v6.6.2 the seven D3 notes that used to sit under this line are gone: the
+decimal literals in the legacy host that exceed `INT_MAX` — two FNV seeds and
+five multipliers — are written as their exact hex equivalents (`0x811C9DC5`,
+`0x14650FB0739D0383`, `0x100000001B3`), **same values, same hashes**, so
+`PMI_*` digests and causal fingerprints stay comparable across the upgrade. What
+that pass also recorded, in a comment next to the seed: `1469598103934665603`
+is the canonical FNV-1a 64-bit basis `14695981039346656037` with one digit
+missing. It is left as it is on purpose — a fingerprint is only ever compared
+with a value recomputed in the same session, never with a stored one, so
+"fixing" the constant would invalidate nothing and buy nothing. The comment says
+what it is, which is what a reader needs.
 
 **Identifier ledger — every identifier this release introduces, and where it is declared:**
 
@@ -705,13 +716,13 @@ Audit query you can run on it: `SELECT count(*) WHERE published=1 GROUP BY day` 
 
 ---
 
-## 10. v6.6.1 — THE BUILD THAT ACTUALLY COMPILES
+## 10. v6.6.1 / v6.6.2 — THE BUILD THAT COMPILES, AND THE GATE THAT KEEPS IT THAT WAY
 
 The first release of this layer never survived MetaEditor: 30 errors / 4 warnings, and `tools/static_check.py` said "no errors". That gap is closed and documented:
 
 | Doc | Purpose |
 |---|---|
-| `docs/QSMC_REVIEW_v6.6.1.md` | every error, the three root causes, the fixes, what was reviewed and found correct, and the 6 known weaknesses deliberately left open |
+| `docs/QSMC_REVIEW_v6.6.1.md` | every error, the three root causes, the fixes, what was reviewed and found correct, and the known weaknesses deliberately left open (7 recorded, #4 closed in v6.6.2) |
 | `docs/QSMC_BUILD_AND_RUN.md` | where the files must sit, F7 order, the expected log lines, the self-test, the offline harnesses, the troubleshooting table, rollback (Arabic quick-start at the top) |
 | `tools/mql5_rules.py` | rules D1–D11, the MQL5-dialect linter that now runs inside `static_check.py` |
 
@@ -725,3 +736,14 @@ The API note for hosts: `Ctx()`, `Cfg()`, `Report()` and `MutableConfig()` are g
 now return pointers — call syntax unchanged — and the read-only data comes from
 `Ctx*()` / `Report*()` / `Primary*()` accessors or from `GetContext()` /
 `GetPrimaryCandidate()` / `CopyConfig()`.
+
+v6.6.2 is not a behaviour release: the offline checks became a CI gate.
+`.github/workflows/qsmc-verify.yml` runs, on every push and PR, exactly the five
+commands the review asked for — `py_compile` of the tooling, `static_check.py`
+(which includes D1–D11), `test_arbiter.py`, `test_scanners.py`,
+`check_scenario_geometry.py`, `apply_qsmc_arb_patch.py --check` — plus a guard
+that the same header name is not committed twice under `MQL5/` (two copies, one
+silently winning the build, was how this layer's first report got so confusing),
+and uploads the logs as an artifact. Its last step prints the thing CI cannot do:
+**open `nadir2.mq5` and press F7**. The version triple moved to `6.62` /
+`"v6.6.2"` / the layer banner, and D10 is what makes those three move together.

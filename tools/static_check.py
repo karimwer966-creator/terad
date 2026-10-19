@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Static consistency check for the QSMC v6.6.1 arbitration subsystem.
+Static consistency check for the QSMC v6.6.2 arbitration subsystem.
 
 This is NOT a compiler. It cannot replace F7 in MetaEditor. What it does
 is catch the classes of mistake a human reviewer makes when writing a
@@ -361,7 +361,7 @@ TIME_MINUTES TIME_DATE SYMBOL_TRADE_TICK_SIZE SYMBOL_DIGITS
 
     # ---------------------------------------------------------------- report
     print("="*72)
-    print(" QSMC v6.6.1 - STATIC CONSISTENCY CHECK (not a compiler)")
+    print(" QSMC v6.6.2 - STATIC CONSISTENCY CHECK (not a compiler)")
     print("="*72)
     for f in FILES:
         print("  file: %-26s %6d bytes" % (f, os.path.getsize(os.path.join(INC,f))))
