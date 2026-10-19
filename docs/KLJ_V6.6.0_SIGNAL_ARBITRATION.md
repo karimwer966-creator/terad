@@ -350,6 +350,7 @@ Install into the MT5 data folder (the include path is exactly `<data folder>/MQL
 | `nadir2.mq5` | 1,799,730 | 39,782 |
 | `tools/apply_qsmc_arb_patch.py` | 12,354 | 300 |
 | `tools/static_check.py` | 14,708 | 325 |
+| `tools/check_scenario_geometry.py` |
 | `tools/test_arbiter.py` | 33,212 | 830 |
 | `docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md` | 61,754 | 658 |
 
@@ -540,7 +541,7 @@ Only one block was deleted: the 18-line `if(InpAlertOnMTFExecutionEntry){…}` a
 
 ### 7a. The ten deterministic scenarios
 
-ATR = 2.00 in every scenario; `_Point` = 0.01; zones `R 108.00-109.00 strength 80` and `S 90.00-91.00 strength 78`; INTRADAY preset unless stated; `n = 40` bars (39 = last closed, 40 = forming).
+ATR is **2.00 in every scenario, in both harnesses** (`QST_ATR` in `QSMC_Selftest.mqh`, asserted by **T00**); `_Point` = 0.01; zones `R 108.00-109.00 strength 80` and `S 90.00-91.00 strength 78`; INTRADAY preset unless stated; `n = 40` bars (39 = last closed, 40 = forming).
 
 | # | Setup | Expected decision | Expected reason | MQL5 assertion | Python assertion |
 |---|---|---|---|---|---|
@@ -556,6 +557,27 @@ ATR = 2.00 in every scenario; `_Point` = 0.01; zones `R 108.00-109.00 strength 8
 | 10 | No series loaded | **No signal** | `data not ready: chart series not ready` | T10a-b | T10 |
 
 Both harnesses print one line per assertion and a final count.
+
+**A defect the cross-check exposed, and how it is now guarded.** The MQL5
+scenario bars were originally written assuming ATR = 2.00, but the harness's
+own `Flat(QST_BARS, base, 0.30, ...)` generates bars with a true range of
+`2 x 0.30`, so the Wilder ATR converged to **0.60**, not 2.00. Because every
+distance in every scenario is expressed in ATR units, that single unit error
+silently invalidated the geometry:
+
+| Scenario | Intended | Actual at ATR = 0.60 |
+|---|---|---|
+| T01 | bounded rejection, penetration 0.20 ATR | penetration **0.67 ATR** vs a 0.35 cap → no rejection → **T01a would FAIL** |
+| T07 | SELL then a genuine BUY acceptance | the first bar also over-penetrates; the second bar's close 109.10 did not clear 109.00 + 0.30x0.60, so it was neither an acceptance nor a rejection → **T07 untestable** |
+| T06 | 30 bars each rejecting the zone | only k >= 23 reached the band; 7 of 30 valid → passed, but could not detect a removed anti-spam lock |
+| T08 | two charts, one symbol | same bar as T01 → no publication at all → passed trivially |
+
+Fixed by driving `Flat()` from a single `QST_ATR` constant (`QST_HALF = QST_ATR/2`),
+rewriting the T06 and T07 bars, and adding **T00**, which measures the
+synthetic ATR and fails if it drifts more than 5 % from `QST_ATR` — so a unit
+mismatch of this class can no longer pass silently. `tools/check_scenario_geometry.py`
+ports `Flat()`, `ComputeWilderATR()` and the touch/penetration/acceptance/closed-back
+decision and predicts every scenario's arithmetic offline.
 
 ### 7b. Harness 1 — MQL5 Script (runs in the terminal)
 

@@ -21,6 +21,15 @@
 
 #define QST_BARS 40
 
+//--- The synthetic ATR the scenarios are designed against. Flat() builds
+//--- bars with a true range of exactly 2*half, so half = QST_ATR/2 makes
+//--- the Wilder ATR converge to QST_ATR. Every distance in every scenario
+//--- below is expressed in these ATR units; T00 asserts the assumption so
+//--- a mismatch between the data and the thresholds cannot pass silently.
+#define QST_ATR   2.00
+#define QST_HALF  (QST_ATR/2.0)
+#define QST_ATR_TOL 0.05   // tolerated relative error of the measured ATR
+
 //+------------------------------------------------------------------+
 class CArbSelfTest
   {
@@ -166,6 +175,7 @@ public:
           "  point "+DoubleToString(_Point,_Digits));
       Say("=========================================================");
 
+      T00_HarnessAtrAssumption();
       T01_RejectionConfirmedOnce();
       T02_BreakoutContinuationNoCounter();
       T03_SellInsideSupportBlocked();
@@ -184,6 +194,36 @@ public:
      }
 
    //==================================================================
+   // T00 - GUARD: the synthetic series must actually produce the ATR the
+   //       scenarios are written against. Every distance below is in ATR
+   //       units, so if this drifts the other assertions become meaningless
+   //       (they can even pass for the wrong reason). This turns a silent
+   //       unit error into a loud failure.
+   //==================================================================
+   void              T00_HarnessAtrAssumption()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);
+      CQuantumRoot r;
+      if(!NewRoot(r,cfg)) { Check(false,"T00 setup",""); return; }
+
+      double o[],h[],l[],c[]; datetime t[]; long v[];
+      Flat(QST_BARS,105.0,QST_HALF,1000,
+           (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
+
+      double eo[],eh[],el[],ec[]; datetime et[]; long ev[];
+      Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
+      if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
+        { Check(false,"T00 synthetic load",""); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T00 context",r.Ctx().data_reason); return; }
+
+      double measured=r.Ctx().atr;
+      double err=MathAbs(measured-QST_ATR)/QST_ATR;
+      Check(err<=QST_ATR_TOL,"T00 the synthetic ATR matches QST_ATR",
+            StringFormat("expected %.2f measured %.4f err %.1f%%",
+                         QST_ATR,measured,err*100.0));
+     }
+
+   //==================================================================
    // T01 - price touches RESISTANCE, the closed bar rejects.
    //   expect: SELL CONFIRMED exactly once, then NO repeat for 20 bars.
    //==================================================================
@@ -195,7 +235,7 @@ public:
       if(!NewRoot(r,cfg)) { Check(false,"T01 setup",""); return; }
 
       double o[],h[],l[],c[]; datetime t[]; long v[];
-      Flat(QST_BARS,105.0,0.30,1000,
+      Flat(QST_BARS,105.0,QST_HALF,1000,
            (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
       //--- approach
       SetBar(37,105.20,107.00,105.00,106.80,1000,o,h,l,c,v);
@@ -272,7 +312,7 @@ public:
       if(!NewRoot(r,cfg)) { Check(false,"T02 setup",""); return; }
 
       double o[],h[],l[],c[]; datetime t[]; long v[];
-      Flat(QST_BARS,106.0,0.30,1000,
+      Flat(QST_BARS,106.0,QST_HALF,1000,
            (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
       SetBar(37,106.00,108.60,105.90,108.40,1000,o,h,l,c,v);
       //--- acceptance: closed 1.00 above the zone top (0.50 ATR > 0.30)
@@ -317,7 +357,7 @@ public:
 
       double o[],h[],l[],c[]; datetime t[]; long v[];
       //--- price sits INSIDE the support band 90.00-91.00
-      Flat(QST_BARS,90.50,0.15,1000,
+      Flat(QST_BARS,90.50,QST_HALF,1000,
            (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
       SetBar(38,90.60,90.90,90.30,90.40,2000,o,h,l,c,v);   // bearish bar inside support
 
@@ -362,7 +402,7 @@ public:
       if(!NewRoot(r,cfg)) { Check(false,"T04 setup",""); return; }
 
       double o[],h[],l[],c[]; datetime t[]; long v[];
-      Flat(QST_BARS,100.0,0.30,1000,
+      Flat(QST_BARS,100.0,QST_HALF,1000,
            (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
       SetBar(38,100.00,101.00,99.50,100.80,2000,o,h,l,c,v);
 
@@ -402,7 +442,7 @@ public:
       if(!NewRoot(r,cfg)) { Check(false,"T05 setup",""); return; }
 
       double o[],h[],l[],c[]; datetime t[]; long v[];
-      Flat(QST_BARS,106.0,0.30,1000,
+      Flat(QST_BARS,106.0,QST_HALF,1000,
            (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
       SetBar(37,106.00,108.60,105.90,108.40,1000,o,h,l,c,v);
       SetBar(38,106.80,109.40,106.70,107.10,2000,o,h,l,c,v);   // closed rejection
@@ -456,7 +496,7 @@ public:
       MakeZone(zs[1],ZR_SUPPORT,90.00,91.00,78);
 
       double o[],h[],l[],c[]; datetime t[]; long v[];
-      Flat(QST_BARS,106.0,0.30,1000,
+      Flat(QST_BARS,106.0,QST_HALF,1000,
            (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
       SetBar(37,105.20,107.00,105.00,106.80,1000,o,h,l,c,v);
       SetBar(38,106.80,109.40,106.70,107.10,2000,o,h,l,c,v);
@@ -469,9 +509,13 @@ public:
          for(int i=0;i<QST_BARS-1;i++)
            { o[i]=o[i+1]; h[i]=h[i+1]; l[i]=l[i+1]; c[i]=c[i+1]; t[i]=t[i+1]; v[i]=v[i+1]; }
          int m=QST_BARS-1;
-         double base=107.10+0.02*(double)k;
-         SetBar(m-1,base,base+0.45,base-0.10,base+0.30,(k%3==0?2200:1000),o,h,l,c,v);
-         SetBar(m,  base+0.30,base+0.55,base+0.10,base+0.35,1000,o,h,l,c,v);
+         //--- A genuine closed-bar rejection every single iteration: the
+         //--- bar spikes through 108.00-109.00 and closes back below it.
+         //--- (The previous data only touched the band for k>=23, so the
+         //--- assertion passed even with the anti-spam locks removed.)
+         double base=107.20+0.01*(double)k;
+         SetBar(m-1,base-0.10,109.30,107.00,base,(k%3==0?2200:1000),o,h,l,c,v);
+         SetBar(m,  base,base+0.25,base-0.20,base+0.15,1000,o,h,l,c,v);
 
          double eo[],eh[],el[],ec[]; datetime et[]; long ev[];
          Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
@@ -508,7 +552,7 @@ public:
       MakeZone(zs[1],ZR_SUPPORT,90.00,91.00,78);
 
       double o[],h[],l[],c[]; datetime t[]; long v[];
-      Flat(QST_BARS,107.0,0.30,1000,
+      Flat(QST_BARS,107.0,QST_HALF,1000,
            (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
       SetBar(37,106.80,107.60,106.70,107.20,1000,o,h,l,c,v);
       SetBar(38,107.20,109.30,107.10,107.30,2000,o,h,l,c,v);   // SELL rejection
@@ -533,8 +577,10 @@ public:
       for(int i=0;i<QST_BARS-1;i++)
         { o[i]=o[i+1]; h[i]=h[i+1]; l[i]=l[i+1]; c[i]=c[i+1]; t[i]=t[i+1]; v[i]=v[i+1]; }
       int m=QST_BARS-1;
-      SetBar(m-1,107.30,109.20,107.20,109.10,2000,o,h,l,c,v);   // acceptance up
-      SetBar(m,  109.10,109.50,109.00,109.30,1000,o,h,l,c,v);
+      //--- break_atr(0.30) x QST_ATR(2.00) = 0.60, so the close must exceed
+      //--- 109.60 for this to be an ACCEPTANCE rather than another rejection.
+      SetBar(m-1,107.30,110.30,107.20,110.00,2000,o,h,l,c,v);   // acceptance up
+      SetBar(m,  110.00,110.40,109.80,110.20,1000,o,h,l,c,v);
       Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
       if(r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
         {
@@ -580,7 +626,7 @@ public:
       MakeZone(zs[1],ZR_SUPPORT,90.00,91.00,78);
 
       double o[],h[],l[],c[]; datetime t[]; long v[];
-      Flat(QST_BARS,105.0,0.30,1000,
+      Flat(QST_BARS,105.0,QST_HALF,1000,
            (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
       SetBar(37,105.20,107.00,105.00,106.80,1000,o,h,l,c,v);
       SetBar(38,106.80,109.40,106.70,107.10,2000,o,h,l,c,v);
@@ -620,7 +666,7 @@ public:
       if(!NewRoot(r,cfg)) { Check(false,"T09 setup",""); return; }
 
       double o[],h[],l[],c[]; datetime t[]; long v[];
-      Flat(QST_BARS,105.0,0.30,1000,
+      Flat(QST_BARS,105.0,QST_HALF,1000,
            (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
       SetBar(37,105.20,107.00,105.00,106.80,1000,o,h,l,c,v);
       //--- a WEAK rejection: small wick, no volume, no displacement,
