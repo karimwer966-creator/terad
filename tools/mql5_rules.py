@@ -872,8 +872,8 @@ def check_unit(files, types=None, base=None):
 def norm_ver(major, minor, patch=None):
     """One comparable tuple for the two ways MQL5 writes a version.
 
-    `#property version` takes the MT5 form 6.63 (patch folded into the minor,
-    two components), while the source text uses v6.6.3. D10a already compares
+    `#property version` takes the MT5 form `X.YZ` (patch folded into the minor,
+    two components), while the source text uses `vX.Y.Z`. D10a already compares
     them as "%s.%s" % (major, minor + patch); the companion checks need the same
     normalisation or every correctly-numbered file looks stale.
     """

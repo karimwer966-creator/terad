@@ -94,6 +94,16 @@ private:
    bool              m_deinit_done;
    bool              m_cfg_locked;
    bool              m_bias_external;
+   //--- INSTRUMENT IDENTITY. Set once in Init() from the caller's arguments and
+   //--- read everywhere else. This root used to consult _Symbol/_Period inside
+   //--- Refresh()/BuildContext(), which is harmless while one indicator instance
+   //--- serves one chart and quietly wrong the moment the same object is reused
+   //--- (a service EA, a chart-switching panel): the context would describe chart
+   //--- A while the decision was made about symbol B, and the digits/point used
+   //--- for a price comparison would be the *chart's*, not the instrument's.
+   string            m_symbol;
+   ENUM_TIMEFRAMES   m_chart_tf;
+   ENUM_TIMEFRAMES   m_exec_tf;
    int               m_ext_d1, m_ext_h4, m_ext_h1;
    bool              m_ext_h1_known;
 
@@ -132,7 +142,11 @@ public:
                      CQuantumRoot()
      { m_ready=false; m_zone_src_n=0; m_tac_n=0; m_tac_bar_time=0;
        m_last_state=(int)SIG_NONE; m_last_text=""; m_bars=0; m_deinit_done=false;
-       m_cfg_locked=false; m_bias_external=false; m_ext_h1_known=true; }
+       m_cfg_locked=false; m_bias_external=false; m_ext_h1_known=true;
+       m_ext_d1=0; m_ext_h4=0; m_ext_h1=0;
+       //--- bound to nothing until Init() says otherwise; Ready() is false, so
+       //--- no pipeline can read these before a real instrument is set
+       m_symbol=""; m_chart_tf=PERIOD_CURRENT; m_exec_tf=PERIOD_CURRENT; }
 
                     ~CQuantumRoot() { Deinit(); }
 
@@ -211,6 +225,9 @@ public:
    //--- Full snapshots for a host that wants everything at once. A struct IS
    //--- a value type in MQL5, so copying it out is legal (the arbiter does the
    //--- same thing internally); only RETURNING a reference is not.
+   string            Instrument() const { return m_symbol; }
+   ENUM_TIMEFRAMES   ChartTf()    const { return m_chart_tf; }
+   ENUM_TIMEFRAMES   ExecTf()     const { return m_exec_tf;  }
    void              GetContext(SGateCtx &out) const { out=m_ctx; }
    void              GetPrimaryCandidate(SSignalCandidate &out) const { out=m_rep.primary; }
 
@@ -224,18 +241,28 @@ public:
                           const int min_sample,const bool draw)
      {
       m_deinit_done=false;
-      m_preset.Build(m_cfg,chart_tf);
-      if(!m_md.Init(symbol,chart_tf,exec_tf,bars,atr_period)) return false;
+      m_symbol=(symbol==""?_Symbol:symbol);
+      m_chart_tf=(chart_tf==PERIOD_CURRENT || (int)chart_tf==0
+                  ?(ENUM_TIMEFRAMES)_Period:chart_tf);
+      m_exec_tf=(exec_tf==PERIOD_CURRENT || (int)exec_tf==0
+                 ?m_chart_tf:exec_tf);
+      m_preset.Build(m_cfg,m_chart_tf);
+      if(!m_md.Init(m_symbol,m_chart_tf,m_exec_tf,bars,atr_period)) return false;
       m_alerts.Init(m_cfg.dedupe_ring);
       m_arbiter.Init(GetPointer(m_alerts),tactical_may_confirm,gate_core);
       m_render.Init(0,0,draw);
       if(csv_log) m_stats.Open(symbol,chart_tf,min_sample);
       m_ready=true;
       m_bars=0;
-      Print("[QSMC_ARB] v6.6.3 arbitration layer ON | preset ",m_preset.EffectiveName(),
+      Print("[QSMC_ARB] v6.6.4 arbitration layer ON | preset ",m_preset.EffectiveName(),
             " | gates ",IntegerToString(m_arbiter.GateCount()),
-            " | exec TF ",QSMC_TFName(exec_tf),
-            " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"));
+            " | exec TF ",QSMC_TFName(m_exec_tf),
+            " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"),
+            //--- the identity every threshold in this build is measured against.
+            //--- It is in the first line on purpose: a wrong symbol, a wrong chart
+            //--- timeframe or a stale copy of the layer is visible HERE, before it
+            //--- becomes a signal that is quietly wrong by a factor of ten points.
+            " | on ",m_symbol," ",QSMC_TFName(m_chart_tf));
       return true;
      }
 
@@ -294,7 +321,7 @@ public:
        //--- here used to silently discard whatever LockConfig() installed on
        //--- the very first bar, because BuildContext() honours the lock and
        //--- this line did not.
-       if(!m_cfg_locked) m_preset.Build(m_cfg,(ENUM_TIMEFRAMES)_Period);
+       if(!m_cfg_locked) m_preset.Build(m_cfg,m_chart_tf);
       if(!m_cfg.enabled)
         {
          ResetContext("arbitration disabled (InpArbEnabled=false)");
@@ -311,11 +338,11 @@ public:
    bool              BuildContext(const double spread_points)
      {
       if(!m_ready) return false;
-      if(!m_cfg_locked) m_preset.Build(m_cfg,(ENUM_TIMEFRAMES)_Period);
+      if(!m_cfg_locked) m_preset.Build(m_cfg,m_chart_tf);
 
       //--- reset the context; every field is set explicitly below
-      m_ctx.symbol=_Symbol;
-      m_ctx.tf=(ENUM_TIMEFRAMES)_Period;
+      m_ctx.symbol=m_symbol;
+      m_ctx.tf=m_chart_tf;
       m_ctx.closed_index=-1;
       m_ctx.closed_time=0;
       m_ctx.bar_index=-1;
@@ -323,10 +350,14 @@ public:
       m_ctx.bar_closed=false;
       m_ctx.price=0.0;
       m_ctx.atr=0.0;
-      m_ctx.point=_Point;
-      m_ctx.tick_size=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
-      if(!(m_ctx.tick_size>0.0)) m_ctx.tick_size=_Point;
-      m_ctx.digits=(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS);
+      {
+       double pt=SymbolInfoDouble(m_symbol,SYMBOL_POINT);
+       if(!(pt>0.0)) pt=_Point;                       // terminal fallback
+       m_ctx.point=pt;
+       m_ctx.tick_size=SymbolInfoDouble(m_symbol,SYMBOL_TRADE_TICK_SIZE);
+       if(!(m_ctx.tick_size>0.0)) m_ctx.tick_size=pt;
+       m_ctx.digits=(int)SymbolInfoInteger(m_symbol,SYMBOL_DIGITS);
+      }
       m_ctx.spread_points=spread_points;
       m_ctx.data_ready=false;
       m_ctx.data_reason="context not built";
@@ -373,15 +404,19 @@ public:
 
    void              ResetContext(const string reason)
      {
-      m_ctx.symbol=_Symbol;
-      m_ctx.tf=(ENUM_TIMEFRAMES)_Period;
+      m_ctx.symbol=m_symbol;
+      m_ctx.tf=m_chart_tf;
       m_ctx.closed_index=-1; m_ctx.closed_time=0;
       m_ctx.bar_index=-1;    m_ctx.bar_time=0;   m_ctx.bar_closed=false;
       m_ctx.price=0.0; m_ctx.atr=0.0;
-      m_ctx.point=_Point;
-      m_ctx.tick_size=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
-      if(!(m_ctx.tick_size>0.0)) m_ctx.tick_size=_Point;
-      m_ctx.digits=(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS);
+      {
+       double pt=SymbolInfoDouble(m_symbol,SYMBOL_POINT);
+       if(!(pt>0.0)) pt=_Point;                       // terminal fallback
+       m_ctx.point=pt;
+       m_ctx.tick_size=SymbolInfoDouble(m_symbol,SYMBOL_TRADE_TICK_SIZE);
+       if(!(m_ctx.tick_size>0.0)) m_ctx.tick_size=pt;
+       m_ctx.digits=(int)SymbolInfoInteger(m_symbol,SYMBOL_DIGITS);
+      }
       m_ctx.spread_points=0.0;
       m_ctx.data_ready=false;
       m_ctx.data_reason=reason;
@@ -577,7 +612,9 @@ public:
         {
          double ex_atr=ex.ATRAt(eidx);
          if(!(ex_atr>0.0)) ex_atr=m_ctx.atr;
-         const CBarSeries *ltf=(f.exec_tf==(ENUM_TIMEFRAMES)_Period ? NULL : ex);
+         //--- compared against the chart this root was built for, not against
+         //--- whatever chart happens to be current when the line runs
+         const CBarSeries *ltf=(f.exec_tf==m_chart_tf ? NULL : ex);
          have_fact=m_reaction.Evaluate(z,*ex,eidx,ex_atr,m_cfg,ltf,rf);
         }
 

@@ -165,7 +165,7 @@ def make_series(n, start, step_hours, closes):
 
 
 print("=" * 72)
-print(" QSMC v6.6.3 PART C PHASE 7 - SCANNER ARITHMETIC CHECK")
+print(" QSMC v6.6.4 PART C PHASE 7 - SCANNER ARITHMETIC CHECK")
 print("=" * 72)
 
 # ---------------------------------------------------------------- T1-T3

@@ -36,7 +36,7 @@ jobs:
           mkdir -p out
           python3 -m py_compile tools/*.py
 
-      - name: Mechanical pass + MQL5 dialect rules D1-D11
+      - name: Mechanical pass + MQL5 dialect rules D1-D12
         run: python3 tools/static_check.py 2>&1 | tee out/static_check.log
 
       - name: Arbiter decision logic vs the MQL5 self-test (1:1)
@@ -51,6 +51,12 @@ jobs:
       - name: Host patch must stay idempotent (marker in nadir2.mq5)
         run: python3 tools/apply_qsmc_arb_patch.py --check 2>&1 | tee out/patch_check.log
 
+      # Separate from the static checks on purpose: they protect the code, this
+      # one protects the deployment (single version, complete layout, documented
+      # inputs, no trade/network reach, no per-bar log flood).
+      - name: release gate
+        run: python3 tools/check_release_gate.py 2>&1 | tee out/release_gate.log
+
       - name: No stale copy of a header may be committed
         run: |
           dup=$(git ls-files 'MQL5/**' | while read -r f; do basename "$f"; done | sort | uniq -d)
@@ -63,7 +69,7 @@ jobs:
         run: |
           echo "NOT COMPILED HERE. Open nadir2.mq5 in MetaEditor and press F7."
           echo "The init log must read:"
-          echo '  [QSMC_ARB] v6.6.2 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ...'
+          echo '  [QSMC_ARB] v6.6.4 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ...'
           echo "Any other version in that line means a stale copy is in the Data Folder."
 
       - uses: actions/upload-artifact@v4

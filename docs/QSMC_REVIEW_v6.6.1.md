@@ -1,4 +1,4 @@
-# QSMC review + fix report — v6.6.1 → v6.6.3
+# QSMC review + fix report — v6.6.1 → v6.6.4
 
 Reviewed: `nadir2.mq5` (39 792 lines, CRLF) + the 15 headers of
 `MQL5/Include/QSMC` + `MQL5/Scripts/QSMC_ArbiterTest.mq5` +
@@ -277,12 +277,13 @@ Not changed, checked line by line:
 | # | Finding | Why it is not urgent | Suggested step |
 |---|---|---|---|
 | 1 | ~~`QSMC_Scanners.mqh` is included by nobody~~ **closed in v6.6.3** — `MQL5/Indicators/QSMC_ScannerProbe.mq5` is its host, and four defects came out with it (§3.5) | it is Phase 7 code waiting for a host; the probe keeps it compiled and its arithmetic is tested offline | next step is the `CFX*` panel the phase brief wanted, so the rows reach the dashboard instead of a `Comment()` |
-| 2 | `BuildContext()` reads `_Symbol`/`_Period` instead of the values passed to `Init()` | an indicator instance is per-chart, so they always agree today | keep `m_symbol`/`m_tf` fields and use them, if the root is ever reused by a service EA |
+| 2 | ~~`BuildContext()` reads `_Symbol`/`_Period` instead of the values passed to `Init()`~~ **closed in v6.6.4** — `CQuantumRoot` now binds `m_symbol` / `m_chart_tf` / `m_exec_tf` at `Init()`, resolves `PERIOD_CURRENT` once, derives `point`/`tick_size`/`digits` for **that** symbol, and compares `f.exec_tf` with `m_chart_tf` | it was latent, not active: an indicator instance is per-chart, so the two agreed — until a service EA or a second symbol reused the root, at which point every ATR-relative threshold would silently be measured in another instrument's points | a host that must *show* what the numbers belong to calls `Instrument()` / `ChartTf()` / `ExecTf()`; the `_Point` fallback stays only so `LoadSynthetic()` can drive the production path from a test chart |
 | 3 | `static_check.py`'s new/delete count is a per-file heuristic (4 warnings forever) | the runtime ledger is the real check | make the warning disappear only by teaching it about `Shutdown()` pairs — cosmetic |
 | 4 | ~~no CI gate~~ **closed in v6.6.2** — `.github/workflows/qsmc-verify.yml` runs the five offline checks on every push/PR | F7 still cannot be automated here | a Windows runner with MetaEditor, or the manual attestation the workflow prints |
 | 5 | `nadir2.mq5` is 39.8 k lines of legacy code around 6.6 k lines of clean subsystem | the audit trail (AUDIT-01…05) is inside the file and useful | extract the ZRE / RXN / SigLog sections into `Include/QSMC/` one layer at a time, each with its own self-test |
 | 6 | the self-test lives in the terminal only | `tools/test_arbiter.py` covers the decision logic offline, but not the MQL5 harness wiring | keep both; run `tools/check_scenario_geometry.py` whenever a scenario's numbers change |
 | 7 | D6 and D11 infer a variable's type from the nearest *visible* declaration, so they are heuristic, and they skip `nadir2.mq5` | they never fire on the current subsystem and each was proved with an injected typo | only worth replacing with a real declaration table if a rule starts lying; until then F7 is the proof |
+| 8 | `check_release_gate.py` G5 recognises "the per-bar path" by function *name* (`Refresh`, `FinalizeBar`, `BuildContext`, …), so a renamed bar-path function escapes it | the names it matches are the header's own public API, and the gate prints how many sites it examined, so a check that stopped finding its sites is visible | give it a real call graph (who calls `FinalizeBar`) if the subsystem ever grows a second per-bar entry point |
 
 ---
 
@@ -347,6 +348,52 @@ Not changed, checked line by line:
 * `.gitattributes` — `*.mq5`/`*.mqh` pinned `-text`, so no `core.autocrlf` box can
   turn the 39 792-line CRLF host into a whole-file diff.
 
-**Still required from you:** F7 in MetaEditor. Everything in this file is either a
-mechanical check or a reading; only the compiler is the proof. What v6.6.2 did **not**
-do: change a decision, a gate, an input or a drawing — see §5 for what is still open.
+### 6.4 v6.6.4 — production-shaped, and a gate for it
+
+* `MQL5/Include/QSMC/QSMC_Root.mqh` — the root binds its own identity:
+  `m_symbol`, `m_chart_tf`, `m_exec_tf` (set in `Init()`, zeroed-and-documented in the
+  constructor, `PERIOD_CURRENT` resolved once instead of re-read from whatever chart is
+  current), `point`/`tick_size`/`digits` read from `SymbolInfoDouble/Integer(m_symbol, …)`
+  in `BuildContext()` and `ResetContext()` alike, and `f.exec_tf` compared against
+  `m_chart_tf`. New: `Instrument()`, `ChartTf()`, `ExecTf()`.
+* `tools/check_release_gate.py` — **new**: the deployment gate (G1 one version across
+  code/banner/docs titles, G2 complete layout, G3 every input documented and the chatty
+  ones off by default, G4 no trade/network/file reach outside the one owner, G5 no
+  unguarded log on the per-bar path, G5b the feeder ships inert, G6 no leftover markers,
+  G7 CI must run the gate). `GO`/`NO-GO`, exit code to match, wired into CI.
+* Logging and cross-chart locks were **audited rather than assumed**: every `Print` in
+  the headers sits in `Init`/`Deinit`/`LeakReport`/`LoadSynthetic` (a one-shot test seam)
+  or behind `InpArbVerboseLog`; the alert claim is keyed per `symbol + bar_time` with a
+  sweep of `v<=0` and entries older than `QSMC_GV_TTL_SEC` (604 800 s), so a crash can
+  block at most the bar it died on. Both properties are now gated, not remembered.
+* `docs/QSMC_PRODUCTION_CHECKLIST.md` — **new**: go/no-go, install verification, the
+  three deliberate first-hour tests (duplicate chart, dead feed, mid-bar restart),
+  the 24-hour metric table with abort thresholds, alert routing defaults, failure-mode
+  table, two-level rollback, and the sign-off boxes.
+* Version closed at `6.64` / `"v6.6.4"` in the host, all three companion programs, the
+  layer banner, the docs' titles, the expected-log lines and the CI echo. `mql5_rules.py`
+  (D10) and the gate (G1) are both green on the whole set, which is what makes a bump
+  like this safe to do by hand; `tools/mql5_rules.py`'s prose no longer hard-codes an
+  example version, so it cannot go stale again.
+* `.gitattributes` earned its keep the hard way: a `text eol=lf` draft silently
+  normalised the 39 792-line CRLF host in the *index* while `git status` stayed clean,
+  and `git diff --numstat origin/main...HEAD` showed 79 573 changed lines before the PR
+  went out. Fixed with `git add --renormalize`; verified with `git ls-files --eol` →
+  `i/crlf w/crlf attr/-text` and a PR diff of `nadir2.mq5  +21 −12`. **`git status`
+  being clean does not mean the indexed blob is unchanged** — with an EOL rule change,
+  only `--renormalize` re-hashes it.
+* The gate's first run produced 28 findings, 27 of which were its own bugs
+  (a name-extraction regex that printed `?()`, a blanket ban that punished the
+  companion EA for doing its documented job, and an input name I had misremembered as
+  `InpArbCsvLog` instead of `InpArbCSVLog`). Kept as a lesson in the file: **a gate's
+  first run is a test of the gate**, and the exemptions are written down with reasons
+  (`ALLOW_SITE`) so a reviewer can argue with them instead of deleting them.
+
+**Still required from you:** F7 in MetaEditor, on all four program files — nothing in
+this repository has been compiled here, including v6.6.4's change to `QSMC_Root.mqh`.
+Everything in this file is either a mechanical check or a reading; only the compiler is
+the proof, and `docs/QSMC_PRODUCTION_CHECKLIST.md` §2 is where that proof gets
+recorded. What v6.6.4 did **not** do: change a decision, a gate, an input default or a
+drawing — the only behavioural change is *which instrument's* `point`/`digits` the
+context is built from, which is now the one the root was initialised with. See §5 for
+what is still open.
