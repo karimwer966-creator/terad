@@ -35,7 +35,7 @@ v6.6.2: literal hygiene + the CI gate).
 5. راجع تبويب `Experts`/`Journal`: السطر الأول يجب أن يكون
    `[QSMC_ARB] v6.6.4 arbitration layer ON | preset …`.
 6. للاختبار الذاتي: اسحب `QSMC_ArbiterTest` (Scripts) على أي مخطط —
-   النتيجة المطلوبة `RESULT: 22 passed, 0 failed`.
+   النتيجة المطلوبة `RESULT: 45 passed, 0 failed` (includes quant, structure, and zone-scoring assertions).
 7. للتحقق بدون MT5 (من الطرفية، داخل المستودع):
    `python3 tools/static_check.py` ثم `python3 tools/test_arbiter.py`.
 8. **قبل تشغيله على مخطط حقيقي**: `python3 tools/check_release_gate.py` —
@@ -65,7 +65,7 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 
 ```
 <Data Folder>\MQL5\
-├─ Include\QSMC\QSMC_Types.mqh          <- all 15 headers go here, flat
+├─ Include\QSMC\QSMC_Types.mqh          <- all 18 headers go here, flat
 ├─ Include\QSMC\QSMC_MarketData.mqh
 ├─ Include\QSMC\…  (QSMC_Zones, _Reaction, _Bias, _Preset, _Gates,
 │                   _AlertManager, _Arbiter, _Stats, _Renderer, _Root,
@@ -94,7 +94,7 @@ layer able to trade or reach the network, and no log line on the per-bar path.
 1. MetaEditor → `File → Open Data Folder` → copy the files as above.
 2. Open `nadir2.mq5`, press **F7**. Then `QSMC_ArbiterTest.mq5`, then
    `KLJ_DataFeeder.mq5`, then — if you want the Phase 7 scanners —
-   `QSMC_ScannerProbe.mq5`. Every one of them pulls in the same 15 headers, so
+   `QSMC_ScannerProbe.mq5`. Every one of them pulls in the same 18 headers, so
    compiling any of them proves those headers; compiling the probe is the only
    thing that proves `QSMC_Scanners.mqh`.
 3. Target: **`0 errors, 0 warnings`** in the Results tab.
@@ -146,7 +146,7 @@ On removal (`OnDeinit`) the layer prints its own audit:
 
 ```
 [QSMC_ARB] stop | bars 412 | published 3 | suppressed 7
-[QSMC_ARB] outcomes: ...                       (only with InpArbCSVLog=true)
+[QSMC_ARB] outcomes: ...                       (session outcomes; EdgeBook persistence only with InpArbCSVLog=true)
 [QSMC_ARB] alloc/free: market 5/5 | gates 10/10 | chart objects created/deleted 18/18 => no leak
 ```
 
@@ -195,13 +195,13 @@ PASS  T00 the synthetic ATR matches QST_ATR              [expected 0.60 ...]
 PASS  T01a SELL published at resistance                  [state=CONFIRMED ...]
 ...
 ---------------------------------------------------------
- RESULT: 22 passed, 0 failed
+ RESULT: 45 passed, 0 failed
 ---------------------------------------------------------
 ```
 
 | Scenario | What it pins down |
 |---|---|
-| T00 | the harness really produces the ATR the other scenarios are written against |
+| T00 | harness ATR geometry plus weighted HTF/local direction and warning-only early-break input handling |
 | T01 | a closed rejection at resistance publishes **one** SELL, and never a second one on the same or the next 20 bars |
 | T02 | a closed break above resistance publishes a BUY, not a SELL at the same level |
 | T03 | the reported defect: a SELL inside a **support** zone is refused |
@@ -212,6 +212,9 @@ PASS  T01a SELL published at resistance                  [state=CONFIRMED ...]
 | T08 | two charts of one symbol publish at most one alert (GlobalVariable lock) |
 | T09 | a candidate opposed by the HTF bias is downgraded and the reason says COUNTER-TREND |
 | T10 | empty series → `BuildContext()` returns false, no signal, reason = data not ready |
+| T11 | EW/CUSUM/Wilson/tick-volume profile arithmetic and invalid-input handling |
+| T12 | causal swing confirmation, close-only BOS/CHoCH, and sweep-vs-break distinction |
+| T14 | zone scorer hard gates, missing-input reporting, and bounded context rank |
 
 Any `FAIL` line prints the measured value; the exit code of the script is the
 failure count (visible in the last line `RESULT: x passed, y failed`).
@@ -226,6 +229,11 @@ python3 tools/test_arbiter.py            # independent Python mirror of the gate
 python3 tools/test_arbiter.py -v         # every scenario, printed
 python3 tools/check_scenario_geometry.py # predicts the ATR geometry of every T0x
 python3 tools/test_scanners.py           # arithmetic of QSMC_Scanners.mqh
+python3 tools/test_quant_stats.py        # EW/CUSUM/Wilson/tick-volume profile
+python3 tools/test_structure.py          # causal confirmed structure events
+python3 tools/test_early_break.py        # warning-only heuristic contract
+python3 tools/test_zone_scoring.py       # hard gates + normalized zone rank
+python3 tools/test_edgebook_contract.py  # versioned storage/dedup contract
 python3 tools/mql5_rules.py --root DIR   # dialect rules only, for another tree
 python3 tools/apply_qsmc_arb_patch.py --check
 python3 tools/check_release_gate.py      # go/no-go for a live chart (G1-G7)

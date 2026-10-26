@@ -68,6 +68,30 @@ public:
      }
 
    //------------------------------------------------------------------
+   // Stable, chart-corner market-direction label. The score is explicitly
+   // a confluence heuristic, never a calibrated probability.
+   //------------------------------------------------------------------
+   void              DrawDirection(const int direction,const int score,const string text)
+     {
+      if(!m_enabled || text=="") return;
+      string nm=QSMC_ARB_PFX+"MARKET_DIRECTION";
+      string display=text;
+      if(StringLen(display)>180) display=StringSubstr(display,0,180);
+      Make(nm,OBJ_LABEL,0,0.0);
+      ObjectSetInteger(m_chart,nm,OBJPROP_CORNER,CORNER_RIGHT_UPPER);
+      ObjectSetInteger(m_chart,nm,OBJPROP_XDISTANCE,10);
+      ObjectSetInteger(m_chart,nm,OBJPROP_YDISTANCE,18);
+      ObjectSetInteger(m_chart,nm,OBJPROP_COLOR,(direction>0?clrLime:(direction<0?clrTomato:clrOrange)));
+      ObjectSetInteger(m_chart,nm,OBJPROP_FONTSIZE,9);
+      ObjectSetString(m_chart,nm,OBJPROP_FONT,"Consolas");
+      ObjectSetString(m_chart,nm,OBJPROP_TEXT,display);
+      ObjectSetString(m_chart,nm,OBJPROP_TOOLTIP,text+" | score "+IntegerToString(score)+" is heuristic, not probability");
+      ObjectSetInteger(m_chart,nm,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(m_chart,nm,OBJPROP_HIDDEN,true);
+      ObjectSetInteger(m_chart,nm,OBJPROP_BACK,false);
+     }
+
+   //------------------------------------------------------------------
    // Draw the published primary signal: arrow + two stacked labels.
    //------------------------------------------------------------------
    void              DrawPrimary(const SSignalCandidate &c,const SGateCtx &ctx,
@@ -118,6 +142,7 @@ public:
       double y2=(c.dir>0 ? y-off*0.55 : y+off*0.55);
       string t2="why: "+(c.reason!=""?c.reason:"all gates passed");
       if(c.reject_text!="") t2+=" | also blocked: "+c.reject_text;
+      if(c.extra!="") t2+=" | "+c.extra;
       if(StringLen(t2)>180) t2=StringSubstr(t2,0,180);
       Make(l2,OBJ_TEXT,c.bar_time,y2);
       ObjectMove(m_chart,l2,0,c.bar_time,y2);

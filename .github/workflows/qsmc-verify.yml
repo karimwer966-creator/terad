@@ -45,6 +45,21 @@ jobs:
       - name: Scanner arithmetic (fixed-point, no float drift)
         run: python3 tools/test_scanners.py 2>&1 | tee out/test_scanners.log
 
+      - name: Quantitative statistics (EW, CUSUM, Wilson, volume profile)
+        run: python3 tools/test_quant_stats.py 2>&1 | tee out/test_quant_stats.log
+
+      - name: Causal structure-event contracts
+        run: python3 tools/test_structure.py 2>&1 | tee out/test_structure.log
+
+      - name: Early-break warning contracts
+        run: python3 tools/test_early_break.py 2>&1 | tee out/test_early_break.log
+
+      - name: Zone scoring hard gates and factor model
+        run: python3 tools/test_zone_scoring.py 2>&1 | tee out/test_zone_scoring.log
+
+      - name: EdgeBook persistence contract
+        run: python3 tools/test_edgebook_contract.py 2>&1 | tee out/test_edgebook.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 

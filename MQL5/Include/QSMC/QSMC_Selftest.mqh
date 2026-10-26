@@ -176,6 +176,9 @@ public:
       Say("=========================================================");
 
       T00_HarnessAtrAssumption();
+      T11_QuantitativePrimitives();
+      T12_StructureCausality();
+      T14_ZoneScorer();
       T01_RejectionConfirmedOnce();
       T02_BreakoutContinuationNoCounter();
       T03_SellInsideSupportBlocked();
@@ -191,6 +194,179 @@ public:
       Say(StringFormat(" RESULT: %d passed, %d failed",m_pass,m_fail));
       Say("---------------------------------------------------------");
       return m_fail;
+     }
+
+   //==================================================================
+   // T14 - zone scorer hard gates, context factors, and missing data.
+   //==================================================================
+   void              T14_ZoneScorer()
+     {
+      CZoneScorer scorer;
+      SQZone z; MakeZone(z,ZR_SUPPORT,99.0,101.0,80);
+      z.touches=2;
+      SZoneScore aligned=scorer.Score(z,1,100.0,1.0,0.0,2.0,1,0.02);
+      Check(aligned.valid && aligned.total>=80 && aligned.total<=100,
+            "T14 valid aligned support gets a bounded zone rank",aligned.breakdown);
+      SZoneScore wrong_role=scorer.Score(z,-1,100.0,1.0,0.0,2.0,-1,0.02);
+      Check(!wrong_role.valid && StringFind(wrong_role.rejection,"role conflicts")>=0,
+            "T14 failed role gate cannot be overridden by score",wrong_role.rejection);
+      z.broken_closed=true;
+      SZoneScore broken=scorer.Score(z,1,100.0,1.0,0.0,2.0,1,0.02);
+      Check(!broken.valid,"T14 closed-break zone is rejected without flip/retest",broken.rejection);
+      z.broken_closed=false; z.state=ZST_BROKEN;
+      SZoneScore lifecycle=scorer.Score(z,1,100.0,1.0,0.0,2.0,1,0.02);
+      Check(!lifecycle.valid,"T14 broken lifecycle state cannot bypass its close flag",lifecycle.rejection);
+      z.flipped=true; z.retested=true; z.state=ZST_FLIPPED; z.role=ZR_RESISTANCE;
+      SZoneScore missing=scorer.Score(z,-1,100.0,1.0,0.0,-1.0,0,-1.0);
+      Check(missing.valid && (missing.missing_mask&QZS_MISSING_HTF)!=0 &&
+            (missing.missing_mask&QZS_MISSING_ROOM)!=0 &&
+            (missing.missing_mask&QZS_MISSING_SPREAD)!=0,
+            "T14 missing confluence inputs are explicit, not treated as agreement",missing.breakdown);
+     }
+
+   //==================================================================
+   // T12 - causal swing confirmation, BOS/CHoCH close semantics, and
+   //       once-per-closed-bar processing in the new structure engine.
+   //==================================================================
+   void              T12_StructureCausality()
+     {
+      CStructureEngine engine;
+      bool init=engine.Init(_Symbol,(ENUM_TIMEFRAMES)_Period,2,2,0.15,0.25,0.20,1.0,0.60);
+      MqlRates r[11];
+      for(int i=0;i<11;i++)
+        {
+         r[i].time=(datetime)(1000+i*60);
+         r[i].open=10.0; r[i].high=12.0; r[i].low=9.0; r[i].close=10.0;
+         r[i].tick_volume=100;
+        }
+      r[2].high=15.0; r[2].low=8.0;
+      r[6].high=18.0; r[6].low=7.0;
+      r[9].open=19.5; r[9].high=22.0; r[9].low=7.0; r[9].close=20.0;
+      r[10].open=7.0; r[10].high=8.0; r[10].low=6.0; r[10].close=6.5;
+      if(!init) { Check(false,"T12 structure engine init",""); return; }
+
+      SStructureEvent ev[];
+      bool causal=true, higher_high=false, bos=false, choch=false, invalidated=false;
+      datetime swing_available=0;
+      for(int i=4;i<11;i++)
+        {
+         if(!engine.ProcessClosed(r,i,r[i].time+(datetime)60,100.0,ev))
+           { causal=false; break; }
+         for(int e=0;e<ArraySize(ev);e++)
+           {
+            if(ev[e].type==MS_SWING_HIGH && ev[e].event_time==r[2].time)
+              {
+               if(i<4 || ev[e].available_time!=r[i].time+(datetime)60) causal=false;
+               swing_available=ev[e].available_time;
+              }
+            if(ev[e].type==MS_HIGHER_HIGH && ev[e].event_time==r[6].time) higher_high=true;
+            if(ev[e].type==MS_BOS_UP && ev[e].event_time==r[9].time) bos=true;
+            if(ev[e].type==MS_CHOCH_DOWN && ev[e].event_time==r[10].time) choch=true;
+            if(ev[e].type==MS_STRUCTURE_INVALIDATED && ev[e].event_time==r[10].time) invalidated=true;
+           }
+        }
+      Check(causal && swing_available==r[5].time,"T12 swing event is available only after right bars close","");
+      Check(higher_high,"T12 confirmed HH compares only with prior confirmed swing","");
+      Check(bos && engine.Trend()==-1,"T12 BOS requires a close beyond confirmed structure and state flips on CHoCH","");
+      Check(choch && invalidated,"T12 opposite close emits CHoCH and structural invalidation","");
+      bool duplicate_ok=engine.ProcessClosed(r,10,r[10].time+(datetime)60,100.0,ev);
+      Check(duplicate_ok && ArraySize(ev)==0 && engine.LastProcessedTime()==r[10].time,
+            "T12 duplicate closed-bar call is a no-op","");
+
+      CStructureEngine sweep_engine,break_engine;
+      bool init_s=sweep_engine.Init(_Symbol,(ENUM_TIMEFRAMES)_Period,2,2,0.15,0.25,0.20,1.0,0.60);
+      bool init_b=break_engine.Init(_Symbol,(ENUM_TIMEFRAMES)_Period,2,2,0.15,0.25,0.20,1.0,0.60);
+      MqlRates liq[10];
+      for(int j=0;j<10;j++)
+        {
+         liq[j].time=(datetime)(2000+j*60);
+         liq[j].open=10.0; liq[j].high=12.0; liq[j].low=9.0; liq[j].close=10.0;
+         liq[j].tick_volume=100;
+        }
+      liq[2].high=15.0; liq[6].high=15.0;
+      liq[9].open=15.5; liq[9].high=16.0; liq[9].low=14.0; liq[9].close=15.0;
+      bool saw_sweep=false,saw_equal_pool=false,saw_breakout_in_sweep=false;
+      if(init_s)
+        for(int j=4;j<10;j++)
+          {
+           if(!sweep_engine.ProcessClosed(liq,j,liq[j].time+(datetime)60,100.0,ev)) break;
+           for(int e=0;e<ArraySize(ev);e++)
+             {
+              if(ev[e].type==MS_BUY_SIDE_LIQUIDITY) saw_equal_pool=true;
+              if(ev[e].type==MS_LIQUIDITY_SWEEP_HIGH) saw_sweep=true;
+              if(ev[e].type==MS_LIQUIDITY_BREAKOUT_HIGH) saw_breakout_in_sweep=true;
+             }
+          }
+      bool break_scenario=false,break_sweep=false;
+      if(init_b)
+        {
+         liq[9].open=15.2; liq[9].high=16.0; liq[9].low=14.8; liq[9].close=15.5;
+         for(int j=4;j<10;j++)
+           {
+            if(!break_engine.ProcessClosed(liq,j,liq[j].time+(datetime)60,100.0,ev)) break;
+            if(j==9)
+              for(int e=0;e<ArraySize(ev);e++)
+              {
+               if(ev[e].type==MS_LIQUIDITY_BREAKOUT_HIGH) break_scenario=true;
+               if(ev[e].type==MS_LIQUIDITY_SWEEP_HIGH) break_sweep=true;
+              }
+           }
+        }
+      Check(saw_equal_pool,"T12 buy-side liquidity requires confirmed equal highs","");
+      Check(saw_sweep && !saw_breakout_in_sweep,
+            "T12 wick penetration plus close-back is a sweep, not breakout","");
+      Check(break_scenario && !break_sweep,
+            "T12 close beyond equal-high pool is a confirmed breakout, not a sweep","");
+     }
+
+   //==================================================================
+   // T11 - independent quantitative primitives: weighted moments, CUSUM,
+   //       Wilson boundary cases, and broker tick-volume profile semantics.
+   //==================================================================
+   void              T11_QuantitativePrimitives()
+     {
+      SEWState ew; CEWStatistics::Reset(ew);
+      bool u1=CEWStatistics::Update(ew,10.0,0.5);
+      bool u2=CEWStatistics::Update(ew,12.0,0.5);
+      Check(u1 && u2 && MathAbs(ew.mean-11.0)<1e-10 &&
+            MathAbs(ew.variance-1.0)<1e-10,"T11 EW mean and stable weighted variance","");
+      CEWStatistics::Reset(ew);
+      Check(!ew.initialized && ew.count==0 && ew.mean==0.0 && ew.variance==0.0,
+            "T11 EW reset clears all state","");
+
+      CCUSUM cusum;
+      bool updates=true;
+      for(int i=0;i<4;i++) updates=updates && cusum.Update(1.0,0.0,1.0,0.5,2.0);
+      Check(updates && cusum.Alarm() && cusum.Side()==1,"T11 CUSUM detects positive shift","");
+      cusum.Reset();
+      Check(!cusum.Alarm() && cusum.Side()==0 && cusum.Count()==0,
+            "T11 CUSUM reset clears sums and alarm","");
+
+      double lower,upper;
+      bool w0=QSMC_WilsonInterval(0,10,1.96,lower,upper);
+      Check(w0 && lower==0.0 && upper>0.0 && upper<1.0,
+            "T11 Wilson interval handles zero successes","");
+      bool w1=QSMC_WilsonInterval(10,10,1.96,lower,upper);
+      Check(w1 && upper==1.0 && lower>0.0 && lower<1.0,
+            "T11 Wilson interval handles all successes","");
+      Check(!QSMC_WilsonInterval(11,10,1.96,lower,upper),
+            "T11 Wilson rejects impossible counts","");
+
+      MqlRates rates[3];
+      rates[0].time=100; rates[0].low=100.0; rates[0].high=102.0; rates[0].tick_volume=20;
+      rates[1].time=200; rates[1].low=101.0; rates[1].high=103.0; rates[1].tick_volume=50;
+      rates[2].time=300; rates[2].low=103.0; rates[2].high=103.0; rates[2].tick_volume=30;
+      CVolumeProfile vp;
+      bool built=vp.Build(rates,0,3,1.0,0.70,false);
+      SVolumeProfileResult pr=vp.Result();
+      Check(built && pr.valid && pr.accepted_bars==3 && pr.coverage==1.0 &&
+            MathAbs(pr.total_tick_volume-100.0)<1e-10 && MathAbs(pr.poc-103.5)<1e-10 &&
+            MathAbs(pr.val-102.0)<1e-10 && MathAbs(pr.vah-104.0)<1e-10,
+            "T11 volume profile POC/value area/coverage",pr.volume_basis);
+      bool invalid_profile=vp.Build(rates,0,3,0.0,0.70,false);
+      pr=vp.Result();
+      Check(!invalid_profile && !pr.valid,
+            "T11 volume profile rejects invalid bin size","");
      }
 
    //==================================================================
@@ -221,6 +397,13 @@ public:
       Check(err<=QST_ATR_TOL,"T00 the synthetic ATR matches QST_ATR",
             StringFormat("expected %.2f measured %.4f err %.1f%%",
                          QST_ATR,measured,err*100.0));
+      Check(r.MarketDirection()==0 && StringFind(r.MarketDirectionText(),"NEUTRAL / WAIT")>=0 &&
+            StringFind(r.MarketDirectionText(),"not probability")>=0,
+            "T00 direction integration reports neutral without confirmed evidence",r.MarketDirectionText());
+      SEarlyBreakResult early;
+      r.GetEarlyBreakResult(early);
+      Check(early.valid && !early.warning && (early.missing_mask & QEB_MISS_QUOTES)!=0,
+            "T00 early-break feature stays warning-only and reports unavailable quote flow",early.label);
      }
 
    //==================================================================
