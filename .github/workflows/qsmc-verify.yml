@@ -51,6 +51,9 @@ jobs:
       - name: Causal structure-event contracts
         run: python3 tools/test_structure.py 2>&1 | tee out/test_structure.log
 
+      - name: Historical ATR causality
+        run: python3 tools/test_historical_atr_contract.py 2>&1 | tee out/test_historical_atr.log
+
       - name: Early-break warning contracts
         run: python3 tools/test_early_break.py 2>&1 | tee out/test_early_break.log
 
