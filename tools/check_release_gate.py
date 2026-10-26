@@ -99,9 +99,9 @@ else:
 
 # ---------------------------------------------------------------- G2 layout
 NEEDED = (["QSMC_%s.mqh" % n for n in
-           ("Types", "MarketData", "Zones", "Reaction", "Bias", "Preset", "Gates",
-            "AlertManager", "Arbiter", "Stats", "Renderer", "Root", "Selftest",
-            "Scanners", "DataProvider")],
+            ("Types", "Structure", "EarlyBreakDetector", "MarketData", "Zones", "ZoneScorer",
+             "Reaction", "Bias", "Preset", "Gates", "AlertManager", "Arbiter",
+             "Stats", "Renderer", "Root", "Selftest", "Scanners", "DataProvider")],
           [os.path.join("MQL5", "Indicators", "QSMC_ScannerProbe.mq5"),
            os.path.join("MQL5", "Scripts", "QSMC_ArbiterTest.mq5"),
            os.path.join("MQL5", "Experts", "KLJ_DataFeeder.mq5"),
@@ -116,7 +116,7 @@ extra = sorted(set(x for x in os.listdir(INC) if x.endswith(".mqh")) - set(NEEDE
 if extra:
     warn("G2 headers present but not in the documented layout: %s" % ", ".join(extra))
 else:
-    NOTES.append("G2 layout complete: 15 headers + 1 indicator + 1 probe + 1 script + 1 EA")
+    NOTES.append("G2 layout complete: 18 headers + 1 indicator + 1 probe + 1 script + 1 EA")
 
 # ------------------------------------------------------------- G3 inputs
 preset = read(os.path.join(INC, "QSMC_Preset.mqh"))
@@ -176,9 +176,10 @@ SIDE_EFFECTS = [(r"\bWebRequest\s*\(",   "WebRequest"),
 ALLOW_SITE = {"SendNotification": "QSMC_AlertManager.mqh",
               "PlaySound": "QSMC_AlertManager.mqh",
               "Alert": "QSMC_AlertManager.mqh",
-              # CStatsLogger owns the signal journal (MQL5/Files), and it is
-              # default-off (InpArbCSVLog=false). One file writing is auditable;
-              # five files appending to the same CSV would not be.
+              # CStatsLogger/CEdgeBook in QSMC_Stats.mqh own the optional
+              # signal journal and outcome ledger (terminal-local MQL5/Files).
+              # Persistence is default-off (InpArbCSVLog=false), and keeping
+              # every layer write in one header makes the boundary auditable.
               "file writes": "QSMC_Stats.mqh"}
 
 
@@ -209,7 +210,7 @@ for path in LIBRARY + PROGRAMS:
                         ALLOW_SITE.get(why, "nothing")))
                 g4_sites += 1
 NOTES.append("G4 no trade API anywhere in the layer; Alert/push/sound only in "
-             "CAlertManager; CSV + network only in the optional Experts feeder")
+             "CAlertManager; QSMC CSV writes only in QSMC_Stats; network only in the optional Experts feeder")
 
 # ------------------------------------------------------------- G5 log flood
 # "Flood" has one meaning here: a line printed from the per-bar path. That is a

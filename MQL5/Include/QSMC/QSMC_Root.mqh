@@ -32,7 +32,9 @@
 
 #include <QSMC/QSMC_Types.mqh>
 #include <QSMC/QSMC_MarketData.mqh>
+#include <QSMC/QSMC_Structure.mqh>
 #include <QSMC/QSMC_Zones.mqh>
+#include <QSMC/QSMC_ZoneScorer.mqh>
 #include <QSMC/QSMC_Reaction.mqh>
 #include <QSMC/QSMC_Bias.mqh>
 #include <QSMC/QSMC_Preset.mqh>
@@ -40,6 +42,7 @@
 #include <QSMC/QSMC_AlertManager.mqh>
 #include <QSMC/QSMC_Arbiter.mqh>
 #include <QSMC/QSMC_Stats.mqh>
+#include <QSMC/QSMC_EarlyBreakDetector.mqh>
 #include <QSMC/QSMC_Renderer.mqh>
 
 //--------------------------------------------------------------------
@@ -69,8 +72,24 @@ private:
    bool              m_ready;
    CMarketData       m_md;
    CZoneRegistry     m_zones;
+   CZoneScorer       m_zone_scorer;
    CReactionDetector m_reaction;
    CBiasProvider     m_bias;
+   CStructureEngine m_structure;
+   CEarlyBreakDetector m_early_break;
+   SEarlyBreakResult  m_early_result;
+   SStructureEvent  m_structure_last;
+   string            m_structure_last_event;
+   bool              m_structure_has_event;
+   bool              m_structure_ok;
+   int               m_structure_left, m_structure_right;
+   double            m_structure_equal_tolerance;
+   double            m_structure_break_buffer;
+   double            m_structure_sweep_penetration;
+   datetime          m_structure_seen_time;
+   int               m_market_direction;
+   int               m_market_direction_score;
+   string            m_market_direction_text;
    CPresetManager    m_preset;
    CSignalArbiter    m_arbiter;
    CAlertManager     m_alerts;
@@ -106,6 +125,173 @@ private:
    ENUM_TIMEFRAMES   m_exec_tf;
    int               m_ext_d1, m_ext_h4, m_ext_h1;
    bool              m_ext_h1_known;
+
+   bool              ConfigureStructure()
+     {
+      m_structure_left=2; m_structure_right=2;
+      double point=SymbolInfoDouble(m_symbol,SYMBOL_POINT);
+      if(!(point>0.0)) point=_Point;
+      double tick=SymbolInfoDouble(m_symbol,SYMBOL_TRADE_TICK_SIZE);
+      if(!(tick>0.0)) tick=point;
+      m_structure_equal_tolerance=2.0*tick;
+      m_structure_break_buffer=2.0*tick;
+      m_structure_sweep_penetration=2.0*tick;
+      m_structure_ok=m_structure.Init(m_symbol,m_chart_tf,m_structure_left,m_structure_right,
+                                      m_structure_equal_tolerance,m_structure_break_buffer,
+                                      m_structure_sweep_penetration,0.75,0.60);
+      if(!m_early_break.Configure(0.08,0.50,3.50,0.05,55.0))
+        { m_structure_ok=false; return false; }
+      m_early_result=m_early_break.Result();
+      m_structure_seen_time=0;
+      m_structure_has_event=false;
+      m_structure_last_event="waiting for closed-bar structure";
+      m_market_direction=0; m_market_direction_score=0;
+      m_market_direction_text="DIRECTION WAIT | awaiting closed-bar data";
+      return m_structure_ok;
+     }
+
+   string            StructureEventName(const ENUM_MS_EVENT type) const
+     {
+      switch(type)
+        {
+         case MS_BOS_UP: return "BOS UP";
+         case MS_BOS_DOWN: return "BOS DOWN";
+         case MS_CHOCH_UP: return "CHoCH UP";
+         case MS_CHOCH_DOWN: return "CHoCH DOWN";
+         case MS_STRUCTURE_INVALIDATED: return "STRUCTURE INVALIDATED";
+         case MS_LIQUIDITY_SWEEP_HIGH: return "BUY-SIDE SWEEP";
+         case MS_LIQUIDITY_SWEEP_LOW: return "SELL-SIDE SWEEP";
+         case MS_LIQUIDITY_BREAKOUT_HIGH: return "BUY-SIDE BREAKOUT";
+         case MS_LIQUIDITY_BREAKOUT_LOW: return "SELL-SIDE BREAKOUT";
+         case MS_BULL_DISPLACEMENT: return "BULL DISPLACEMENT";
+         case MS_BEAR_DISPLACEMENT: return "BEAR DISPLACEMENT";
+         case MS_HIGHER_HIGH: return "HIGHER HIGH";
+         case MS_LOWER_HIGH: return "LOWER HIGH";
+         case MS_HIGHER_LOW: return "HIGHER LOW";
+         case MS_LOWER_LOW: return "LOWER LOW";
+         case MS_EQUAL_HIGH: return "EQUAL HIGH";
+         case MS_EQUAL_LOW: return "EQUAL LOW";
+         case MS_SWING_HIGH: return "SWING HIGH";
+         case MS_SWING_LOW: return "SWING LOW";
+         default: return "STRUCTURE EVENT";
+        }
+     }
+
+   // Consume only closed chart bars. Initial warm-up replays the retained
+   // closed history chronologically; subsequent calls process only bars after
+   // the engine's last timestamp. No MqlRates array or per-tick heap copy.
+   void              UpdateStructure(const CBarSeries &series,const int closed_index)
+     {
+      if(!m_structure_ok || !series.Ready() || closed_index<0 || closed_index>series.ClosedIndex())
+         return;
+      datetime latest=series.T(closed_index);
+      if(!m_structure_ok)
+        {
+         if(latest==m_structure_seen_time) return;
+         if(!m_structure.Init(m_symbol,m_chart_tf,m_structure_left,m_structure_right,
+                              m_structure_equal_tolerance,m_structure_break_buffer,
+                              m_structure_sweep_penetration,0.75,0.60)) return;
+         if(!m_early_break.Configure(0.08,0.50,3.50,0.05,55.0)) return;
+         history_rebuild=true;
+         m_structure_ok=true; m_structure_seen_time=0;
+        }
+      if(latest==m_structure_seen_time) return;
+      int start=m_structure_left+m_structure_right;
+      datetime prior=m_structure.LastProcessedTime();
+      bool history_rebuild=(prior==0);
+      if(prior>0)
+        {
+         int prior_index=series.IndexOfTime(prior);
+         if(prior_index>=0) start=prior_index+1;
+         else
+           {
+            if(!m_structure.Init(m_symbol,m_chart_tf,m_structure_left,m_structure_right,
+                                 m_structure_equal_tolerance,m_structure_break_buffer,
+                                 m_structure_sweep_penetration,0.75,0.60))
+              { m_structure_ok=false; return; }
+            if(!m_early_break.Configure(0.08,0.50,3.50,0.05,55.0))
+              { m_structure_ok=false; return; }
+            m_structure_has_event=false;
+            m_structure_last_event="structure history refreshed; rebuilding";
+            history_rebuild=true;
+            start=m_structure_left+m_structure_right;
+           }
+        }
+      SStructureEvent events[];
+      for(int i=start;i<=closed_index;i++)
+        {
+         datetime available=series.T(i+1); // next bar is present as the forming bar
+         double atr=(history_rebuild ? m_ctx.atr : series.ATR(i));
+         if(!m_structure.ProcessClosed(series,i,available,atr,events))
+           { m_structure_ok=false; m_structure_seen_time=latest; return; }
+         bool early_ok=m_early_break.ProcessClosed(series,i,available,atr,m_ctx.spread_points,m_ctx.point,
+                                                    m_structure.HasSwingHigh(),m_structure.LastSwingHigh(),
+                                                    m_structure.HasSwingLow(),m_structure.LastSwingLow());
+         m_early_result=m_early_break.Result();
+         if(!early_ok) m_early_result.valid=false;
+         for(int e=0;e<ArraySize(events);e++)
+           {
+            m_structure_last=events[e];
+            m_structure_has_event=true;
+            m_structure_last_event=StructureEventName(events[e].type)+" @ "+
+                                   DoubleToString(events[e].level,m_ctx.digits)+
+                                   " available "+TimeToString(events[e].available_time,TIME_DATE|TIME_MINUTES);
+           }
+        }
+      m_structure_seen_time=latest;
+      m_structure_ok=true;
+     }
+
+   void              UpdateMarketDirection()
+     {
+      if(!m_ctx.data_ready)
+        {
+         m_market_direction=0; m_market_direction_score=0;
+         string unavailable="MARKET DIRECTION UNAVAILABLE | "+m_ctx.data_reason;
+         if(unavailable!=m_market_direction_text)
+           { m_market_direction_text=unavailable; m_render.DrawDirection(0,0,unavailable); }
+         return;
+        }
+      int htf=m_ctx.htf_bias;
+      int local=(m_structure_ok ? m_structure.Trend() : 0);
+      double raw=0.0;
+      if(htf!=0)
+        {
+         double htf_component=0.65*(double)m_ctx.bias_score;
+         if(MathAbs(htf_component)<10.0) htf_component=10.0*(double)htf;
+         raw+=htf_component;
+        }
+      if(local!=0) raw+=35.0*(double)local;
+      int score=(int)MathRound(raw);
+      if(score>100) score=100; if(score<-100) score=-100;
+      bool conflict=(htf!=0 && local!=0 && htf!=local);
+      int direction=0;
+      if(!conflict)
+        {
+         if(htf!=0 && local!=0) direction=htf;
+         else if(htf!=0) direction=htf;
+         else if(local!=0) direction=local;
+        }
+      string label=(conflict?"MIXED / CONFLICT":(direction>0?"BULLISH":(direction<0?"BEARISH":"NEUTRAL / WAIT")));
+      string htf_text=(htf>0?"BULLISH":(htf<0?"BEARISH":"NEUTRAL"));
+      string local_text=(local>0?"UP":(local<0?"DOWN":"UNCONFIRMED"));
+      string score_text=IntegerToString(score);
+      if(score>0) score_text="+"+score_text;
+      string text="MARKET "+label+" | heuristic "+score_text+"/100 (not probability)"+
+                  " | HTF "+htf_text+" | chart structure "+local_text;
+      if(!m_structure_ok) text+=" | structure data unavailable";
+      if(m_early_result.valid) text+=" | "+m_early_result.label;
+      else text+=" | EARLY BREAK DATA UNAVAILABLE";
+      if((m_early_result.missing_mask & QEB_MISS_QUOTES)!=0) text+=" | quote-flow unavailable";
+      if(m_structure_last_event!="") text+=" | last "+m_structure_last_event;
+      m_market_direction=direction;
+      m_market_direction_score=score;
+      if(text!=m_market_direction_text)
+        {
+         m_market_direction_text=text;
+         m_render.DrawDirection(direction,score,text);
+        }
+     }
 
    //------------------------------------------------------------------
    ENUM_VOL_REGIME   VolRegime() const
@@ -144,6 +330,12 @@ public:
        m_last_state=(int)SIG_NONE; m_last_text=""; m_bars=0; m_deinit_done=false;
        m_cfg_locked=false; m_bias_external=false; m_ext_h1_known=true;
        m_ext_d1=0; m_ext_h4=0; m_ext_h1=0;
+       m_structure_has_event=false; m_structure_ok=false; m_structure_seen_time=0;
+       m_structure_left=2; m_structure_right=2;
+       m_structure_equal_tolerance=0.0; m_structure_break_buffer=0.0;
+       m_structure_sweep_penetration=0.0; m_structure_last_event="";
+       m_market_direction=0; m_market_direction_score=0;
+       m_market_direction_text="DIRECTION WAIT";
        //--- bound to nothing until Init() says otherwise; Ready() is false, so
        //--- no pipeline can read these before a real instrument is set
        m_symbol=""; m_chart_tf=PERIOD_CURRENT; m_exec_tf=PERIOD_CURRENT; }
@@ -186,6 +378,14 @@ public:
    bool              CtxBarClosed()   const { return m_ctx.bar_closed;   }
    int               CtxBiasScore()   const { return m_ctx.bias_score;   }
    int               CtxHtfBias()     const { return m_ctx.htf_bias;     }
+   int               MarketDirection() const { return m_market_direction; }
+   int               MarketDirectionScore() const { return m_market_direction_score; }
+   string            MarketDirectionText() const { return m_market_direction_text; }
+   void              GetEarlyBreakResult(SEarlyBreakResult &out) const { out=m_early_result; }
+   int               StructureTrend() const { return (m_structure_ok?m_structure.Trend():0); }
+   string            StructureLastEvent() const { return m_structure_last_event; }
+   datetime          StructureLastEventTime() const { return (m_structure_has_event?m_structure_last.event_time:0); }
+   datetime          StructureEventAvailableTime() const { return (m_structure_has_event?m_structure_last.available_time:0); }
    int               CtxD1Bias()      const { return m_ctx.d1_bias;      }
    int               CtxH4Bias()      const { return m_ctx.h4_bias;      }
    int               CtxH1Bias()      const { return m_ctx.h1_bias;      }
@@ -248,10 +448,11 @@ public:
                  ?m_chart_tf:exec_tf);
       m_preset.Build(m_cfg,m_chart_tf);
       if(!m_md.Init(m_symbol,m_chart_tf,m_exec_tf,bars,atr_period)) return false;
+      if(!ConfigureStructure()) return false;
       m_alerts.Init(m_cfg.dedupe_ring);
       m_arbiter.Init(GetPointer(m_alerts),tactical_may_confirm,gate_core);
       m_render.Init(0,0,draw);
-      if(csv_log) m_stats.Open(symbol,chart_tf,min_sample);
+      m_stats.Open(m_symbol,m_chart_tf,min_sample,csv_log);
       m_ready=true;
       m_bars=0;
       Print("[QSMC_ARB] v6.6.4 arbitration layer ON | preset ",m_preset.EffectiveName(),
@@ -329,7 +530,14 @@ public:
         }
       if(!m_md.RefreshAll(external_atr))
         { ResetContext(m_md.Reason()); return false; }
-      return BuildContext(spread_points);
+      if(!BuildContext(spread_points))
+        {
+         string why=m_ctx.data_reason;
+         if(why=="") why="context data incomplete";
+         ResetContext(why);
+         return false;
+        }
+      return true;
      }
 
    //--- 1b. Build the decision context from whatever the series hold.
@@ -386,6 +594,8 @@ public:
       m_ctx.atr=atr;
       m_ctx.regime=VolRegime();
       m_ctx.session_ok=SessionOK(m_ctx.bar_time);
+      m_ctx.data_ready=true;
+      m_ctx.data_reason="";
 
       m_bias.Update(m_md,m_cfg,ci);
       m_ctx.htf_bias=m_bias.Consensus();
@@ -395,9 +605,8 @@ public:
       m_ctx.bias_score=m_bias.Score();
 
       ApplyExternalBias();
-
-      m_ctx.data_ready=true;
-      m_ctx.data_reason="";
+      UpdateStructure(*ch,ci);
+      UpdateMarketDirection();
       m_bars++;
       return true;
      }
@@ -424,6 +633,9 @@ public:
       m_ctx.bias_score=0;
       m_ctx.regime=VREG_UNKNOWN;
       m_ctx.session_ok=-1;
+      m_market_direction=0; m_market_direction_score=0;
+      m_market_direction_text="MARKET DIRECTION UNAVAILABLE | "+reason;
+      m_render.DrawDirection(0,0,m_market_direction_text);
      }
 
    //------------------------------------------------------------------
@@ -509,6 +721,7 @@ public:
       else if(d1!=0)       m_ctx.htf_bias=d1;
       else if(h4!=0)       m_ctx.htf_bias=h4;
       else                 m_ctx.htf_bias=h1;
+      UpdateMarketDirection();
      }
    bool              BiasExternal() const { return m_bias_external; }
 
@@ -642,6 +855,25 @@ public:
          return (int)SIG_NO_TRADE;
         }
 
+      //--- Soft zone ranking is kept separate from hard structural validity.
+      //--- Reaction evidence is scored independently below; zone strength is not
+      //--- counted a second time inside that reaction component.
+      if(!m_zone_scorer.Configure(2.5,2.5,0.15,m_cfg.min_zone_strength))
+        { reason="DATA_NOT_READY: invalid zone-score configuration"; out.reason=reason; return (int)SIG_NO_TRADE; }
+      SQZoneHit opposing;
+      double room_for_score=-1.0;
+      if(m_zones.NearestOpposing(px,dir,m_ctx.atr,opposing)) room_for_score=opposing.gap_atr;
+      double spread_atr=(m_ctx.atr>0.0 ? m_ctx.spread_points*m_ctx.point/m_ctx.atr : -1.0);
+      SZoneScore zone_score=m_zone_scorer.Score(z,dir,px,m_ctx.atr,hit.gap_atr,
+                                                room_for_score,m_ctx.htf_bias,spread_atr);
+      if(!zone_score.valid)
+        {
+         reason="NO_VALID_ZONE: "+zone_score.rejection;
+         out.reason=reason; out.state=(int)SIG_NO_TRADE;
+         out.zone_id=z.id; out.zone_role=z.role; out.distance_atr=hit.gap_atr;
+         return (int)SIG_NO_TRADE;
+        }
+
       //--- 4) Fill the candidate
       out.valid=true;
       out.source=SRC_TACTICAL;
@@ -680,7 +912,10 @@ public:
       out.tp3=tp3;
       out.rr=rr;
       out.room_atr=room_atr;
-      out.score=m_reaction.Score(rf,z.strength);
+      double reaction_independent=((double)rf.evidence_count/(double)QEV_COUNT*60.0+
+                                   (rf.penetration_bounded?10.0:0.0));
+      double reaction_normalized=reaction_independent/70.0*100.0;
+      out.score=(int)MathRound(0.65*reaction_normalized+0.35*(double)zone_score.total);
 
       //--- 6) The requested state: CONFIRMED for a closed-bar fact.
       //--- The arbiter caps a tactical source at TACTICAL-INFO (R7).
@@ -689,8 +924,10 @@ public:
                 " @ "+TimeToString(f.trigger_time,TIME_MINUTES)+
                 (f.core_owned?" | owned by the CORE setup":" | from HTF bias / early break");
       if(f.chase_atr>0.0) out.extra+=" | chase "+DoubleToString(f.chase_atr,2)+" ATR";
+      out.extra+=" | "+zone_score.breakdown;
+      if(zone_score.penalties!="") out.extra+=" | penalties: "+zone_score.penalties;
       reason="";
-      out.reason="";
+      out.reason="closed-bar zone reaction validated";
       return out.state;
      }
 
@@ -784,6 +1021,7 @@ public:
      {
       return "ARB "+m_preset.EffectiveName()+" | zones "+IntegerToString(m_zones.Count())+
              " | "+m_bias.ShortText()+
+             " | "+m_market_direction_text+
              " | published "+IntegerToString(m_alerts.Published())+
              " suppressed "+IntegerToString(m_alerts.Suppressed())+
              " | last: "+m_last_text;

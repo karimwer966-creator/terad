@@ -37,7 +37,7 @@ python3 tools/check_release_gate.py
 | Check | Property |
 | --- | --- |
 | G1 | `#define QSMC_VERSION_TEXT`, `#property version`, the runtime banner and the runbook title all name the **same** build |
-| G2 | 15 headers + host + indicator + probe + script + EA all present — a half-copied install is a compile error three files deep |
+| G2 | 18 headers + host + indicator + probe + script + EA all present — a half-copied install is a compile error three files deep |
 | G3 | all 40 inputs are declared **and** documented; the chatty ones (`InpArbVerboseLog`, `InpArbCSVLog`) default to `false` |
 | G4 | no trade API anywhere; `Alert`/`SendNotification`/`PlaySound` only inside `CAlertManager`; file writes only in `CStatsLogger`; network only in the optional `Experts` feeder |
 | G5 | no `Print`/`Alert` on the per-bar path without an `InpArbVerboseLog` guard |
@@ -50,6 +50,9 @@ Run the other four too — the gate does not duplicate them:
 ```bash
 python3 tools/mql5_rules.py --quiet && python3 tools/static_check.py
 python3 tools/test_arbiter.py && python3 tools/test_scanners.py
+python3 tools/test_quant_stats.py && python3 tools/test_structure.py
+python3 tools/test_early_break.py && python3 tools/test_zone_scoring.py
+python3 tools/test_edgebook_contract.py
 python3 tools/check_scenario_geometry.py
 ```
 
@@ -58,7 +61,7 @@ python3 tools/check_scenario_geometry.py
 ## 2. Install verification — the five minutes that decide the rest
 
 1. **Open the Data Folder** (MetaTrader 5 → *File → Open Data Folder*) and confirm
-   `MQL5\Include\QSMC\` contains **exactly** the 15 `.mqh` files of `v6.6.4`.
+   `MQL5\Include\QSMC\` contains **exactly** the 18 `.mqh` files of `v6.6.4`.
    `check_release_gate.py` G2 proves the *repo* is complete; this proves the *copy* is.
 2. **F7 in this order**, one at a time, reading the result pane each time:
    `MQL5\Scripts\QSMC_ArbiterTest.mq5` → `MQL5\Indicators\QSMC_ScannerProbe.mq5` →
@@ -137,7 +140,7 @@ you have the numbers you wanted.
 | Popup | `InpArbPopup` | **true** | `Alert()`, once per published signal (the arbiter publishes at most one row per bar) |
 | Push (mobile) | `InpArbPush` | false | `SendNotification()` — enable only after you have read the 24 h rate |
 | Sound | `InpArbSound` | false | `PlaySound()` |
-| CSV journal | `InpArbCSVLog` | false | `CStatsLogger` in `MQL5\Files` — the only file writer in the layer |
+| CSV journal + EdgeBook | `InpArbCSVLog` | false | Versioned append-safe signal CSV and completed-outcome ledger in terminal-local `MQL5\Files`; see `docs/QSMC_EDGEBOOK.md` |
 | Cross-chart claim | `InpArbUseGlobalVars` | true | GlobalVariable per `symbol + bar_time`, TTL `QSMC_GV_TTL_SEC = 604800` (7 days) |
 | Per-bar dump | `InpArbVerboseLog` | false | every gate verdict, every closed bar. Debug only |
 
@@ -206,6 +209,9 @@ design reason the whole module is an indicator include rather than an EA.
 
 | Limit | Impact | Plan |
 | --- | --- | --- |
+| Zone scoring is wired to the root tactical zone-reaction candidate builder | this repository has no other `SSignalCandidate` producers for CORE/ZRE/RXN; any external/legacy entry publishers are outside this coverage | inspect those integrations before claiming all system entries are scored |
+| EdgeBook restart recovery depends on available chart history | if the setup bar is unavailable or replay data is invalid, it is marked AMBIGUOUS and excluded from win/loss rates | verify replay-history depth and gap handling on MT5; see `docs/QSMC_EDGEBOOK.md` |
+| EdgeBook bounded memory index (12,000 outcomes / 128 keys) | capacity exhaustion fails closed and withholds trusted rates | archive/rotate only with an explicit migration and dedupe plan |
 | No MetaEditor in CI — F7 is a manual step | "green" ≠ "compiles" | §2 step 2 is the only compile proof. Run it on every build you ship |
 | `QSMC_Scanners.mqh` has one host (the probe), not the main indicator | its numbers are exercised by 40 offline assertions, not by the panel | Phase 7: render `QSC_*` rows in the `CFX*` panel, then wire the scanner output into the gate counters |
 | `nadir2.mq5` (39 792 lines) stays dirty of D6/D11 style debt | legacy `iOpen`/`time[0]`, reused locals in the host; the *subsystem* is clean | decomposition, layer by layer, with `ZRE → RXN → SigLog`; keep the marker |
