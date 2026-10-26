@@ -297,8 +297,12 @@ public:
    //--- few times per closed bar.
    double            ATRAt(const int closed_index) const
      {
-      if(m_atr_external_valid && m_atr_external>0.0) return m_atr_external;
-      if(closed_index<0 || closed_index>=m_count) return 0.0;
+      int current_closed=ClosedIndex();
+      if(closed_index<0 || closed_index>current_closed) return 0.0;
+      // The host-provided ATR describes only the current closed bar. Never
+      // reuse it when replaying historical indices; compute their causal ATR.
+      if(closed_index==current_closed && m_atr_external_valid && m_atr_external>0.0)
+         return m_atr_external;
       if(m_atr_cache_index==closed_index && m_atr_cache>0.0) return m_atr_cache;
       double a=ComputeWilderATR(closed_index);
       if(!(a>0.0) || !MathIsValidNumber(a)) return 0.0;

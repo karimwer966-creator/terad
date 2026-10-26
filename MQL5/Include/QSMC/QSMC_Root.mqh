@@ -182,7 +182,7 @@ private:
    // the engine's last timestamp. No MqlRates array or per-tick heap copy.
    void              UpdateStructure(const CBarSeries &series,const int closed_index)
      {
-      if(!m_structure_ok || !series.Ready() || closed_index<0 || closed_index>series.ClosedIndex())
+      if(!series.Ready() || closed_index<0 || closed_index>series.ClosedIndex())
          return;
       datetime latest=series.T(closed_index);
       if(!m_structure_ok)
@@ -192,13 +192,11 @@ private:
                               m_structure_equal_tolerance,m_structure_break_buffer,
                               m_structure_sweep_penetration,0.75,0.60)) return;
          if(!m_early_break.Configure(0.08,0.50,3.50,0.05,55.0)) return;
-         history_rebuild=true;
          m_structure_ok=true; m_structure_seen_time=0;
         }
       if(latest==m_structure_seen_time) return;
       int start=m_structure_left+m_structure_right;
       datetime prior=m_structure.LastProcessedTime();
-      bool history_rebuild=(prior==0);
       if(prior>0)
         {
          int prior_index=series.IndexOfTime(prior);
@@ -213,7 +211,6 @@ private:
               { m_structure_ok=false; return; }
             m_structure_has_event=false;
             m_structure_last_event="structure history refreshed; rebuilding";
-            history_rebuild=true;
             start=m_structure_left+m_structure_right;
            }
         }
@@ -221,7 +218,9 @@ private:
       for(int i=start;i<=closed_index;i++)
         {
          datetime available=series.T(i+1); // next bar is present as the forming bar
-         double atr=(history_rebuild ? m_ctx.atr : series.ATR(i));
+         // Use the ATR available at this historical bar, not the present ATR;
+         // this keeps the initial chronological rebuild causal.
+         double atr=series.ATRAt(i);
          if(!m_structure.ProcessClosed(series,i,available,atr,events))
            { m_structure_ok=false; m_structure_seen_time=latest; return; }
          bool early_ok=m_early_break.ProcessClosed(series,i,available,atr,m_ctx.spread_points,m_ctx.point,
