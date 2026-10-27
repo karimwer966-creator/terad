@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Static consistency check for the QSMC v6.6.4 arbitration subsystem.
+Static consistency check for the QSMC v6.6.6 arbitration subsystem.
 
 This is NOT a compiler. It cannot replace F7 in MetaEditor. What it does
 is catch the classes of mistake a human reviewer makes when writing a
@@ -32,8 +32,25 @@ EXTRA = [
     os.path.join(ROOT, "MQL5", "Scripts", "QSMC_ArbiterTest.mq5"),
     os.path.join(ROOT, "MQL5", "Experts", "KLJ_DataFeeder.mq5"),
     os.path.join(ROOT, "MQL5", "Indicators", "QSMC_ScannerProbe.mq5"),
+    # v6.6.6: the execution companion. It is the ONE file allowed to reach the
+    # trade API (see check_release_gate.py G4), so it is also the one file that
+    # must be read by this checker - an unchecked trading EA is the worst place
+    # in a repository to have a typo.
+    os.path.join(ROOT, "MQL5", "Experts", "QSMC_AutoTrader.mq5"),
 ]
 EXTRA = [e for e in EXTRA if os.path.exists(e)]
+
+# Includes shipped with the terminal, not with this repository. They cannot be
+# resolved here and must not be reported as broken; they ARE resolved by
+# MetaEditor against <Data Folder>\MQL5\Include.
+STANDARD_INCLUDES = {
+    "Trade/Trade.mqh",
+    "Trade/PositionInfo.mqh",
+    "Trade/OrderInfo.mqh",
+    "Trade/SymbolInfo.mqh",
+    "Trade/HistoryOrderInfo.mqh",
+    "Trade/DealInfo.mqh",
+}
 
 # ---------------------------------------------------------------- keywords
 KEYWORDS = set("""
@@ -135,6 +152,8 @@ def main():
     for f, t in texts.items():
         for m in re.finditer(r'#include\s*<([^>]+)>', t):
             rel = m.group(1).replace("\\", "/")
+            if rel in STANDARD_INCLUDES:
+                continue
             p = os.path.join(INC, rel)
             if not os.path.isfile(p):
                 p2 = os.path.join(ROOT, "MQL5", "Include", rel)
@@ -370,7 +389,7 @@ TIME_MINUTES TIME_DATE SYMBOL_TRADE_TICK_SIZE SYMBOL_DIGITS
 
     # ---------------------------------------------------------------- report
     print("="*72)
-    print(" QSMC v6.6.4 - STATIC CONSISTENCY CHECK (not a compiler)")
+    print(" QSMC v6.6.6 - STATIC CONSISTENCY CHECK (not a compiler)")
     print("="*72)
     for f in FILES:
         print("  file: %-26s %6d bytes" % (f, os.path.getsize(os.path.join(INC,f))))

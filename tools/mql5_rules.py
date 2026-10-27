@@ -1018,6 +1018,10 @@ UNITS = [
     # accumulated four bugs that no build could see.
     ("QSMC_ScannerProbe.mq5 (Phase 7 host)","MQL5/Indicators/QSMC_ScannerProbe.mq5"),
     ("(virtual) QSMC_Scanners.mqh",       "MQL5/Include/QSMC/QSMC_Scanners.mqh"),
+    # v6.6.6 execution companion. It is a separate translation unit on purpose:
+    # the indicator must stay unable to trade, so execution lives in this file
+    # and is linted as its own unit.
+    ("QSMC_AutoTrader.mq5 (execution)",   "MQL5/Experts/QSMC_AutoTrader.mq5"),
 ]
 
 

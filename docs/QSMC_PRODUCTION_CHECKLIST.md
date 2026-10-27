@@ -1,4 +1,4 @@
-# QSMC v6.6.4 — Production checklist (go / no-go, observation, rollback)
+# QSMC v6.6.6 — Production checklist (go / no-go, observation, rollback)
 
 This is the operational document. `docs/QSMC_BUILD_AND_RUN.md` says **how to
 install**; this one says **when it is allowed to run next to money, what to watch
@@ -11,6 +11,12 @@ One sentence about scope, because it decides every threshold below:
 > GlobalVariables, and measures whether the market data it used was trustworthy.
 > If a build of this layer can reach the trade API, it is not this layer.
 > `tools/check_release_gate.py` G4 makes that a checked property, not a promise.
+>
+> **Execution, since v6.6.6, is a separate opt-in program** —
+> `MQL5\Experts\QSMC_AutoTrader.mq5` — and it is the only file allowed to reach the
+> trade API (G4 allowlist, G8 checks how it ships). It reads the published CORE
+> signal buffers and changes no gate. If you do not attach it, nothing in this
+> release can trade. Guide: `docs/QSMC_AUTOTRADER.md`.
 
 ---
 
@@ -37,12 +43,13 @@ python3 tools/check_release_gate.py
 | Check | Property |
 | --- | --- |
 | G1 | `#define QSMC_VERSION_TEXT`, `#property version`, the runtime banner and the runbook title all name the **same** build |
-| G2 | 18 headers + host + indicator + probe + script + EA all present — a half-copied install is a compile error three files deep |
+| G2 | 18 headers + host + indicator + probe + script + feeder EA + execution EA all present — a half-copied install is a compile error three files deep |
 | G3 | all 40 inputs are declared **and** documented; the chatty ones (`InpArbVerboseLog`, `InpArbCSVLog`) default to `false` |
-| G4 | no trade API anywhere; `Alert`/`SendNotification`/`PlaySound` only inside `CAlertManager`; file writes only in `CStatsLogger`; network only in the optional `Experts` feeder |
+| G4 | no trade API in the layer (headers + indicator + probe) and none in the feeder; the **only** file allowed to trade is `QSMC_AutoTrader.mq5`; `Alert`/`SendNotification`/`PlaySound` only inside `CAlertManager`; file writes only in `CStatsLogger`; network only in the optional feeder |
 | G5 | no `Print`/`Alert` on the per-bar path without an `InpArbVerboseLog` guard |
 | G5b | the feeder's `InpUrl1/2/3` and `InpApiKey` default to empty — it ships inert |
 | G6 | no `TODO` / `FIXME` / "not implemented" left in the shipped path |
+| G8 | the execution companion ships `InpEnableTrading=false`, `InpDryRun=true`, `InpDemoOnly=true`, clamps risk to 1% of equity, has no lot doubling, and its only position modify is the break-even move |
 | G7 | CI actually runs this script (a gate nobody runs is a suggestion) |
 
 Run the other four too — the gate does not duplicate them:
@@ -53,6 +60,7 @@ python3 tools/test_arbiter.py && python3 tools/test_scanners.py
 python3 tools/test_quant_stats.py && python3 tools/test_structure.py
 python3 tools/test_early_break.py && python3 tools/test_zone_scoring.py
 python3 tools/test_edgebook_contract.py
+python3 tools/test_autotrader_contract.py
 python3 tools/check_scenario_geometry.py
 ```
 
@@ -61,17 +69,18 @@ python3 tools/check_scenario_geometry.py
 ## 2. Install verification — the five minutes that decide the rest
 
 1. **Open the Data Folder** (MetaTrader 5 → *File → Open Data Folder*) and confirm
-   `MQL5\Include\QSMC\` contains **exactly** the 18 `.mqh` files of `v6.6.4`.
+   `MQL5\Include\QSMC\` contains **exactly** the 18 `.mqh` files of `v6.6.6`.
    `check_release_gate.py` G2 proves the *repo* is complete; this proves the *copy* is.
 2. **F7 in this order**, one at a time, reading the result pane each time:
    `MQL5\Scripts\QSMC_ArbiterTest.mq5` → `MQL5\Indicators\QSMC_ScannerProbe.mq5` →
-   `MQL5\Experts\KLJ_DataFeeder.mq5` → `MQL5\Indicators\nadir2.mq5`.
+   `MQL5\Experts\KLJ_DataFeeder.mq5` → `MQL5\Indicators\nadir2.mq5` →
+   `MQL5\Experts\QSMC_AutoTrader.mq5` (only if you intend to execute).
    Acceptable warning: *`no indicator plot defined for indicator`* (the probe draws no
    plot). **Anything else is a stop** — post the whole line, not "it has an error".
 3. **The banner is the version check.** Compile messages lie when a stale copy wins;
    the log does not. Load the indicator and the first `[QSMC_ARB]` line must read:
    ```
-   [QSMC_ARB] v6.6.4 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ... | on XAUUSD M15
+   [QSMC_ARB] v6.6.6 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ... | on XAUUSD M15
    ```
    Any other version → you are running a stale copy of `Include\QSMC` (or of the
    indicator). Close the terminal, re-copy, recompile. Do not continue.
@@ -92,7 +101,7 @@ Watch the Experts tab. Healthy looks like this — and only like this:
 
 | Time | Expected line | Why it is the right line |
 | --- | --- | --- |
-| attach | `[QSMC_ARB] v6.6.4 arbitration layer ON \| ... \| on XAUUSD M15` | version, preset, gate count and **the instrument the thresholds are measured against**, in one line |
+| attach | `[QSMC_ARB] v6.6.6 arbitration layer ON \| ... \| on XAUUSD M15` | version, preset, gate count and **the instrument the thresholds are measured against**, in one line |
 | attach | `[QSMC_ARB] preset INTRADAY (M15-H1): exec M15, H4 from H1, D1 from H4` | the resample map actually chosen |
 | per closed bar | *nothing at all* unless `InpArbVerboseLog=true` | silence is the designed behaviour |
 | on a published signal | `[QSMC_SIG] ...` with `(deduped n)` / `(cooldown n)` counters | the arbiter, not the raw signal source |
@@ -231,7 +240,7 @@ design reason the whole module is an indicator include rather than an EA.
 [ ] F7 on QSMC_ScannerProbe.mq5  -> 0 errors, "no indicator plot" acceptable
 [ ] F7 on KLJ_DataFeeder.mq5     -> 0 errors
 [ ] F7 on nadir2.mq5             -> 0 errors
-[ ] banner reads v6.6.4 on the live chart
+[ ] banner reads v6.6.6 on the live chart
 [ ] QSMC_ArbiterTest -> RESULT: 0 failed.
 [ ] alloc/free equal at detach
 [ ] first-hour tests 1-3 (§3) done and behaving
