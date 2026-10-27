@@ -1,6 +1,6 @@
 # QSMC decision dashboard clarity pass
 
-The chart's Core decision card is a **compact, left-docked card** (v6.6.7). It
+The chart's Core decision card is a **compact, left-docked card** (v6.6.8). It
 used to default to the full chart width with a 10-11pt font and ten rows, which
 covered the candles it was supposed to explain. The defaults now are:
 
@@ -89,7 +89,7 @@ The chain a popup must pass, in order:
 | 8 | No other source already claimed this bar (one alert per bar) | automatic |
 | 9 | The arbiter's gate chain accepted the candidate | `InpArbGate*`, `InpArbEnabled` |
 
-Since v6.6.7 the panel answers this itself: when the closed bar produced no
+Since v6.6.8 the panel answers this itself: when the closed bar produced no
 directional candidate, the `NEEDS:` row and the panel tooltip print the specific
 blocker, for example
 
@@ -112,7 +112,7 @@ A panel that prints `SCORE: n/a (no authoritative instance)` or
 `CONTEXT: UNVALIDATED (… M15 disabled) - no weight or tiers` is **not** this
 build: those exact strings do not exist in this repository or in its history.
 Before debugging gates, confirm which build is on the chart — the first journal
-line must read `[QSMC_ARB] v6.6.7 arbitration layer ON | …`. Any other version
+line must read `[QSMC_ARB] v6.6.8 arbitration layer ON | …`. Any other version
 means a stale compiled copy in the Data Folder, and no input you change on that
 copy will add the behaviour documented here.
 

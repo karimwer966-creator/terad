@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-QSMC v6.6.7 - RELEASE GATE
+QSMC v6.6.8 - RELEASE GATE
 
 A go / no-go check for taking this layer to a live chart. It does not re-check
 what static_check.py already checks (dialect rules, includes, balance); it
@@ -227,7 +227,7 @@ NOTES.append("G4 no trade API in the layer (headers + indicator + probe) and non
              "feeder; Alert/push/sound only in CAlertManager; QSMC CSV writes only in QSMC_Stats; "
              "the only trade API in the repository is the execution companion's")
 
-# ------------------------------------------- G8 the execution companion (v6.6.7)
+# ------------------------------------------- G8 the execution companion (v6.6.8)
 # This is the file that can lose money, so its deployment invariants are checked
 # here: inert by default, demo-only by default, dry-run on first switch-on, and
 # a risk ceiling that the sizing code actually enforces.
