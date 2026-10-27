@@ -63,6 +63,16 @@
 //|     true (its default), the buffers exist; if that default is      |
 //|     ever changed, this EA stops seeing signals - and the contract |
 //|     test in tools/test_autotrader_contract.py fails, on purpose.  |
+//|                                                                   |
+//|  SILENCE IS THE FAILURE MODE YOU WILL ACTUALLY MEET               |
+//|  -----------------------------------------------                  |
+//|  When no order appears there are only two root causes: the        |
+//|  indicator published no CORE signal, or it did and a filter       |
+//|  refused it. A throttled [QSMC_AT] heartbeat line (default every  |
+//|  InpHeartbeatSeconds) scans the CORE direction buffer over        |
+//|  InpHeartbeatLookback bars and states which one it is, plus the   |
+//|  last skip reason. It is read-only: no gate, order or position is |
+//|  touched, and InpHeartbeatSeconds=0 switches it off.              |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
 #property version   "6.69"
@@ -126,6 +136,8 @@ input bool   InpCloseOnOpposite      = false;  // close this magic's position on
 //--- 5. runtime ------------------------------------------------------
 input int    InpPollSeconds          = 2;      // timer period, seconds
 input bool   InpVerbose              = false;  // print every skipped signal and why
+input int    InpHeartbeatSeconds     = 300;    // diagnostic journal line every N seconds (0 = off)
+input int    InpHeartbeatLookback    = 200;    // bars scanned to prove whether the indicator publishes CORE at all
 
 //+------------------------------------------------------------------+
 //| State                                                            |
@@ -149,6 +161,14 @@ int       g_dry=0;
 int       g_refused=0;
 string    g_last_note="";
 int       g_note_count=0;
+
+// Heartbeat diagnostics: read-only. They copy buffer 7 and print; they never
+// touch a gate, an order or a position. They exist because a chart that simply
+// stays silent cannot distinguish "the indicator published nothing" from
+// "the EA refused every signal" - the two root causes of "no trades".
+datetime  g_last_heartbeat=0;
+bool      g_heartbeat_first=true;
+bool      g_last_copy_ok=false;
 
 struct SQsigSignal
   {
@@ -407,6 +427,7 @@ void DayGuardUpdate()
 //+------------------------------------------------------------------+
 bool CopySignalBuffers(const int count)
   {
+   g_last_copy_ok=false;
    if(g_handle==INVALID_HANDLE) return false;
    ArraySetAsSeries(g_dir,true);
    ArraySetAsSeries(g_entry,true);
@@ -420,6 +441,7 @@ bool CopySignalBuffers(const int count)
    if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP1,0,count,g_tp1)<count) return false;
    if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP2,0,count,g_tp2)<count) return false;
    if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP3,0,count,g_tp3)<count) return false;
+   g_last_copy_ok=true;
    return true;
   }
 
@@ -660,6 +682,106 @@ void ProcessSignals()
   }
 
 //+------------------------------------------------------------------+
+//| Diagnostic heartbeat. Read-only: it copies the CORE direction    |
+//| buffer and prints, it never changes a gate, an order or a        |
+//| position. It answers the one question a silent chart cannot:     |
+//| is the indicator publishing CORE signals at all, and if so why   |
+//| is each one not becoming an order? Throttled by                   |
+//| InpHeartbeatSeconds; the first run fires immediately so an       |
+//| operator does not wait a full interval for the first verdict.    |
+//+------------------------------------------------------------------+
+void DiagnosticHeartbeat()
+  {
+   if(InpHeartbeatSeconds<=0) return;
+   datetime now=TimeCurrent();
+   if(!g_heartbeat_first && (long)(now-g_last_heartbeat)<(long)InpHeartbeatSeconds) return;
+   g_last_heartbeat=now;
+   g_heartbeat_first=false;
+
+   string mode="INERT";
+   if(InpEnableTrading)
+     {
+      if(InpDryRun) mode="DRY RUN";
+      else
+        {
+         string blk=TradeEnvBlock(true);
+         if(blk=="") mode="ARMED";
+         else        mode="BLOCKED: "+blk;
+        }
+     }
+
+   if(g_handle==INVALID_HANDLE)
+     {
+      Print("[QSMC_AT] heartbeat: ",mode," | indicator `",InpIndicatorName,
+            "` handle INVALID - not compiled or missing from MQL5\\Indicators; no signal can ever be read");
+      return;
+     }
+   if(!g_last_copy_ok)
+     {
+      Print("[QSMC_AT] heartbeat: ",mode," | indicator `",InpIndicatorName,
+            "` is still warming up (the last CopyBuffer returned fewer bars than requested); waiting, nothing is wrong yet");
+      return;
+     }
+
+   int bars_avail=Bars(_Symbol,_Period);
+   int look=MathMax(2,InpHeartbeatLookback);
+   if(look>bars_avail) look=bars_avail;
+   double hb_dir[];
+   ArraySetAsSeries(hb_dir,true);
+   int got=CopyBuffer(g_handle,QSMC_BUF_CORE_DIR,0,look,hb_dir);
+   if(got<look)
+     {
+      Print("[QSMC_AT] heartbeat: ",mode," | indicator history not ready (",
+            IntegerToString(got),"/",IntegerToString(look)," bars) - nothing to evaluate yet");
+      return;
+     }
+
+   int found=0;
+   int last_shift=-1;
+   double last_dir=0.0;
+   for(int i=1;i<look;i++)
+     {
+      if(hb_dir[i]!=0.0)
+        {
+         found++;
+         if(last_shift<0)
+           {
+            last_shift=i;
+            last_dir=hb_dir[i];
+           }
+        }
+     }
+
+   string line="[QSMC_AT] heartbeat: "+mode+" | CORE signals in last "+
+               IntegerToString(look)+" closed bars: "+IntegerToString(found);
+   if(found==0)
+     {
+      // The transport is healthy; the strategy's own gate chain produced nothing.
+      // Saying this out loud is the whole point: silence used to look identical
+      // to a broken EA. The indicator-side blocker is named by its panel NEEDS
+      // row or by switching InpGateAuditLogEveryBars on inside the indicator.
+      line+=" -> the indicator published NO CORE setup, so this EA has nothing to execute (read the chart panel NEEDS row, or set InpGateAuditLogEveryBars>0 in nadir2)";
+     }
+   else
+     {
+      datetime bt=iTime(_Symbol,_Period,last_shift);
+      line+=" | most recent "+(last_dir>0.0 ? "BUY" : "SELL")+" signal bar "+
+            TimeToString(bt,TIME_DATE|TIME_MINUTES)+" ("+IntegerToString(last_shift)+" bars ago)";
+      if(last_shift>(int)MathMax(1,InpMaxSignalAgeBars))
+         line+=" - older than InpMaxSignalAgeBars="+IntegerToString(InpMaxSignalAgeBars)+", no longer tradable";
+     }
+   line+=" | processed "+IntegerToString(g_signals)+
+         " sent "+IntegerToString(g_sent)+
+         " dry "+IntegerToString(g_dry)+
+         " refused "+IntegerToString(g_refused)+
+         " open "+IntegerToString(OpenCount(_Symbol))+
+         (g_day_blocked ? " | daily loss guard ACTIVE" : "");
+   if(g_last_note!="")
+      line+=" | last skip: "+g_last_note;
+   Print(line);
+  }
+
+//+------------------------------------------------------------------+
 //| Break-even only. The stop never moves away from the entry.       |
 //+------------------------------------------------------------------+
 void ManageOpenPositions()
@@ -797,6 +919,7 @@ void OnTick()
    DayGuardUpdate();
    ProcessSignals();
    ManageOpenPositions();
+   DiagnosticHeartbeat();
   }
 
 void OnTimer()
@@ -806,5 +929,6 @@ void OnTimer()
    DayGuardUpdate();
    ProcessSignals();
    ManageOpenPositions();
+   DiagnosticHeartbeat();
   }
 //+------------------------------------------------------------------+

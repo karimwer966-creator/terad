@@ -149,6 +149,36 @@ Both rows are reproduced by an independent model in
 | `InpCloseOnOpposite` | `false` | close this magic's position when the opposite signal publishes |
 | `InpPollSeconds` | `2` | timer period; the EA also works from `OnTick` |
 | `InpVerbose` | `false` | add the repeated "still skipped" polls |
+| `InpHeartbeatSeconds` | `300` | print a read-only diagnostic line every N seconds; `0` disables it |
+| `InpHeartbeatLookback` | `200` | how many closed bars the heartbeat scans for any published CORE signal |
+
+### The heartbeat: silence is the failure you will actually meet
+
+When no order appears there are only **two** root causes, and a quiet Journal
+used to make them indistinguishable:
+
+1. the indicator published **no CORE signal** (its own gate chain rejected every
+   bar), so the EA literally had nothing to execute; or
+2. the indicator **did** publish, and an EA filter refused it (spread, stop
+   bounds, volume 0, position cap, …).
+
+Every `InpHeartbeatSeconds` (default 5 minutes, and once immediately after
+attach) the EA prints one `[QSMC_AT] heartbeat:` line that decides between them
+by scanning the CORE direction buffer (slot 7) over the last
+`InpHeartbeatLookback` closed bars:
+
+* `CORE signals in last 200 closed bars: 0 -> the indicator published NO CORE
+  setup` → the problem is upstream; read the chart panel's `NEEDS:` row, or set
+  `InpGateAuditLogEveryBars>0` inside `nadir2` to see which gate rejected.
+* `CORE signals in last 200 closed bars: 3 … last skip: <bar>|<dir> - <reason>`
+  → the transport works; the printed reason is the exact filter to adjust.
+
+The line also carries the mode (`INERT` / `DRY RUN` / `BLOCKED: …` / `ARMED`),
+the processed/sent/dry/refused counters, the open-position count, the daily
+guard state and the age of the most recent signal (so a signal older than
+`InpMaxSignalAgeBars` is named as no longer tradable). It is strictly read-only:
+it copies one buffer and prints; it never touches a gate, an order or a
+position.
 
 `OnTimer` exists because a quiet symbol can go minutes without a tick. It reads
 the same closed-bar buffers, so it cannot create a signal that `OnTick` would not
