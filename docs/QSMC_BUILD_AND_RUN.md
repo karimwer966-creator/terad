@@ -62,6 +62,14 @@ here`، ويظهر جدول `top setups by EVIDENCE SCORE` مع قائمة «not
 
 ---
 
+## 0b. Why is there no trade? (troubleshooting)
+
+The complete, ordered list of everything that can stop a trade — from "the EA is
+not attached" to "the broker rejected the stops" — is
+`docs/QSMC_WHY_NO_TRADES.md`. It gives the literal Journal line for each cause
+(`state INERT`, `state BLOCKED: …`, `[QSMC_AT] skip …`) and the one input to
+change. Read it before changing any threshold.
+
 ## 1. What has to be where
 
 MetaEditor resolves `#include <QSMC/QSMC_Root.mqh>` **only** under the data

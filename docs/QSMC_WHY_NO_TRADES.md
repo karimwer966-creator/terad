@@ -1,0 +1,203 @@
+# لماذا لا يفتح النظام صفقة؟ — تقرير كامل (QSMC v6.6.8)
+
+هذا التقرير يجمع **كل** سبب يمكن أن يمنع صفقة، مرتباً بترتيب الفحص الصحيح:
+الأسباب التي تُفحص أولاً هي التي تُفسّر ٩٠٪ من الحالات، وما بعدها حالات أندر.
+كل سبب مكتوب بجانبه **السطر الحرفي** الذي تبحث عنه في تبويب `Experts` /
+`Journal`، والإعداد الذي يغيّره.
+
+> **قاعدة واحدة تختصر كل شيء:** المؤشر لا يفتح صفقات أبداً. الذي يفتحها هو
+> `QSMC_AutoTrader.mq5` فقط، وهو يصل **معطّلاً**. ولن يفتح شيئاً إن لم يجد
+> إشارة `CORE` منشورة **بعد إغلاق شمعة**. أي مشكلة في السلسلة تعني صفراً من
+> الأوامر، بلا رسالة خطأ تلقائية.
+
+---
+
+## 0. الخلاصة في ثلاث نقاط
+
+| # | السبب الأكثر احتمالاً | الدليل |
+| --- | --- | --- |
+| 1 | **الـ EA غير مُرفق أو غير مُترجم** — لا يوجد أي سطر `[QSMC_AT]` في Journal | تبويب Experts فارغ |
+| 2 | **الـ EA مُرفق بإعداداته الافتراضية**: `InpEnableTrading=false` أو `InpDryRun=true` أو `InpDemoOnly=true` على حساب حقيقي | سطر `state INERT` / `state DRY RUN` / `state BLOCKED` |
+| 3 | **لا توجد إشارة CORE** لأن المؤشر لم ينشر شيئاً (نسخة قديمة، أو بوابات التحكيم رفضت، أو الاتجاه `MIXED`) | صف `NEEDS:` في اللوحة يسمّي المانع |
+
+---
+
+## 1. الطبقة الأولى: هل يوجد مُنفّذ أصلاً؟
+
+| السبب | كيف تتأكد | الحل |
+| --- | --- | --- |
+| المؤشر يعمل وحده | لا سطر `[QSMC_AT]` في Journal عند إرفاق أي شيء | أرفق `QSMC_AutoTrader.mq5` |
+| الـ EA لم يُترجم | في Navigator ← Expert Advisors لا تجد `QSMC_AutoTrader` | انسخه إلى `MQL5\Experts\` واضغط F7 |
+| اسم المؤشر خاطئ | `could not create an instance of 'nadir2' (error …)` | `InpIndicatorName` = اسم الملف المترجم بالضبط، بلا `.mq5` |
+| مدخلات غير صحيحة تمنع الإقلاع | `risk inputs out of range` / `stop bounds are inconsistent` / `InpMagic must be positive` | أصلح الأرقام؛ الـ EA يرفض الإقلاع بدل أن يعمل بقيم خطرة |
+| `InpMagic` صفر أو مكرر مع EA آخر | `InpMagic must be positive` | استخدم رقماً فريداً لكل EA |
+
+---
+
+## 2. الطبقة الثانية: سطر الحالة عند الإرفاق
+
+يُطبع مرة واحدة عند الإرفاق، وقبل وجود أي إشارة:
+
+| السطر | المعنى | الحل |
+| --- | --- | --- |
+| `state INERT: no order can be sent` | `InpEnableTrading=false` (الافتراضي) | اجعله `true` |
+| `state DRY RUN: orders are printed, never sent` | `InpDryRun=true` (الافتراضي) | اجعله `false` |
+| `state BLOCKED: <السبب>` | كل شيء مسلّح لكن البيئة ترفض — انظر الجدول التالي | عالج السبب المذكور |
+| `state ARMED: REAL account, live orders` | سيُرسل فعلاً عند أول إشارة | لا شيء |
+
+### تفصيل `state BLOCKED`
+
+| السبب الحرفي | ما يجب فعله |
+| --- | --- |
+| `the terminal's Algo Trading button is OFF` | زر **Algo Trading** في شريط MT5 |
+| `expert trading is disabled for this EA` | خصائص الـ EA ← تبويب Common ← *Allow Algo Trading* |
+| `the account is not allowed to trade (broker side)` | الحساب للقراءة فقط أو موقوف |
+| `the server forbids expert trading on this account` | تفعيل من الوسيط |
+| `trading is disabled on this symbol` | الرمز مغلق للتداول |
+| `this symbol is close-only right now` | إغلاق فقط (قرب نهاية الجلسة/عطلة) |
+| `this symbol is sell-only / buy-only right now` | قيد اتجاه على الرمز |
+| `real account and InpDemoOnly=true` | **الحالة الأكثر شيوعاً على حساب حقيقي**: `InpDemoOnly=false` |
+| `real account: set InpRealAccountConfirm to this account number (…)` | اكتب رقم حسابك في `InpRealAccountConfirm` |
+
+ملاحظة مقصودة: الحساب الحقيقي يحتاج **مفتاحين** لا واحداً
+(`InpDemoOnly=false` **و** رقم الحساب)، حتى لا يسلّح قالب محفوظ من حساب ديمو
+مالاً حقيقياً.
+
+---
+
+## 3. الطبقة الثالثة: لا توجد إشارة CORE أصلاً
+
+إن كان سطرك `state ARMED` ومع ذلك لا صفقة، فالمشكلة في الإشارة لا في التنفيذ.
+الـ EA يقرأ **مخازن المؤشر 7–12** فقط، وهي تُملأ عند **إغلاق** شمعة بإشارة
+`CORE` منشورة.
+
+| السبب | كيف تتأكد |
+| --- | --- |
+| تصدير المخازن مُعطّل | `InpExportSignalBuffers=true` في المؤشر (وهو الافتراضي) |
+| المؤشر لم يُضَف على المخطط | المخازن تأتي من نسخة الـ EA الخاصة عبر `iCustom`، لكن يجب أن يكون المؤشر مُترجماً وموجوداً |
+| المؤشر ما زال يحمّل التاريخ | `CopyBuffer` يعيد أقل من المطلوب؛ ينتظر الـ EA الشمعة التالية |
+| بوابات طبقة التحكيم رفضت | صف `NEEDS:` في اللوحة يعرض `arbiter top blocker: …` |
+| الاتجاه متعارض | اللوحة تعرض `LOCAL READY / DIRECTION MIXED - WAIT` |
+| لا مستوى MTF مُتحقق | `BEST LEVEL: none | waiting for validated MTF confluence` |
+| نسخة قديمة على المخطط | أول سطر Journal ليس `[QSMC_ARB] v6.6.8 arbitration layer ON` |
+| معاينة الشمعة الحالية فقط | اللوحة تقول `TOUCHED ON THE LIVE CANDLE only` — لا تنبيه ولا صفقة قبل الإغلاق |
+
+**الفرق الجوهري:** منطقة مرسومة ≠ إشارة. المنطقة تُرسم عندما تُكتشف السيولة؛
+الإشارة تُنشر فقط بعد ارتداد مؤكد على شمعة مغلقة يجتاز كل البوابات.
+
+---
+
+## 4. الطبقة الرابعة: إشارة موجودة والـ EA تجاهلها
+
+كل سبب هنا يُطبع سطراً واحداً: `[QSMC_AT] skip <bar>|<dir> - <السبب>`.
+
+| السطر الحرفي | المعنى | الإعداد |
+| --- | --- | --- |
+| `signal has no stop` / `signal has no target` | هندسة ناقصة في الإشارة | لا حل من الـ EA؛ رفض دائم |
+| `BUY geometry is not (sl<entry<tp)` | الوقف/الهدف في الجهة الخاطئة | رفض دائم |
+| `stop is N pts, under the minimum` | وقف أقرب من الحد | `InpMinStopPoints` |
+| `stop is N pts, over the maximum` | وقف أوسع من الحد | `InpMaxStopPoints` |
+| `price already at/below the BUY stop` | السعر تجاوز الوقف قبل التنفيذ | لا تدخّل |
+| `... target already reached - not chasing` | الهدف تحقق قبل الدخول | لا مطاردة، بالتصميم |
+| `spread above N pts` | السبريد أوسع من الحد | `InpMaxSpreadPoints` |
+| `daily loss guard is active` | خسارة اليوم بلغت الحد | `InpMaxDailyLossPercent` |
+| `already N position(s) open` | عدد الصفقات بلغ السقف | `InpMaxOpenPositions` |
+| `opposite position of this magic is open` | صفقة معاكسة مفتوحة | `InpCloseOnOpposite` |
+| `broker stops level rejects this SL/TP` | الوسيط يمنع SL/TP قريباً جداً | لا حل من الـ EA |
+| `volume resolves to 0 (risk cap, margin or broker minimum)` | الحجم أقل من حد الوسيط أو الهامش لا يكفي | ارفع `InpRiskPercent` |
+| `no price yet` | لا سعر (سوق مغلق/لا تيكات) | انتظر |
+| لا سطر skip إطلاقاً + لا `DRY RUN` | الـ EA لا يرى إشارة | عُد إلى §3 |
+
+### لماذا الحجم صفر؟
+
+الحجم = المخاطرة ÷ (مسافة الوقف × قيمة التك)، مقرّباً **للأسفل** إلى خطوة
+الوسيط. إن كان الناتج أقل من الحد الأدنى للعقد، فالجواب «لا صفقة» وليس
+«الحد الأدنى» — لأن استخدام الحد الأدنى يضاعف المخاطرة بصمت.
+
+حساب سريع (ذهب، قيمة النقطة ≈ 1$ لكل 0.01 لوت لكل 0.01$ حركة):
+
+| رأس المال | المخاطرة | الوقف | الناتج |
+| --- | --- | --- | --- |
+| 10,000$ | 0.25% = 25$ | 1.00$ | 0.25 لوت |
+| 1,000$ | 0.10% = 1$ | 1.00$ | 0.01 لوت (الحد الأدنى) |
+| 500$ | 0.10% = 0.50$ | 2.00$ | **0 → لا صفقة** |
+
+---
+
+## 5. الطبقة الخامسة: أُرسل الأمر وفشل
+
+| السطر | التفسير |
+| --- | --- |
+| `ORDER FAILED retcode=… <الوصف>` | رفض من الوسيط: `Invalid stops`، `No money`، `Requote`، `Market closed`، `Invalid volume` |
+| `closed opposite position #…` | نجح إغلاق الصفقة المعاكسة |
+| `stop moved to break-even on #…` | نقل الوقف إلى الدخول عند +1R (التعديل الوحيد المسموح) |
+
+الـ EA لا يعيد المحاولة بشكل أعمى بعد فشل الأمر؛ ينتظر إشارة جديدة.
+
+---
+
+## 6. ما لا يفعله النظام أبداً (وليس عطلاً)
+
+- لا يفتح صفقة بلا وقف.
+- لا يفتح على شمعة غير مغلقة.
+- لا يعزّز خسارة، ولا يضاعف العقود، ولا يوسّع وقفاً.
+- لا يتداول إشارة أقدم من `InpMaxSignalAgeBars`.
+- لا يتداول إشارة وُجدت قبل إرفاقه.
+- لا يفتح صفقة ثانية إن كان السقف مكتملاً.
+- لا يفتح صفقة بعد تجاوز حد الخسارة اليومي.
+
+كل واحدة من هذه **قرار تصميم**، لا خطأ برمجي.
+
+---
+
+## 7. خطوات التشخيص في خمس دقائق
+
+1. **أول سطر** في Journal عند الإرفاق: هل هو `[QSMC_AT] QSMC v6.6.8 execution companion ON`؟
+   إن لا → الـ EA غير مُرفق أو لم يُترجم.
+2. **سطر الحالة**: `INERT` / `DRY RUN` / `BLOCKED` / `ARMED`. لا تنتقل قبل
+   أن يصبح `ARMED` أو `DRY RUN`.
+3. **مرّر إلى DRY RUN أولاً** (`InpEnableTrading=true`، `InpDryRun=true`).
+   إن ظهر سطر `DRY RUN BUY …` فالتنفيذ سليم والمشكلة في المفتاح المتبقي فقط.
+4. **إن لم يظهر شيء أبداً** → لا إشارة. افتح اللوحة واقرأ صف `NEEDS:`:
+   سيقول لك بالحرف أي بوابة رفضت.
+5. **تأكد من الإصدار**: `[QSMC_ARB] v6.6.8` في Journal، وليس رقماً أقدم.
+
+---
+
+## 8. حالة جهازك تحديداً
+
+من الصور التي أرسلتها:
+
+- نص اللوحة `CONTEXT: UNVALIDATED (… M15 disabled) - no weight or tiers` و
+  `SCORE: n/a (no authoritative instance)` **غير موجود في هذا المستودع ولا في
+  تاريخه**. النسخة العاملة عندك ليست هذه.
+- الصفقة الظاهرة (`buy 0.01 @ 4046.54`) ليست من هذا النظام؛ المؤشر لا يستطيع
+  إرسال أمر.
+- لذلك لن يعمل الـ EA عندك قبل استبدال الملفات و**F7**، لأن هذه النسخة لا تنشر
+  إشارة `CORE` بالصيغة التي يقرأها.
+
+**الترتيب الصحيح:** انسخ `nadir2.mq5` + ١٨ ملف `Include/QSMC` +
+`QSMC_AutoTrader.mq5` → F7 على المؤشر ثم على الـ EA → أعد إرفاق المؤشر →
+تأكد `v6.6.8` → شغّل `DRY RUN` ساعة → ثم `InpDemoOnly=false` +
+`InpRealAccountConfirm=<رقم حسابك>` → ثم راقب أول صفقة.
+
+---
+
+## 9. جدول مرجعي سريع
+
+| الحالة | السبب | مفتاح واحد للتغيير |
+| --- | --- | --- |
+| لا شيء في Journal | EA غير مُرفق | أرفقه |
+| `INERT` | معطّل | `InpEnableTrading=true` |
+| `DRY RUN` | لا يرسل | `InpDryRun=false` |
+| `BLOCKED: … InpDemoOnly` | حساب حقيقي | `InpDemoOnly=false` |
+| `BLOCKED: … InpRealAccountConfirm` | رقم الحساب | اكتبه |
+| `BLOCKED: … Algo Trading` | زر التداول | شغّله |
+| `skip … spread` | سبريد | `InpMaxSpreadPoints` |
+| `skip … volume resolves to 0` | الحجم | `InpRiskPercent` |
+| `skip … position(s) open` | السقف | `InpMaxOpenPositions` |
+| لا سطر skip | لا إشارة | صف `NEEDS:` في اللوحة |
+| `ORDER FAILED` | رفض الوسيط | راجع retcode |
+
+هذا التقرير وصف لسلوك الكود، وليس وعداً بربح. لا شيء في هذا المستودع يجعل
+الاستراتيجية مربحة، والفحوص الثابتة لا تُغني عن **F7** ولا عن تجربة ديمو.
