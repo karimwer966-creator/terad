@@ -99,9 +99,13 @@ require("double pct=MathMin(InpRiskPercent,vmax_cap);" in code,
 require("AccountInfoDouble(ACCOUNT_EQUITY)*pct/100.0" in code,
         "risk is a fraction of current equity, not of balance or a fixed lot guess")
 
+# MQL5's integer-to-string converter is IntegerToString(long); there is no
+# LongToString(). One invented name produced 27 compile errors in this file.
+require("LongToString" not in code,
+        "no invented LongToString() - MQL5 spells the converter IntegerToString()")
 require(re.search(r'input\s+string\s+InpRealAccountConfirm\s*=\s*""\s*;', ea) is not None,
         "a real account must be NAMED: InpRealAccountConfirm ships empty")
-require("InpRealAccountConfirm!=LongToString(AccountInfoInteger(ACCOUNT_LOGIN))" in code,
+require("InpRealAccountConfirm!=IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))" in code,
         "the real-account check compares the input to the actual account number "
         "(a preset copied from a demo chart cannot arm real money)")
 require("if(!(bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))" in code and

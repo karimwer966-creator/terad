@@ -241,5 +241,11 @@ python3 tools/mql5_rules.py --quiet         # MQL5 dialect rules, including this
 python3 tools/static_check.py               # balance / includes / forbidden constructs
 ```
 
+`tools/mql5_rules.py` now also rejects invented converter names
+(`LongToString`, `IntToString`, `ULongToString`, `BoolToString`,
+`FloatToString`). MQL5 spells the integer converter `IntegerToString()`, which
+already takes a `long`; `LongToString()` does not exist and produced 27 compile
+errors on six lines of this EA when it was used.
+
 All four run in CI. None of them is a compile: **F7 in MetaEditor** and one
 `INERT` session are still required before the master switch is touched.
