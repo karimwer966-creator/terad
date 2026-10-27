@@ -1,12 +1,32 @@
 # QSMC decision dashboard clarity pass
 
-The chart's Core decision card now defaults to a full-width, readable strip
-(`InpDashboardFullWidth=true`, `InpDisplayMode=QSMC_MODE_FULL`) and the new-chart
-visual preset starts with `InpUltraCleanMode=true` and `InpDeclutterMode=true`.
-That keeps zones outline-only, reduces plotted zone clutter, and prioritizes
-readable decisions. These are display defaults; turn either clean option off if
-you prefer the previous dense chart. The card surfaces decision facts that were
-previously split across several chart annotations:
+The chart's Core decision card is a **compact, left-docked card** (v6.6.7). It
+used to default to the full chart width with a 10-11pt font and ten rows, which
+covered the candles it was supposed to explain. The defaults now are:
+
+| Input | Default | Effect |
+| --- | --- | --- |
+| `InpDashboardFullWidth` | `false` | compact card; set `true` only for a wide strip |
+| `InpDashboardMaxRows` | `6` | rows drawn on the card (3-10); the rest go to the tooltip |
+| `InpDashboardMaxWidthPx` | `430` | pixel cap for the compact card |
+| `InpPanelFontSize` | `0` | auto: 8pt compact, 9pt wide, hard-clamped to 7-10 |
+
+The compact card is additionally capped at **40% of the chart width**, so it
+cannot swallow a monitor of any size; even the wide mode stops at 900 px. Padding
+is 6 px and the line pitch is `font+5`, and the card is still positioned so it
+never covers the newest `InpPanelReserveBars` candles.
+
+When the card shows fewer rows than it has facts, the last row reads
+`... +N more (hover)` and the full list stays in the tooltip of every row. No
+visible row is ever truncated mid-number, and no decision fact is deleted — only
+moved into the tooltip.
+
+The new-chart visual preset also keeps `InpUltraCleanMode=true` and
+`InpDeclutterMode=true`. In those modes the long chart captions are shortened to
+`> PREVIEW BULLISH STRUCTURE`, `> PREVIEW BREAK UP` and
+`> PREVIEW <zone> - wait for the close`, with the full
+`LIVE PREVIEW (NON-AUTHORITATIVE) …` sentence in the object tooltip. The card
+surfaces decision facts that were previously split across several annotations:
 
 1. The authoritative Core/RXN/ZRE primary status remains separate from the
    MTF level ranking.
@@ -18,7 +38,8 @@ previously split across several chart annotations:
 4. `DIRECTION` is explicitly `MIXED - WAIT` when the non-neutral HTF, D1, and
    enabled top-down directions disagree. It does not silently force one side.
 5. Full details remain available in the chart-object tooltip. The card can be
-   returned to a compact width by setting `InpDashboardFullWidth=false`.
+   widened to a strip with `InpDashboardFullWidth=true`; it is capped at 900 px
+   even then.
 
 ## Color key
 
@@ -68,7 +89,7 @@ The chain a popup must pass, in order:
 | 8 | No other source already claimed this bar (one alert per bar) | automatic |
 | 9 | The arbiter's gate chain accepted the candidate | `InpArbGate*`, `InpArbEnabled` |
 
-Since v6.6.6 the panel answers this itself: when the closed bar produced no
+Since v6.6.7 the panel answers this itself: when the closed bar produced no
 directional candidate, the `NEEDS:` row and the panel tooltip print the specific
 blocker, for example
 
@@ -91,7 +112,7 @@ A panel that prints `SCORE: n/a (no authoritative instance)` or
 `CONTEXT: UNVALIDATED (… M15 disabled) - no weight or tiers` is **not** this
 build: those exact strings do not exist in this repository or in its history.
 Before debugging gates, confirm which build is on the chart — the first journal
-line must read `[QSMC_ARB] v6.6.6 arbitration layer ON | …`. Any other version
+line must read `[QSMC_ARB] v6.6.7 arbitration layer ON | …`. Any other version
 means a stale compiled copy in the Data Folder, and no input you change on that
 copy will add the behaviour documented here.
 

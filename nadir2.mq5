@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| v6.6.6 FULL-WIDTH DECISION CARD / CHART CLARITY                |
+//| v6.6.7 FULL-WIDTH DECISION CARD / CHART CLARITY                |
 //| Strongest MTF level, closed-bar entry check, mixed-bias warning; |
 //| ten-row full-width dashboard, semantic colors, clean chart mode. |
 //| Display-only: no probability claim or entry-gate relaxation.    |
@@ -607,7 +607,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.66"
+#property version   "6.67"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -618,7 +618,7 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.3).
-#define QSMC_VERSION_TEXT "v6.6.6"
+#define QSMC_VERSION_TEXT "v6.6.7"
 #property indicator_chart_window
 #property indicator_buffers 19   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (SigLog, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -955,7 +955,9 @@ input int InpBattleAnnotationLookback = 80;
 input int InpPDTransparency = 97;
 input group "====== AI Dashboard ======"
 input bool InpShowAIDashboard = true;
-input bool InpDashboardFullWidth = true;       // Full-width decision dashboard; switch off to keep a compact chart overlay
+input bool InpDashboardFullWidth = false;      // v6.6.7: OFF = compact card (does not cover the chart); ON = wide strip
+input int  InpDashboardMaxRows   = 6;          // Rows drawn on the card (3-10); everything else stays in the hover tooltip
+input int  InpDashboardMaxWidthPx= 430;        // Pixel width cap for the compact card; the wide mode is capped at 900
 input bool InpDockDashboard = true;            // Legacy positioning setting; compact Core panel is left-docked
 input bool InpDashboardCollapsible = true;     // Click Core title row to show/hide the three detail rows
 input bool InpShowMTFPanel = true;              // Legacy toggle; MTF is shown as Core-dashboard context
@@ -23721,10 +23723,18 @@ void UpdateEarlyBreakPreview(const int total,const datetime &t[],const double &h
       g_early_break_structure_time=last.time;
       g_early_break_structure_type=last.type;
       if(InpShowEarlyBreakTrigger)
-         DrawTextLabel(PFX+"EARLYBREAK",t[forming],last.price,
-                       StringFormat("LIVE PREVIEW (NON-AUTHORITATIVE) | %s STRUCTURE LEVEL | candle forming",
-                                    last.bullish?"BULLISH":"BEARISH"),
-                       clrAqua,true,8);
+         // v6.6.7: the clean modes print a short label and keep the full
+         // sentence in the tooltip - a 60-character caption across the candle
+         // it describes covers the chart it is meant to explain.
+         string eb_txt=(InpUltraCleanMode || InpDeclutterMode ?
+                        StringFormat("> PREVIEW %s STRUCTURE",(last.bullish?"BULLISH":"BEARISH")):
+                        StringFormat("LIVE PREVIEW (NON-AUTHORITATIVE) | %s STRUCTURE LEVEL | candle forming",
+                                     last.bullish?"BULLISH":"BEARISH"));
+         DrawTextLabel(PFX+"EARLYBREAK",t[forming],last.price,eb_txt,clrAqua,true,8);
+         if(ObjectFind(0,PFX+"EARLYBREAK")>=0)
+            ObjectSetString(0,PFX+"EARLYBREAK",OBJPROP_TOOLTIP,
+                            "LIVE PREVIEW (NON-AUTHORITATIVE) | "+(last.bullish?"BULLISH":"BEARISH")+
+                            " STRUCTURE LEVEL | candle forming - nothing is confirmed until the bar closes");
       else ObjectDelete(0,PFX+"EARLYBREAK");
       return;
    }
@@ -23739,10 +23749,16 @@ void UpdateEarlyBreakPreview(const int total,const datetime &t[],const double &h
       g_early_break_structure_time=last.time;
       g_early_break_structure_type=last.type;
       if(InpShowEarlyBreakTrigger)
-         DrawTextLabel(PFX+"EARLYBREAK",t[forming],last.price,
-                       StringFormat("LIVE PREVIEW (NON-AUTHORITATIVE) | EARLY BREAK %s (%s)",
-                                    bull_break?"UP":"DN",g_early_break_structure_type),
+         string eb2_txt=(InpUltraCleanMode || InpDeclutterMode ?
+                         StringFormat("> PREVIEW BREAK %s",(bull_break?"UP":"DN")):
+                         StringFormat("LIVE PREVIEW (NON-AUTHORITATIVE) | EARLY BREAK %s (%s)",
+                                      bull_break?"UP":"DN",g_early_break_structure_type));
+         DrawTextLabel(PFX+"EARLYBREAK",t[forming],last.price,eb2_txt,
                        bull_break?clrAqua:clrMagenta,true,8);
+         if(ObjectFind(0,PFX+"EARLYBREAK")>=0)
+            ObjectSetString(0,PFX+"EARLYBREAK",OBJPROP_TOOLTIP,
+                            "LIVE PREVIEW (NON-AUTHORITATIVE) | EARLY BREAK "+(bull_break?"UP":"DN")+
+                            " ("+g_early_break_structure_type+") - candle forming");
       else ObjectDelete(0,PFX+"EARLYBREAK");
       return;
    }
@@ -28141,7 +28157,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
       needs="NEEDS: "+(g_alert_primary.needs==""?"none":g_alert_primary.needs);
       invalid="INVALIDATION: "+AlertInvalidationText(g_alert_primary);
    }
-   // v6.6.6: when this closed bar produced NO directional candidate, the panel
+   // v6.6.7: when this closed bar produced NO directional candidate, the panel
    // says WHY instead of a generic "wait": a live-candle preview, a reaction
    // below InpZREAlertMinStrength, a distance/cooldown/RXN-level refusal, or the
    // arbiter's top blocker. Read-only (AlertWhyNoPopup changes no state), and it
@@ -28243,7 +28259,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
       g_mvp[g_mvp_active].valid)
       core_profile+=" | POC "+DoubleToString(g_mvp[g_mvp_active].poc,_Digits);
 
-   string lines[10]; color cols[10]; int ln=0;
+   string lines[11]; color cols[11]; int ln=0;
    lines[ln]="STATUS: "+status+" | "+_Symbol+" "+TFName((ENUM_TIMEFRAMES)_Period);
    cols[ln++]=status_col;
    lines[ln]=primary; cols[ln++]=(primary_dir>0?clrLimeGreen:(primary_dir<0?clrLightCoral:clrSilver));
@@ -28268,11 +28284,20 @@ void DrawQuantumDashboard(const int total,const double &c[])
       lines[ln]=invalid; cols[ln++]=clrSilver;
       lines[ln]=sr; cols[ln++]=clrSilver;
    }
-   if(ln>10) ln=10;
+   if(ln>11) ln=11;
+   int rows_total=ln;                       // before any budget or width cut
+
+   // v6.6.7 ROW BUDGET: the card shows InpDashboardMaxRows rows and says so
+   // when it is hiding some, instead of growing down the chart. Nothing is lost:
+   // the full list is in the tooltip of every row.
+   int max_rows=(int)MathMax(3,MathMin(10,InpDashboardMaxRows));
+   if(InpDashboardFullWidth) max_rows=(int)MathMin(9,max_rows+2);
+   if(ln>max_rows) ln=max_rows;             // +1 slot is kept for the hint row
 
    // Full detail is retained in tooltips; the visible surface is deliberately
-   // capped at ten decision rows and never cuts a word or a number mid-string.
-   string tooltip="QUANTUM SMC | closed-bar decision dashboard (max 10 rows)\n"+
+   // capped and never cuts a word or a number mid-string.
+   string tooltip="QUANTUM SMC | closed-bar decision dashboard ("+IntegerToString(ln)+" of "+
+                  IntegerToString(rows_total)+" rows shown)\n"+
                   "Best MTF level: "+best_level+"\nEntry check: "+entry_check+"\n"+
                   "Why no alert this bar: "+AlertWhyNoPopup(closed,g_buf_t[closed])+"\n"+
                   "Direction consensus: "+market_direction+" (context only)\n"+
@@ -28296,12 +28321,24 @@ void DrawQuantumDashboard(const int total,const double &c[])
    int chart_h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    if(chart_w<=0) chart_w=800;
    if(chart_h<=0) chart_h=600;
-   int safe_w=(InpDashboardFullWidth ? (int)MathMax(100,chart_w-16) :
-               (int)MathMax(100,MathMin(chart_w-16,SafeLeftPanelWidth())));
-   int panel_font=(int)MathMax(8,MathMin(11,(InpPanelFontSize>0?InpPanelFontSize:
-                                               (InpDashboardFullWidth?10:8))));
-   int pad=8,line_h=panel_font+8;
-   int text_max=(int)MathMax(40,safe_w-2*pad-6);
+   // v6.6.7 COMPACT CARD. The card used to default to the full chart width with
+   // a 10-11pt font and ten rows, which covered the candles it was explaining.
+   // It is now a small left-docked card by default: a bounded pixel width, a
+   // smaller font, tighter spacing and a row budget the operator sets.
+   int safe_w=0;
+   if(InpDashboardFullWidth)
+      safe_w=(int)MathMax(100,MathMin(chart_w-16,900));
+   else
+   {
+      int cap_px=(InpDashboardMaxWidthPx>0?InpDashboardMaxWidthPx:430);
+      int cap_pct=(int)(chart_w*2/5);                 // never more than 40% of the chart
+      safe_w=(int)MathMin(SafeLeftPanelWidth(),MathMin(cap_px,cap_pct));
+      safe_w=(int)MathMax(210,MathMin(safe_w,chart_w-16));
+   }
+   int panel_font=(InpPanelFontSize>0?InpPanelFontSize:(InpDashboardFullWidth?9:8));
+   panel_font=(int)MathMax(7,MathMin(10,panel_font));
+   int pad=6,line_h=panel_font+5;
+   int text_max=(int)MathMax(40,safe_w-2*pad-4);
    if(TextWidthPx(lines[0],"Consolas",panel_font,true)>text_max)
       lines[0]="STATUS: "+status;
    if(ln>1 && TextWidthPx(lines[1],"Consolas",panel_font,false)>text_max &&
@@ -28320,6 +28357,15 @@ void DrawQuantumDashboard(const int total,const double &c[])
          ln--;
       }
       else i++;
+   }
+   // Rows dropped for width are hidden too: say how many in ONE dim row rather
+   // than growing the card. This is the only row that is not a decision fact.
+   int hidden_rows=rows_total-ln;
+   if(hidden_rows>0 && ln<11)
+   {
+      lines[ln]="... +"+IntegerToString(hidden_rows)+" more (hover)";
+      cols[ln]=clrDimGray;
+      ln++;
    }
    int text_w=0;
    for(int i=0;i<ln;i++)
@@ -28365,7 +28411,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
       ObjectSetInteger(0,name,OBJPROP_ZORDER,21);
       ObjectSetString(0,name,OBJPROP_TOOLTIP,tooltip);
    }
-   for(int i=ln;i<10;i++)
+   for(int i=ln;i<11;i++)
    {
       string stale=PFX+"CORE_DASH_ROW_"+IntegerToString(i);
       if(ObjectFind(0,stale)>=0) ObjectDelete(0,stale);
@@ -33293,11 +33339,16 @@ void ZRE_DrawPreview(const int best,const datetime live_time)
    if(sig==g_zre_preview_sig && ObjectFind(0,name)>=0) return;
    g_zre_preview_sig=sig;
    bool sup=(g_zre_zones[best].side==ZRE_SUPPORT);
-   string txt="ZONE REACTION / NON-AUTHORITATIVE | LIVE PREVIEW (unconfirmed): live candle in "+
-              ZRE_ZoneText(g_zre_zones[best])+" - wait for the close";
+   // v6.6.7: short caption in the clean modes; the full sentence is the tooltip.
+   string txt=(InpUltraCleanMode || InpDeclutterMode ?
+               "> PREVIEW "+ZRE_ZoneText(g_zre_zones[best])+" - wait for the close" :
+               "ZONE REACTION / NON-AUTHORITATIVE | LIVE PREVIEW (unconfirmed): live candle in "+
+               ZRE_ZoneText(g_zre_zones[best])+" - wait for the close");
    DrawTextLabel(name,live_time,(sup?g_zre_zones[best].hi:g_zre_zones[best].lo),txt,clrAqua,!sup,8);
    ObjectSetString(0,name,OBJPROP_TOOLTIP,
-                   "Layer D live-candle preview only; non-authoritative. Nothing is confirmed until the bar closes.\n"+
+                   "ZONE REACTION / NON-AUTHORITATIVE | LIVE PREVIEW (unconfirmed): live candle in "+
+                   ZRE_ZoneText(g_zre_zones[best])+" - wait for the close.\n"+
+                   "Layer D live-candle preview only; nothing is confirmed until the bar closes.\n"+
                    g_zre_zones[best].detail);
    ResolveChartLabelCollisions();
 }
@@ -36739,7 +36790,7 @@ void AlertDispatcherFinalize(const int rates_total)
 }
 
 //====================================================================
-// v6.6.6 "WHY DID IT NOT ALERT ME?" - display-only explanation
+// v6.6.7 "WHY DID IT NOT ALERT ME?" - display-only explanation
 //
 // The dispatcher knows exactly why a closed bar produced no popup (distance,
 // cooldown, a candidate below the RXN level, a bar already claimed by CORE,

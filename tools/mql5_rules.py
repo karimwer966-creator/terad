@@ -110,7 +110,7 @@ NOT_IN_MQL5 = {
                      "StringGetCharacter() from StringLen(s)-1",
     "StringReverse": "MQL5 has no StringReverse() - reverse with a loop over "
                      "StringGetCharacter()",
-    # v6.6.6: the execution companion used LongToString() in seven places and
+    # v6.6.7: the execution companion used LongToString() in seven places and
     # MetaEditor answered with 27 errors on six lines, because each one also
     # broke the parse of the surrounding expression. The real converter is
     # IntegerToString(), which takes a long already (and a ulong via a cast).
@@ -1028,7 +1028,7 @@ UNITS = [
     # accumulated four bugs that no build could see.
     ("QSMC_ScannerProbe.mq5 (Phase 7 host)","MQL5/Indicators/QSMC_ScannerProbe.mq5"),
     ("(virtual) QSMC_Scanners.mqh",       "MQL5/Include/QSMC/QSMC_Scanners.mqh"),
-    # v6.6.6 execution companion. It is a separate translation unit on purpose:
+    # v6.6.7 execution companion. It is a separate translation unit on purpose:
     # the indicator must stay unable to trade, so execution lives in this file
     # and is linted as its own unit.
     ("QSMC_AutoTrader.mq5 (execution)",   "MQL5/Experts/QSMC_AutoTrader.mq5"),

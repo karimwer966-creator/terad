@@ -34,7 +34,7 @@
 #property indicator_chart_window
 #property indicator_buffers 0
 #property indicator_plots   0
-#property version   "6.66"
+#property version   "6.67"
 
 #include <QSMC/QSMC_Preset.mqh>
 #include <QSMC/QSMC_Scanners.mqh>
