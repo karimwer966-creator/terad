@@ -5115,6 +5115,7 @@ string SignalGateOutcomeLine();
 string SignalGateSourceLine();
 string SignalGateRXNLine();   // v6.5.0 Reaction Signal Layer funnel (display only)
 string GateAuditTopBlocker();
+string AlertWhyNoPopup(const int closed,const datetime bar_time);
 void DashPushWrapped(string &L[],int &ln,const string s,const int width);
 int MTFAlignmentPercent();
 // v6.5.1 MTF AUDIT: the alignment vector used to be filled only inside
@@ -28140,6 +28141,13 @@ void DrawQuantumDashboard(const int total,const double &c[])
       needs="NEEDS: "+(g_alert_primary.needs==""?"none":g_alert_primary.needs);
       invalid="INVALIDATION: "+AlertInvalidationText(g_alert_primary);
    }
+   // v6.6.6: when this closed bar produced NO directional candidate, the panel
+   // says WHY instead of a generic "wait": a live-candle preview, a reaction
+   // below InpZREAlertMinStrength, a distance/cooldown/RXN-level refusal, or the
+   // arbiter's top blocker. Read-only (AlertWhyNoPopup changes no state), and it
+   // replaces a row rather than adding one, so the ten-row cap still holds.
+   if(!g_alert_primary.valid)
+      needs="NEEDS: "+AlertWhyNoPopup(closed,g_buf_t[closed]);
    string opposing="OPPOSING: none";
    if(g_alert_opposite.valid)
       opposing=StringFormat("OPPOSING: %s %s-%s | %d/100 | %.2f ATR",
@@ -28266,6 +28274,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    // capped at ten decision rows and never cuts a word or a number mid-string.
    string tooltip="QUANTUM SMC | closed-bar decision dashboard (max 10 rows)\n"+
                   "Best MTF level: "+best_level+"\nEntry check: "+entry_check+"\n"+
+                  "Why no alert this bar: "+AlertWhyNoPopup(closed,g_buf_t[closed])+"\n"+
                   "Direction consensus: "+market_direction+" (context only)\n"+
                   "Primary: "+(g_alert_primary_tooltip==""?"none":g_alert_primary_tooltip)+"\n"+
                   "Core state: "+core_state+" | blocker: "+CoreDashBlocker(core_state,path)+"\n"+
@@ -36727,6 +36736,85 @@ void AlertDispatcherFinalize(const int rates_total)
       g_last_confirmed_alert_id=selected.zone_id;
       g_last_alert_bar=selected.bar_time;
    }
+}
+
+//====================================================================
+// v6.6.6 "WHY DID IT NOT ALERT ME?" - display-only explanation
+//
+// The dispatcher knows exactly why a closed bar produced no popup (distance,
+// cooldown, a candidate below the RXN level, a bar already claimed by CORE,
+// channels switched off), but it can only PRINT that reason when
+// InpAlertDispatcherLog=true - which is off by default because a per-bar log on
+// M1 is a flood. So the answer was invisible unless a user knew which of seven
+// inputs to check.
+//
+// This function recomputes that answer from the same closed-bar state for the
+// dashboard. It is strictly READ-ONLY: it never submits, claims, commits or
+// clears a candidate, never touches the cooldown ring, and never sends an
+// alert. It cannot change whether an alert fires - it only names the blocker.
+//====================================================================
+string AlertWhyNoPopup(const int closed,const datetime bar_time)
+{
+   if(closed<0 || closed>=ArraySize(g_buf_t)) return "no closed bar yet";
+   bool any_channel=(InpPrimaryAlertPopup || InpPrimaryAlertPush || InpPrimaryAlertSound ||
+                     InpZREAlertPopup || InpZREAlertPush || InpZREAlertSound || InpRXNAlerts);
+   if(!any_channel)
+      return "every alert channel is OFF in the inputs (InpPrimaryAlertPopup / InpZREAlert* / InpRXNAlerts)";
+   if(g_directional_alert_bar_time==bar_time && g_directional_alert_event_id!="")
+      return "already alerted on this bar by "+g_directional_alert_event_id+" - one alert per bar";
+   double maxd=InpAlertMaxDistanceATR;
+   if(!MathIsValidNumber(maxd) || maxd<0.0) maxd=2.0;
+
+   // 1) A live-candle touch is a PREVIEW. It is drawn, labelled and counted, and
+   //    by design it never alerts: the fact does not exist until the bar closes.
+   int prev=-1;
+   for(int i=0;i<ArraySize(g_zre_status) && i<ArraySize(g_zre_zones);i++)
+   {
+      if(g_zre_status[i].state!=ZRE_ST_TOUCHED_PREVIEW) continue;
+      if(prev<0 || g_zre_zones[i].strength>g_zre_zones[prev].strength) prev=i;
+   }
+   if(prev>=0 && g_zre_zones[prev].strength>=InpZREAlertMinStrength)
+      return "zone "+g_zre_zones[prev].id+" is TOUCHED ON THE LIVE CANDLE only ("+
+             DoubleToString((g_zre_zones[prev].lo+g_zre_zones[prev].hi)*0.5,_Digits)+
+             ", strength "+IntegerToString(g_zre_zones[prev].strength)+") - alerts are closed-bar, wait for this candle to close";
+
+   // 2) A closed-bar reaction that is real but too weak for the strength floor.
+   int weak=-1;
+   for(int i=0;i<ArraySize(g_zre_status) && i<ArraySize(g_zre_zones);i++)
+   {
+      if(g_zre_status[i].base_state!=ZRE_ST_REACTION_CONFIRMED) continue;
+      if(g_zre_zones[i].strength>=InpZREAlertMinStrength) continue;
+      if(weak<0 || g_zre_zones[i].strength>g_zre_zones[weak].strength) weak=i;
+   }
+   if(weak>=0)
+      return "REACTION CONFIRMED on zone "+g_zre_zones[weak].id+" but strength "+
+             IntegerToString(g_zre_zones[weak].strength)+" < InpZREAlertMinStrength "+
+             IntegerToString(InpZREAlertMinStrength);
+
+   // 3) There is a candidate on the chart, but one of the four channels refused it.
+   if(g_alert_primary.valid)
+   {
+      if(g_alert_primary.distance_atr>maxd)
+         return "nearest candidate is "+DoubleToString(g_alert_primary.distance_atr,2)+
+                " ATR from the closed price, limit InpAlertMaxDistanceATR "+
+                DoubleToString(maxd,2);
+      if(g_alert_primary.scenario_candidate && g_alert_primary.level<MathMax(2,MathMin(5,InpRXNAlertMinLevel)))
+         return "nearest candidate level "+IntegerToString(g_alert_primary.level)+
+                " < InpRXNAlertMinLevel "+IntegerToString(InpRXNAlertMinLevel);
+      bool ap=false,apush=false,asnd=false;
+      if(!AlertChannelsFor(g_alert_primary,ap,apush,asnd))
+         return "the channel for this source is closed in the inputs";
+      if(!AlertCooldownAllows(g_alert_primary,AlertExactKey(g_alert_primary)))
+         return "deduplicated by InpAlertCooldownBars "+IntegerToString(InpAlertCooldownBars)+
+                " on this exact (zone, direction, level)";
+   }
+
+   // 4) Nothing passed the closed-bar gates at all.
+   string idle=(g_zre_idle_note!=""?g_zre_idle_note:"no closed-bar zone reaction");
+   string blk=GateAuditTopBlocker();
+   if(blk!="") idle+=" | arbiter top blocker: "+blk;
+   if(ArraySize(g_zre_zones)>0) idle+=" | zones drawn: "+IntegerToString(ArraySize(g_zre_zones));
+   return idle;
 }
 
 void RXN_Alert(const SRxnEvidence &e,const datetime bar_time)

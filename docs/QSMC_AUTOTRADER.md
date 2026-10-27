@@ -187,6 +187,17 @@ them by hand or the stop you placed remains your only protection.
 
 ---
 
+## 4b. "The dashboard showed a zone but nothing traded"
+
+The EA trades only a **published CORE signal**, not a drawn zone and not the
+tactical preview mark. If a zone is visible and the EA did nothing, read the
+journal: every refusal is one line, `[QSMC_AT] skip <bar>|<dir> - <reason>`
+(spread, signal age, stop bounds, broker stops level, open-position cap, daily
+guard, or `INERT`). If there is no `skip` line at all, the indicator published no
+CORE signal for that bar — the dashboard's `NEEDS:` row names the blocker, see
+§"A zone appeared on the chart but the system did not alert me" in
+`docs/QSMC_DASHBOARD_CLARITY.md`.
+
 ## 5. What this does not do
 
 - It does not add, change, or relax **any** entry gate, confluence rule, zone
