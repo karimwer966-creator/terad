@@ -99,6 +99,7 @@ from the EA" path, and that is deliberate.
 | `InpEnableTrading` | `false` | master switch. `false` = the EA can never send an order; it still logs what it *would* do |
 | `InpDryRun` | `true` | with trading enabled, still only prints the order line; nothing is sent |
 | `InpDemoOnly` | `true` | refuses any account whose trade mode is not `DEMO` |
+| `InpRealAccountConfirm` | `""` | on a real account you must type **the account number** here. A preset copied from a demo chart therefore cannot arm real money |
 | `InpMagic` | `20261027` | this EA only counts, closes and modifies positions with this magic |
 | `InpIndicatorName` | `nadir2` | compiled indicator file name (no extension) |
 | `InpTradeComment` | `QSMC-AUTO` | comment stamped on the order |
@@ -177,9 +178,28 @@ see.
 6. **Session three — demo, real orders.** `InpDryRun=false`, account stays demo.
    Check that the filled volume matches the printed one and the SL/TP are where
    the journal says.
-7. Only then consider `InpDemoOnly=false` on a small real account. Nothing in this
-   repository makes a strategy profitable; this step is a risk decision, not a
-   verification step.
+7. Only then consider a real account. It takes **two** deliberate inputs, not one:
+   `InpDemoOnly=false` **and** `InpRealAccountConfirm=<your account number>`.
+   If the number does not match, every signal is refused with
+   `REFUSED ... real account: set InpRealAccountConfirm to this account number`.
+   Nothing in this repository makes a strategy profitable; this step is a risk
+   decision, not a verification step. Start with `InpMaxOpenPositions=1` and
+   `InpRiskPercent` at or below `0.25`.
+
+### The attach banner answers "why is it not trading?"
+
+One line, printed at attach, before any signal exists:
+
+| Banner | Meaning |
+| --- | --- |
+| `state INERT` | `InpEnableTrading=false` (shipping default) |
+| `state DRY RUN` | armed but `InpDryRun=true`; orders are only printed |
+| `state BLOCKED: <reason>` | arming is complete but the environment refuses: Algo Trading off, EA trading disabled, broker/account permission, symbol disabled/close-only, `InpDemoOnly=true` on a real account, or a wrong `InpRealAccountConfirm` |
+| `state ARMED: REAL account, live orders` | every switch has been set on purpose; orders will be sent |
+
+`TradeEnvBlock()` is the single function behind `BLOCKED`, so the same reason is
+printed whenever a specific signal is refused: `[QSMC_AT] REFUSED to send BUY
+XAUUSD: <reason>`.
 
 **Rollback in one action:** set `InpEnableTrading=false`, or remove the EA. Open
 positions are not closed by this switch — the EA stops managing them too, so close

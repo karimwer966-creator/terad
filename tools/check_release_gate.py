@@ -257,6 +257,9 @@ else:
         fail("G8 the sizing path does not clamp the requested risk to InpMaxRiskPercent")
     if "if(vmax_cap>1.0) vmax_cap=1.0;" not in ea_code:
         fail("G8 the sizing path does not cap InpMaxRiskPercent itself at 1.0")
+    if not re.search(r'input\s+string\s+InpRealAccountConfirm\s*=\s*""\s*;', ea):
+        fail("G8 InpRealAccountConfirm is missing or non-empty - a real account must be "
+             "named by the operator, so a demo preset cannot arm live money")
     if "ACCOUNT_TRADE_MODE_DEMO" not in ea_code:
         fail("G8 the demo-only refusal is gone - InpDemoOnly would be a lie")
     if re.search(r'MathPow\(\s*2', ea_code) or re.search(r'lots\s*\*\s*2', ea_code):

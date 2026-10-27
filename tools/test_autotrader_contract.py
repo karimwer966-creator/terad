@@ -99,6 +99,22 @@ require("double pct=MathMin(InpRiskPercent,vmax_cap);" in code,
 require("AccountInfoDouble(ACCOUNT_EQUITY)*pct/100.0" in code,
         "risk is a fraction of current equity, not of balance or a fixed lot guess")
 
+require(re.search(r'input\s+string\s+InpRealAccountConfirm\s*=\s*""\s*;', ea) is not None,
+        "a real account must be NAMED: InpRealAccountConfirm ships empty")
+require("InpRealAccountConfirm!=LongToString(AccountInfoInteger(ACCOUNT_LOGIN))" in code,
+        "the real-account check compares the input to the actual account number "
+        "(a preset copied from a demo chart cannot arm real money)")
+require("if(!(bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))" in code and
+        "if(!(bool)MQLInfoInteger(MQL_TRADE_ALLOWED))" in code,
+        "the companion names a switched-off Algo Trading button as the blocker "
+        "instead of silently doing nothing")
+require("if(!(bool)AccountInfoInteger(ACCOUNT_TRADE_EXPERT))" in code,
+        "server-side expert-trading permission is checked too")
+require("SYMBOL_TRADE_MODE_CLOSEONLY" in code and "SYMBOL_TRADE_MODE_DISABLED" in code,
+        "a disabled / close-only symbol is reported, not traded")
+require('state BLOCKED: ' in ea and 'state ARMED: ' in ea,
+        "the attach banner states INERT / DRY RUN / BLOCKED / ARMED in one line")
+
 # ------------------------------------------------------- stop / geometry refusals
 must = {
     "no stop, no trade": 'signal has no stop',

@@ -99,6 +99,7 @@ enum ENUM_QSMC_TP_SOURCE
 input bool   InpEnableTrading        = false;  // MASTER SWITCH: false = this EA never sends an order
 input bool   InpDryRun               = true;   // true = log the order it would send, send nothing
 input bool   InpDemoOnly             = true;   // refuse a real-money account entirely
+input string InpRealAccountConfirm   = "";     // real account: type the account NUMBER here to allow it
 input long   InpMagic                = 20261027; // magic number; this EA only manages its own positions
 input string InpIndicatorName        = "nadir2"; // compiled indicator file name (no .mq5)
 input string InpTradeComment         = "QSMC-AUTO"; // comment stamped on every order
@@ -286,6 +287,39 @@ ulong FindOurPosition(const string sym,const int dir_wanted)
       if(dir_wanted<0 && !is_buy) return ticket;
      }
    return 0;
+  }
+
+//+------------------------------------------------------------------+
+//| One place that answers "may this EA send an order right now?".    |
+//| Empty string = yes. Everything the terminal/broker can switch off |
+//| is checked here, because "why did it not trade?" is almost always |
+//| one of these and not a strategy question.                         |
+//+------------------------------------------------------------------+
+string TradeEnvBlock(const bool buy)
+  {
+   if(!(bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+      return "the terminal's Algo Trading button is OFF";
+   if(!(bool)MQLInfoInteger(MQL_TRADE_ALLOWED))
+      return "expert trading is disabled for this EA (Allow Algo Trading in its properties)";
+   if(!(bool)AccountInfoInteger(ACCOUNT_TRADE_ALLOWED))
+      return "the account is not allowed to trade (broker side)";
+   if(!(bool)AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
+      return "the server forbids expert trading on this account";
+   long mode=SymbolInfoInteger(_Symbol,SYMBOL_TRADE_MODE);
+   if(mode==SYMBOL_TRADE_MODE_DISABLED)   return "trading is disabled on this symbol";
+   if(mode==SYMBOL_TRADE_MODE_CLOSEONLY)  return "this symbol is close-only right now";
+   if(buy && mode==SYMBOL_TRADE_MODE_SHORTONLY) return "this symbol is sell-only right now";
+   if(!buy && mode==SYMBOL_TRADE_MODE_LONGONLY) return "this symbol is buy-only right now";
+   bool real=(AccountInfoInteger(ACCOUNT_TRADE_MODE)!=ACCOUNT_TRADE_MODE_DEMO);
+   if(!real) return "";
+   if(InpDemoOnly)
+      return "real account and InpDemoOnly=true (that is the shipping default)";
+   // A real account is not a toggle: the operator must NAME the account, so a
+   // settings preset copied from a demo chart cannot silently arm real money.
+   if(InpRealAccountConfirm!=LongToString(AccountInfoInteger(ACCOUNT_LOGIN)))
+      return "real account: set InpRealAccountConfirm to this account number ("+
+             LongToString(AccountInfoInteger(ACCOUNT_LOGIN))+") to allow live orders";
+   return "";
   }
 
 //+------------------------------------------------------------------+
@@ -551,10 +585,10 @@ void HandleSignal(SQsigSignal &s)
       g_dry++;
       return;
      }
-   if(InpDemoOnly && AccountInfoInteger(ACCOUNT_TRADE_MODE)!=ACCOUNT_TRADE_MODE_DEMO)
+   string env_block=TradeEnvBlock(buy);
+   if(env_block!="")
      {
-      Print("[QSMC_AT] REFUSED: InpDemoOnly=true and this account is not a demo account. ",
-            "That switch exists so a first live test is a decision, not an accident.");
+      Print("[QSMC_AT] REFUSED to send ",DirText(s.dir)," ",sym,": ",env_block);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
@@ -725,6 +759,21 @@ int OnInit()
       Print("[QSMC_AT] WARNING: live trading on a real account is enabled. ",
             "Risk per trade is capped at ",DoubleToString(InpMaxRiskPercent,2),
             "% of equity, but no size or filter makes a strategy profitable.");
+
+   // Print the environment verdict at attach. This is the line to read when the
+   // question is "why is it not trading?" - it answers before any signal exists.
+   string env=TradeEnvBlock(true);
+   if(!InpEnableTrading)
+      Print("[QSMC_AT] state INERT: no order can be sent. Set InpEnableTrading=true to arm.");
+   else if(InpDryRun)
+      Print("[QSMC_AT] state DRY RUN: orders are printed, never sent. Set InpDryRun=false to send.");
+   else if(env!="")
+      Print("[QSMC_AT] state BLOCKED: ",env);
+   else
+      Print("[QSMC_AT] state ARMED: ",(AccountInfoInteger(ACCOUNT_TRADE_MODE)!=ACCOUNT_TRADE_MODE_DEMO?
+                                      "REAL account, live orders" : "demo account, live orders"),
+            " | risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),
+            "% of equity, max ",IntegerToString(InpMaxOpenPositions)," position(s)");
 
    EventSetTimer(InpPollSeconds);
    return INIT_SUCCEEDED;
