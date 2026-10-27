@@ -65,7 +65,7 @@
 //|     test in tools/test_autotrader_contract.py fails, on purpose.  |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
-#property version   "6.68"
+#property version   "6.69"
 #property description "Companion execution EA for the QSMC indicator. Ships inert; no strategy claim."
 #property strict
 
@@ -747,7 +747,7 @@ int OnInit()
    g_day_index=-1;
    DayGuardUpdate();
 
-   Print("[QSMC_AT] QSMC v6.66 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
+   Print("[QSMC_AT] QSMC v6.69 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",

@@ -69,6 +69,9 @@ jobs:
       - name: EdgeBook persistence contract
         run: python3 tools/test_edgebook_contract.py 2>&1 | tee out/test_edgebook.log
 
+      - name: One causal zone role (BUY/SELL direction contract)
+        run: python3 tools/test_zre_signal_role.py 2>&1 | tee out/test_zre_signal_role.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 
@@ -93,7 +96,7 @@ jobs:
         run: |
           echo "NOT COMPILED HERE. Open nadir2.mq5 in MetaEditor and press F7."
           echo "The init log must read:"
-          echo '  [QSMC_ARB] v6.6.8 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ...'
+          echo '  [QSMC_ARB] v6.6.9 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ...'
           echo "Any other version in that line means a stale copy is in the Data Folder."
 
       - uses: actions/upload-artifact@v4

@@ -112,7 +112,7 @@ A panel that prints `SCORE: n/a (no authoritative instance)` or
 `CONTEXT: UNVALIDATED (… M15 disabled) - no weight or tiers` is **not** this
 build: those exact strings do not exist in this repository or in its history.
 Before debugging gates, confirm which build is on the chart — the first journal
-line must read `[QSMC_ARB] v6.6.8 arbitration layer ON | …`. Any other version
+line must read `[QSMC_ARB] v6.6.9 arbitration layer ON | …`. Any other version
 means a stale compiled copy in the Data Folder, and no input you change on that
 copy will add the behaviour documented here.
 

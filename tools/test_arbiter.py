@@ -802,6 +802,46 @@ def run(verbose=False):
           ("COUNTER-TREND" in (why + " " + cc.reason)) or ("evidence" in why),
           (why + " / " + cc.reason).strip())
 
+    # ---- T11 ONE ROLE: a broken level is traded with its REVERSED role --
+    # v6.6.9 AUDIT-SIG1. The registry publishes Zone.role (birth role reversed
+    # when a closed bar broke the level). The indicator used to resolve the
+    # direction from a DIFFERENT fact - the break had to happen on the bar
+    # under test - so at a flipped zone it still traded the birth role and the
+    # LOCATION gate refused the candidate. The rule below is the contract both
+    # implementations must agree on.
+    zsup_old = Zone(100.0, 101.0, ZR_SUPPORT, 80, flipped=True)
+    zres_old = Zone(100.0, 101.0, ZR_RESISTANCE, 80, flipped=True)
+    check("T11a a broken support is published as RESISTANCE",
+          zsup_old.role == ZR_RESISTANCE, "role=%d" % zsup_old.role)
+    check("T11b a broken resistance is published as SUPPORT",
+          zres_old.role == ZR_SUPPORT, "role=%d" % zres_old.role)
+
+    deep_sup = Zone(94.00, 94.50, ZR_SUPPORT, 80)
+    deep_res = Zone(106.00, 106.50, ZR_RESISTANCE, 80)
+    sell_rxn = Reaction(valid=True, touched=True, penetration_bounded=True,
+                        closed_back=True, dir=-1, evidence_count=3)
+    buy_rxn = Reaction(valid=True, touched=True, penetration_bounded=True,
+                       closed_back=True, dir=+1, evidence_count=3)
+
+    ar = Arbiter(cfg)
+    c_sell = mk_cand(zsup_old, -1, 99.60, ATR, [zsup_old, deep_sup], cfg, sell_rxn, 38, 1_000_038)
+    ok_s, cc_s, why_s = ar.publish(c_sell, 99.60, ATR, [zsup_old, deep_sup], tactical=False)
+    check("T11c SELL in the CAUSAL role at a broken support is published",
+          ok_s and cc_s.state == SIG_CONFIRMED, why_s or STATE_NAME[cc_s.state])
+
+    # the same zone, same bar, read with the BIRTH role (the pre-fix behaviour)
+    ar2 = Arbiter(cfg)
+    c_buy = mk_cand(zsup_old, +1, 99.60, ATR, [zsup_old, deep_sup], cfg, buy_rxn, 38, 1_000_038)
+    ok_b, _, why_b = ar2.publish(c_buy, 99.60, ATR, [zsup_old, deep_sup], tactical=False)
+    check("T11d a BUY in the BIRTH role at that zone is refused by LOCATION",
+          not ok_b and "RESISTANCE" in why_b, why_b)
+
+    ar3 = Arbiter(cfg)
+    c_buy2 = mk_cand(zres_old, +1, 101.40, ATR, [zres_old, deep_res], cfg, buy_rxn, 38, 1_000_039)
+    ok_b2, cc_b2, why_b2 = ar3.publish(c_buy2, 101.40, ATR, [zres_old, deep_res], tactical=False)
+    check("T11e the mirror: BUY in the CAUSAL role at a broken resistance is published",
+          ok_b2 and cc_b2.state == SIG_CONFIRMED, why_b2 or STATE_NAME[cc_b2.state])
+
     # ---- T10 data not ready ---------------------------------------------
     ar = Arbiter(cfg)
     check("T10 no signal without data (series empty -> no closed bar)",

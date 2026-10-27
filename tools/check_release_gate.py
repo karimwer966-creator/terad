@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-QSMC v6.6.8 - RELEASE GATE
+QSMC v6.6.9 - RELEASE GATE
 
 A go / no-go check for taking this layer to a live chart. It does not re-check
 what static_check.py already checks (dialect rules, includes, balance); it

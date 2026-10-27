@@ -188,6 +188,7 @@ public:
       T07_FlipFlopSuppressed();
       T08_MultiChartSingleAlert();
       T09_CounterTrendDowngraded();
+      T15_OneZoneRole();
       T10_DataNotReady();
 
       Say("---------------------------------------------------------");
@@ -880,6 +881,64 @@ public:
             "T09a an opposed candidate is never published as CONFIRMED",
             "state="+QSMC_StateName(r.PrimaryState())+" trace="+r.ReportTrace());
       Check(counter_mentioned,"T09b the counter-trend is named in the text",txt);
+     }
+
+   //==================================================================
+   // T15 - ONE ROLE (v6.6.9 AUDIT-SIG1). A level broken by a CLOSED bar is
+   //       published with its REVERSED role, and the LOCATION gate reads
+   //       exactly that role. A candidate that still trades the birth role
+   //       is therefore refused, and the mirrored candidate in the reversed
+   //       role is not refused by the role test. Mirrors T11 in
+   //       tools/test_arbiter.py: the two implementations must agree.
+   //==================================================================
+   void              T15_OneZoneRole()
+     {
+      SQZone in[2];
+      MakeZone(in[0],ZR_SUPPORT,90.00,91.00,85);       // broken support
+      in[0].flipped=true;
+      MakeZone(in[1],ZR_RESISTANCE,108.00,109.00,80);  // broken resistance
+      in[1].flipped=true;
+
+      //--- the registry is the publisher: Rebuild() resolves
+      //--- role = EffectiveRole(birth_role, flipped), and every gate reads
+      //--- THAT role, never the birth role.
+      CZoneRegistry reg;
+      int n=reg.Rebuild(in,2,2.0,0.50,60);
+      SQZone a,b;
+      bool fa=reg.Find(in[0].id,a);
+      bool fb=reg.Find(in[1].id,b);
+      Check(n==2 && fa && a.role==ZR_RESISTANCE,
+            "T15a a support broken by a closed bar is published as RESISTANCE",
+            "role="+IntegerToString((int)a.role));
+      Check(fb && b.role==ZR_SUPPORT,
+            "T15b a resistance broken by a closed bar is published as SUPPORT",
+            "role="+IntegerToString((int)b.role));
+
+      //--- and the gate that reads it refuses the birth-role direction.
+      SQsmcArbConfig cfg; CfgBase(cfg);
+      SSignalCandidate cand;
+      cand.valid=true;
+      cand.dir=+1;                       // BUY = the BIRTH role of in[0]
+      cand.zone_id=in[0].id;
+      cand.bar_closed=true;
+      SGateCtx ctx;
+      ctx.data_ready=true;
+      ctx.atr=2.0;
+      ctx.point=_Point;
+      ctx.price=90.50;                   // inside the band
+      string why="";
+      int ds=(int)SIG_WATCH;
+      CLocationGate lg;
+      ENUM_GATE_RESULT gr=lg.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(gr==GATE_FAIL && StringFind(why,"RESISTANCE")>=0,
+            "T15c a BUY in the BIRTH role at that level is refused by LOCATION",
+            why);
+      cand.dir=-1;                       // SELL = the role it now carries
+      string why2="";
+      ENUM_GATE_RESULT gr2=lg.Evaluate(cand,ctx,cfg,reg,why2,ds);
+      Check(gr2==GATE_FAIL && StringFind(why2,"RESISTANCE")<0,
+            "T15d the mirrored direction is not refused for its ROLE",
+            why2);
      }
 
    //==================================================================
