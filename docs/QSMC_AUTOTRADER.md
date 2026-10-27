@@ -207,6 +207,12 @@ them by hand or the stop you placed remains your only protection.
 
 ---
 
+## 4a. Full "why is there no trade?" report
+
+`docs/QSMC_WHY_NO_TRADES.md` lists every refusal path in the order worth checking,
+with the literal Journal line for each and the single input that changes it. Start
+there when a bar passes and nothing happens; this section is the short version.
+
 ## 4b. "The dashboard showed a zone but nothing traded"
 
 The EA trades only a **published CORE signal**, not a drawn zone and not the
