@@ -110,6 +110,16 @@ NOT_IN_MQL5 = {
                      "StringGetCharacter() from StringLen(s)-1",
     "StringReverse": "MQL5 has no StringReverse() - reverse with a loop over "
                      "StringGetCharacter()",
+    # v6.6.6: the execution companion used LongToString() in seven places and
+    # MetaEditor answered with 27 errors on six lines, because each one also
+    # broke the parse of the surrounding expression. The real converter is
+    # IntegerToString(), which takes a long already (and a ulong via a cast).
+    "LongToString": "MQL5 has no LongToString() - use IntegerToString(), which "
+                    "already takes a long; cast a ulong with (long) first",
+    "IntToString": "MQL5 has no IntToString() - use IntegerToString()",
+    "ULongToString": "MQL5 has no ULongToString() - use IntegerToString((long)v)",
+    "BoolToString": "MQL5 has no BoolToString() - use (b ? \"true\" : \"false\")",
+    "FloatToString": "MQL5 has no FloatToString() - use DoubleToString()",
 }
 
 # Built-in file functions with a FIXED arity (no default arguments).

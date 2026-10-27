@@ -171,12 +171,12 @@ string DirText(const int dir)
 
 string SignalKey(const datetime bar_time,const int dir)
   {
-   return (LongToString((long)bar_time)+"|"+DirText(dir));
+   return (IntegerToString((long)bar_time)+"|"+DirText(dir));
   }
 
 string GlobName(const datetime bar_time,const int dir)
   {
-   return ("QSMC_AT_"+LongToString(InpMagic)+"_"+LongToString((long)bar_time)+"_"+
+   return ("QSMC_AT_"+IntegerToString(InpMagic)+"_"+IntegerToString((long)bar_time)+"_"+
            (dir>0 ? "B" : "S"));
   }
 
@@ -316,9 +316,9 @@ string TradeEnvBlock(const bool buy)
       return "real account and InpDemoOnly=true (that is the shipping default)";
    // A real account is not a toggle: the operator must NAME the account, so a
    // settings preset copied from a demo chart cannot silently arm real money.
-   if(InpRealAccountConfirm!=LongToString(AccountInfoInteger(ACCOUNT_LOGIN)))
+   if(InpRealAccountConfirm!=IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)))
       return "real account: set InpRealAccountConfirm to this account number ("+
-             LongToString(AccountInfoInteger(ACCOUNT_LOGIN))+") to allow live orders";
+             IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+") to allow live orders";
    return "";
   }
 
@@ -596,7 +596,7 @@ void HandleSignal(SQsigSignal &s)
    if(opposite>0 && InpCloseOnOpposite)
      {
       if(g_trade.PositionClose(opposite))
-         Print("[QSMC_AT] closed opposite position #",LongToString((long)opposite));
+         Print("[QSMC_AT] closed opposite position #",IntegerToString((long)opposite));
       else
          Note(key,"closing the opposite position failed");
      }
@@ -618,7 +618,7 @@ void HandleSignal(SQsigSignal &s)
      }
    else
      {
-      Print("[QSMC_AT] ORDER FAILED retcode=",LongToString((long)g_trade.ResultRetcode()),
+      Print("[QSMC_AT] ORDER FAILED retcode=",IntegerToString((long)g_trade.ResultRetcode()),
             " ",g_trade.ResultRetcodeDescription());
       // Not marked: the next poll may succeed if the refusal was transient.
       MarkSeen(key,s.bar_time,s.dir);
@@ -687,7 +687,7 @@ void ManageOpenPositions()
       double new_sl=NormalizeDouble(entry,_Digits);
       if(!StopsDistanceOK(_Symbol,cur,new_sl,0.0)) continue;
       if(g_trade.PositionModify(ticket,new_sl,tp))
-         Print("[QSMC_AT] stop moved to break-even on #",LongToString((long)ticket));
+         Print("[QSMC_AT] stop moved to break-even on #",IntegerToString((long)ticket));
      }
   }
 
@@ -748,7 +748,7 @@ int OnInit()
    DayGuardUpdate();
 
    Print("[QSMC_AT] QSMC v6.66 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
-         " | magic ",LongToString(InpMagic),
+         " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",
          " | tp ",IntegerToString((int)InpTPLevel)," | break-even ",DoubleToString(InpBreakEvenAtR,2),"R",
