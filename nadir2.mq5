@@ -1,5 +1,9 @@
 //+------------------------------------------------------------------+
-//| v6.6.8 FULL-WIDTH DECISION CARD / CHART CLARITY                |
+//| v6.6.9 ONE CAUSAL ZONE ROLE / SIGNAL DIRECTION FIX             |
+//| Support vs resistance is resolved from ONE closed-bar fact -   |
+//| the same one the arbiter registry publishes - so a level that  |
+//| broke is traded with its reversed role instead of its birth    |
+//| role, and BUY / SELL can no longer disagree about it.          |
 //| Strongest MTF level, closed-bar entry check, mixed-bias warning; |
 //| ten-row full-width dashboard, semantic colors, clean chart mode. |
 //| Display-only: no probability claim or entry-gate relaxation.    |
@@ -607,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.68"
+#property version   "6.69"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -618,7 +622,7 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.3).
-#define QSMC_VERSION_TEXT "v6.6.8"
+#define QSMC_VERSION_TEXT "v6.6.9"
 #property indicator_chart_window
 #property indicator_buffers 19   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (SigLog, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -31820,14 +31824,32 @@ bool ZRE_IsBrokenNow(const SZREZone &z,const double prev_close,const double clos
    return false;
 }
 
+ENUM_ZRE_SIDE ZRE_OppositeSide(const ENUM_ZRE_SIDE s)
+{
+   if(s==ZRE_SUPPORT)    return ZRE_RESISTANCE;
+   if(s==ZRE_RESISTANCE) return ZRE_SUPPORT;
+   return s;
+}
+
+// v6.6.9 AUDIT-SIG1 (ONE ROLE, THREE READERS): the role a zone carries NOW.
+// TWO closed-bar facts reverse it, and they must be the same fact the arbiter
+// registry publishes (QSMC_Zones::EffectiveRole, fed from
+// g_zre_status[i].flipped in QSMC_ArbiterFeedAndFinalize):
+//   * the break happens on the bar under test (ZRE_IsBrokenNow), and
+//   * an EARLIER closed bar inside the lookback already broke it
+//     (ZRE_IsFlipped) - which is exactly what ZRE_ST_FLIPPED is defined to be.
+// Before this only the first fact reached the signal path while the registry
+// used only the second, so after a break the engine still traded the BIRTH
+// role: a retest of a broken support was read as a BUY at support instead of a
+// SELL at the resistance it now is, and the arbiter refused the candidate
+// because the role it was handed pointed the other way.
 ENUM_ZRE_SIDE ZRE_EffectiveSide(const SZREZone &z,const double close_px,const double prev_close,
-                                const double atr,const SZREParams &p)
+                                const double atr,const SZREParams &p,const bool flipped_closed)
 {
    // ZRE_IsBrokenNow already encodes "from the near side, through the far
    // edge, by more than break_atr*ATR", so no second price test is needed.
-   if(!ZRE_IsBrokenNow(z,prev_close,close_px,atr,p)) return z.side;
-   if(z.side==ZRE_SUPPORT)  return ZRE_RESISTANCE;
-   if(z.side==ZRE_RESISTANCE) return ZRE_SUPPORT;
+   if(ZRE_IsBrokenNow(z,prev_close,close_px,atr,p)) return ZRE_OppositeSide(z.side);
+   if(flipped_closed) return ZRE_OppositeSide(z.side);
    return z.side;
 }
 
@@ -32659,12 +32681,19 @@ void ZRE_SelfTestReaction(string &where)
    // the effective side reverses only on a genuine closed-bar break
    SZREZone zef;
    ZRE_TestZone(zef,true,100.0,101.0,60);
-   ZRE_Expect(ZRE_EffectiveSide(zef,101.8,100.5,atr,p)==ZRE_RESISTANCE,
+   ZRE_Expect(ZRE_EffectiveSide(zef,101.8,100.5,atr,p,false)==ZRE_RESISTANCE,
               "support broken upward reverses to resistance",where);
-   ZRE_Expect(ZRE_EffectiveSide(zef,100.4,100.3,atr,p)==ZRE_SUPPORT,
+   ZRE_Expect(ZRE_EffectiveSide(zef,100.4,100.3,atr,p,false)==ZRE_SUPPORT,
               "a close inside the band reverses nothing",where);
-   ZRE_Expect(ZRE_EffectiveSide(zef,100.2,100.1,atr,p)==ZRE_SUPPORT,
+   ZRE_Expect(ZRE_EffectiveSide(zef,100.2,100.1,atr,p,false)==ZRE_SUPPORT,
               "a shallow dip under support is not a break (needs break_atr*ATR)",where);
+   // v6.6.9 AUDIT-SIG1: a break on an EARLIER closed bar keeps the reversed
+   // role. The registry (QSMC_Zones::EffectiveRole) publishes the same thing, so
+   // the signal, the alert and the arbiter can no longer disagree about it.
+   ZRE_Expect(ZRE_EffectiveSide(zef,100.4,100.2,atr,p,true)==ZRE_RESISTANCE,
+              "a level broken on an EARLIER closed bar keeps the reversed role",where);
+   ZRE_Expect(ZRE_EffectiveSide(zef,100.4,100.2,atr,p,false)==ZRE_SUPPORT,
+              "the same bar without that closed-bar break keeps the birth role",where);
 
    // ---- 9) strongest-entry selection
    SZRESignal cand[];
@@ -33121,6 +33150,16 @@ string ZRE_ZoneText(const SZREZone &z)
           DoubleToString(z.hi,_Digits)+" (strength "+IntegerToString(z.strength)+"/100)";
 }
 
+// v6.6.9 AUDIT-SIG1: the closed-bar role flip the registry publishes, looked up
+// by id. A reader that only holds a zone id uses this instead of inventing a
+// second formula for the role.
+bool ZRE_ZoneFlippedClosed(const string zone_id)
+{
+   for(int i=0;i<ArraySize(g_zre_zones) && i<ArraySize(g_zre_status);i++)
+      if(g_zre_zones[i].id==zone_id) return g_zre_status[i].flipped;
+   return false;
+}
+
 // ZRE alert facts are queued, never published independently. Live PREVIEW is
 // chart-only: all dispatcher events are keyed to the last CLOSED bar.
 void ZRE_AlertState(const SZREZone &z,const ENUM_ZRE_STATE state,const datetime bar_time,const string extra)
@@ -33148,14 +33187,15 @@ void ZRE_AlertState(const SZREZone &z,const ENUM_ZRE_STATE state,const datetime 
    a.direction=0;
    if(a.scenario_candidate)
    {
-      ENUM_ZRE_SIDE eff=z.side;
-      for(int i=0;i<ArraySize(g_zre_zones) && i<ArraySize(g_zre_status);i++)
-      {
-         if(g_zre_zones[i].id!=z.id) continue;
-         if(g_zre_status[i].flipped)
-            eff=(z.side==ZRE_SUPPORT?ZRE_RESISTANCE:ZRE_SUPPORT);
-         break;
-      }
+      // v6.6.9 AUDIT-SIG1: the direction of the alert is the direction of the
+      // PUBLISHED signal - one resolver, never a second formula. The old local
+      // formula read `flipped` only, so on the break bar the alert pointed with
+      // the birth role while the signal already used the reversed one.
+      SZREParams zp_alert;
+      ZRE_ParamsFromInputs(zp_alert);
+      double atr_alert=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0?g_atr_buf[closed]:g_atr);
+      ENUM_ZRE_SIDE eff=ZRE_EffectiveSide(z,g_buf_c[closed],g_buf_c[closed-1],
+                                         atr_alert,zp_alert,ZRE_ZoneFlippedClosed(z.id));
       a.direction=(eff==ZRE_SUPPORT?1:-1);
       a.needs="structure";
       a.mark_price=g_buf_c[closed];
@@ -33431,7 +33471,11 @@ void ZRE_ProcessClosedBar(const int rates_total,const int closed,const double at
       // reversed only by a closed-bar break) so a support that broke downward is
       // now read as resistance instead of still asking for a bullish reclaim.
       SZREZone zeff=z;
-      zeff.side=ZRE_EffectiveSide(z,bar.c,prev_close,atr,p);
+      // v6.6.9 AUDIT-SIG1: the "broken on an EARLIER closed bar" fact is read
+      // BEFORE the side, so both closed-bar facts resolve ONE role - the role the
+      // arbiter registry publishes for this very zone in this very pass.
+      bool flipped_closed=ZRE_IsFlipped(z,closed,ctx.hist,p.break_atr*atr,g_buf_c);
+      zeff.side=ZRE_EffectiveSide(z,bar.c,prev_close,atr,p,flipped_closed);
       bool buy=(zeff.side==ZRE_SUPPORT);
       SZREZoneStatus st;
       ZRE_StatusInit(st);
@@ -33441,7 +33485,7 @@ void ZRE_ProcessClosedBar(const int rates_total,const int closed,const double at
       bool ok=ZRE_EvalRejection(zeff,bar,atr,ev,p,rj);
       st.reaction=ok;
       st.dist_atr=ZRE_ZoneGap(z,bar.c)/atr;
-      st.flipped=ZRE_IsFlipped(z,closed,ctx.hist,p.break_atr*atr,g_buf_c);
+      st.flipped=flipped_closed;
       st.base_state=ZRE_ClassifyState(z,prev_close,bar.c,atr,ok,false,p);
       // v6.4.2 AUDIT-Z3: HELD / FLIPPED. A reclaimed touch that is not strong
       // enough for a signal is a HOLD (never "BROKEN"); a level broken on an
@@ -36965,7 +37009,7 @@ void RXN_EvalZone(const SZREZone &z,const bool recovered,const int closed,const 
    double prev_close=(closed>=1?g_buf_c[closed-1]:cur_close);
    // The EXISTING causal role resolution: a zone's side flips only on a closed-bar
    // break, never because price happened to close on the other side of it.
-   zeff.side=ZRE_EffectiveSide(z,cur_close,prev_close,atr,zp);
+   zeff.side=ZRE_EffectiveSide(z,cur_close,prev_close,atr,zp,ZRE_ZoneFlippedClosed(z.id));
    buy=(zeff.side==ZRE_SUPPORT);
 
    int vol_now=((g_quant.computed && g_quant.closed_bar==closed)

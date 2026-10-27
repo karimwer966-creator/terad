@@ -454,7 +454,7 @@ public:
       m_stats.Open(m_symbol,m_chart_tf,min_sample,csv_log);
       m_ready=true;
       m_bars=0;
-      Print("[QSMC_ARB] v6.6.8 arbitration layer ON | preset ",m_preset.EffectiveName(),
+      Print("[QSMC_ARB] v6.6.9 arbitration layer ON | preset ",m_preset.EffectiveName(),
             " | gates ",IntegerToString(m_arbiter.GateCount()),
             " | exec TF ",QSMC_TFName(m_exec_tf),
             " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"),
