@@ -65,7 +65,7 @@
 //|     test in tools/test_autotrader_contract.py fails, on purpose.  |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
-#property version   "6.66"
+#property version   "6.67"
 #property description "Companion execution EA for the QSMC indicator. Ships inert; no strategy claim."
 #property strict
 

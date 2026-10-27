@@ -29,7 +29,7 @@
 //|  off) and writes NO chart objects.                                |
 //+------------------------------------------------------------------+
 #property script_show_inputs
-#property version   "6.66"
+#property version   "6.67"
 #property strict
 
 #include <QSMC/QSMC_Selftest.mqh>

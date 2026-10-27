@@ -1,4 +1,4 @@
-# QSMC v6.6.6 — the execution companion (`QSMC_AutoTrader.mq5`)
+# QSMC v6.6.7 — the execution companion (`QSMC_AutoTrader.mq5`)
 
 ## 0. العربية — باختصار
 
