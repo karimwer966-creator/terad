@@ -1,133 +1,146 @@
-# برومبت جاهز: إصلاح مشاكل إشارات البيع والشراء في QSMC
+# Ready-to-run AI prompt: fix buy/sell signal defects in QSMC
 
-انسخ كل ما تحت الخط إلى أي وكيل ذكاء اصطناعي يعمل على هذا المستودع. البرومبت
-مكتوب ليكون **قابلاً للتنفيذ حرفياً**: يحدد الملفات، يمنع التخمين، ويفرض إثباتاً
-قبل أي تعديل. لا يحتاج أي معلومة إضافية عن المشروع.
+Copy everything inside the block below into any AI agent that has this repository
+checked out. The prompt is written to be **executed literally**: it names the real
+files, forbids guessing, and demands proof before any edit. It needs no extra
+context about the project.
 
 ---
 
-## نص البرومبت
+## The prompt
 
 ```text
-أنت مهندس MQL5 مسؤول عن مستودع karimwer966-creator/terad (مؤشر nadir2.mq5 +
-طبقة QSMC في MQL5/Include/QSMC/*.mqh + EA تنفيذ اختياري).
+You are the MQL5 engineer responsible for karimwer966-creator/terad: the indicator
+nadir2.mq5, the QSMC decision layer in MQL5/Include/QSMC/*.mqh, and the optional
+execution EA.
 
-المهمة: المستخدم يقول "ما زالت هناك مشاكل في إشارات البيع والشراء". المطلوب
-العثور على العيوب الحقيقية في مسار الإشارة (توليداً، اتجاهاً، تصفيةً، نشراً)
-وإصلاحها، مع الحفاظ التام على سلطة البوابات.
+TASK
+The user reports: "there are still problems with the BUY and SELL signals."
+Find the real defects in the signal path (generation, direction, filtering,
+publication) and fix them, while leaving the authority of every gate untouched.
+
+Do not edit anything before you have read the five files in section 1.
 
 ============================================================
-1) خريطة المسار — لا تلمس شيئاً قبل أن تقرأ هذه الخمسة
+1) THE PATH — read these five first
 ============================================================
-- nadir2.mq5                       المؤشر (40 ألف سطر، CRLF، لا يتداول أبداً)
-- MQL5/Include/QSMC/QSMC_Gates.mqh  سلسلة البوابات: Evaluate() لكل بوابة
-- MQL5/Include/QSMC/QSMC_Arbiter.mqh  قواعد التحكيم R1–R7
-- MQL5/Include/QSMC/QSMC_Selftest.mqh  الاختبار الذاتي داخل MQL5
-- tools/test_arbiter.py           إعادة تنفيذ مستقلة لنفس القواعد R1–R7
+- nadir2.mq5                          the indicator (~40k lines, CRLF, never trades)
+- MQL5/Include/QSMC/QSMC_Gates.mqh    the gate chain: Evaluate() per gate
+- MQL5/Include/QSMC/QSMC_Arbiter.mqh  arbitration rules R1–R7
+- MQL5/Include/QSMC/QSMC_Selftest.mqh in-terminal self-test
+- tools/test_arbiter.py               independent re-implementation of R1–R7
 
-مسار الإشارة في المؤشر، بهذا الترتيب:
+The signal path inside the indicator, in order:
   ZRE_EvalRejection()  → ZRE_TryBuildSignal() → ZRE_SelectVerdict()
   → GetSignalDirection() → AlertDispatcherSubmit() → QSMC_ArbiterFeedAndFinalize()
-  → AlertDispatcherFinalize() → SigLog_BufRegister() (المخازن 7–12)
-  ومسار MTF التكتيكي: UpdateMTFExecutionEntry() (غير مخوّل، لا ينشر CONFIRMED)
+  → AlertDispatcherFinalize() → SigLog_BufRegister()   (buffers 7–12)
+and the tactical MTF path, which is non-authoritative and must never publish
+CONFIRMED:
+  UpdateMTFExecutionEntry()
 
 ============================================================
-2) قيود غير قابلة للتفاوض (أي تعديل يخالفها = مرفوض)
+2) NON-NEGOTIABLE CONSTRAINTS
 ============================================================
-أ. لا تُرخِ أي بوابة، ولا تقلّل عتبة، ولا تعطّل تحققاً لتمرير إشارة.
-   إن كان العيب "الإشارة لا تظهر" فالعلاج هو إصلاح الخلل البرمجي، لا العتبة.
-ب. المؤشر وطبقة QSMC لا تحتوي أبداً على واجهة تداول
-   (OrderSend / CTrade / PositionOpen / OrderCalcMargin). بوابة الإصدار G4
-   تفشل البناء إن ظهر أحدها.
-ج. أي قاعدة تُعدّلها في الـ MQL5 يجب أن تُعدّل في **النسختين**: MQL5 selftest
-   و tools/test_arbiter.py. الاثنان مستقلان عمداً؛ اختلافهما يعني أن أحدهما
-   خطأ، وليس أنه "تحديث".
-د. لا تُغيّر أرقام الإصدار ولا الوثائق في هذا العمل إلا إذا أضفت سلوكاً جديداً؛
-   عندها ارفع vX.Y.Z في 6 مواضع (nadir2، QSMC_Root banner، المساعدين الثلاثة،
-   أدوات الفحص، عناوين الوثائق، وecho الـ CI) — بوابة G1 تتحقق.
-هـ. ملف nadir2.mq5 بأسطر CRLF ومثبّت في .gitattributes كـ -text. أي كتابة
-   تحوّله إلى LF تُنتج diff للملف كامل. تحقق دائماً:
-   python3 - <<'EOF'
-   from pathlib import Path
-   b=Path('nadir2.mq5').read_bytes(); print(b.count(b'\r\n'), b.count(b'\n')-b.count(b'\r\n'))
-   EOF
-و. لا تُدخل أسماء دوال غير موجودة في MQL5. القاعدة D15 ترفض:
+a. Never relax a gate, lower a threshold, or disable a check to make a signal
+   appear. If the symptom is "the signal is missing", fix the defect, not the
+   threshold.
+b. The indicator and the QSMC layer must never contain a trade API
+   (OrderSend / CTrade / PositionOpen / OrderCalcMargin). Release gate G4 fails
+   the build if one appears.
+c. Any rule you change in MQL5 must be changed in BOTH implementations: the
+   MQL5 self-test and tools/test_arbiter.py. They are independent on purpose;
+   a disagreement means one of them is wrong, not that it needs "catching up".
+d. Do not touch version numbers or docs unless you add behaviour. If you do,
+   bump vX.Y.Z in all six places (nadir2, the QSMC_Root banner, the three
+   companion programs, the checking tools, the doc titles, the CI echo) —
+   gate G1 verifies it.
+e. nadir2.mq5 uses CRLF and is pinned as -text in .gitattributes. Writing it as
+   LF turns the whole file into a diff. Verify every time:
+     python3 -c "from pathlib import Path;b=Path('nadir2.mq5').read_bytes();print(b.count(b'\r\n'),b.count(b'\n')-b.count(b'\r\n'))"
+   Expected second number: 0.
+f. Do not invent MQL5 function names. Rule D15 rejects:
    LongToString / IntToString / ULongToString / BoolToString / FloatToString.
-   الصحيح: IntegerToString(long)، DoubleToString، TimeToString.
-ز. لا تكتب تصريح متغيّر كجسم غير مقوّس لـ if/else (القاعدة D18).
-ح. لا مؤشرات على struct (D12): MQL5 لا يملك مؤشرات إلا لكائنات class.
-   استخدم bool F(T &out) أو GetPointer للكائنات.
-ط. لا look-ahead: كل حقيقة إشارة تُقرأ من شمعة مغلقة، والشمعة 0 (الحالية)
-   ممنوعة كأساس لقرار منشور.
+   Use IntegerToString(long), DoubleToString(), TimeToString().
+g. Never use a variable declaration as the unbraced body of if/else (rule D18).
+h. MQL5 has pointers only to class objects, never to structs (rule D12).
+   Use bool F(T &out), or GetPointer() for class objects.
+i. No look-ahead. Every published fact is read from a closed bar; bar 0 (the
+   forming bar) can never be the basis of a published decision.
 
 ============================================================
-3) تعريف "عيب إشارة" — ابحث في هذه الفئات فقط
+3) WHAT COUNTS AS A SIGNAL DEFECT — only these eight classes
 ============================================================
-1. انعكاس اتجاه: SUPPORT يجب أن يعطي BUY، وRESISTANCE يعطي SELL. اختبر
-   GetSignalDirection() على كل تركيبة (role × state) — بما فيها FLIPPED وHELD.
-2. عدم تناظر بيع/شراء: نفس الحدث بمرآة يجب أن يمرّ بنفس البوابات. افحص كل
-   مكان فيه if(buy ...) بلا نظير else/if(!buy ...)، وكل قسمة أو إشارة (dir)
-   أو طرح قد ينحرف عند dir=-1 (مثل (tp-entry)*dir).
-3. إيجابيات كاذبة: إشارة تنشر بلا وقف صحيح، أو بمخالفة هندسية
-   (BUY: sl<entry<tp)، أو على شمعة غير مغلقة.
-4. سلبيات كاذبة: حدث صحيح يُرفض بسبب خلل في البوابة (مؤشر خارج النطاق،
-   قسمة على صفر، مقارنة معكوسة، وحدة قياس مختلفة: نقاط مقابل ATR مقابل نسب).
-5. تكرار/تزاحم: نشر أكثر من إشارة لنفس الشمعة، أو فشل التهدئة (cooldown)،
-   أو خرق قاعدة "تنبيه واحد لكل شمعة".
-6. تضارب اللوحة مع الواقع: اللوحة تعرض حالة لا تطابق ما نشره المحرّك
-   (مثال: تقول WAIT ويوجد primary، أو العكس) — أصلح العرض أو الحالة،
-   لا تُخفِ التعارض.
-7. تسرب المستقبل: قيمة تُقرأ من فهرس أعلى من الشمعة المغلقة.
-8. انحراف المخازن 7–12: اتجاه/دخول/وقف/أهداف لا تطابق الإشارة المنشورة.
+1. Inverted direction: SUPPORT must produce BUY, RESISTANCE must produce SELL.
+   Test GetSignalDirection() over every (role × state) pair, including FLIPPED
+   and HELD.
+2. Buy/sell asymmetry: the same event, mirrored, must pass the same gates.
+   Audit every if(buy ...) that has no mirrored branch, and every place where a
+   sign matters ((tp-entry)*dir, subtraction order, division by dir).
+3. False positive: a signal published without a valid stop, violating the
+   geometry (BUY: sl<entry<tp), or citing a bar that is not closed.
+4. False negative: a valid event refused because of a defect inside a gate —
+   out-of-range index, division by zero, reversed comparison, mixed units
+   (points vs ATR vs ratio).
+5. Duplication / crowding: more than one signal per bar, broken cooldown, or a
+   violation of the one-alert-per-bar rule.
+6. Panel contradicts state: the dashboard shows a state that does not match what
+   the engine published (e.g. WAIT while a primary exists). Fix the display or
+   the state — never hide the contradiction.
+7. Future leak: a value read from an index above the closed bar.
+8. Buffer drift: buffers 7–12 (direction / entry / stop / targets) do not match
+   the published signal.
 
 ============================================================
-4) بروتوكول التشخيص الإلزامي — قبل أي تعديل
+4) MANDATORY DIAGNOSIS PROTOCOL — before any edit
 ============================================================
-الخطوة 1: أعِد إنتاج العيب بلا MQL5.
-  - استخدم tools/test_arbiter.py أو tools/check_scenario_geometry.py كنمط،
-    واكتب حالة اختبار جديدة تُفشل الفحص الحالي.
-  - إن لم تستطع إعادة إنتاجه، فأنت لا تعرف العيب بعد: توقّف واطلبه من المستخدم
-    (لقطة Journal، وقت الشمعة، الرمز، الإطار، الإعدادات).
+Step 1. Reproduce the defect without MQL5.
+  Follow the pattern of tools/test_arbiter.py or
+  tools/check_scenario_geometry.py, and write a new test case that FAILS.
+  If you cannot reproduce it, you do not understand it yet: stop and ask for
+  the evidence (Journal lines, bar time, symbol, timeframe, settings).
 
-الخطوة 2: اذكر الافتراض صريحاً.
-  اكتب: "السلوك المتوقع X، السلوك الحالي Y، الدليل: السطر/الاختبار Z".
-  لا تصلح شيئاً لم تثبت أنه مكسور.
+Step 2. State the assumption explicitly.
+  Write: "expected X, actual Y, evidence: line/test Z". Never fix something you
+  have not shown to be broken.
 
-الخطوة 3: أصلح أصغر شيء يزيل العيب.
-  لا إعادة هيكلة، لا "تحسينات" مجاورة، لا تغيير تنسيق.
+Step 3. Fix the smallest thing that removes the defect.
+  No refactoring, no adjacent "improvements", no reformatting.
 
-الخطوة 4: أثبت الإصلاح.
-  أضف التأكيد إلى ملف الاختبار الدائم (لا مؤقت)، وشغّل كل الفحوص أدناه.
-
-============================================================
-5) قائمة تدقيق إلزامية بمواضع حقيقية
-============================================================
-[ ] ZRE_EvalRejection: الشروط الخمسة (لمسة، اختراق محدود، إغلاق استرجاع،
-    أدلة كافية) — هل أي شرط يُقيَّم بمتغيّر لم يُحدَّث؟ هل مقارنة wick_ratio
-    مع p.min_wick صحيحة للبيع والشراء؟
-[ ] ZRE_TryBuildSignal: هل rr1 يُحسب بـ *dir؟ هل رفض rr1 أقل من العتبة
-    متطابق للاتجاهين؟ هل entry/sl/tp مأخوذة من نفس المستوى؟
-[ ] GetSignalDirection: جدول role×state كاملاً؛ هل BROKEN/FLIPPED تعطي
-    الاتجاه المعاكس صحيحاً؟
-[ ] ZRE_SelectVerdict: التعادل، وترتيب الأولوية عند تعارض الاتجاهين،
-    وSMC_CONFLUENCE.
-[ ] البوابات: كل Evaluate() في QSMC_Gates.mqh — ابحث عن مقارنة <= مقابل <،
-    وأي شرط ينطبق على اتجاه واحد فقط.
-[ ] Arbiter R1–R7: قارن سطراً بسطر مع tools/test_arbiter.py. أي اختلاف =
-    عيب مؤكد في أحد الملفين، وثبّت الاختبار أولاً.
-[ ] AlertDispatcher: هل "تنبيه واحد لكل شمعة" محفوظ؟ هل التهدئة تُسجَّل بعد
-    النشر فقط؟ هل الرسالة تطابق الحالة المنشورة؟
-[ ] SigLog_BufRegister: هل الفهرس idx يطابق شمعة الإشارة؟ هل تُصفَّر المخازن
-    عند إعادة الحساب الكامل (prev_calculated==0)؟
-[ ] MTF: UpdateMTFExecutionEntry لا ينشر CONFIRMED بأي حال.
-[ ] الشمعة 0: ابحث عن أي قراءة لـ [rates_total-1] تدخل في قرار منشور.
+Step 4. Prove the fix.
+  Add the assertion to a permanent test file (not a scratch script) and run the
+  full verification list in section 6.
 
 ============================================================
-6) الفحوص الإلزامية قبل التسليم (كلها، بلا اختيار)
+5) AUDIT CHECKLIST — keyed to real code
+============================================================
+[ ] ZRE_EvalRejection: the five conditions (touch, bounded penetration, reclaim
+    close, enough evidence groups). Is any condition evaluated from a variable
+    that was never updated? Is wick_ratio compared with p.min_wick correctly for
+    both directions?
+[ ] ZRE_TryBuildSignal: is rr1 computed with *dir? Is the rr1 rejection
+    identical for both directions? Do entry/sl/tp come from the same level?
+[ ] GetSignalDirection: the full role×state table. Do BROKEN/FLIPPED return the
+    reversed direction correctly?
+[ ] ZRE_SelectVerdict: ties, priority when the two directions conflict, and the
+    SMC_CONFLUENCE tag.
+[ ] Gates: every Evaluate() in QSMC_Gates.mqh — look for <= where < is meant and
+    for conditions that only apply to one direction.
+[ ] Arbiter R1–R7: compare with tools/test_arbiter.py line by line. Any
+    divergence is a confirmed defect in one of them; pin the test first.
+[ ] AlertDispatcher: is one-alert-per-bar preserved? is cooldown committed only
+    after a successful publication? does the message match the published state?
+[ ] SigLog_BufRegister: does idx match the signal bar? are the buffers re-zeroed
+    on a full recalculation (prev_calculated==0)?
+[ ] MTF: UpdateMTFExecutionEntry publishes CONFIRMED under no circumstances.
+[ ] Bar 0: search for any read of [rates_total-1] that feeds a published
+    decision.
+
+============================================================
+6) REQUIRED CHECKS BEFORE DELIVERY (all of them)
 ============================================================
 python3 tools/mql5_rules.py --quiet          # 0 errors, 0 warnings
 python3 tools/static_check.py                 # no errors
-python3 tools/test_arbiter.py                 # RESULT: 22 passed (أو أكثر)
+python3 tools/test_arbiter.py                 # RESULT: 22 passed (or more)
 python3 tools/test_scanners.py
 python3 tools/test_quant_stats.py
 python3 tools/test_structure.py
@@ -142,43 +155,48 @@ python3 tools/check_release_gate.py           # GO
 python3 tools/apply_qsmc_arb_patch.py --check
 git -c core.whitespace=cr-at-eol diff --check
 
-لا تقل "يعمل" بدون هذه المخرجات. لا يوجد MetaEditor هنا: F7 يبقى على المستخدم،
-واذكر ذلك بصراحة في تقريرك.
+Never say "it works" without these outputs. There is no MetaEditor in this
+environment: F7 remains with the user, and your report must say so.
 
 ============================================================
-7) صيغة التسليم المطلوبة
+7) DELIVERY FORMAT
 ============================================================
-أ) جدول العيوب: # | الملف:السطر | الفئة (1–8) | السلوك الخاطئ | الدليل |
-   الإصلاح | الاختبار الذي يثبته.
-ب) الفرق (diff) مقتصراً على الإصلاح واختباره.
-ج) مخرجات الفحوص أعلاه كما هي.
-د) "ما لم أتحقق منه": قائمة صريحة (مثلاً: لا أثبت أن الإشارة مربحة؛ لا أثبت
-   سلوك الوسيط؛ لم أُجرّب على مخطط حقيقي).
-هـ) لا تدّعي ربحية ولا معدل نجاح: الدرجات قوة أدلة لا احتمال.
+a. Defect table: # | file:line | class (1–8) | wrong behaviour | evidence |
+   fix | the test that pins it.
+b. A diff limited to the fix and its test.
+c. The outputs of section 6, verbatim.
+d. "What I did not verify": an explicit list (e.g. profitability is not proven;
+   broker behaviour is not proven; nothing was run on a live chart).
+e. Never claim profitability or a win rate. The scores are evidence strength,
+   not probability.
 
 ============================================================
-8) ممنوع
+8) FORBIDDEN
 ============================================================
-- تخفيف عتبة أو تعطيل بوابة "مؤقتاً".
-- إصلاح عرض فقط وإخفاء عيب منطقي تحته.
-- تغيير الاثنين (MQL5 + Python) ليتوافقا مع نتيجة خاطئة بدل تصحيح القاعدة.
-- إعادة كتابة ملف كبير أو إعادة تنسيقه.
-- حذف اختبار فاشل بدل إصلاح ما يكشفه.
-- اختراع دالة أو ثابت غير موجود في MQL5.
+- Lowering a threshold or disabling a gate "temporarily".
+- Fixing only the display while the logical defect stays underneath.
+- Changing both implementations (MQL5 + Python) to agree on a wrong answer
+  instead of correcting the rule.
+- Rewriting or reformatting a large file.
+- Deleting a failing test instead of fixing what it reveals.
+- Inventing a function or constant that does not exist in MQL5.
 ```
 
 ---
 
-## كيف تستخدمه
+## How to use it
 
-1. أرفق البرومبت كاملاً في محادثة الوكيل مع المستودع.
-2. أضف سطراً واحداً بحالتك: الرمز، الإطار الزمني، وقت الشمعة، وهل العيب
-   «إشارة لم تظهر» أم «إشارة ظهرت بالاتجاه الخاطئ» أم «تكرار».
-3. اطلب منه أن يبدأ بالخطوة 1 فقط (إعادة الإنتاج) قبل أي تعديل — هذا يمنع
-   الإصلاحات العشوائية.
+1. Paste the whole block into the agent session that has this repository.
+2. Append one line describing your case: symbol, timeframe, bar time, and which
+   symptom it is — *no signal appeared*, *the signal pointed the wrong way*, or
+   *the signal repeated*.
+3. Ask it to do **Step 1 only** first (reproduce). That is what prevents
+   speculative edits.
 
-## ملاحظة على حدود هذا المستودع
+## Honest limits of this repository
 
-- لا يوجد **MetaEditor** في بيئة الفحص؛ كل ما هنا فحوص ثابتة + إعادة تنفيذ
-  مستقلة للمنطق. **F7** يبقى الحكم النهائي.
-- الفحوص تثبت الاتساق لا الربحية. أي تقرير يقول غير ذلك فهو مبالغة.
+- There is **no MetaEditor** in the test environment. Everything here is static
+  analysis plus an independent re-implementation of the decision logic. **F7**
+  remains the final judgement.
+- The checks prove consistency, never profitability. Any report that says
+  otherwise is overselling.
