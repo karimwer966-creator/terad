@@ -63,6 +63,13 @@ prove that the whole class of mistake that broke the first build is gone.
                      MetaEditor: "undeclared identifier 'StringFindRev'", and
                      the rest of the line collapses into "',' - unexpected
                      token" - five errors for one invented name.
+  D18 unbraced-decl   a variable DECLARATION used as the unbraced body of `if`
+                     or `else`. The declaration then scopes to that one
+                     statement, and the next line that uses it fails with
+                     "undeclared identifier 'x'". MetaEditor reports only the
+                     USE, so its line number points at the wrong place. The fix
+                     is always the same: braces around the body.
+                     This happened twice in v6.6.8 (`eb_txt`, `eb2_txt`).
   D16 builtin-arity  a built-in file function called with the wrong number of
                      arguments. MetaEditor prints the real signature right
                      under the error: `bool FileMove(const string,int,const
@@ -110,7 +117,7 @@ NOT_IN_MQL5 = {
                      "StringGetCharacter() from StringLen(s)-1",
     "StringReverse": "MQL5 has no StringReverse() - reverse with a loop over "
                      "StringGetCharacter()",
-    # v6.6.7: the execution companion used LongToString() in seven places and
+    # v6.6.8: the execution companion used LongToString() in seven places and
     # MetaEditor answered with 27 errors on six lines, because each one also
     # broke the parse of the surrounding expression. The real converter is
     # IntegerToString(), which takes a long already (and a ulong via a cast).
@@ -923,6 +930,42 @@ def check_unit(files, types=None, base=None):
                         "the target to be replaced."
                         % (rel(p), idx[p].line(m.start()), m.group(1), want, given))
 
+    # ---- D18 declaration as an unbraced if/else body -----------------------
+    #   `if(cond)` followed by `string x=...;` makes the DECLARATION the whole
+    #   body. Every later line that reads x is outside its scope, and MetaEditor
+    #   reports only those uses, on their own line numbers. Caught here so the
+    #   message names the real cause and the line that needs the brace.
+    DECL_START = re.compile(
+        r'^[ \t]*(?:const\s+|static\s+)?'
+        r'(?:string|bool|int|uint|long|ulong|short|ushort|char|uchar|double|float|'
+        r'datetime|color|[A-Z][A-Za-z0-9_]*)\s+[A-Za-z_]\w*\s*(?:\[[^\]]*\])?\s*(?:=|;)')
+    for p, code in codes.items():
+        for m in re.finditer(r'\b(?:if|while|for)\s*\(', code):
+            o = code.find('(', m.end() - 1)
+            c = match_paren(code, o)
+            if c < 0:
+                continue
+            rest = code[c + 1:]
+            if not rest.startswith(NL):
+                continue                     # same-line body
+            head = rest[len(NL):].split(NL, 1)[0]
+            if head.strip() == "":
+                continue                     # braced / empty
+            if DECL_START.match(head):
+                errs.append("%s:%d  D18 unbraced-decl: a declaration is the whole body "
+                            "of this %s, so it scopes to that single statement and the "
+                            "next line that uses it fails with \"undeclared "
+                            "identifier\". MetaEditor reports the USE, not this line. "
+                            "Put braces around the body."
+                            % (rel(p), idx[p].line(m.start()),
+                               m.group(0).split('(')[0].strip()))
+        for m in re.finditer(r'\belse\b(?!\s+if\b)[ \t]*\r?\n', code):
+            nxt = code[m.end():].split(NL, 1)[0]
+            if DECL_START.match(nxt):
+                errs.append("%s:%d  D18 unbraced-decl: a declaration is the whole body "
+                            "of this else - put braces around the body."
+                            % (rel(p), idx[p].line(m.start())))
+
     # ---- D10 version drift -------------------------------------------------
     #   main file first in the closure order, and the layer banner sits in
     #   QSMC_Root.mqh next to it.
@@ -1028,7 +1071,7 @@ UNITS = [
     # accumulated four bugs that no build could see.
     ("QSMC_ScannerProbe.mq5 (Phase 7 host)","MQL5/Indicators/QSMC_ScannerProbe.mq5"),
     ("(virtual) QSMC_Scanners.mqh",       "MQL5/Include/QSMC/QSMC_Scanners.mqh"),
-    # v6.6.7 execution companion. It is a separate translation unit on purpose:
+    # v6.6.8 execution companion. It is a separate translation unit on purpose:
     # the indicator must stay unable to trade, so execution lives in this file
     # and is linted as its own unit.
     ("QSMC_AutoTrader.mq5 (execution)",   "MQL5/Experts/QSMC_AutoTrader.mq5"),

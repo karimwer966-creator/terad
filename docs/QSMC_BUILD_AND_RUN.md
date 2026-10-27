@@ -1,4 +1,4 @@
-# QSMC v6.6.7 — BUILD, RUN, VERIFY
+# QSMC v6.6.8 — BUILD, RUN, VERIFY
 
 Operational guide for `nadir2.mq5` + the `MQL5/Include/QSMC` arbitration layer.
 Design and root-cause analysis live in `docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md`;
@@ -37,7 +37,7 @@ v6.6.2: literal hygiene + the CI gate).
    `QSMC_Scanners.mqh` يُترجم فعلًا — قبل v6.6.3 لم يكن لهذا الملف أي مضيف.
 4. في MT5: `Navigator` ← `Indicators` ← `nadir2` اسحبه على مخطط M5/M15.
 5. راجع تبويب `Experts`/`Journal`: السطر الأول يجب أن يكون
-   `[QSMC_ARB] v6.6.7 arbitration layer ON | preset …`.
+   `[QSMC_ARB] v6.6.8 arbitration layer ON | preset …`.
 6. للاختبار الذاتي: اسحب `QSMC_ArbiterTest` (Scripts) على أي مخطط —
    النتيجة المطلوبة `RESULT: 45 passed, 0 failed` (includes quant, structure, and zone-scoring assertions).
 7. للتحقق بدون MT5 (من الطرفية، داخل المستودع):
@@ -78,7 +78,7 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 ├─ Indicators\QSMC_ScannerProbe.mq5      <- PART C Phase 7 scanner host (v6.6.3)
 ├─ Scripts\QSMC_ArbiterTest.mq5         <- deterministic self-test harness
 ├─ Experts\KLJ_DataFeeder.mq5           <- optional CSV data feeder (PART C)
-└─ Experts\QSMC_AutoTrader.mq5          <- v6.6.7 execution companion (opt-in, inert)
+└─ Experts\QSMC_AutoTrader.mq5          <- v6.6.8 execution companion (opt-in, inert)
 ```
 
 The two `Experts` files are separate programs, and only one of them can trade:
@@ -151,7 +151,7 @@ its host is ever removed). It is not a type checker: a clean run still needs F7.
 3. Journal must show, in this order:
 
 ```
-[QSMC_ARB] v6.6.7 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
+[QSMC_ARB] v6.6.8 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
              | exec TF M15 | tactical may confirm: NO (informational only)
              | on XAUUSD M15
 ```
