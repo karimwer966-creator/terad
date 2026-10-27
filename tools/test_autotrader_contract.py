@@ -191,6 +191,28 @@ require("PositionGetInteger(POSITION_MAGIC)!=InpMagic" in code,
 require("GlobalVariableCheck(GlobName(bar_time,dir))" in code,
         "a terminal-session global prevents re-firing the same signal after a reload")
 
+# ------------------------------------------------------------- heartbeat diagnostics
+# A silent chart cannot distinguish "the indicator published nothing" from "the
+# EA refused every signal". The heartbeat is a throttled, read-only diagnostic
+# that copies buffer 7 over a deep window and names which root cause applies.
+hb = re.search(r"input\s+int\s+InpHeartbeatSeconds\s*=\s*(\d+)\s*;", ea)
+require(hb is not None and int(hb.group(1)) > 0,
+        "a throttled diagnostic heartbeat exists and is on by default (InpHeartbeatSeconds)")
+require(re.search(r"input\s+int\s+InpHeartbeatLookback\s*=\s*(\d+)\s*;", ea) is not None,
+        "the heartbeat scans a configurable lookback window (InpHeartbeatLookback)")
+require("void DiagnosticHeartbeat()" in code, "the heartbeat is one named function")
+hb_body = code[code.index("void DiagnosticHeartbeat()"):code.index("void ManageOpenPositions()")]
+require("CopyBuffer(g_handle,QSMC_BUF_CORE_DIR" in hb_body,
+        "the heartbeat reads the CORE direction buffer (7) itself, not an internal indicator state")
+require(not re.search(r"g_trade\.|OrderSend|PositionOpen|PositionModify|PositionClose", hb_body),
+        "the heartbeat is strictly read-only: no order, modify or close call can hide in it")
+require('if(InpHeartbeatSeconds<=0) return;' in hb_body,
+        "InpHeartbeatSeconds=0 switches the heartbeat off (quiet on demand)")
+require("published NO CORE setup" in ea,
+        "when the window has zero signals the heartbeat says so explicitly instead of staying silent")
+require(code.count("DiagnosticHeartbeat();") >= 2,
+        "the heartbeat runs from both OnTick and OnTimer (a quiet symbol must still report)")
+
 # --------------------------------------------------------- sizing reference model
 # Mirrors NormalizeLots() + CalcLots(): the arithmetic is small enough to restate,
 # and restating it is the only way to show that rounding never increases risk.

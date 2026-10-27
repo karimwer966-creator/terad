@@ -152,6 +152,15 @@
 
 ## 7. خطوات التشخيص في خمس دقائق
 
+0. **اقرأ سطر النبضة** `[QSMC_AT] heartbeat:` (يُطبع تلقائياً عند الإرفاق ثم كل
+   `InpHeartbeatSeconds`=300 ثانية، ولا يرسل أي أمر). سطر واحد يحسم أصل المشكلة:
+   - `CORE signals in last 200 closed bars: 0 -> the indicator published NO CORE
+     setup` → المؤشر لم ينشر أي إشارة CORE أصلًا؛ المشكلة في بوابات المؤشر لا في
+     الـ EA. الحل في الخطوة 4 (صف `NEEDS:`) وليس في أي مفتاح من مفاتيح الـ EA.
+   - `CORE signals …: N` مع `last skip: …` → النقل سليم والـ EA يرفض لسبب مكتوب
+     بالحرف (سبريد/حجم/وقف/سقف صفقات…)؛ عالج ذلك السبب تحديداً.
+   - `handle INVALID` → المؤشر غير مترجم أو ليس في مجلد `MQL5\Indicators`.
+   - `still warming up` → المؤشر ما زال يحمّل التاريخ؛ انتظر النبضة التالية.
 1. **أول سطر** في Journal عند الإرفاق: هل هو `[QSMC_AT] QSMC v6.69 execution companion ON`؟
    إن لا → الـ EA غير مُرفق أو لم يُترجم.
 2. **سطر الحالة**: `INERT` / `DRY RUN` / `BLOCKED` / `ARMED`. لا تنتقل قبل
@@ -159,8 +168,12 @@
 3. **مرّر إلى DRY RUN أولاً** (`InpEnableTrading=true`، `InpDryRun=true`).
    إن ظهر سطر `DRY RUN BUY …` فالتنفيذ سليم والمشكلة في المفتاح المتبقي فقط.
 4. **إن لم يظهر شيء أبداً** → لا إشارة. افتح اللوحة واقرأ صف `NEEDS:`:
-   سيقول لك بالحرف أي بوابة رفضت.
+   سيقول لك بالحرف أي بوابة رفضت. ولتفصيل أعمق فعّل في المؤشر
+   `InpGateAuditLogEveryBars=50` فيطبع `[GateAudit] … top blocker: …`.
 5. **تأكد من الإصدار**: `[QSMC_ARB] v6.6.9` في Journal، وليس رقماً أقدم.
+
+> النبضة للقراءة فقط: تنسخ المخزن 7 وتطبع، لا تلمس بوابة ولا أمراً ولا صفقة.
+> إيقافها: `InpHeartbeatSeconds=0`.
 
 ---
 
@@ -187,6 +200,9 @@
 
 | الحالة | السبب | مفتاح واحد للتغيير |
 | --- | --- | --- |
+| `heartbeat: … CORE signals …: 0` | المؤشر لا ينشر CORE (بواباته ترفض) | `NEEDS:` في اللوحة أو `InpGateAuditLogEveryBars` |
+| `heartbeat: … last skip: …` | الإشارة موجودة والـ EA يرفض | عالج السبب المذكور في السطر |
+| `heartbeat: handle INVALID` | المؤشر غير مترجم/في المكان الخطأ | F7 على `nadir2` داخل `MQL5\Indicators` |
 | لا شيء في Journal | EA غير مُرفق | أرفقه |
 | `INERT` | معطّل | `InpEnableTrading=true` |
 | `DRY RUN` | لا يرسل | `InpDryRun=false` |
