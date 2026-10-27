@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-QSMC v6.6.4 - RELEASE GATE
+QSMC v6.6.6 - RELEASE GATE
 
 A go / no-go check for taking this layer to a live chart. It does not re-check
 what static_check.py already checks (dialect rules, includes, balance); it
@@ -9,7 +9,9 @@ checks the things that only matter *before deployment*:
   G1  one version, everywhere - source triple and the docs' titles
   G2  the data-folder layout is complete, so a copy cannot half-install
   G3  every input is documented, and the production defaults are the quiet ones
-  G4  nothing in this layer can trade, send a request, or delete a file
+  G4  nothing in this layer can trade, send a request, or delete a file -
+      with ONE reviewed exception: MQL5/Experts/QSMC_AutoTrader.mq5, the
+      execution companion, which is the only file allowed to reach the trade API
   G5  no log line can fire per bar unless the operator asked for verbosity
   G6  no TODO / FIXME / "not implemented" left in the shipped path
   G7  the CI gate covers this script (a gate nobody runs is a suggestion)
@@ -105,6 +107,7 @@ NEEDED = (["QSMC_%s.mqh" % n for n in
           [os.path.join("MQL5", "Indicators", "QSMC_ScannerProbe.mq5"),
            os.path.join("MQL5", "Scripts", "QSMC_ArbiterTest.mq5"),
            os.path.join("MQL5", "Experts", "KLJ_DataFeeder.mq5"),
+           os.path.join("MQL5", "Experts", "QSMC_AutoTrader.mq5"),
            "nadir2.mq5"])
 for f in NEEDED[0]:
     if not os.path.isfile(os.path.join(INC, f)):
@@ -116,7 +119,8 @@ extra = sorted(set(x for x in os.listdir(INC) if x.endswith(".mqh")) - set(NEEDE
 if extra:
     warn("G2 headers present but not in the documented layout: %s" % ", ".join(extra))
 else:
-    NOTES.append("G2 layout complete: 18 headers + 1 indicator + 1 probe + 1 script + 1 EA")
+    NOTES.append("G2 layout complete: 18 headers + 1 indicator + 1 probe + 1 script + 1 feeder EA "
+                 "+ 1 execution EA")
 
 # ------------------------------------------------------------- G3 inputs
 preset = read(os.path.join(INC, "QSMC_Preset.mqh"))
@@ -161,6 +165,14 @@ LIBRARY = [f for f in layer_files() if os.sep + "Include" + os.sep in f
            or os.path.basename(f) == "QSMC_ScannerProbe.mq5"]
 PROGRAMS = [f for f in layer_files() if f not in LIBRARY]
 
+# The single reviewed exception to "this release cannot trade". Execution is a
+# separate program precisely so that the indicator and the 18 headers stay
+# unable to reach the trade API - that is what makes the dashboard safe to leave
+# on a chart. Everything about this file is checked: it ships inert, it needs a
+# demo account by default, and it is the only name on this list.
+EXEC_EA = os.path.join(ROOT, "MQL5", "Experts", "QSMC_AutoTrader.mq5")
+EXEC_TRADE_ALLOWED = {os.path.abspath(EXEC_EA)}
+
 TRADE = [(r"\bOrderSend\s*\(",                    "OrderSend"),
          (r"\bOrderCheck\s*\(",                   "OrderCheck"),
          (r"\bOrderGetTicket|\bOrderSelect\s*\(", "order API"),
@@ -194,6 +206,8 @@ for path in LIBRARY + PROGRAMS:
     code = strip_noise(read(path))
     base = os.path.basename(path)
     in_library = path in LIBRARY
+    if os.path.abspath(path) in EXEC_TRADE_ALLOWED:
+        continue          # the execution companion: checked by G8 instead
     for rx, why in TRADE:
         for m in re.finditer(rx, code):
             fail("G4 %s:%d uses %s - nothing in this release is allowed to reach the "
@@ -209,8 +223,49 @@ for path in LIBRARY + PROGRAMS:
                      % (os.path.relpath(path, ROOT), code[:m.start()].count("\n") + 1, why,
                         ALLOW_SITE.get(why, "nothing")))
                 g4_sites += 1
-NOTES.append("G4 no trade API anywhere in the layer; Alert/push/sound only in "
-             "CAlertManager; QSMC CSV writes only in QSMC_Stats; network only in the optional Experts feeder")
+NOTES.append("G4 no trade API in the layer (headers + indicator + probe) and none in the "
+             "feeder; Alert/push/sound only in CAlertManager; QSMC CSV writes only in QSMC_Stats; "
+             "the only trade API in the repository is the execution companion's")
+
+# ------------------------------------------- G8 the execution companion (v6.6.6)
+# This is the file that can lose money, so its deployment invariants are checked
+# here: inert by default, demo-only by default, dry-run on first switch-on, and
+# a risk ceiling that the sizing code actually enforces.
+if not os.path.isfile(EXEC_EA):
+    warn("G8 MQL5/Experts/QSMC_AutoTrader.mq5 is missing - the runbook names it, "
+         "so the documented install would not execute anything")
+else:
+    ea = read(EXEC_EA)
+    ea_code = strip_noise(ea)
+    if "OrderSend" not in ea_code and "g_trade." not in ea_code:
+        fail("G8 the execution companion never calls the trade API - it is documented "
+             "as the execution path, so either it is broken or it is the wrong file")
+    required_defaults = {"InpEnableTrading": "false", "InpDryRun": "true",
+                         "InpDemoOnly": "true"}
+    for name, want in required_defaults.items():
+        m = re.search(r'^input\s+bool\s+' + name + r'\s*=\s*(true|false)\s*;', ea, re.M)
+        if not m:
+            fail("G8 %s is not declared as an input bool - a safety switch that "
+                 "cannot be found cannot be trusted" % name)
+        elif m.group(1) != want:
+            fail("G8 %s defaults to %s, but %s is the shipping default: a trading EA "
+                 "must arrive inert, dry-run and demo-only" % (name, m.group(1), want))
+    if not re.search(r'InpMaxRiskPercent\s*=\s*1\.0*\s*;', ea):
+        fail("G8 InpMaxRiskPercent default is not 1.0 - the documented hard ceiling "
+             "is 1% of equity per trade")
+    if "MathMin(InpRiskPercent,vmax_cap)" not in ea_code:
+        fail("G8 the sizing path does not clamp the requested risk to InpMaxRiskPercent")
+    if "if(vmax_cap>1.0) vmax_cap=1.0;" not in ea_code:
+        fail("G8 the sizing path does not cap InpMaxRiskPercent itself at 1.0")
+    if "ACCOUNT_TRADE_MODE_DEMO" not in ea_code:
+        fail("G8 the demo-only refusal is gone - InpDemoOnly would be a lie")
+    if re.search(r'MathPow\(\s*2', ea_code) or re.search(r'lots\s*\*\s*2', ea_code):
+        fail("G8 the companion doubles a lot size - no martingale is allowed in this "
+             "repository, in any file, at any setting")
+    if "PositionModify" in ea_code and "InpBreakEvenAtR" not in ea:
+        fail("G8 positions are modified without the break-even input that bounds it")
+    NOTES.append("G8 execution companion ships INERT + DRY RUN + demo-only, risk clamped "
+                 "to %.0f%% of equity, no martingale" % 1.0)
 
 # ------------------------------------------------------------- G5 log flood
 # "Flood" has one meaning here: a line printed from the per-bar path. That is a

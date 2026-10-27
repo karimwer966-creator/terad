@@ -1,4 +1,4 @@
-# QSMC v6.6.4 — BUILD, RUN, VERIFY
+# QSMC v6.6.6 — BUILD, RUN, VERIFY
 
 Operational guide for `nadir2.mq5` + the `MQL5/Include/QSMC` arbitration layer.
 Design and root-cause analysis live in `docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md`;
@@ -21,19 +21,23 @@ v6.6.2: literal hygiene + the CI gate).
    - `nadir2.mq5` → `<Data Folder>/MQL5/Indicators/`
    - `MQL5/Scripts/QSMC_ArbiterTest.mq5` → `<Data Folder>/MQL5/Scripts/`
    - `MQL5/Experts/KLJ_DataFeeder.mq5` → `<Data Folder>/MQL5/Experts/`
+   - `MQL5/Experts/QSMC_AutoTrader.mq5` → `<Data Folder>/MQL5/Experts/`
+     (اختياري: **التنفيذ الآلي** — منفصل عن المؤشر، يصل معطّلاً، راجع
+     `docs/QSMC_AUTOTRADER.md`. المؤشر نفسه لا يفتح صفقات أبداً.)
    - `MQL5/Indicators/QSMC_ScannerProbe.mq5` → `<Data Folder>/MQL5/Indicators/`
      (اختياري: مضيف طبقة الماسحات Phase 7 — لا يرسم ولا يتداول، فقط نصّ)
    (المجلد `QSMC` داخل `Include` **ضروري**: الملفات تُضمَّن هكذا
    `#include <QSMC/QSMC_Root.mqh>`.)
 3. افتح `MetaEditor` (F4 داخل MT5) واضغط **F7** على كل ملف بالترتيب:
    `nadir2.mq5` ثم `QSMC_ArbiterTest.mq5` ثم `KLJ_DataFeeder.mq5`
-   ثم `QSMC_ScannerProbe.mq5` إن أردت الماسحات.
+   ثم `QSMC_ScannerProbe.mq5` إن أردت الماسحات،
+   ثم `QSMC_AutoTrader.mq5` إن أردت التنفيذ الآلي.
    النتيجة المطلوبة: `0 errors, 0 warnings`.
    ترجمة `QSMC_ScannerProbe.mq5` هي الوحيدة التي تُثبت أن
    `QSMC_Scanners.mqh` يُترجم فعلًا — قبل v6.6.3 لم يكن لهذا الملف أي مضيف.
 4. في MT5: `Navigator` ← `Indicators` ← `nadir2` اسحبه على مخطط M5/M15.
 5. راجع تبويب `Experts`/`Journal`: السطر الأول يجب أن يكون
-   `[QSMC_ARB] v6.6.4 arbitration layer ON | preset …`.
+   `[QSMC_ARB] v6.6.6 arbitration layer ON | preset …`.
 6. للاختبار الذاتي: اسحب `QSMC_ArbiterTest` (Scripts) على أي مخطط —
    النتيجة المطلوبة `RESULT: 45 passed, 0 failed` (includes quant, structure, and zone-scoring assertions).
 7. للتحقق بدون MT5 (من الطرفية، داخل المستودع):
@@ -73,12 +77,26 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 ├─ Indicators\nadir2.mq5                <- the indicator itself (repo root)
 ├─ Indicators\QSMC_ScannerProbe.mq5      <- PART C Phase 7 scanner host (v6.6.3)
 ├─ Scripts\QSMC_ArbiterTest.mq5         <- deterministic self-test harness
-└─ Experts\KLJ_DataFeeder.mq5           <- optional CSV data feeder (PART C)
+├─ Experts\KLJ_DataFeeder.mq5           <- optional CSV data feeder (PART C)
+└─ Experts\QSMC_AutoTrader.mq5          <- v6.6.6 execution companion (opt-in, inert)
 ```
+
+The two `Experts` files are separate programs, and only one of them can trade:
+`QSMC_AutoTrader.mq5` is the single file on the release gate's G4 allowlist.
+`KLJ_DataFeeder.mq5` still contains no trade API, and the indicator and the 18
+headers still contain none at all — that is what makes the dashboard safe to leave
+on a chart.
 
 `tools/apply_qsmc_arb_patch.py --check` prints `already patched (marker
 present)` when `nadir2.mq5` already carries the arbitration hook. It is the
 command to run after re-downloading a raw host file.
+
+`tools/test_autotrader_contract.py` pins the other half of that boundary: the
+execution companion reads only the CORE buffers 7-12, never the forming bar,
+never a preview or ZRE buffer, ships inert / dry-run / demo-only with a 1% risk
+ceiling, and its sizing arithmetic is reproduced independently (floored volume,
+no-trade below the broker minimum, wider stop => smaller size). The operator guide
+is `docs/QSMC_AUTOTRADER.md`.
 
 `tools/check_release_gate.py` is the **deployment** gate — a different question
 from `static_check.py`. It is what turns §2–§4 of
@@ -133,7 +151,7 @@ its host is ever removed). It is not a type checker: a clean run still needs F7.
 3. Journal must show, in this order:
 
 ```
-[QSMC_ARB] v6.6.4 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
+[QSMC_ARB] v6.6.6 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
              | exec TF M15 | tactical may confirm: NO (informational only)
              | on XAUUSD M15
 ```

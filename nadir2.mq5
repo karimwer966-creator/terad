@@ -1,10 +1,12 @@
 //+------------------------------------------------------------------+
-//| v6.5.5 ALERT ARBITRATION / CLOSED-BAR CLARITY PASS              |
-//| Unified ZRE/RXN primary-scenario dispatcher; distance filter;    |
-//| cooldown; causal path wording; timeframe presets; display modes; |
-//| 8-row dashboard; distance declutter; zone lifecycle tracking.   |
-//| Static tests run in tools/test_primary_alerts.py. MetaEditor     |
-//| compilation is not available in the Linux review environment.   |
+//| v6.6.6 FULL-WIDTH DECISION CARD / CHART CLARITY                |
+//| Strongest MTF level, closed-bar entry check, mixed-bias warning; |
+//| ten-row full-width dashboard, semantic colors, clean chart mode. |
+//| Display-only: no probability claim or entry-gate relaxation.    |
+//| Offline checks pass; MetaEditor compile still requires F7.       |
+//| Execution is NOT in this file: MQL5/Experts/QSMC_AutoTrader.mq5  |
+//| is a separate opt-in EA that reads the published CORE buffers.   |
+//| This indicator and the QSMC layer contain no trade API at all.   |
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
 //| v6.5.4 REACTION CONFLICT FIX (see docs/KLJ_V6.5.4_REACTION_CONFLICT_FIX.md):  |
@@ -605,7 +607,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.64"
+#property version   "6.66"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -616,7 +618,7 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.3).
-#define QSMC_VERSION_TEXT "v6.6.4"
+#define QSMC_VERSION_TEXT "v6.6.6"
 #property indicator_chart_window
 #property indicator_buffers 19   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (SigLog, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -830,7 +832,7 @@ input bool InpASCIIBar = true;
 input int InpPanelRightPad = 68;
 input int InpPanelFontSize = 0;
 // Legacy dashboard-size values are retained for saved-template compatibility.
-// The current decision panel has one fixed compact layout (7 base rows, up to 3 details).
+// The current decision panel supports 10 rows with a full-width readable layout.
 enum ENUM_DASH_MODE
   {
    DASH_MINI    = 0,   // Mini (recommended: ~6 rows)
@@ -947,12 +949,13 @@ enum ENUM_SETUP_RANK
   };
 input ENUM_DASH_MODE InpDashMode = DASH_MINI;   // Legacy setting; current panel uses the fixed compact layout
 input group "====== Clarity (1920x1080) ======"
-input bool InpUltraCleanMode = false;          // outlines only; hides detailed research panels
+input bool InpUltraCleanMode = true;           // clear default: outlines only; hides detailed research panels
 input bool InpShowBattleAnnotations = true;
 input int InpBattleAnnotationLookback = 80;
 input int InpPDTransparency = 97;
 input group "====== AI Dashboard ======"
 input bool InpShowAIDashboard = true;
+input bool InpDashboardFullWidth = true;       // Full-width decision dashboard; switch off to keep a compact chart overlay
 input bool InpDockDashboard = true;            // Legacy positioning setting; compact Core panel is left-docked
 input bool InpDashboardCollapsible = true;     // Click Core title row to show/hide the three detail rows
 input bool InpShowMTFPanel = true;              // Legacy toggle; MTF is shown as Core-dashboard context
@@ -1071,7 +1074,7 @@ input double InpProximityMaxATR         = 0.35;   // ...within this many ATR of 
 input int    InpLabelFontSize           = 0;      // chart label font (0 = per-element default, 7 recommended with Clean)
 input int    InpMaxChartObjects         = 0;      // hard cap on QSMC_* chart objects per pass (0 = 1200, 900 with Clean)
 input int    InpMaxZonesPerSide         = 5;      // demand / supply boxes drawn per side (Clean forces 2)
-input bool   InpDeclutterMode           = false;  // "Clean" preset in one switch: fewest zones, small labels, capped objects
+input bool   InpDeclutterMode           = true;   // Clean preset: fewer zones, small labels, capped objects
 
 input group "====== v5.4.0 Performance & Stability ======"
 input bool   InpUseIncrementalDetection = true;
@@ -1351,7 +1354,7 @@ input int    InpRXNAlertMinLevel              = 4;    // Minimum RXN alert level
 input double InpAlertMaxDistanceATR            = 2.0;  // No popup/push for a zone farther than this x ATR from the closed price
 input int    InpAlertCooldownBars              = 5;    // Cooldown in closed bars per (zone,direction,level)
 input bool   InpUseTimeframePresets            = true; // Apply M1/M5/M15+ presets when legacy inputs remain at their defaults
-input ENUM_QSMC_DISPLAY_MODE InpDisplayMode    = QSMC_MODE_STANDARD; // Minimal / Standard / Full; display-only
+input ENUM_QSMC_DISPLAY_MODE InpDisplayMode    = QSMC_MODE_FULL; // Full decision card; display-only
 input double InpVisualMaxDistanceATR           = 10.0; // Hide chart zones/labels beyond this x ATR; calculations are unaffected
 input bool   InpPrimaryAlertPopup               = true; // Master popup enable for the unified dispatcher
 input bool   InpPrimaryAlertPush                = false; // Push for selected primary scenario only
@@ -28121,7 +28124,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
 
    int primary_dir=(g_alert_primary.valid?g_alert_primary.direction:0);
    string status=(primary_dir>0?"BUY":(primary_dir<0?"SELL":"WAIT"));
-   color status_col=(primary_dir>0?clrLime:(primary_dir<0?clrTomato:clrSilver));
+   color status_col=(primary_dir>0?clrLimeGreen:(primary_dir<0?clrLightCoral:clrOrange));
    string source=(g_alert_primary.source==3?"CORE":(g_alert_primary.source==2?"RXN":"ZRE"));
    string primary="PRIMARY: none (closed-bar only)";
    string needs="NEEDS: wait for a closed-bar reaction";
@@ -28145,10 +28148,64 @@ void DrawQuantumDashboard(const int total,const double &c[])
                             DoubleToString(g_alert_opposite.zone_hi,_Digits),
                             g_alert_opposite.score,g_alert_opposite.distance_atr);
    int d1=(g_d1_structure_state=="BULLISH"?1:(g_d1_structure_state=="BEARISH"?-1:0));
-   string bias=StringFormat("BIAS: HTF %s | D1 %s | TD %s",
+   // Show disagreement explicitly instead of forcing a single market direction.
+   // This is display context only; it does not alter the entry authority.
+   int direction_vote=0;
+   bool direction_conflict=false;
+   int direction_sources=0;
+   if(g_htf_bias!=0)
+   { direction_vote=g_htf_bias; direction_sources++; }
+   if(d1!=0)
+   { if(direction_vote!=0 && direction_vote!=d1) direction_conflict=true;
+     else direction_vote=d1; direction_sources++; }
+   if(InpTopDownEnabled && g_td.dir!=0)
+   { if(direction_vote!=0 && direction_vote!=g_td.dir) direction_conflict=true;
+     else direction_vote=g_td.dir; direction_sources++; }
+   string market_direction=(direction_conflict?"MIXED - WAIT":
+                            (direction_sources==0?"NEUTRAL":
+                             (direction_vote>0?"BULLISH":(direction_vote<0?"BEARISH":"NEUTRAL"))));
+   color direction_col=(direction_conflict?clrOrange:
+                        (direction_vote>0?clrLimeGreen:(direction_vote<0?clrLightCoral:clrSilver)));
+   string bias=StringFormat("DIRECTION: %s | HTF %s | D1 %s | TD %s",
+                            market_direction,
                             (g_htf_bias>0?"BUY":(g_htf_bias<0?"SELL":"WAIT")),
                             (d1>0?"BUY":(d1<0?"SELL":"WAIT")),
                             (g_td.dir>0?"BUY":(g_td.dir<0?"SELL":"WAIT")));
+
+   // The MTF sniper level is a ranked area, not a probability or an order.
+   // Show its exact band and the closed-bar trigger state so the user can
+   // distinguish a strong location from an actually confirmed reaction.
+   string best_level="BEST LEVEL: none | waiting for validated MTF confluence";
+   string entry_check="ENTRY CHECK: no validated level; wait for a closed-bar reaction";
+   color best_level_col=clrSilver;
+   color entry_check_col=clrOrange;
+   if(InpUseSniperZoneEngine && g_sniper_best.level.strength>0.0 &&
+      g_sniper_best.level.direction!=0)
+   {
+      bool best_buy=(g_sniper_best.level.direction>0);
+      best_level=StringFormat("BEST LEVEL: %s %s-%s | strength %.2f | %s | %s",
+                 (best_buy?"BUY SUPPORT":"SELL RESISTANCE"),
+                 DoubleToString(g_sniper_best.level.price_low,_Digits),
+                 DoubleToString(g_sniper_best.level.price_high,_Digits),
+                 g_sniper_best.level.strength,
+                 (g_sniper_best.tf_label==""?"MTF":g_sniper_best.tf_label),
+                 (g_sniper_best.type_label==""?"confluence":g_sniper_best.type_label));
+      best_level_col=(best_buy?clrLimeGreen:clrLightCoral);
+      string check_state=(g_sniper_best.entry_triggered?"READY - CLOSED BAR":
+                          (g_sniper_best.entry_grade==""?"WAIT":g_sniper_best.entry_grade));
+      if(g_sniper_best.entry_triggered && direction_conflict)
+         check_state="LOCAL READY / DIRECTION MIXED - WAIT";
+      string price_plan=StringFormat("%s %s | SL %s | TP1 %s",
+                    (g_sniper_best.entry_triggered?"entry":"zone edge"),
+                    DoubleToString(g_sniper_best.entry_price,_Digits),
+                    DoubleToString(g_sniper_best.sl_price,_Digits),
+                    DoubleToString(g_sniper_best.tp1_price,_Digits));
+      entry_check=StringFormat("ENTRY CHECK: %s | %s | %s | rejection evidence %d/5 | %s",
+                    (best_buy?"BUY":"SELL"),check_state,price_plan,g_sniper_best.conds_met,
+                    (g_sniper_best.gate_fail_reason==""?"closed-bar gates":g_sniper_best.gate_fail_reason));
+      entry_check_col=(g_sniper_best.entry_triggered && !direction_conflict?
+                       (best_buy?clrLimeGreen:clrLightCoral):clrOrange);
+   }
 
    double price=c[closed];
    double sup=0.0,res=0.0;
@@ -28178,17 +28235,19 @@ void DrawQuantumDashboard(const int total,const double &c[])
       g_mvp[g_mvp_active].valid)
       core_profile+=" | POC "+DoubleToString(g_mvp[g_mvp_active].poc,_Digits);
 
-   string lines[8]; color cols[8]; int ln=0;
+   string lines[10]; color cols[10]; int ln=0;
    lines[ln]="STATUS: "+status+" | "+_Symbol+" "+TFName((ENUM_TIMEFRAMES)_Period);
    cols[ln++]=status_col;
-   lines[ln]=primary; cols[ln++]=clrSilver;
+   lines[ln]=primary; cols[ln++]=(primary_dir>0?clrLimeGreen:(primary_dir<0?clrLightCoral:clrSilver));
+   lines[ln]=best_level; cols[ln++]=best_level_col;
+   lines[ln]=entry_check; cols[ln++]=entry_check_col;
    if(InpDisplayMode!=QSMC_MODE_MINIMAL)
    {
       lines[ln]=needs; cols[ln++]=clrSilver;
       lines[ln]=invalid; cols[ln++]=clrSilver;
       lines[ln]=opposing; cols[ln++]=clrSilver;
       lines[ln]=(InpDisplayMode==QSMC_MODE_FULL || g_dashboard_expanded?bias:bias_sr);
-      cols[ln++]=clrSilver;
+      cols[ln++]=direction_col;
       if(InpDisplayMode==QSMC_MODE_FULL || g_dashboard_expanded)
       {
          lines[ln]=sr; cols[ln++]=clrSilver;
@@ -28201,11 +28260,13 @@ void DrawQuantumDashboard(const int total,const double &c[])
       lines[ln]=invalid; cols[ln++]=clrSilver;
       lines[ln]=sr; cols[ln++]=clrSilver;
    }
-   if(ln>8) ln=8;
+   if(ln>10) ln=10;
 
    // Full detail is retained in tooltips; the visible surface is deliberately
-   // capped at eight short rows and never cuts a word or a number mid-string.
-   string tooltip="QUANTUM SMC | closed-bar dashboard (max 8 rows)\n"+
+   // capped at ten decision rows and never cuts a word or a number mid-string.
+   string tooltip="QUANTUM SMC | closed-bar decision dashboard (max 10 rows)\n"+
+                  "Best MTF level: "+best_level+"\nEntry check: "+entry_check+"\n"+
+                  "Direction consensus: "+market_direction+" (context only)\n"+
                   "Primary: "+(g_alert_primary_tooltip==""?"none":g_alert_primary_tooltip)+"\n"+
                   "Core state: "+core_state+" | blocker: "+CoreDashBlocker(core_state,path)+"\n"+
                   "Core chain: "+CoreDashChain(path,core_state,closed)+"\n"+
@@ -28226,9 +28287,11 @@ void DrawQuantumDashboard(const int total,const double &c[])
    int chart_h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    if(chart_w<=0) chart_w=800;
    if(chart_h<=0) chart_h=600;
-   int safe_w=(int)MathMax(100,MathMin(chart_w-16,SafeLeftPanelWidth()));
-   int panel_font=(int)MathMax(7,MathMin(9,(InpPanelFontSize>0?InpPanelFontSize:8)));
-   int pad=8,line_h=15;
+   int safe_w=(InpDashboardFullWidth ? (int)MathMax(100,chart_w-16) :
+               (int)MathMax(100,MathMin(chart_w-16,SafeLeftPanelWidth())));
+   int panel_font=(int)MathMax(8,MathMin(11,(InpPanelFontSize>0?InpPanelFontSize:
+                                               (InpDashboardFullWidth?10:8))));
+   int pad=8,line_h=panel_font+8;
    int text_max=(int)MathMax(40,safe_w-2*pad-6);
    if(TextWidthPx(lines[0],"Consolas",panel_font,true)>text_max)
       lines[0]="STATUS: "+status;
@@ -28252,7 +28315,8 @@ void DrawQuantumDashboard(const int total,const double &c[])
    int text_w=0;
    for(int i=0;i<ln;i++)
       text_w=(int)MathMax(text_w,TextWidthPx(lines[i],"Consolas",panel_font,(i==0)));
-   int width=(int)MathMin(safe_w,text_w+2*pad+6);
+   int width=(InpDashboardFullWidth?safe_w:
+              (int)MathMin(safe_w,text_w+2*pad+6));
    int height=ln*line_h+2*pad;
    UpdateTradeLevelKeepOut();
    int x=8;
@@ -28292,7 +28356,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
       ObjectSetInteger(0,name,OBJPROP_ZORDER,21);
       ObjectSetString(0,name,OBJPROP_TOOLTIP,tooltip);
    }
-   for(int i=ln;i<8;i++)
+   for(int i=ln;i<10;i++)
    {
       string stale=PFX+"CORE_DASH_ROW_"+IntegerToString(i);
       if(ObjectFind(0,stale)>=0) ObjectDelete(0,stale);
