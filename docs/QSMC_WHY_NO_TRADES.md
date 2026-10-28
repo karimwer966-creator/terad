@@ -22,6 +22,131 @@
 
 ---
 
+## 0.1 الجديد في v6.6.10: الـ EA نفسه يقول لك أي بوابة رفضت
+
+كان السطر القديم `CORE signals ...: 0` يثبت أن المؤشر لم ينشر شيئاً، لكنه لا
+يقول **لماذا**. واللوحة تحتاج أن تنظر إليها، و`InpGateAuditLogEveryBars`
+تحتاج أن تعدّل إعدادات المؤشر. الآن صار المؤشر ينشر نتيجة بواباته كمتغيّرات
+عامة (`QSMC_DIAG_<الرمز>_<الفريم>_CORE`)، والـ EA يقرؤها ويطبعها في نبضته:
+
+```text
+[QSMC_AT] heartbeat: INERT | CORE signals in last 200 closed bars: 0 -> the indicator published NO CORE setup, ... | indicator verdict: RELIABILITY - score below InpMinReliability in the indicator | indicator funnel: bars 143 armed 6 confirmed 0 | last closed bar 2026.10.28 09:15
+```
+
+اقرأه كأربعة أسئلة:
+
+| المقطع | السؤال الذي يجيب عنه |
+| --- | --- |
+| `indicator verdict: …` | أي بوابة رفضت آخر مرشّح |
+| `indicator funnel: bars N armed A confirmed C` | هل وصلت السلسلة إلى `ARMED` أصلاً أم ماتت قبلها |
+| `last closed bar …` | هل المؤشر يقيّم **هذا** الرمز وهذه الفريم فعلاً |
+| `no diagnostic record for …` | البرنامجان ليسا على نفس المخطط/الرمز/الفريم، أو المؤشر غير مُترجم |
+
+معاني الأكواد (نفس الجدول في الملفين، ويفحصه `tools/test_diag_bridge.py`):
+
+| الكود | المعنى | المفتاح الذي يغيّره |
+| --- | --- | --- |
+| 0 | `NO_DATA` — لا شمعة مغلقة قُيِّمت بعد | انتظر إغلاق شمعة |
+| 1 | `CORE_PUBLISHED` — نُشرت إشارة | إن لم تُفتح صفقة فالمشكلة في سطر `skip` |
+| 2 / 3 | `SETUP_ARMED` / `SETUP_PENDING` — إعداد موجود وغير مؤكد | لا شيء؛ هذا التصميم |
+| 10 / 11 | لا مرتكز بنية / سلسلة سببية ناقصة | السلسلة sweep → displacement → structure → zone لم تكتمل |
+| 12–16 | لا كنس سيولة أو لا إزاحة أو لا زون مرتبط | السوق لم يُنتج التسلسل |
+| 17 / 18 | الزون فشل في فحص الموقع أو السببية | — |
+| 19 | ساق الكنس/الكسر ضعيفة | `InpDisplacementATR` |
+| 20 / 21 / 22 | RR أقل من الحد / الوقف أوسع من الحد / الأهداف غير قابلة للترتيب | مدخلات الهندسة |
+| 23 / 24 / 25 | الثقة أو الموثوقية أو التقييم تحت الحد | `InpMinConfidenceScore`, `InpMinReliability`, `InpMinGrade` |
+| 26 | EMA200/VWAP يعارض الاتجاه | — |
+| 27 | السبريد فوق `InpMaxSpreadPts` | `InpMaxSpreadPts` |
+| 28 | سلسلة D1→M5 تحجب الاتجاه | `InpTopDownGateCore`, `InpRequireInstitutionalConfirm` |
+| 29 | إعداد آخر يحتكر مسار التنفيذ | انتظر إبطاله أو انتهاءه |
+| 30–33 | فيتو اتجاه / قائمة سوداء / دورة حياة / تراجع فرع | — |
+| 34 | بوابة أخرى رفضت | `InpGateAuditLogEveryBars` للنص الحرفي |
+
+ثلاث ملاحظات صادقة: الكود **للقراءة فقط** ولا يغيّر أي قرار؛ وهو يسمّي
+**المانع الأكثر تكراراً في الجلسة** لا نبوءة عن الشمعة القادمة؛ و`1` لشمعة
+واحدة لا يعني أن التالية ستنشر.
+
+أما إن كان المؤشر ميتاً لا بطيئاً: صار الـ EA يفرّق بينهما. مقبض `iCustom`
+صالح مع `BarsCalculated()` سالب لم يعد يُطبع «still warming up» إلى الأبد، بل
+يقول إن النسخة موجودة لكنها **لا تحسب** — وهذه مشكلة مؤشر (مدخلات مرفوضة أو
+تاريخ ناقص) لا مشكلة إشارة.
+
+---
+
+## 0.2 v6.6.11: المسافة لا العدّاد — كم كان المرشّح بعيداً عن المرور؟
+
+`top blocker` عدّاد أصوات: يقول أي بوابة ترفض **أكثر**، ولا يقول أبداً إن كان
+الحدّ مرتفعاً بنقطة واحدة أو أن السوق لم يُنتج النمط أصلاً. الفرق بين الاثنين
+هو الفرق بين «خفّض الحدّ» و«لا تلمس شيئاً».
+
+لذلك يقيس المؤشر الآن القيمة التي رآها كل فحص، ويطبع الـ EA الفرق:
+
+```text
+... | closest rejection: RELIABILITY short by 3.1 point(s) - the best candidate of this session was ONE input away from passing | best reached: conf 71, reliability 77, RR1 1.42, anchors 118 | profile window: 143 closed bars since attach
+```
+
+اقرأه هكذا:
+
+| المقطع | المعنى |
+| --- | --- |
+| `closest rejection: RELIABILITY short by 3.1` | أقرب مرشّح سقط على الموثوقية بفارق 3.1 نقطة (`InpMinReliability`) |
+| `closest rejection: none … the causal chain did not complete` | **لا حدّ كان السبب**: السلسلة السببية لم تُنتج صفقة. تخفيض أي عتبة هنا لن يفتح شيئاً |
+| `best reached: conf 71, reliability 77, RR1 1.42, anchors 118` | أعلى قيمة وصلها أي مرشّح في الجلسة، وعدد المرتكزات التي فُحصت |
+| `profile window: N closed bars` | حجم العيّنة؛ «أعلى قيمة» بلا عدد من الشموع ليس دليلاً |
+
+نقطتان مهمتان:
+
+- الفارق **لا يُحسب** إلا للبوابات الأربع التي هي عتبات رقمية: الثقة،
+  الموثوقية، RR1، ومسافة الوقف. أمّا السلسلة السببية (كنس ← إزاحة ← بنية ←
+  زون) فلا يُقال عنها «ناقصة بثلاث نقاط»، لأن ذلك سيكون كذباً رقمياً.
+- البروفايل **قراءة فقط**: لا شيء فيه يدخل قراراً، ولو حُذف لما تغيّر أي
+  إشارة منشورة. تغيير أي عتبة يبقى قرارك أنت، مكتوباً ومسجَّلاً — لا شيئاً
+  يفعله الكود سراً.
+
+---
+
+## 0.3 v6.6.12: وضع عملي **باسمه** بدل تعديل الحدود خفية
+
+إن قال المقياس في §0.2 إن الفارق نقطة أو نقطتان، فهناك مفتاح واحد صريح:
+
+```text
+InpGateProfile = QSMC_GATE_STRICT      (الافتراضي — كل حدّ كما كتبته)
+InpGateProfile = QSMC_GATE_PRACTICAL   (اختياري — تخفيف خمس عتبات رقمية، معلن)
+```
+
+PRACTICAL يفعل **خمسة أشياء فقط**، وكل واحد منها يُطبع في Journal عند الإرفاق:
+
+| المدخل | STRICT | PRACTICAL |
+| --- | --- | --- |
+| `InpMinConfidenceScore` | 75 | 60 |
+| `InpMinReliability` | 80 | 60 |
+| `InpMinRR1` | 1.50 | 1.20 |
+| `InpMaxStopATR` | 4.0 | 6.0 |
+| `InpAnchorSearchBars` | 60 | 120 |
+
+وهو **لا** يصل إلى: السلسلة السببية، فحص الموقع، القائمة السوداء، بوابة
+السجل غير القابل للتغيير، مفتاح الاتجاه العام، ولا إلى أي قاعدة مخاطر في
+الـ EA (سقف 1%، الحجم، الوقف، الحد اليومي). ولا يشدّ عتبة كتبتها أنت أشدّ
+منها: `MathMin/MathMax` تتحرّك في اتجاه التساهل فقط.
+
+يقول سطر الافتتاح بالحرف:
+
+```text
+>>> QSMC v6.6.9 GATE PROFILE: PRACTICAL (opt-in) - the following entry thresholds are RELAXED:
+>>>   reliability 80 -> 60  (InpMinReliability, floored at 60)
+>>>   ...
+>>>   UNCHANGED: causal chain, location, blacklist, journal gate, top-down switch, and every risk rule of the execution companion.
+>>>   WARNING: this makes MORE trades possible, not better ones.
+```
+
+وسطر النبضة في الـ EA يعرض الوضع النشط: `indicator gate profile: PRACTICAL`.
+
+**الحدّ الصادق:** هذا يجعل الصفقات **أكثر**، لا **أفضل**. وإن كان المانع
+بنيوياً (أكواد 10–16: لا سلسلة سببية مكتملة) فهذا المفتاح لن يفتح شيئاً،
+لأنه لا يمسّ السلسلة. اقرأ `closest rejection` أولاً ثم قرّر.
+
+---
+
 ## 1. الطبقة الأولى: هل يوجد مُنفّذ أصلاً؟
 
 | السبب | كيف تتأكد | الحل |
@@ -200,7 +325,10 @@
 
 | الحالة | السبب | مفتاح واحد للتغيير |
 | --- | --- | --- |
-| `heartbeat: … CORE signals …: 0` | المؤشر لا ينشر CORE (بواباته ترفض) | `NEEDS:` في اللوحة أو `InpGateAuditLogEveryBars` |
+| `heartbeat: … CORE signals …: 0` | المؤشر لا ينشر CORE (بواباته ترفض) | اقرأ `indicator verdict:` في نفس السطر (جدول §0.1) أو `InpGateAuditLogEveryBars` |
+| `indicator verdict: <كود>` | البوابة التي رفضت آخر مرشّح | الجدول في §0.1 |
+| `indicator funnel: … armed 0` | السلسلة لم تصل إلى إعداد مسلّح | مشكلة في توليد الإعداد لا في الـ EA |
+| `indicator verdict: no diagnostic record` | المؤشر لا يقيّم هذا الرمز/الفريم | نفس المخطط، نفس الرمز، F7 على nadir2 |
 | `heartbeat: … last skip: …` | الإشارة موجودة والـ EA يرفض | عالج السبب المذكور في السطر |
 | `heartbeat: handle INVALID` | المؤشر غير مترجم/في المكان الخطأ | F7 على `nadir2` داخل `MQL5\Indicators` |
 | لا شيء في Journal | EA غير مُرفق | أرفقه |

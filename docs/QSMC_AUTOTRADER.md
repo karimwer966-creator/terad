@@ -184,6 +184,123 @@ position.
 the same closed-bar buffers, so it cannot create a signal that `OnTick` would not
 see.
 
+### v6.6.12 — `InpGateProfile`: the one sanctioned way to relax a threshold
+
+`InpGateProfile` is an enum with two values. `QSMC_GATE_STRICT` (the default)
+returns every input untouched, so an existing installation is byte-for-byte
+unchanged. `QSMC_GATE_PRACTICAL` relaxes exactly five numeric entry thresholds
+and prints each change at init:
+
+| Input | STRICT | PRACTICAL |
+| --- | --- | --- |
+| `InpMinConfidenceScore` | 75 | 60 |
+| `InpMinReliability` | 80 | 60 |
+| `InpMinRR1` | 1.50 | 1.20 |
+| `InpMaxStopATR` | 4.0 | 6.0 |
+| `InpAnchorSearchBars` | 60 | 120 |
+
+Why this is not "the AI lowered the gates": the gates read effective values
+from five `Eff*()` helpers, and each helper returns the raw input unless the
+operator chose PRACTICAL. `tools/test_gate_profile.py` proves structurally that
+(a) the default is STRICT, (b) the profile is read **only** by those five
+helpers, the banner and the publisher, (c) no gate still compares against a raw
+input, (d) the location check, blacklist, top-down switch and journal gate are
+unreachable from it, and (e) the companion cannot set it — it can only print
+which one is active.
+
+The profile never tightens a value you set stricter yourself (`MathMin` /
+`MathMax`, permissive direction only), and it says out loud what it does not
+fix: *"this makes MORE trades possible, not better ones."* If the measured
+blocker is structural (`closest rejection: none`), the profile changes nothing,
+because it does not touch the causal chain.
+
+### v6.6.11 — the heartbeat reports the DISTANCE, not only the vote count
+
+The verdict names the gate that refused most often. That is still a count: it
+cannot distinguish "the threshold is one point too high" from "the market never
+produced the pattern". The companion now also prints the measured shortfall of
+the best candidate of the session:
+
+```
+... | closest rejection: RELIABILITY short by 3.1 point(s) - the best candidate of
+this session was ONE input away from passing | best reached: conf 71,
+reliability 77, RR1 1.42, anchors 118 | profile window: 143 closed bars since attach
+```
+
+* `closest rejection: <GATE> short by N` — the gap to the input that refused it.
+* `closest rejection: none … the causal chain did not complete` — no threshold
+  was the reason; lowering one would open nothing. This is the single most
+  useful sentence in the whole diagnostic, because it stops a pointless
+  threshold change.
+* `best reached: …` — the highest value any candidate achieved, to compare with
+  the indicator's own minimum inputs.
+* `profile window: N closed bars` — the sample size. A peak without a window is
+  not evidence.
+
+A shortfall is only ever computed for the four numeric thresholds (confidence,
+reliability, RR1, stop distance in ATR) and only for a candidate that already
+cleared the structural gates — the chain never gets "you were 3 points short".
+The profiler is read-only: no value it records reaches a gate, and deleting it
+leaves every published signal identical. Acting on a number is your decision,
+made explicitly, not something the code does quietly.
+
+### v6.6.10 — the heartbeat now carries the INDICATOR'S verdict
+
+`CORE signals in last 200 closed bars: 0` proves the transport is healthy and
+the indicator published nothing, but it does not say **why**. The panel's
+`NEEDS:` row answers that only while you are looking at the right chart, and
+`InpGateAuditLogEveryBars` answers it only if you edited the indicator's inputs.
+
+So `nadir2` now publishes the result of its own gate chain for the last closed
+bar as terminal globals, and the heartbeat decodes them:
+
+```
+[QSMC_AT] heartbeat: INERT | CORE signals in last 200 closed bars: 0 -> the indicator published NO CORE setup, ... | indicator verdict: RELIABILITY - score below InpMinReliability in the indicator | indicator funnel: bars 143 armed 6 confirmed 0 | last closed bar 2026.10.28 09:15
+```
+
+Read it as four questions answered in one line:
+
+| Fragment | Question it answers |
+| --- | --- |
+| `indicator verdict: <CODE> - <sentence>` | which gate refused the last candidate |
+| `indicator funnel: bars N armed A confirmed C` | did the chain ever arm a setup, or did it die before that |
+| `last closed bar …` | is the indicator actually evaluating *this* symbol and timeframe |
+| `no diagnostic record for …` | the two programs are not on the same chart/symbol/timeframe, or the indicator is not compiled |
+
+The published codes (identical table in both files, checked by
+`tools/test_diag_bridge.py`):
+
+| Code | Meaning | The input that changes it |
+| --- | --- | --- |
+| 0 | `NO_DATA` — no closed-bar pass yet | wait for one closed bar; check symbol/TF |
+| 1 | `CORE_PUBLISHED` — a signal *was* published | if no order followed, read the `skip` line instead |
+| 2 / 3 | `SETUP_ARMED` / `SETUP_PENDING` — a setup exists, not confirmed | nothing to fix; by design |
+| 10 / 11 | no structure anchor / incomplete causal chain | the sweep → displacement → structure → zone sequence did not complete |
+| 12–16 | sweep, displacement or the bound zone is missing | market did not produce the sequence |
+| 17 / 18 | the zone failed the location or causality re-check | — |
+| 19 | the sweep/break leg is too weak | `InpDisplacementATR` |
+| 20 / 21 / 22 | RR below `InpMinRR1` / stop above `InpMaxStopATR` / targets unorderable | the indicator's geometry inputs |
+| 23 / 24 / 25 | confidence / reliability / grade below the minimum | `InpMinConfidenceScore`, `InpMinReliability`, `InpMinGrade` |
+| 26 | EMA200/VWAP opposes the direction | — |
+| 27 | spread above `InpMaxSpreadPts` | `InpMaxSpreadPts` |
+| 28 | the D1→M5 top-down chain blocks this direction | `InpTopDownGateCore`, `InpRequireInstitutionalConfirm` |
+| 29 | another setup owns the execution lane | wait for its invalidation/expiry |
+| 30 / 31 / 32 / 33 | direction veto / blacklist / lifecycle / branch rollback | — |
+| 34 | some other gate refused it | `InpGateAuditLogEveryBars` for the literal sentence |
+
+Two honest limits. First, the verdict is **read-only**: it copies nothing into a
+gate, an order or a position, and the indicator's decisions are identical with
+and without it. Second, it names the **top blocker of the session** (the gate
+that refused most often), not a prophecy about the next bar: a long enough
+sample can still produce a signal, and `CORE_PUBLISHED` for one bar does not
+mean the next one fires.
+
+The companion also distinguishes a dead indicator from a slow one now: a valid
+`iCustom` handle whose `BarsCalculated()` is negative used to print "still
+warming up" forever; it now says the instance exists but is **not calculating**,
+which is an indicator-side problem (bad inputs, no history), not a signal
+problem.
+
 ---
 
 ## 4. Install and the safe progression
