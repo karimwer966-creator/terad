@@ -125,6 +125,14 @@ jobs:
       - name: Mean reversion / momentum (confirmed swings only, MACD veto-only, display only)
         run: python3 tools/test_phase5_meanreversion.py 2>&1 | tee out/test_phase5_meanreversion.log
 
+      # AUDIT-CF1 Phase 6: the Confluence Engine. Proves the six weights sum to
+      # exactly 100, that absent evidence scores 0 rather than a free point, that
+      # a side is named only when EXACTLY ONE side clears the minimum, and that the
+      # engine is a separate score BESIDE the existing ones - pinned by the exact
+      # call-count delta it introduced and by unchanged g_score./final_score counts.
+      - name: Confluence engine (six pillars, weights sum to 100, never forces a direction)
+        run: python3 tools/test_phase6_confluence.py 2>&1 | tee out/test_phase6_confluence.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 

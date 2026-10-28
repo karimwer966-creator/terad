@@ -937,6 +937,18 @@ input int    InpMRFastEMA               = 12;     // MACD fast EMA (standard 12)
 input int    InpMRSlowEMA               = 26;     // MACD slow EMA (standard 26)
 input int    InpMRSignalSMA             = 9;      // MACD signal SMA (standard 9)
 input double InpMRMacdDeadZoneATR       = 0.05;   // histogram must clear this fraction of ATR to count as momentum
+input group "====== Confluence Engine (AUDIT-CF1, display only) ======"
+input bool   InpEnableConfluence        = false;  // master switch for the ONE unified score; while off it costs nothing
+input bool   InpCFShowOnDashboard       = false;  // show the confluence block in the dashboard tooltip
+input int    InpCFWeightStructure       = 20;     // weight: structure (MSS/BOS/CHoCH alignment), 0-100
+input int    InpCFWeightLiquidity       = 20;     // weight: liquidity (swept pool alignment), 0-100
+input int    InpCFWeightZone            = 20;     // weight: zone (price inside a live OB/FVG/SR/POC), 0-100
+input int    InpCFWeightSession         = 10;     // weight: session (kill zone / London / NY / Asia), 0-100
+input int    InpCFWeightCandle          = 15;     // weight: candle (unified pattern strength, zone required), 0-100
+input int    InpCFWeightMTF             = 15;     // weight: MTF bias (higher-timeframe closed structure), 0-100
+input int    InpCFMinDisplayScore       = 60;     // minimum score to name a side; below it the engine stands aside
+input bool   InpCFVetoOnConflict        = true;   // NO TRADE when a source that HAS evidence contradicts the side
+input bool   InpCFRequireActiveStrategy = false;  // additionally require one strategy module (P3/SB/WY/PA/MR) to agree
 input group "====== Premium / Discount & OTE ======"
 input bool InpShowPremiumDiscount = true;
 input bool InpPDLinesOnly = false;          // draw range boundaries / EQ as Fibonacci-style lines
@@ -1995,6 +2007,39 @@ bool     g_mr_confirms=false;
 int      g_mr_score=0;
 string   g_mr_reason="";
 string   g_mr_invalidation="";
+//--- AUDIT-CF1 Confluence Engine. Display-only published state. ---------------
+// SIX pillars, weights summing to 100, and absent evidence always scoring 0.
+// This is a SEPARATE score that sits BESIDE the existing ones. It never reads
+// g_score (that struct is refreshed only when CalculateAITradeSetup() runs, so
+// it is stale by design on most bars) and it never writes to ScoreStructure(),
+// ScoreLiquidity(), ScoreSession(), ScoreHTF(), GraphConfluenceScore(),
+// PMI_ComputeConfluence() or ComputeEntryQuality().
+#define CF_SESSION_NO_EVIDENCE 30.0   // ScoreSession()'s documented floor = "no session matched"
+double   g_cf_pillar_structure=0.0;   // 0-100 evidence value for each leg, before weighting
+double   g_cf_pillar_liquidity=0.0;
+double   g_cf_pillar_zone=0.0;
+double   g_cf_pillar_session=0.0;
+double   g_cf_pillar_candle=0.0;
+double   g_cf_pillar_mtf=0.0;
+bool     g_cf_has_structure=false;    // false => the leg was ABSENT and scored 0, never a free point
+bool     g_cf_has_liquidity=false;
+bool     g_cf_has_zone=false;
+bool     g_cf_has_session=false;
+bool     g_cf_has_candle=false;
+bool     g_cf_has_mtf=false;
+int      g_cf_buy_score=0;            // weighted long-side score, 0-100
+int      g_cf_sell_score=0;           // weighted short-side score, 0-100
+int      g_cf_dir=0;                  // resolved direction; 0 whenever the engine stands aside
+int      g_cf_score=0;                // the ONE unified score, 0-100, NOT a probability
+bool     g_cf_no_trade=false;         // a conflict, a shortfall or bad weights forced a stand-aside
+string   g_cf_reason="";              // carries "NO TRADE: <reason>" when g_cf_no_trade is true
+string   g_cf_invalidation="";        // what would cancel the current reading
+string   g_cf_best_strategy="";       // highest-scoring ACTIVE strategy module on this bar
+int      g_cf_best_strategy_score=0;
+int      g_cf_best_strategy_dir=0;
+int      g_cf_contradictions=0;       // sources that HAD evidence and disagreed with the side
+int      g_cf_weight_sum=0;           // the six configured weights; must equal exactly 100
+bool     g_cf_weights_valid=false;
 datetime g_htf_cache_time = 0;
 datetime g_d1_cache_time = 0;
 bool g_memo_hit = false;
@@ -5637,6 +5682,24 @@ bool   MR_RefreshMACD(const int rates_total,const bool full);
 void   MR_Update(const int closed,const int rates_total,const bool full);
 void   MR_Clear();
 bool   MR_SelfTest(string &where);
+//--- AUDIT-CF1 Confluence Engine (display only, no buffer, no authority) ------
+double CF_Pillar(const double evidence,const int weight);
+double CF_Aggregate(const double structure,const double liquidity,const double zone,
+                    const double session,const double candle,const double mtf,
+                    const int w_structure,const int w_liquidity,const int w_zone,
+                    const int w_session,const int w_candle,const int w_mtf);
+int    CF_PickSide(const int buy_score,const int sell_score,const int min_display);
+bool   CF_IsAmbiguous(const int buy_score,const int sell_score,const int min_display);
+bool   CF_Contradicts(const int side,const int source_dir);
+int    CF_CountContradictions(const int side,const int mtf_dir,const int zone_dir,
+                              const int candle_dir,const int strategy_dir);
+string CF_StandAsideReason(const int side,const int buy_score,const int sell_score,
+                           const int min_display,const int contradictions,
+                           const bool weights_valid,const int weight_sum,
+                           const bool strategy_ok,const bool veto);
+void   CF_Update(const int closed,const int rates_total);
+void   CF_Clear();
+bool   CF_SelfTest(string &where);
 bool IsInSession(const datetime server_time,const ENUM_SESSION_ID session_id);
 bool IsInKillZone(const datetime server_time,const ENUM_SESSION_ID session_id);
 int ChartEventBarAtTime(const datetime &chart_time[],const int total,const datetime event_time);
@@ -14678,6 +14741,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    WY_Clear();
    PA_Clear();
    MR_Clear();
+   CF_Clear();
    if(InpMTEERunSelfTest)
    {
       string mtee_fail="";
@@ -14705,6 +14769,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          Print(">>> ",QSMC_VERSION_TEXT," Mean-reversion / momentum self-test: PASS (9/9)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Mean-reversion / momentum self-test: FAIL - ",mtee_fail);
+      if(CF_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Confluence Engine self-test: PASS (10/10)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Confluence Engine self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
@@ -15481,6 +15549,12 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // MVP_Update; it is placed after it only to keep the observational modules
    // together. Once per closed bar, never per tick, skipped entirely while off.
    if(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);
+   // AUDIT-CF1 Confluence Engine: closed-bar, observational, no entry authority.
+   // It runs LAST of the module updates because its legs read state the others
+   // publish: PA_Update() for the unified pattern and MR_Update() for the
+   // mean-reversion verdict, alongside P3/SB/WY above. Scoring the same bar they
+   // scored is what makes the summary a summary rather than a stale echo.
+   if(is_new_bar || detection_updated) CF_Update(closed,rates_total);
    // v6.3.0 Zone Reaction Engine: closed-bar, observational, no entry authority.
    // Runs after MVP_Update so the active profile levels are current.
    ZRE_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);
@@ -26370,6 +26444,502 @@ bool MR_SelfTest(string &where)
 }
 
 //====================================================================
+// AUDIT-CF1 CONFLUENCE ENGINE (display only, no entry authority)
+//====================================================================
+// WHAT THIS MODULE IS
+//   ONE unified score built from six pillars - Structure, Liquidity, Zone,
+//   Session, Candle and MTF bias - with weights that sum to exactly 100, a
+//   minimum display score, "missing evidence scores 0, never a free point", and
+//   NO TRADE with a reason instead of a forced direction when sources conflict.
+//   It sits BESIDE the existing scoring. It replaces nothing.
+//
+// WHY IT READS MODULE STATE AND NOT g_score
+//   g_score (SScoreBreakdown) is written in exactly one place, the tail of
+//   CalculateAITradeSetup(), and that function is called from exactly one site in
+//   OnCalculate, behind a conditional guard. On every bar where the guard is
+//   false, g_score still holds an OLDER bar's evidence, and nothing in the file
+//   ever resets it. A per-bar reader that took its legs from g_score would
+//   therefore publish stale evidence as current. This engine calls the pillar
+//   scorers itself, once per side, on the closed bar. The state those scorers
+//   read IS refreshed every detection pass: BuildCausalEventGraph() (which also
+//   resets g_selected_structure_event to -1) and ComputeHTFBias() both run in the
+//   incremental AND the full-rebuild branch above, before this module is reached.
+//
+// WHAT IT DELIBERATELY DOES NOT DO
+//   It does not modify ScoreStructure(), ScoreLiquidity(), ScoreSession(),
+//   ScoreHTF(), GraphConfluenceScore(), PMI_ComputeConfluence() or
+//   ComputeEntryQuality(), and it never writes final_score or
+//   setup_quality_score. Two of those scorers award credit for ABSENT evidence,
+//   and this engine neutralises that locally instead of editing them:
+//     ScoreSession() returns 30.0 when no session matched at all;
+//     ScoreHTF()     returns 50.0 when InpUseHTFBias is false AND when
+//                    g_htf_bias is 0 - that is, for no evidence whatsoever.
+//   Both contradict "missing evidence scores 0", but both also feed the existing
+//   weighted score, so changing them would silently reprice every setup in the
+//   file. Instead the session floor is detected and zeroed here, and the MTF leg
+//   reads g_htf_bias directly rather than going through ScoreHTF().
+//
+// EXISTING WEIGHT SUM - OBSERVED AND REPORTED, NOT "FIXED"
+//   The two existing final_score branches weight their pillars to 1.1000, not
+//   1.0000 (the default branch uses nine coefficients beginning .18/.12/.14 and
+//   the institutional-sequence branch uses nine beginning .22/.14/.16). That is a
+//   real observation about existing arithmetic and it is out of scope for a
+//   display-only module to change it. This engine's own six weights sum to
+//   exactly 100 by construction, are published in g_cf_weight_sum, and are
+//   validated: if an operator edits them so they no longer sum to 100 the engine
+//   refuses to name a side and says so, rather than renormalising quietly.
+//
+// ZONE LEG - REUSE, NOT A SECOND SCAN
+//   The zone leg calls PA_ZoneAt(), the single zone scan AUDIT-PA1 added
+//   (priority OB > FVG > SR > POC). It is read-only and writes nothing but its
+//   out-parameters, so calling it here cannot disturb PA's own published state.
+//   Consequence, stated plainly: this leg inherits InpPAZoneToleranceATR and
+//   InpPAIncludePOC, but NOT InpEnablePriceAction, so the zone leg still works
+//   with Price Action switched off. A POC is a level and returns dir 0, so it can
+//   confirm presence without ever being counted as a contradiction.
+//
+// NON-REPAINTING
+//   Every leg reads closed-bar state. The forming bar is refused explicitly. The
+//   module draws nothing, owns no chart objects, allocates no buffers, sends no
+//   orders and latches no verdict: CF_Update() clears all published state before
+//   its early exits, so switching the module off cannot leave a stale score on
+//   the dashboard.
+//====================================================================
+
+// PURE, and the only place in this module where evidence becomes points.
+// Absent evidence must never buy a single point, so anything that is not a
+// positive finite number returns 0 here. Both arguments are clamped: an
+// out-of-range evidence value cannot inflate a leg and a misconfigured weight
+// cannot manufacture points above its own value.
+double CF_Pillar(const double evidence,const int weight)
+{
+   if(!(evidence>0.0)) return 0.0;                 // catches 0.0, negatives and NaN
+   double ev=(evidence>100.0 ? 100.0 : evidence);
+   int w=(weight<0 ? 0 : (weight>100 ? 100 : weight));
+   return ev*(double)w/100.0;
+}
+
+// PURE. The weighted sum of all six legs, clamped to 0-100. Routing every leg
+// through CF_Pillar() is what makes "missing evidence scores 0" structural
+// rather than a convention each caller has to remember.
+double CF_Aggregate(const double structure,const double liquidity,const double zone,
+                    const double session,const double candle,const double mtf,
+                    const int w_structure,const int w_liquidity,const int w_zone,
+                    const int w_session,const int w_candle,const int w_mtf)
+{
+   double sum=CF_Pillar(structure,w_structure)
+             +CF_Pillar(liquidity,w_liquidity)
+             +CF_Pillar(zone,w_zone)
+             +CF_Pillar(session,w_session)
+             +CF_Pillar(candle,w_candle)
+             +CF_Pillar(mtf,w_mtf);
+   if(!(sum>0.0)) return 0.0;
+   return (sum>100.0 ? 100.0 : sum);
+}
+
+// PURE. Names a side only when exactly one side clears the minimum. Neither side
+// clearing is a shortfall; BOTH sides clearing is a conflict. Refusing in both
+// cases is the whole point of the function - the engine never picks the larger
+// of two acceptable answers and calls it a decision.
+int CF_PickSide(const int buy_score,const int sell_score,const int min_display)
+{
+   int need=(min_display<0 ? 0 : (min_display>100 ? 100 : min_display));
+   bool buy_ok=(buy_score>=need);
+   bool sell_ok=(sell_score>=need);
+   if(!buy_ok && !sell_ok) return 0;               // shortfall: stand aside
+   if(buy_ok && sell_ok)   return 0;               // ambiguous: stand aside
+   return (buy_ok ? 1 : -1);
+}
+
+// PURE. Reported separately from the pick so the dashboard can distinguish
+// "not good enough" from "good enough in both directions at once".
+bool CF_IsAmbiguous(const int buy_score,const int sell_score,const int min_display)
+{
+   int need=(min_display<0 ? 0 : (min_display>100 ? 100 : min_display));
+   return (buy_score>=need && sell_score>=need);
+}
+
+// PURE. A source carrying no direction is ABSENT, not disagreeing. Getting this
+// wrong would let a silent higher timeframe veto a perfectly good setup.
+bool CF_Contradicts(const int side,const int source_dir)
+{
+   if(side==0 || source_dir==0) return false;
+   return (source_dir!=side);
+}
+
+// PURE. How many sources had evidence and pointed the other way.
+int CF_CountContradictions(const int side,const int mtf_dir,const int zone_dir,
+                           const int candle_dir,const int strategy_dir)
+{
+   int n=0;
+   if(CF_Contradicts(side,mtf_dir))      n++;
+   if(CF_Contradicts(side,zone_dir))     n++;
+   if(CF_Contradicts(side,candle_dir))   n++;
+   if(CF_Contradicts(side,strategy_dir)) n++;
+   return n;
+}
+
+// PURE (it only formats). The stand-aside sentence, in priority order: a
+// configuration error outranks everything, then ambiguity, then contradiction,
+// then an unmet strategy requirement, then a plain shortfall. Returns "" only
+// for a clean side that clears the minimum.
+string CF_StandAsideReason(const int side,const int buy_score,const int sell_score,
+                           const int min_display,const int contradictions,
+                           const bool weights_valid,const int weight_sum,
+                           const bool strategy_ok,const bool veto)
+{
+   int need=(min_display<0 ? 0 : (min_display>100 ? 100 : min_display));
+   if(!weights_valid)
+      return "NO TRADE: confluence weights sum to "+IntegerToString(weight_sum)+
+             ", they must sum to exactly 100";
+   if(side==0 && buy_score>=need && sell_score>=need)
+      return "NO TRADE: both sides score above the minimum ("+
+             IntegerToString(buy_score)+" buy vs "+IntegerToString(sell_score)+
+             " sell), the evidence is ambiguous";
+   if(veto && contradictions>0)
+      return "NO TRADE: "+IntegerToString(contradictions)+
+             " source(s) with evidence contradict the leading side";
+   if(!strategy_ok)
+      return "NO TRADE: no active strategy module agrees with this reading";
+   if(side==0)
+      return "NO TRADE: best side scores "+
+             IntegerToString(buy_score>=sell_score ? buy_score : sell_score)+
+             ", below the minimum display score of "+IntegerToString(need);
+   return "";
+}
+
+// The per-bar driver. Reads closed-bar state only, latches nothing, draws nothing.
+void CF_Update(const int closed,const int rates_total)
+{
+   // Clear FIRST, then early-exit - the same contract PA_Update() and MR_Update()
+   // use, so a disabled or blocked engine can never leave a previous bar's
+   // verdict on the dashboard.
+   CF_Clear();
+   if(!InpEnableConfluence) return;
+   if(rates_total<3) return;
+   if(closed<1 || closed>rates_total-2) return;    // never touch the forming bar
+   if(closed>=ArraySize(g_buf_c)) return;
+
+   int wsum=InpCFWeightStructure+InpCFWeightLiquidity+InpCFWeightZone+
+            InpCFWeightSession+InpCFWeightCandle+InpCFWeightMTF;
+   g_cf_weight_sum=wsum;
+   g_cf_weights_valid=(wsum==100);
+
+   int need=(InpCFMinDisplayScore<0 ? 0 :
+             (InpCFMinDisplayScore>100 ? 100 : InpCFMinDisplayScore));
+
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0) ? g_atr_buf[closed] : g_atr;
+   double price=g_buf_c[closed];
+
+   //--- SESSION. ScoreSession() floors at 30.0 when no session matched at all.
+   //--- That floor is real credit inside the existing weighted score, so it is
+   //--- detected and zeroed HERE rather than by editing the scorer.
+   double sess_raw=ScoreSession();
+   g_cf_has_session=(sess_raw>CF_SESSION_NO_EVIDENCE+0.001);
+   g_cf_pillar_session=(g_cf_has_session ? sess_raw : 0.0);
+
+   //--- MTF BIAS. Read directly, because ScoreHTF() hands back 50.0 both when
+   //--- the bias is disabled and when no higher-timeframe structure exists.
+   g_cf_has_mtf=(InpUseHTFBias && g_htf_bias!=0);
+   int mtf_dir=(g_cf_has_mtf ? g_htf_bias : 0);
+
+   //--- ZONE. Reuse the one scan AUDIT-PA1 added; do not build a second one.
+   string zname=""; double ztop=0.0; double zbot=0.0; int zdir=0;
+   g_cf_has_zone=PA_ZoneAt(price,closed,atr,zname,ztop,zbot,zdir);
+   g_cf_pillar_zone=(g_cf_has_zone ? 100.0 : 0.0);
+
+   //--- CANDLE. Reuse the unified pattern AUDIT-PA1 published. With Price Action
+   //--- switched off the leg is ABSENT and scores 0 - it does not collect a
+   //--- neutral half-credit for evidence nobody looked at.
+   g_cf_has_candle=(InpEnablePriceAction && g_pa_pattern!="NONE" && g_pa_pattern!="");
+   g_cf_pillar_candle=(g_cf_has_candle ? (double)g_pa_strength : 0.0);
+   int candle_dir=(g_cf_has_candle ? g_pa_pattern_dir : 0);
+
+   //--- BEST ACTIVE STRATEGY. Fixed scan order with strictly-greater replacement,
+   //--- so a tie resolves deterministically in favour of the first module named
+   //--- and a module scoring 0 can never become "best". Each module is already
+   //--- gated by its own switch, so a disabled one publishes dir 0 and drops out.
+   string best_name=""; int best_score=0; int best_dir=0;
+   if(g_p3_dir!=0 && g_p3_score>best_score)
+   { best_name="POWER_OF_3";     best_score=g_p3_score; best_dir=g_p3_dir; }
+   if(g_sb_active && g_sb_dir!=0 && g_sb_score>best_score)
+   { best_name="SILVER_BULLET";  best_score=g_sb_score; best_dir=g_sb_dir; }
+   if(g_wy_active && g_wy_dir!=0 && g_wy_score>best_score)
+   { best_name="WYCKOFF";        best_score=g_wy_score; best_dir=g_wy_dir; }
+   if(g_pa_dir!=0 && g_pa_score>best_score)
+   { best_name="PRICE_ACTION";   best_score=g_pa_score; best_dir=g_pa_dir; }
+   if(g_mr_dir!=0 && g_mr_score>best_score)
+   { best_name="MEAN_REVERSION"; best_score=g_mr_score; best_dir=g_mr_dir; }
+   g_cf_best_strategy=best_name;
+   g_cf_best_strategy_score=best_score;
+   g_cf_best_strategy_dir=best_dir;
+
+   //--- STRUCTURE and LIQUIDITY, scored for BOTH sides. Both scorers already
+   //--- return 0 for absent or opposing evidence, so no local floor is needed.
+   double st_buy =ScoreStructure(rates_total,true);
+   double st_sell=ScoreStructure(rates_total,false);
+   double lq_buy =ScoreLiquidity(true,-1);
+   double lq_sell=ScoreLiquidity(false,-1);
+   double mtf_buy =(g_cf_has_mtf && mtf_dir>0 ? 100.0 : 0.0);
+   double mtf_sell=(g_cf_has_mtf && mtf_dir<0 ? 100.0 : 0.0);
+   g_cf_has_structure=(st_buy>0.0 || st_sell>0.0);
+   g_cf_has_liquidity=(lq_buy>0.0 || lq_sell>0.0);
+
+   double agg_buy=CF_Aggregate(st_buy,lq_buy,g_cf_pillar_zone,g_cf_pillar_session,
+                               g_cf_pillar_candle,mtf_buy,
+                               InpCFWeightStructure,InpCFWeightLiquidity,InpCFWeightZone,
+                               InpCFWeightSession,InpCFWeightCandle,InpCFWeightMTF);
+   double agg_sell=CF_Aggregate(st_sell,lq_sell,g_cf_pillar_zone,g_cf_pillar_session,
+                                g_cf_pillar_candle,mtf_sell,
+                                InpCFWeightStructure,InpCFWeightLiquidity,InpCFWeightZone,
+                                InpCFWeightSession,InpCFWeightCandle,InpCFWeightMTF);
+   g_cf_buy_score =(int)MathRound(agg_buy);
+   g_cf_sell_score=(int)MathRound(agg_sell);
+   if(g_cf_buy_score<0)   g_cf_buy_score=0;
+   if(g_cf_buy_score>100) g_cf_buy_score=100;
+   if(g_cf_sell_score<0)   g_cf_sell_score=0;
+   if(g_cf_sell_score>100) g_cf_sell_score=100;
+
+   //--- Publish the legs of the side being REPORTED. When the engine stands aside
+   //--- this is still the stronger side, so the dashboard can show exactly which
+   //--- legs were missing instead of only saying "no".
+   int shown=(g_cf_buy_score>=g_cf_sell_score ? 1 : -1);
+   g_cf_pillar_structure=(shown>0 ? st_buy  : st_sell);
+   g_cf_pillar_liquidity=(shown>0 ? lq_buy  : lq_sell);
+   g_cf_pillar_mtf      =(shown>0 ? mtf_buy : mtf_sell);
+
+   int side=CF_PickSide(g_cf_buy_score,g_cf_sell_score,need);
+   g_cf_contradictions=CF_CountContradictions(shown,mtf_dir,zdir,candle_dir,best_dir);
+
+   bool strategy_ok=(!InpCFRequireActiveStrategy || best_name!="");
+   if(InpCFRequireActiveStrategy && side!=0 && best_dir!=0 && best_dir!=side)
+      strategy_ok=false;                           // an opposing strategy is not agreement
+   bool veto=(InpCFVetoOnConflict && g_cf_contradictions>0);
+
+   string why=CF_StandAsideReason(side,g_cf_buy_score,g_cf_sell_score,need,
+                                  g_cf_contradictions,g_cf_weights_valid,wsum,
+                                  strategy_ok,veto);
+   if(why!="")
+   {
+      g_cf_no_trade=true;
+      g_cf_dir=0;
+      g_cf_score=0;
+      g_cf_reason=why;
+   }
+   else
+   {
+      g_cf_no_trade=false;
+      g_cf_dir=side;
+      g_cf_score=(side>0 ? g_cf_buy_score : g_cf_sell_score);
+      g_cf_reason=(side>0 ? "BUY" : "SELL")+" confluence "+
+                  IntegerToString(g_cf_score)+" of 100";
+   }
+
+   //--- Invalidation: the cheapest thing that would cancel this reading.
+   if(g_cf_has_zone)
+      g_cf_invalidation="a body close outside the "+zname+" zone";
+   else if(g_cf_has_structure)
+      g_cf_invalidation="a confirmed structure break in the opposite direction";
+   else if(g_cf_has_liquidity)
+      g_cf_invalidation="the swept liquidity level being reclaimed";
+   else
+      g_cf_invalidation="";
+
+   //--- Log only when there is something to say: a named side, or a real
+   //--- contradiction. Same gate and same one-argument LogLifecycle() as PA/MR.
+   if(InpLogLifecycleTransitions && (g_cf_dir!=0 || g_cf_contradictions>0))
+   {
+      if(g_cf_no_trade)
+         LogLifecycle(StringFormat("CF %s",g_cf_reason));
+      else
+         LogLifecycle(StringFormat("CF dir=%+d score=%d buy=%d sell=%d best=%s conflicts=%d",
+                                   g_cf_dir,g_cf_score,g_cf_buy_score,g_cf_sell_score,
+                                   g_cf_best_strategy,g_cf_contradictions));
+   }
+}
+
+// Resets every published value. Called from OnInit and from the head of
+// CF_Update, so nothing in this module can survive a bar it did not earn.
+void CF_Clear()
+{
+   g_cf_pillar_structure=0.0; g_cf_pillar_liquidity=0.0; g_cf_pillar_zone=0.0;
+   g_cf_pillar_session=0.0;   g_cf_pillar_candle=0.0;    g_cf_pillar_mtf=0.0;
+   g_cf_has_structure=false;  g_cf_has_liquidity=false;  g_cf_has_zone=false;
+   g_cf_has_session=false;    g_cf_has_candle=false;     g_cf_has_mtf=false;
+   g_cf_buy_score=0;   g_cf_sell_score=0;
+   g_cf_dir=0;         g_cf_score=0;      g_cf_no_trade=false;
+   g_cf_reason="";     g_cf_invalidation="";
+   g_cf_best_strategy=""; g_cf_best_strategy_score=0; g_cf_best_strategy_dir=0;
+   g_cf_contradictions=0; g_cf_weight_sum=0; g_cf_weights_valid=false;
+}
+
+// AUDIT-CF1 synthetic self-test. Exercises the PURE cores only - it never reads
+// chart history, so it produces the same result on every symbol and timeframe.
+bool CF_SelfTest(string &where)
+{
+   where="";
+
+   // CF-1 Absent evidence scores nothing. This is the rule the whole module is
+   //      built around, so it is the first thing checked.
+   if(CF_Pillar(0.0,20)!=0.0)
+   { where="CF-1 absent evidence must score zero, never a free point"; return false; }
+   if(CF_Pillar(-50.0,20)!=0.0)
+   { where="CF-1 negative evidence must score zero"; return false; }
+   if(CF_Pillar(0.0,100)!=0.0)
+   { where="CF-1 zero evidence at full weight is still zero"; return false; }
+
+   // CF-2 A leg scores exactly its weight at full evidence, and half its weight
+   //      at half evidence. The mapping is linear and nothing else.
+   if(MathAbs(CF_Pillar(100.0,20)-20.0)>1e-9)
+   { where="CF-2 full evidence at weight 20 must score exactly 20"; return false; }
+   if(MathAbs(CF_Pillar(50.0,20)-10.0)>1e-9)
+   { where="CF-2 half evidence must score half the weight"; return false; }
+   if(MathAbs(CF_Pillar(100.0,0)-0.0)>1e-9)
+   { where="CF-2 a zero weight must silence a leg completely"; return false; }
+
+   // CF-3 Clamping. Neither an out-of-range evidence value nor a misconfigured
+   //      weight may inflate the score.
+   double over=100.0+40.0;
+   if(MathAbs(CF_Pillar(over,20)-20.0)>1e-9)
+   { where="CF-3 evidence above 100 is clamped and cannot inflate a leg"; return false; }
+   if(MathAbs(CF_Pillar(50.0,500)-50.0)>1e-9)
+   { where="CF-3 a weight above 100 is clamped and cannot manufacture points"; return false; }
+   if(MathAbs(CF_Pillar(50.0,-30)-0.0)>1e-9)
+   { where="CF-3 a negative weight scores nothing"; return false; }
+
+   // CF-4 The six DEFAULT weights sum to exactly 100, verified through the real
+   //      aggregator rather than by re-adding the numbers here.
+   if(MathAbs(CF_Aggregate(100.0,100.0,100.0,100.0,100.0,100.0,20,20,20,10,15,15)-100.0)>1e-9)
+   { where="CF-4 the six default weights must sum to exactly 100"; return false; }
+   if(MathAbs(CF_Aggregate(0.0,0.0,0.0,0.0,0.0,0.0,20,20,20,10,15,15)-0.0)>1e-9)
+   { where="CF-4 no evidence at all must aggregate to zero"; return false; }
+   if(CF_Aggregate(100.0,100.0,100.0,100.0,100.0,100.0,100,100,100,100,100,100)>100.0+1e-9)
+   { where="CF-4 the aggregate is capped at 100 even with absurd weights"; return false; }
+
+   // CF-5 Losing one leg costs exactly that leg's weight - so an absent leg is
+   //      visible in the number, not averaged away by the legs still present.
+   double six_legs=CF_Aggregate(100.0,100.0,100.0,100.0,100.0,100.0,20,20,20,10,15,15);
+   double five_legs=CF_Aggregate(100.0,100.0,100.0,100.0,100.0,0.0,20,20,20,10,15,15);
+   if(MathAbs(six_legs-five_legs-15.0)>1e-9)
+   { where="CF-5 losing the MTF leg must cost exactly its weight of 15"; return false; }
+   if(five_legs>=six_legs)
+   { where="CF-5 an absent leg must make the score strictly worse"; return false; }
+
+   // CF-6 Side selection never forces a direction.
+   if(CF_PickSide(80,20,60)!=1)
+   { where="CF-6 only the long side clearing the minimum must name the long side"; return false; }
+   if(CF_PickSide(20,80,60)!=-1)
+   { where="CF-6 only the short side clearing the minimum must name the short side"; return false; }
+   if(CF_PickSide(20,30,60)!=0)
+   { where="CF-6 neither side clearing the minimum is a stand-aside, not a forced pick"; return false; }
+   if(CF_PickSide(80,80,60)!=0)
+   { where="CF-6 both sides clearing the minimum is ambiguous, not a tie to break"; return false; }
+   if(CF_PickSide(0,0,0)!=0)
+   { where="CF-6 zero evidence against a zero minimum must still stand aside"; return false; }
+   if(CF_PickSide(60,0,60)!=1)
+   { where="CF-6 the minimum is inclusive: a side exactly at it is named"; return false; }
+   if(CF_PickSide(90,10,200)!=0)
+   { where="CF-6 a minimum above 100 can never be cleared"; return false; }
+
+   // CF-7 Ambiguity is detected independently of the pick, so the dashboard can
+   //      tell "not good enough" apart from "good enough both ways at once".
+   if(!CF_IsAmbiguous(70,70,60))
+   { where="CF-7 two sides above the minimum must be reported ambiguous"; return false; }
+   if(CF_IsAmbiguous(70,10,60))
+   { where="CF-7 one side above and one below is not ambiguous"; return false; }
+   if(CF_IsAmbiguous(10,10,60))
+   { where="CF-7 two sides below the minimum is a shortfall, not ambiguity"; return false; }
+
+   // CF-8 A source with no direction is ABSENT, not disagreeing. Counting a
+   //      silent source as a contradiction would veto good setups.
+   if(CF_Contradicts(1,0))
+   { where="CF-8 a silent source must not be counted as a contradiction"; return false; }
+   if(CF_Contradicts(0,-1))
+   { where="CF-8 with no side chosen nothing can contradict it"; return false; }
+   if(!CF_Contradicts(1,-1))
+   { where="CF-8 an opposing source must be counted as a contradiction"; return false; }
+   if(CF_Contradicts(1,1))
+   { where="CF-8 an agreeing source is not a contradiction"; return false; }
+   if(CF_CountContradictions(1,1,1,1,1)!=0)
+   { where="CF-8 four agreeing sources are zero contradictions"; return false; }
+   if(CF_CountContradictions(1,-1,0,0,0)!=1)
+   { where="CF-8 exactly one opposing source is one contradiction"; return false; }
+   if(CF_CountContradictions(1,-1,-1,-1,-1)!=4)
+   { where="CF-8 four opposing sources are four contradictions"; return false; }
+   if(CF_CountContradictions(0,-1,-1,-1,-1)!=0)
+   { where="CF-8 with no side chosen nothing at all can contradict"; return false; }
+
+   // CF-9 The stand-aside sentence, including its priority order and the fact
+   //      that a clean side above the minimum is NOT a stand-aside.
+   if(StringFind(CF_StandAsideReason(1,80,10,60,0,false,110,true,false),
+                 "NO TRADE: confluence weights")!=0)
+   { where="CF-9 weights that do not sum to 100 must veto a strong side, and say so"; return false; }
+   if(StringFind(CF_StandAsideReason(0,80,80,60,0,true,100,true,false),
+                 "NO TRADE: both sides")!=0)
+   { where="CF-9 two sides above the minimum must be reported as ambiguous"; return false; }
+   if(StringFind(CF_StandAsideReason(1,80,10,60,2,true,100,true,true),
+                 "NO TRADE: 2 source")!=0)
+   { where="CF-9 contradictions must be reported with their count"; return false; }
+   if(StringFind(CF_StandAsideReason(1,80,10,60,0,true,100,false,false),
+                 "NO TRADE: no active strategy")!=0)
+   { where="CF-9 an unmet strategy requirement must be reported"; return false; }
+   if(StringFind(CF_StandAsideReason(0,40,20,60,0,true,100,true,false),
+                 "NO TRADE: best side scores 40")!=0)
+   { where="CF-9 a shortfall must be reported with the leading score"; return false; }
+   if(CF_StandAsideReason(1,80,10,60,0,true,100,true,false)!="")
+   { where="CF-9 a clean uncontradicted side above the minimum must NOT be a stand-aside"; return false; }
+   if(CF_StandAsideReason(1,80,10,60,2,true,100,true,false)!="")
+   { where="CF-9 with the veto disabled contradictions must not force a stand-aside"; return false; }
+   if(StringFind(CF_StandAsideReason(1,80,10,60,0,false,90,true,false),
+                 "NO TRADE: confluence weights sum to 90")!=0)
+   { where="CF-9 a weight error outranks every other reason and quotes the real sum"; return false; }
+
+   // CF-10 Exhaustive sweep: all 64 present/absent patterns across the six legs,
+   //       on both sides. The two invariants that matter are that nothing scores
+   //       without evidence and that the score never leaves 0-100.
+   int combos=0;
+   for(int m=0;m<64;m++)
+   {
+      double s =((m&1 )!=0 ? 100.0 : 0.0);
+      double l =((m&2 )!=0 ? 100.0 : 0.0);
+      double z =((m&4 )!=0 ? 100.0 : 0.0);
+      double se=((m&8 )!=0 ? 100.0 : 0.0);
+      double c =((m&16)!=0 ? 100.0 : 0.0);
+      double mt=((m&32)!=0 ? 100.0 : 0.0);
+      int present=((m&1)!=0?1:0)+((m&2)!=0?1:0)+((m&4)!=0?1:0)+
+                  ((m&8)!=0?1:0)+((m&16)!=0?1:0)+((m&32)!=0?1:0);
+      // Monotonicity: adding evidence to a leg must never LOWER the total.
+      if(CF_Aggregate(s,l,z,se,c,100.0,20,20,20,10,15,15)+1e-9 <
+         CF_Aggregate(s,l,z,se,c,mt  ,20,20,20,10,15,15))
+      { where="CF-10 adding evidence to a leg must never lower the total"; return false; }
+      for(int side=-1;side<=1;side+=2)
+      {
+         int sc=(int)MathRound(CF_Aggregate(s,l,z,se,c,mt,20,20,20,10,15,15));
+         combos++;
+         if(present==0 && sc!=0)
+         { where="CF-10 six absent legs must score zero, never a free point"; return false; }
+         if(present==6 && sc!=100)
+         { where="CF-10 six present legs at full evidence must score exactly 100"; return false; }
+         if(sc<0 || sc>100)
+         { where="CF-10 the unified score must always stay inside 0-100"; return false; }
+         if(present>0 && sc<=0)
+         { where="CF-10 at least one present leg must produce a non-zero score"; return false; }
+         // This pattern is the ONLY side with evidence, so the picker must agree
+         // with the minimum: named when it clears it, refused when it does not.
+         int picked=CF_PickSide((side>0?sc:0),(side>0?0:sc),60);
+         if(sc>=60 && picked!=side)
+         { where="CF-10 a lone side clearing the minimum must be the side named"; return false; }
+         if(sc<60 && picked!=0)
+         { where="CF-10 a lone side below the minimum must never be named"; return false; }
+      }
+   }
+   if(combos!=128)
+   { where="CF-10 the sweep must cover all 64 evidence patterns on both sides"; return false; }
+
+   return true;
+}
+
+//====================================================================
 // KILL ZONES (session-local windows mapped to broker server time)
 //====================================================================
 void DetectKillZones(const int total,const datetime &t[],const double &h[],const double &l[])
@@ -31719,6 +32289,39 @@ void DrawQuantumDashboard(const int total,const double &c[])
    for(int i=0;i<ArraySize(g_rxn_zone_ev);i++)
       if(g_rxn_zone_ev[i].valid && g_rxn_zone_ev[i].level>=(int)RXN_LEVEL_REACTION)
       { tooltip+="\nRXN: "+g_rxn_zone_ev[i].path_text+" | "+g_rxn_zone_ev[i].score_detail; break; }
+
+   // AUDIT-CF1 Confluence Engine. This is the SUMMARY block, so it goes first,
+   // ahead of the per-module detail below it. Same rule as every other
+   // display-only module: tooltip only, never the 11-row card. The card's budget
+   // is fixed and pinned by test_dashboard_clarity.py, and a display-only extra
+   // must not be able to push a Core row off it.
+   if(InpEnableConfluence && InpCFShowOnDashboard)
+   {
+      string cf_legs_a="structure "+DoubleToString(g_cf_pillar_structure,0)+(g_cf_has_structure?"":" (absent)")+
+                       " | liquidity "+DoubleToString(g_cf_pillar_liquidity,0)+(g_cf_has_liquidity?"":" (absent)")+
+                       " | zone "+DoubleToString(g_cf_pillar_zone,0)+(g_cf_has_zone?"":" (absent)");
+      string cf_legs_b="session "+DoubleToString(g_cf_pillar_session,0)+(g_cf_has_session?"":" (absent)")+
+                       " | candle "+DoubleToString(g_cf_pillar_candle,0)+(g_cf_has_candle?"":" (absent)")+
+                       " | MTF "+DoubleToString(g_cf_pillar_mtf,0)+(g_cf_has_mtf?"":" (absent)");
+      string cf_best=(g_cf_best_strategy==""?"none":
+                      g_cf_best_strategy+" score "+IntegerToString(g_cf_best_strategy_score)+
+                      " dir "+(g_cf_best_strategy_dir>0?"BUY":"SELL"));
+      string cf_head=(g_cf_no_trade?g_cf_reason:
+                      ((g_cf_dir>0?"BUY":(g_cf_dir<0?"SELL":"none"))+" score "+
+                       IntegerToString(g_cf_score)+" of 100"));
+      tooltip+="\nCF: "+cf_head+" | weights "+IntegerToString(g_cf_weight_sum)+"/100";
+      tooltip+="\nCF legs: "+cf_legs_a;
+      tooltip+="\nCF legs: "+cf_legs_b;
+      tooltip+="\nCF sides: buy "+IntegerToString(g_cf_buy_score)+
+               " vs sell "+IntegerToString(g_cf_sell_score)+
+               " (min display "+IntegerToString(InpCFMinDisplayScore)+")";
+      tooltip+="\nCF best strategy: "+cf_best;
+      if(g_cf_contradictions>0)
+         tooltip+="\nCF contradictions: "+IntegerToString(g_cf_contradictions);
+      if(g_cf_invalidation!="")
+         tooltip+="\nCF invalidation: "+g_cf_invalidation;
+      tooltip+="\nCF: rule-based confluence count, not a probability.";
+   }
 
    // AUDIT-SB1 Power of 3 + Silver Bullet. These rows go into the TOOLTIP and
    // never into the 11-row card: the card's budget is fixed and pinned by
