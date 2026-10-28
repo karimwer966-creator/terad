@@ -736,6 +736,22 @@ enum ENUM_SESSION_ID
    SESSION_NEWYORK
 };
 
+// AUDIT-SB1 POWER OF 3 phase. Its own enum, appended after ENUM_SESSION_ID so
+// no existing enumerator value anywhere in the file changes.
+//   ACCUMULATION  the Asia session range is formed and has not been swept
+//   MANIPULATION  that range was swept and the bar closed back inside it
+//   DISTRIBUTION  the move AWAY from the sweep has followed through on a
+//                 closed bar, by at least InpP3DistributionMinATR x ATR
+// A phase is a description of what has already happened on closed bars. It is
+// never an instruction, and it never authorizes anything.
+enum ENUM_P3_PHASE
+{
+   P3_PHASE_NONE=0,        // no Asia range resolved for the applicable local day
+   P3_PHASE_ACCUMULATION,
+   P3_PHASE_MANIPULATION,
+   P3_PHASE_DISTRIBUTION
+};
+
 // v6.0 MarketConflictEngine (master-prompt Sections 5 & 12).
 // Classifies the relationship between the current chart's structural
 // direction (the "LTF" from this engine's perspective) and the higher
@@ -824,6 +840,28 @@ input group "====== Session Clock / DST ======"
 input int InpBrokerUTCOffsetWinterMinutes = 120;
 input ENUM_BROKER_DST_RULE InpBrokerDSTRule = BROKER_DST_EU;
 input bool InpUseDSTSessions = true;
+input group "====== Silver Bullet / Power of 3 (AUDIT-SB1, display only) ======"
+// Every switch below defaults to OFF. With them off, nothing in this group is
+// computed, drawn, logged or appended to the dashboard, and no existing value,
+// threshold or label changes. Both modules are DISPLAY-ONLY: they publish a
+// description of closed-bar history and never feed the arbiter, the Core
+// lifecycle, the Directional Scenario Engine or any buffer.
+input bool   InpEnablePowerOf3          = false;  // derive the A/M/D phase from the Asia range DetectJudasSwing already computes
+input bool   InpP3ShowOnDashboard       = false;  // append the phase to the dashboard tooltip (needs InpEnablePowerOf3)
+input double InpP3DistributionMinATR    = 1.00;   // closed-bar move away from the manipulation extreme, in ATR
+input bool   InpEnableSilverBullet      = false;  // windowed sweep -> structure shift -> FVG -> retrace query
+input bool   InpSBShowOnDashboard       = false;  // append the Silver Bullet state to the dashboard tooltip
+input bool   InpSBShowEntryZone         = false;  // draw the FVG retrace zone the window resolved to
+// Windows are MINUTES FROM LOCAL MIDNIGHT so they are exact to the minute and
+// independent of chart timeframe. They are resolved through the SAME broker
+// clock the session engine already uses (InpBrokerUTCOffsetWinterMinutes +
+// InpBrokerDSTRule + InpUseDSTSessions), so no second time conversion is
+// introduced and a DST change cannot desynchronise the two.
+input bool   InpSBUseNYLocalTime        = true;   // true = windows are New York local; false = broker-server local
+input int    InpSBWin1Start = 180, InpSBWin1End = 240;   // window 1, 03:00-04:00
+input int    InpSBWin2Start = 600, InpSBWin2End = 660;   // window 2, 10:00-11:00
+input int    InpSBWin3Start = 840, InpSBWin3End = 900;   // window 3, 14:00-15:00
+input int    InpSBChainMaxAgeBars       = 240;    // a chain element older than this many closed bars cannot open a window setup
 input group "====== Premium / Discount & OTE ======"
 input bool InpShowPremiumDiscount = true;
 input bool InpPDLinesOnly = false;          // draw range boundaries / EQ as Fibonacci-style lines
@@ -1784,6 +1822,35 @@ STopDownState g_td;
 long g_perf_td_us=0;    // TOP-DOWN engine: EMA of evaluation time (microseconds)
 long g_perf_calc_us=0;  // OnCalculate body: EMA of tick processing time (microseconds)
 int g_judas = 0, g_judas_bar = 0;
+//--- AUDIT-SB1 POWER OF 3. DetectJudasSwing() ALREADY computes the Asia session
+//--- range and ALREADY detects a sweep of it with a close back inside - that is
+//--- the Accumulation and the Manipulation leg. It simply threw the range away
+//--- when it returned, because nothing needed it until now. These four retain
+//--- what it computed, so the phase can be named WITHOUT a second, parallel
+//--- session engine and without recomputing one bar of it.
+double   g_asia_range_high=0.0;      // published by DetectJudasSwing, not recomputed
+double   g_asia_range_low=0.0;
+int      g_asia_range_day_key=-1;    // DateKey() of the applicable Tokyo-local day
+bool     g_asia_range_valid=false;
+ENUM_P3_PHASE g_p3_phase=P3_PHASE_NONE;
+int      g_p3_dir=0;                 // +1 distribution up, -1 down, 0 not resolved
+string   g_p3_reason="";
+int      g_p3_score=0;               // 0-100 rule-based confluence count, NOT a probability
+string   g_p3_invalidation="";
+//--- AUDIT-SB1 SILVER BULLET. A time-windowed QUERY over the causal graph that
+//--- already exists (CE_LIQ_SWEEP -> CE_BOS/CE_CHOCH/CE_MSS -> CE_FVG, linked by
+//--- parent_primary/parent_secondary and walked by FindNearestCausalAncestor).
+//--- It adds no detection of its own: every element it names was already
+//--- published on a closed bar by an existing engine.
+bool     g_sb_active=false;          // a window resolved a complete chain
+int      g_sb_window=-1;             // 0..2 = which window is open, -1 = none
+int      g_sb_dir=0;                 // +1 long, -1 short, 0 unresolved
+int      g_sb_fvg=-1;                // index into g_causal_events of the CE_FVG element
+double   g_sb_entry_high=0.0;
+double   g_sb_entry_low=0.0;
+string   g_sb_reason="";
+int      g_sb_score=0;               // 0-100 rule-based confluence count, NOT a probability
+string   g_sb_invalidation="";
 datetime g_htf_cache_time = 0;
 datetime g_d1_cache_time = 0;
 bool g_memo_hit = false;
@@ -5343,6 +5410,33 @@ datetime ServerToUTC(const datetime server_time);
 datetime SessionLocalTime(const datetime server_time,const ENUM_SESSION_ID session_id);
 int DateKey(const datetime t);
 bool HourInWindow(const int hour,const int start_hour,const int end_hour);
+// AUDIT-SB1: declared here, defined in the Power of 3 / Silver Bullet section
+// next to the session clock they read. The *_Decide and *_Score functions are
+// PURE - no global, no series and no terminal call - so they are exercisable
+// offline by tools/test_phase2_modules.py and in-terminal by SBP3_SelfTest(),
+// the same arrangement QSMC_BuildGeometry() and TacticalAuthorityDecide() use
+// so the transcriptions cannot diverge.
+string P3_PhaseName(const int phase);
+ENUM_P3_PHASE P3_Decide(const bool range_valid,const int judas,
+                        const double distribution_atr,const double min_distribution_atr,
+                        const bool invalidated,string &reason,string &invalidation);
+int P3_Score(const bool range_valid,const int judas,const bool distribution,
+             const bool invalidated);
+bool SB_MinuteInWindow(const int minute,const int start,const int end);
+int SB_WindowAtMinute(const int minute_of_day);
+int SB_Score(const bool in_window,const bool has_sweep,const bool has_shift,
+             const bool has_fvg,const bool has_retrace);
+void P3_Update(const int closed);
+void SB_Update(const int closed);
+void SBP3_Clear();
+bool SBP3_SelfTest(string &where);
+datetime SB_LocalTime(const datetime server_time);
+int SB_MinuteOfDay(const datetime server_time);
+int SB_DayKey(const datetime server_time);
+string SB_WindowName(const int win);
+bool SB_InWindow(const datetime server_time,const datetime ref_time,const int win);
+bool SB_ChainComplete(const int fvg_index,int &shift_index,int &sweep_index);
+void SB_DrawEntryZone(const int closed);
 bool IsInSession(const datetime server_time,const ENUM_SESSION_ID session_id);
 bool IsInKillZone(const datetime server_time,const ENUM_SESSION_ID session_id);
 int ChartEventBarAtTime(const datetime &chart_time[],const int total,const datetime event_time);
@@ -6901,6 +6995,8 @@ void PrepareDynamicRedraw()
    ObjectsDeleteAll(0,PFX+"ZRE_");   // v6.3.0: projections are redrawn by ZRE_Update
    ObjectsDeleteAll(0,PFX+"RXN_");   // v6.5.0: reaction labels are redrawn by RXN_Update
    ObjectsDeleteAll(0,PFX+"SNIPER_");// v6.5.2: sniper zones are redrawn by MTF_SniperZone_Draw
+   ObjectsDeleteAll(0,PFX+"SBP3_"); // AUDIT-SB1: the Silver Bullet entry zone is
+                                   // redrawn by SB_DrawEntryZone from the dashboard
    ObjectsDeleteAll(0,PFX+"ZN_");
    ObjectsDeleteAll(0,PFX+"STR_");
    // v6.1.3 (L5b): the live objects are named STRUCT_/ZONE_/PD_ - the two
@@ -14361,6 +14457,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    ZRE_Clear();
    RXN_Clear();
    ScenarioClear();
+   SBP3_Clear();
    if(InpMTEERunSelfTest)
    {
       string mtee_fail="";
@@ -14372,6 +14469,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          Print(">>> ",QSMC_VERSION_TEXT," MTEE synthetic self-test: PASS (7/7)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," MTEE synthetic self-test: FAIL — ",mtee_fail);
+      if(SBP3_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Power-of-3 / Silver-Bullet self-test: PASS (9/9)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Power-of-3 / Silver-Bullet self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
@@ -14881,6 +14982,25 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       if(InpUseGraphTheory && !InpInstitutionalSequence) BuildMarketGraph();
       detection_updated=true;
       g_needs_full_rebuild=false;
+   }
+
+   // AUDIT-SB1 Power of 3 + Silver Bullet. Called ONCE per pass, here, because
+   // this is the first point at which both branches have converged AND the state
+   // they read is final: EnforceArrayLimits() has already compacted and
+   // left-shifted the masters, and BuildCausalEventGraph() has already published
+   // this pass's CE_FVG / CE_LIQ_SWEEP / CE_BOS-CE_CHOCH-CE_MSS elements, so the
+   // indices SB_Update keeps are indices into the array that will actually be
+   // read. Calling either module earlier would read a shifted or incomplete graph.
+   //
+   // Both read closed bars only, so their published state is a pure function of
+   // detection output and cannot change between closed bars: gating on
+   // detection_updated keeps the per-tick cost at zero while remaining exactly as
+   // up to date as the data it describes. Neither feeds the arbiter, the Core
+   // lifecycle, the DSE, or any buffer - both are display only.
+   if(detection_updated)
+   {
+      P3_Update(closed);
+      SB_Update(closed);
    }
 
    // Complete a pending same-bar replay comparison before any decision can
@@ -23879,6 +23999,11 @@ void ComputeHTFBias()
 void DetectJudasSwing(const int total,const datetime &t[],const double &h[],const double &l[],const double &c[])
 {
    g_judas=0; g_judas_bar=-1;
+   // AUDIT-SB1: reset the retained Asia range with the verdict it belongs to, so
+   // every early return below leaves the two consistent. Nothing here changes
+   // what DetectJudasSwing decides; it only stops discarding what it computed.
+   g_asia_range_valid=false; g_asia_range_high=0.0; g_asia_range_low=0.0;
+   g_asia_range_day_key=-1;
    int closed=total-2;
    if(closed<20) return;
 
@@ -23909,6 +24034,12 @@ void DetectJudasSwing(const int total,const datetime &t[],const double &h[],cons
       if(ld.hour>=InpAsianEnd && scan_from<0) scan_from=b;
    }
    if(asia_high<=-DBL_MAX/2 || asia_low>=DBL_MAX/2 || scan_from<0) return;
+   // AUDIT-SB1 PUBLISH THE ACCUMULATION LEG. These two values were already in
+   // hand and were previously dropped when the function returned. Power of 3
+   // reads them instead of recomputing a second Asia range, which is what keeps
+   // the two from ever disagreeing about the same session.
+   g_asia_range_high=asia_high; g_asia_range_low=asia_low;
+   g_asia_range_day_key=target_key; g_asia_range_valid=true;
 
    // v5.7.3 FIX (A6): the candidate window is exclusively bars whose local
    // hour is >= InpAsianEnd on the target local day. Pre-Asia hours of the
@@ -23931,6 +24062,584 @@ void DetectJudasSwing(const int total,const datetime &t[],const double &h[],cons
    g_judas=judas;
    g_judas_bar=judas_bar;
 }
+
+//====================================================================
+// AUDIT-SB1  POWER OF 3  +  SILVER BULLET   (DISPLAY ONLY)
+//
+// WHAT THESE TWO MODULES ARE. Both are READERS of state the file already
+// publishes on closed bars. Neither detects anything new, and neither can
+// authorize, arm, score into, or execute a trade:
+//
+//   POWER OF 3     DetectJudasSwing() already computes the Asia session range
+//                  (ACCUMULATION) and already detects a sweep of that range
+//                  with a close back inside it (MANIPULATION) - it published
+//                  g_judas and dropped the range. This names the phase and adds
+//                  the one leg that was missing: DISTRIBUTION, the closed-bar
+//                  move away from the manipulation extreme.
+//
+//   SILVER BULLET  The required sequence - liquidity sweep, then a structure
+//                  shift, then a fair value gap, then entry on the gap's
+//                  retrace - is already in the causal graph as CE_LIQ_SWEEP ->
+//                  CE_BOS/CE_CHOCH/CE_MSS -> CE_FVG, linked by parent_primary /
+//                  parent_secondary and walked by FindNearestCausalAncestor().
+//                  This adds only the TIME WINDOW and requires the whole chain
+//                  to be inside it.
+//
+// CAUSALITY. Everything is read from CLOSED bars. The Asia range comes from bars
+// whose Tokyo-local hour is inside the session window; the manipulation extreme
+// is g_buf_l/g_buf_h at g_judas_bar, a closed bar; distribution and invalidation
+// compare the last CLOSED close against it; the Silver Bullet chain is filtered
+// on availability_time / availability_bar, which the graph defines as its
+// authoritative closed decision bar. No forming bar and no future bar is read,
+// and a phase already published for a closed bar cannot change afterwards.
+//
+// NO REPAINT BY CONSTRUCTION: both adapters are called once per OnCalculate pass
+// and overwrite their own published state from scratch, so there is no latched
+// value that could survive the bar which invalidated it.
+//
+// SCORES ARE RULE-BASED CONFLUENCE COUNTS, NOT PROBABILITIES. Missing evidence
+// scores 0 - a leg is never awarded for free. No number produced here is a
+// likelihood of success and none is presented as one.
+//
+// COMPLEXITY, stated because this runs per OnCalculate pass: P3_Update is O(1).
+// SB_Update makes one pass over g_causal_events (bounded by
+// InpMaxCausalEventsKeep) and calls the ancestry BFS only for elements that are
+// a CE_FVG AND already inside the window AND inside the age bound, so the BFS
+// runs a handful of times at most. Both are skipped entirely while their enable
+// switch is false, which is the default - so the shipped cost is zero.
+//====================================================================
+
+string P3_PhaseName(const int phase)
+{
+   if(phase==(int)P3_PHASE_DISTRIBUTION)  return "DISTRIBUTION";
+   if(phase==(int)P3_PHASE_MANIPULATION)  return "MANIPULATION";
+   if(phase==(int)P3_PHASE_ACCUMULATION)  return "ACCUMULATION";
+   if(phase==(int)P3_PHASE_NONE)          return "NONE";
+   return "UNKNOWN";
+}
+
+// The PURE phase order. No global, no series and no terminal call is read in
+// here, which is what makes it exercisable by SBP3_SelfTest() with local values
+// only, and transcribable 1:1 by tools/test_phase2_modules.py.
+//
+// `judas` is the direction DetectJudasSwing already published: +1 when the Asia
+// LOWS were swept and that bar closed back inside (so distribution is expected
+// UP), -1 when the Asia HIGHS were swept (distribution expected DOWN), 0 when
+// the range has not been swept. `distribution_atr` is the SIGNED closed-bar move
+// away from the manipulation extreme in ATR units - negative when price went the
+// wrong way, so it cannot confirm by accident.
+ENUM_P3_PHASE P3_Decide(const bool range_valid,const int judas,
+                        const double distribution_atr,const double min_distribution_atr,
+                        const bool invalidated,string &reason,string &invalidation)
+{
+   reason=""; invalidation="";
+
+   //--- (1) No range, no phase. Every other phase is defined relative to it.
+   if(!range_valid)
+   {
+      reason="no Asia session range resolved for the applicable local day";
+      return P3_PHASE_NONE;
+   }
+
+   //--- (2) An invalidated manipulation ENDS the sequence instead of leaving a
+   //---     stale phase on the card. A label that survived its own invalidation
+   //---     is exactly the contradiction the tactical-authority gate exists to
+   //---     prevent, so it is refused here on the same principle.
+   if(invalidated)
+   {
+      reason="the manipulation was invalidated - a closed bar returned through the sweep extreme";
+      invalidation="closed bar back through the manipulation extreme; the sequence is over";
+      return P3_PHASE_NONE;
+   }
+
+   //--- (3) The range exists and has not been swept: accumulation.
+   if(judas==0)
+   {
+      reason="the Asia range is formed and has not been swept";
+      return P3_PHASE_ACCUMULATION;
+   }
+
+   //--- (4) Distribution needs a positive threshold AND a move that actually
+   //---     reached it. A threshold of 0 or less confirms nothing, so no leg is
+   //---     ever awarded for free.
+   if(min_distribution_atr>0.0 && distribution_atr>=min_distribution_atr)
+   {
+      reason="distribution is following through away from the sweep";
+      invalidation="a closed bar back through the manipulation extreme";
+      return P3_PHASE_DISTRIBUTION;
+   }
+
+   //--- (5) Swept and closed back inside, but no qualifying follow-through yet.
+   reason="the Asia range was swept and closed back inside; waiting for distribution";
+   invalidation="a closed bar back through the manipulation extreme";
+   return P3_PHASE_MANIPULATION;
+}
+
+// PURE confluence count, 0-100. Each leg is worth what it is worth and a missing
+// leg is worth nothing: range 25, manipulation 35, distribution 40. An
+// invalidated sequence scores 0 rather than keeping credit it no longer has.
+int P3_Score(const bool range_valid,const int judas,const bool distribution,
+             const bool invalidated)
+{
+   if(invalidated) return 0;
+   int s=0;
+   if(range_valid) s+=25;
+   if(judas!=0) s+=35;
+   if(distribution) s+=40;
+   return (s>100?100:s);
+}
+
+// The adapter. It gathers the PUBLISHED closed-bar facts and nothing else, then
+// hands them to the pure order above - the same split as QSMC_BuildGeometry /
+// TacticalAuthorityDecide, so the decision rule is testable without a chart.
+void P3_Update(const int closed)
+{
+   g_p3_phase=P3_PHASE_NONE; g_p3_dir=0; g_p3_score=0;
+   g_p3_reason=""; g_p3_invalidation="";
+   if(!InpEnablePowerOf3) return;
+   if(closed<0 || closed>=ArraySize(g_buf_c)) return;
+   // The Asia range and its sweep are published by DetectJudasSwing, so Power of
+   // 3 depends on that EXISTING switch. Report the dependency rather than a phase
+   // derived from a range that was never computed.
+   if(!InpDetectJudas)
+   {
+      g_p3_reason="requires InpDetectJudas: the Asia range and its sweep come from it";
+      return;
+   }
+
+   // The ATR of the CLOSED bar, from the per-bar history when it is available -
+   // the same fallback idiom the rest of the file uses.
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ? g_atr_buf[closed] : g_atr;
+
+   double dist_atr=0.0;
+   bool invalidated=false;
+   if(g_judas!=0 && g_judas_bar>=0 && g_judas_bar<ArraySize(g_buf_l) &&
+      g_judas_bar<ArraySize(g_buf_h))
+   {
+      // The manipulation extreme is the wick that took the range out: the low of
+      // the sweep bar when the lows were swept, the high when the highs were.
+      double extreme=(g_judas>0 ? g_buf_l[g_judas_bar] : g_buf_h[g_judas_bar]);
+      // Signed, so a move the wrong way is negative and cannot confirm.
+      double move=(g_judas>0 ? g_buf_c[closed]-extreme : extreme-g_buf_c[closed]);
+      if(atr>0.0) dist_atr=move/atr;
+      // Structural invalidation: a CLOSED bar back through that extreme.
+      invalidated=(g_judas>0 ? g_buf_c[closed]<extreme : g_buf_c[closed]>extreme);
+   }
+
+   string reason="",invalidation="";
+   ENUM_P3_PHASE ph=P3_Decide(g_asia_range_valid,g_judas,dist_atr,
+                              InpP3DistributionMinATR,invalidated,reason,invalidation);
+   g_p3_phase=ph;
+   // A direction exists only once the range has actually been swept; during
+   // accumulation there is nothing yet to lean on. MANIPULATION is published as
+   // prospective, which is why the card labels it as such.
+   g_p3_dir=((ph==P3_PHASE_MANIPULATION || ph==P3_PHASE_DISTRIBUTION) ? g_judas : 0);
+   g_p3_score=P3_Score(g_asia_range_valid,g_judas,ph==P3_PHASE_DISTRIBUTION,invalidated);
+   g_p3_invalidation=invalidation;
+   // Name the ACTUAL range so the reason quotes a level rather than implying one.
+   if(g_asia_range_valid && reason!="")
+      g_p3_reason=reason+" (Asia "+DoubleToString(g_asia_range_low,_Digits)+
+                   "-"+DoubleToString(g_asia_range_high,_Digits)+")";
+   else
+      g_p3_reason=reason;
+
+   if(InpLogLifecycleTransitions && ph!=P3_PHASE_NONE)
+      LogLifecycle(StringFormat("P3 %s dir=%+d score=%d %s",P3_PhaseName((int)ph),
+                                g_p3_dir,g_p3_score,g_p3_reason));
+}
+
+// The Silver Bullet clock. It deliberately does NOT invent a second time
+// conversion: raw server time IS broker-local time, and the New-York-local
+// variant is produced by the session clock that already exists, so broker offset
+// and DST are resolved exactly once, by the same code the sessions use. That is
+// what keeps the window and the kill zones from ever disagreeing about what time
+// it is.
+datetime SB_LocalTime(const datetime server_time)
+{
+   if(InpSBUseNYLocalTime) return SessionLocalTime(server_time,SESSION_NEWYORK);
+   return server_time;
+}
+
+// Minutes from local midnight, so a window is exact to the minute and is
+// independent of the chart timeframe.
+int SB_MinuteOfDay(const datetime server_time)
+{
+   MqlDateTime dt;
+   TimeToStruct(SB_LocalTime(server_time),dt);
+   return dt.hour*60+dt.min;
+}
+
+int SB_DayKey(const datetime server_time)
+{
+   return DateKey(SB_LocalTime(server_time));
+}
+
+// PURE window primitive. A window is [start, end) in minutes from local
+// midnight: the end minute is EXCLUSIVE, so consecutive windows never both claim
+// the same minute. start==end is an empty window and matches nothing rather than
+// matching everything. start>end is an overnight window and wraps.
+bool SB_MinuteInWindow(const int minute,const int start,const int end)
+{
+   if(minute<0 || minute>1439) return false;
+   if(start==end) return false;
+   if(start<end)  return (minute>=start && minute<end);
+   return (minute>=start || minute<end);
+}
+
+// Which configured window, if any, contains this local minute. Reads only inputs,
+// which are immutable, so it stays deterministic and transcribable.
+int SB_WindowAtMinute(const int minute_of_day)
+{
+   if(SB_MinuteInWindow(minute_of_day,InpSBWin1Start,InpSBWin1End)) return 0;
+   if(SB_MinuteInWindow(minute_of_day,InpSBWin2Start,InpSBWin2End)) return 1;
+   if(SB_MinuteInWindow(minute_of_day,InpSBWin3Start,InpSBWin3End)) return 2;
+   return -1;
+}
+
+// Is this event's availability inside the SAME window instance as the reference
+// closed bar? The day key is compared as well as the minute, because a leg from
+// an earlier day at the same minute of day is not part of this window. An
+// overnight window legitimately straddles midnight, so and only so the previous
+// local day is also admitted.
+bool SB_InWindow(const datetime server_time,const datetime ref_time,const int win)
+{
+   if(server_time<=0 || win<0 || win>2) return false;
+   int s=0,e=0;
+   if(win==0)     { s=InpSBWin1Start; e=InpSBWin1End; }
+   else if(win==1){ s=InpSBWin2Start; e=InpSBWin2End; }
+   else           { s=InpSBWin3Start; e=InpSBWin3End; }
+   if(!SB_MinuteInWindow(SB_MinuteOfDay(server_time),s,e)) return false;
+   int dk=SB_DayKey(server_time);
+   if(dk==SB_DayKey(ref_time)) return true;
+   // SessionLocalTime is a pure additive shift, so subtracting one day from the
+   // server time yields exactly the previous local calendar day.
+   if(s>e && dk==SB_DayKey(ref_time-86400)) return true;
+   return false;
+}
+
+// Resolve the sweep -> structure shift -> FVG ancestry for one candidate gap.
+// This walks ONLY the links the causal graph already published; it infers no
+// connection of its own and adds no parallel chain logic.
+bool SB_ChainComplete(const int fvg_index,int &shift_index,int &sweep_index)
+{
+   shift_index=-1; sweep_index=-1;
+   int n=ArraySize(g_causal_events);
+   if(fvg_index<0 || fvg_index>=n) return false;
+   // The single CE_FVG publication site sets confirmed=true and
+   // invalidated=filled_at_structure, so an unconfirmed or already-filled gap is
+   // not a Silver Bullet gap.
+   if(!g_causal_events[fvg_index].confirmed) return false;
+   // The structure shift the gap is attributed to. The file uses three names for
+   // a confirmed break, so all three are accepted - whichever the graph linked.
+   shift_index=FindNearestCausalAncestor(fvg_index,CE_MSS);
+   if(shift_index<0) shift_index=FindNearestCausalAncestor(fvg_index,CE_BOS);
+   if(shift_index<0) shift_index=FindNearestCausalAncestor(fvg_index,CE_CHOCH);
+   if(shift_index<0) return false;
+   // And the liquidity sweep that preceded that shift.
+   sweep_index=FindNearestCausalAncestor(shift_index,CE_LIQ_SWEEP);
+   return (sweep_index>=0);
+}
+
+// PURE confluence count, 0-100. Five legs at 20 each: window, sweep, shift, gap,
+// retrace. A leg that is absent scores 0 - there is no partial credit and no leg
+// is ever awarded for free.
+int SB_Score(const bool in_window,const bool has_sweep,const bool has_shift,
+             const bool has_fvg,const bool has_retrace)
+{
+   int s=0;
+   if(in_window)   s+=20;
+   if(has_sweep)   s+=20;
+   if(has_shift)   s+=20;
+   if(has_fvg)     s+=20;
+   if(has_retrace) s+=20;
+   return (s>100?100:s);
+}
+
+string SB_WindowName(const int win)
+{
+   int s=0,e=0;
+   if(win==0)     { s=InpSBWin1Start; e=InpSBWin1End; }
+   else if(win==1){ s=InpSBWin2Start; e=InpSBWin2End; }
+   else if(win==2){ s=InpSBWin3Start; e=InpSBWin3End; }
+   else return "none";
+   return StringFormat("SB%d %02d:%02d-%02d:%02d",win+1,s/60,s%60,e/60,e%60);
+}
+
+// The adapter. It resolves the window from the closed bar's own time, then asks
+// the EXISTING causal graph whether the whole required sequence is inside it.
+void SB_Update(const int closed)
+{
+   g_sb_active=false; g_sb_window=-1; g_sb_dir=0; g_sb_fvg=-1;
+   g_sb_entry_high=0.0; g_sb_entry_low=0.0;
+   g_sb_reason=""; g_sb_score=0; g_sb_invalidation="";
+   if(!InpEnableSilverBullet) return;
+   if(closed<0 || closed>=ArraySize(g_buf_t) || closed>=ArraySize(g_buf_c) ||
+      closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return;
+
+   const datetime ref_time=g_buf_t[closed];
+   int win=SB_WindowAtMinute(SB_MinuteOfDay(ref_time));
+   if(win<0)
+   {
+      g_sb_reason="stand aside: outside every configured Silver Bullet window";
+      return;
+   }
+   g_sb_window=win;
+
+   // ONE pass over the graph. It records which legs the window contains, so a
+   // stand-aside can name the missing leg instead of just saying "no setup", and
+   // it selects the newest CE_FVG whose ancestry is complete. The BFS is called
+   // only for a CE_FVG that is already in-window and in-age, so it runs a
+   // handful of times at most.
+   int n=ArraySize(g_causal_events);
+   bool have_sweep=false,have_shift=false,have_fvg=false;
+   int best=-1,best_shift=-1,best_sweep=-1;
+   datetime best_avail=0;
+   for(int i=0;i<n;i++)
+   {
+      if(g_causal_events[i].invalidated) continue;
+      datetime av=g_causal_events[i].availability_time;
+      if(av<=0) continue;
+      if(!SB_InWindow(av,ref_time,win)) continue;
+      int age=closed-g_causal_events[i].availability_bar;
+      if(age<0) continue;                                  // not yet available
+      if(InpSBChainMaxAgeBars>0 && age>InpSBChainMaxAgeBars) continue;
+      ENUM_CAUSAL_EVENT_TYPE ty=g_causal_events[i].type;
+      if(ty==CE_LIQ_SWEEP)                    { have_sweep=true; continue; }
+      if(ty==CE_BOS||ty==CE_CHOCH||ty==CE_MSS){ have_shift=true; continue; }
+      if(ty!=CE_FVG) continue;
+      have_fvg=true;
+      int sh=-1,sw=-1;
+      if(!SB_ChainComplete(i,sh,sw)) continue;
+      if(best>=0 && av<=best_avail) continue;              // newest chain wins
+      best=i; best_avail=av; best_shift=sh; best_sweep=sw;
+   }
+
+   if(best<0)
+   {
+      // Nothing is armed and nothing is authorized. The partial score still
+      // reports how much of the sequence formed, with the missing leg named, so
+      // the stand-aside is actionable rather than opaque.
+      string missing="";
+      if(!have_sweep)      missing="no liquidity sweep available inside the window";
+      else if(!have_shift) missing="no structure shift (BOS/CHoCH/MSS) available inside the window";
+      else if(!have_fvg)   missing="no fair value gap available inside the window";
+      else                 missing="the sweep-shift-FVG legs are present but not causally linked";
+      g_sb_reason="stand aside: "+missing;
+      g_sb_score=SB_Score(true,have_sweep,have_shift,have_fvg,false);
+      return;
+   }
+
+   g_sb_fvg=best;
+   g_sb_dir=(g_causal_events[best].bullish ? 1 : -1);
+   g_sb_entry_high=g_causal_events[best].top;
+   g_sb_entry_low=g_causal_events[best].bottom;
+
+   // Entry is on the gap's RETRACE, using the same convention
+   // ReevaluateFVGStateIncremental() already applies to an SFVG: price has come
+   // back into the zone, and has not closed through the far side of it. The
+   // graph's own `invalidated` only records a gap that was already filled when
+   // the structure formed, so a later fill is detected here from closed bars.
+   bool retrace=false,through=false;
+   if(g_sb_dir>0)
+   {
+      retrace=(g_buf_l[closed]<=g_sb_entry_high && g_buf_c[closed]>g_sb_entry_low);
+      through=(g_buf_c[closed]<=g_sb_entry_low);
+   }
+   else
+   {
+      retrace=(g_buf_h[closed]>=g_sb_entry_low && g_buf_c[closed]<g_sb_entry_high);
+      through=(g_buf_c[closed]>=g_sb_entry_high);
+   }
+
+   g_sb_invalidation="a closed bar through the far side of the FVG";
+   if(through)
+   {
+      g_sb_active=false;
+      g_sb_score=SB_Score(true,true,true,true,false);
+      g_sb_reason="stand aside: the Silver Bullet gap was closed through, the sequence is over";
+   }
+   else
+   {
+      g_sb_active=retrace;
+      g_sb_score=SB_Score(true,true,true,true,retrace);
+      if(retrace)
+         g_sb_reason="sweep -> shift -> FVG all inside the window and price has retraced into the gap";
+      else
+         g_sb_reason="sweep -> shift -> FVG all inside the window, waiting for the retrace into the gap";
+   }
+   g_sb_reason=g_sb_reason+" ("+SB_WindowName(win)+" "+
+               DoubleToString(g_sb_entry_low,_Digits)+"-"+
+               DoubleToString(g_sb_entry_high,_Digits)+")";
+
+   if(InpLogLifecycleTransitions)
+      LogLifecycle(StringFormat("SB win=%d dir=%+d active=%s score=%d fvg=%s %s",
+                                win,g_sb_dir,(g_sb_active?"true":"false"),g_sb_score,
+                                (best>=0?g_causal_events[best].id:"-"),g_sb_reason));
+}
+
+// Optional display of the Silver Bullet entry zone. It reuses DrawZoneBox(), so
+// the existing display gate, visual-band test and prefix cleanup all apply
+// unchanged, and it owns exactly ONE object - the object count cannot grow with
+// history. It is drawn from DrawQuantumDashboard(), which runs AFTER
+// PrepareDynamicRedraw() has swept the dynamic prefixes, so the zone is never
+// deleted after being drawn in the same pass.
+void SB_DrawEntryZone(const int closed)
+{
+   const string name=PFX+"SBP3_ENTRY";
+   if(!InpEnableSilverBullet || !InpSBShowEntryZone || !g_sb_active ||
+      g_sb_fvg<0 || !(g_sb_entry_high>g_sb_entry_low) ||
+      closed<6 || closed>=ArraySize(g_buf_t))
+   {
+      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
+      return;
+   }
+   datetime t1=g_buf_t[MathMax(0,closed-6)];
+   datetime t2=g_buf_t[closed];
+   color col=(g_sb_dir>0?clrDarkSeaGreen:clrTomato);
+   // The label states what this is: a conditional zone, not an authorized entry.
+   // Both modules are display only and cannot arm or authorize a trade.
+   DrawZoneBox(name,t1,g_sb_entry_high,t2,g_sb_entry_low,col,
+               "SILVER BULLET "+(g_sb_dir>0?"BUY":"SELL")+
+               " - CONDITIONAL - NOT AN ENTRY");
+}
+
+// Reset BOTH modules to their inert state.
+ Called when a new symbol/day context
+// arrives so a stale phase or window can never be displayed against fresh bars.
+void SBP3_Clear()
+{
+   g_p3_phase=P3_PHASE_NONE; g_p3_dir=0; g_p3_score=0;
+   g_p3_reason=""; g_p3_invalidation="";
+   g_sb_active=false; g_sb_window=-1; g_sb_dir=0; g_sb_fvg=-1;
+   g_sb_entry_high=0.0; g_sb_entry_low=0.0;
+   g_sb_reason=""; g_sb_score=0; g_sb_invalidation="";
+}
+
+// AUDIT-SB1 self-test. It exercises the PURE cores of both modules with local
+// values only - no chart, no series, no terminal state - so a logic regression is
+// caught at OnInit instead of on a live bar. The window checks are derived from
+// the CURRENT input values rather than from hardcoded minutes, so they stay
+// correct whatever windows the user configures. Gated by InpMTEERunSelfTest, the
+// file's existing general self-test switch.
+bool SBP3_SelfTest(string &where)
+{
+   where="";
+   string r="",iv="";
+
+   // SBP3-1 The phase order: no range -> no phase; an unswept range is
+   //        ACCUMULATION; a sweep without follow-through is MANIPULATION; a
+   //        sweep with a qualifying follow-through is DISTRIBUTION, on both sides.
+   if(P3_Decide(false,1,5.0,1.0,false,r,iv)!=P3_PHASE_NONE || r=="")
+   { where="SBP3-1 no Asia range must mean no phase, and must say so"; return false; }
+   if(P3_Decide(true,0,0.0,1.0,false,r,iv)!=P3_PHASE_ACCUMULATION)
+   { where="SBP3-1 an unswept range is ACCUMULATION"; return false; }
+   if(P3_Decide(true,1,0.5,1.0,false,r,iv)!=P3_PHASE_MANIPULATION)
+   { where="SBP3-1 a sweep below the distribution threshold is MANIPULATION"; return false; }
+   if(P3_Decide(true,1,1.5,1.0,false,r,iv)!=P3_PHASE_DISTRIBUTION || iv=="")
+   { where="SBP3-1 a qualifying follow-through up is DISTRIBUTION with an invalidation"; return false; }
+   if(P3_Decide(true,-1,2.0,1.0,false,r,iv)!=P3_PHASE_DISTRIBUTION)
+   { where="SBP3-1 the bearish side must reach DISTRIBUTION the same way"; return false; }
+
+   // SBP3-2 An invalidated manipulation ENDS the sequence. It must outrank a
+   //        distribution that would otherwise have confirmed, and it must carry
+   //        the invalidation - a phase that survived its own invalidation is the
+   //        exact contradiction this file refuses elsewhere.
+   if(P3_Decide(true,1,5.0,1.0,true,r,iv)!=P3_PHASE_NONE || iv=="")
+   { where="SBP3-2 an invalidated manipulation must end the sequence, outranking distribution"; return false; }
+
+   // SBP3-3 Distribution is never a free point. A non-positive threshold must
+   //        NOT confirm, and a move in the wrong direction (signed, so negative)
+   //        must not confirm either. The threshold itself is inclusive.
+   if(P3_Decide(true,1,5.0,0.0,false,r,iv)==P3_PHASE_DISTRIBUTION)
+   { where="SBP3-3 a zero distribution threshold must not confirm distribution"; return false; }
+   if(P3_Decide(true,1,5.0,-1.0,false,r,iv)==P3_PHASE_DISTRIBUTION)
+   { where="SBP3-3 a negative distribution threshold must not confirm distribution"; return false; }
+   if(P3_Decide(true,1,-3.0,1.0,false,r,iv)==P3_PHASE_DISTRIBUTION)
+   { where="SBP3-3 a move away from the expected side must not confirm distribution"; return false; }
+   if(P3_Decide(true,1,1.0,1.0,false,r,iv)!=P3_PHASE_DISTRIBUTION)
+   { where="SBP3-3 the distribution threshold is inclusive (move == min confirms)"; return false; }
+
+   // SBP3-4 Score arithmetic: range 25, manipulation 35, distribution 40. No
+   //        evidence scores 0, the full sequence scores exactly 100, and an
+   //        invalidated sequence gives the credit back.
+   if(P3_Score(false,0,false,false)!=0)
+   { where="SBP3-4 no evidence must score 0"; return false; }
+   if(P3_Score(true,0,false,false)!=25)
+   { where="SBP3-4 the range leg is worth 25"; return false; }
+   if(P3_Score(true,1,false,false)!=60)
+   { where="SBP3-4 range + manipulation is worth 60"; return false; }
+   if(P3_Score(true,-1,true,false)!=100)
+   { where="SBP3-4 the full sequence is worth exactly 100"; return false; }
+   if(P3_Score(true,1,true,true)!=0)
+   { where="SBP3-4 an invalidated sequence must score 0, not keep its credit"; return false; }
+
+   // SBP3-5 The window primitive is [start, end): start inclusive, end EXCLUSIVE
+   //        so consecutive windows never both claim a minute; start==end is an
+   //        empty window that matches nothing rather than everything; start>end
+   //        wraps overnight; out-of-range minutes match nothing.
+   if(!SB_MinuteInWindow(180,180,240) || !SB_MinuteInWindow(239,180,240))
+   { where="SBP3-5 the window start is inclusive"; return false; }
+   if(SB_MinuteInWindow(240,180,240) || SB_MinuteInWindow(179,180,240))
+   { where="SBP3-5 the window end is exclusive and the outside is outside"; return false; }
+   if(SB_MinuteInWindow(60,60,60) || SB_MinuteInWindow(59,60,60))
+   { where="SBP3-5 an empty window (start == end) must match nothing"; return false; }
+   if(!SB_MinuteInWindow(1380,1380,120) || !SB_MinuteInWindow(60,1380,120) ||
+      !SB_MinuteInWindow(119,1380,120))
+   { where="SBP3-5 an overnight window must wrap past midnight"; return false; }
+   if(SB_MinuteInWindow(120,1380,120) || SB_MinuteInWindow(700,1380,120))
+   { where="SBP3-5 an overnight window must still exclude the hours between"; return false; }
+   if(SB_MinuteInWindow(-1,0,1440) || SB_MinuteInWindow(1440,0,1440))
+   { where="SBP3-5 a minute outside 0..1439 must match nothing"; return false; }
+
+   // SBP3-6 SB_WindowAtMinute must return the FIRST configured window that claims
+   //        the minute, and -1 when none does - exhaustively, over every minute of
+   //        the day, against the CURRENT inputs rather than hardcoded windows.
+   for(int m=0;m<1440;m++)
+   {
+      int expect=-1;
+      if(SB_MinuteInWindow(m,InpSBWin1Start,InpSBWin1End))      expect=0;
+      else if(SB_MinuteInWindow(m,InpSBWin2Start,InpSBWin2End)) expect=1;
+      else if(SB_MinuteInWindow(m,InpSBWin3Start,InpSBWin3End)) expect=2;
+      if(SB_WindowAtMinute(m)!=expect)
+      { where="SBP3-6 window precedence drifted at minute "+IntegerToString(m); return false; }
+   }
+
+   // SBP3-7 Score arithmetic: five legs at 20 each. No evidence scores 0, the
+   //        full chain scores exactly 100, and a missing retrace costs its 20
+   //        rather than being rounded up.
+   if(SB_Score(false,false,false,false,false)!=0)
+   { where="SBP3-7 no evidence must score 0"; return false; }
+   if(SB_Score(true,false,false,false,false)!=20)
+   { where="SBP3-7 the window leg alone is worth 20"; return false; }
+   if(SB_Score(true,true,true,true,false)!=80)
+   { where="SBP3-7 a chain without its retrace is worth 80, not 100"; return false; }
+   if(SB_Score(true,true,true,true,true)!=100)
+   { where="SBP3-7 the full Silver Bullet chain is worth exactly 100"; return false; }
+
+   // SBP3-8 The phase vocabulary is complete and distinct, so a card can never
+   //        print a blank or a duplicate label for a real phase.
+   if(P3_PhaseName((int)P3_PHASE_NONE)!="NONE" ||
+      P3_PhaseName((int)P3_PHASE_ACCUMULATION)!="ACCUMULATION" ||
+      P3_PhaseName((int)P3_PHASE_MANIPULATION)!="MANIPULATION" ||
+      P3_PhaseName((int)P3_PHASE_DISTRIBUTION)!="DISTRIBUTION")
+   { where="SBP3-8 the Power of 3 phase names drifted"; return false; }
+   if(P3_PhaseName(999)!="UNKNOWN")
+   { where="SBP3-8 an out-of-range phase must be labelled UNKNOWN, not guessed"; return false; }
+
+   // SBP3-9 The ancestry resolver must refuse an out-of-range index instead of
+   //        reading past the graph, and must leave both outputs unset when it does.
+   {
+      int sh=7,sw=7;
+      if(SB_ChainComplete(-1,sh,sw) || sh!=-1 || sw!=-1)
+      { where="SBP3-9 a negative graph index must be refused and must reset its outputs"; return false; }
+      sh=7; sw=7;
+      if(SB_ChainComplete(ArraySize(g_causal_events),sh,sw) || sh!=-1 || sw!=-1)
+      { where="SBP3-9 an index past the graph must be refused and must reset its outputs"; return false; }
+   }
+   return true;
+}
+
 
 //====================================================================
 // KILL ZONES (session-local windows mapped to broker server time)
@@ -29283,7 +29992,39 @@ void DrawQuantumDashboard(const int total,const double &c[])
       if(g_rxn_zone_ev[i].valid && g_rxn_zone_ev[i].level>=(int)RXN_LEVEL_REACTION)
       { tooltip+="\nRXN: "+g_rxn_zone_ev[i].path_text+" | "+g_rxn_zone_ev[i].score_detail; break; }
 
+   // AUDIT-SB1 Power of 3 + Silver Bullet. These rows go into the TOOLTIP and
+   // never into the 11-row card: the card's budget is fixed and pinned by
+   // test_dashboard_clarity.py, and a display-only extra must not be able to push
+   // a Core row off the card. This is the same merge the DSE section uses.
+   if(InpEnablePowerOf3 && InpP3ShowOnDashboard)
+   {
+      string p3_dir="";
+      if(g_p3_phase==P3_PHASE_DISTRIBUTION && g_p3_dir!=0)
+         p3_dir=(g_p3_dir>0?" (distribution UP)":" (distribution DOWN)");
+      else if(g_p3_phase==P3_PHASE_MANIPULATION && g_p3_dir!=0)
+         p3_dir=(g_p3_dir>0?" (prospective UP)":" (prospective DOWN)");
+      tooltip+="\nP3: "+P3_PhaseName((int)g_p3_phase)+p3_dir+
+               " | score "+IntegerToString(g_p3_score)+"/100 (confluence, not a win rate)";
+      if(g_p3_reason!="") tooltip+="\nP3 why: "+g_p3_reason;
+      if(g_p3_invalidation!="") tooltip+="\nP3 invalidation: "+g_p3_invalidation;
+   }
+   if(InpEnableSilverBullet && InpSBShowOnDashboard)
+   {
+      // No direction is printed unless the setup is ACTIVE, so the card can never
+      // show a direction next to a stand-aside.
+      string sb_dir=(g_sb_active?(g_sb_dir>0?"BUY":(g_sb_dir<0?"SELL":"none")):"stand aside");
+      tooltip+="\nSB: "+(g_sb_active?"ACTIVE":"not active")+" | dir "+sb_dir+
+               " | "+(g_sb_window>=0?SB_WindowName(g_sb_window):"outside every window")+
+               " | score "+IntegerToString(g_sb_score)+"/100 (confluence, not a win rate)";
+      if(g_sb_reason!="") tooltip+="\nSB why: "+g_sb_reason;
+      if(g_sb_active && g_sb_invalidation!="") tooltip+="\nSB invalidation: "+g_sb_invalidation;
+   }
+   // The optional entry zone is drawn here, after PrepareDynamicRedraw() has
+   // already swept the SBP3_ prefix earlier in this same pass.
+   SB_DrawEntryZone(closed);
+
    int chart_w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+
    int chart_h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    if(chart_w<=0) chart_w=800;
    if(chart_h<=0) chart_h=600;
