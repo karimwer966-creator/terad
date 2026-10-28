@@ -78,6 +78,9 @@ jobs:
       - name: One causal zone role (BUY/SELL direction contract)
         run: python3 tools/test_zre_signal_role.py 2>&1 | tee out/test_zre_signal_role.log
 
+      - name: One authoritative scenario state (tactical preview cannot contradict it)
+        run: python3 tools/test_tactical_authority.py 2>&1 | tee out/test_tactical_authority.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 
