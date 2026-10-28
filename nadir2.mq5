@@ -768,6 +768,22 @@ input group "====== Order Blocks ======"
 input int InpMaxStrongOB = 3;
 input int InpOBTransparency = 88;
 input double InpOBMaxHeightATR = 3.0;
+//--- AUDIT-OB1 ORDER BLOCK LIFECYCLE COMPLETION. The OB engine already detects,
+//--- scores, indexes, caps, draws and mitigates order blocks (DetectOrderBlocks,
+//--- ScoreOrderBlock, SelectEntryOB, BuildOBPriceIndex/StrengthIndex,
+//--- BinarySearchNearestOB, DrawStructureAndOB, AddBreakerBlock). These four
+//--- inputs add ONLY what it was missing - an age bound - plus two opt-ins and a
+//--- display vocabulary. There is no second OB engine and no parallel registry.
+//--- Every one defaults to today's behaviour bit-for-bit: with all four left
+//--- alone, no order block is created, sized, scored, drawn or retired differently.
+//--- No version prefix is used on purpose: the release triple still reads v6.6.9
+//--- while the file already carries v6.6.10/v6.6.11/v6.6.12 markers, and picking
+//--- the next release number is a release decision (docs/QSMC_V6.6.10_TACTICAL_
+//--- AUTHORITY.md defect 4), not something a module should pre-empt.
+input bool   InpOBUseAgeExpiry       = false;  // retire an OB after InpOBMaxAgeBars closed bars (false = today: only a close through the zone retires it)
+input int    InpOBMaxAgeBars         = 200;    // closed CHART bars; <=0 disables even when the switch is on
+input bool   InpOBZoneBodyOnly       = false;  // zone = pure candle body instead of the default body+rejection-wick hybrid
+input bool   InpOBShowLifecycleLabel = false;  // append FRESH/MITIGATED/BROKEN/EXPIRED to the OB box label (display only)
 input group "====== Demand / Supply Zones ======"
 input int InpZoneLookback = 150;
 input int InpMaxZonesShown = 3;
@@ -5116,6 +5132,13 @@ int KnapsackOptimizeSignals(SSignalFactor &factors[],const int max_weight);
 int DynamicProgrammingConfidence(SSignalFactor &factors[]);
 double ScoreStructure(const int total,const bool is_buy);
 double ScoreLiquidity(const bool is_buy,const int anchor_bar=-1);
+// AUDIT-OB1: the ONE place the order-block age rule and the display vocabulary
+// live, so the incremental closed-bar path and ReplayClosedBarStates() cannot
+// disagree - the design contract above that function requires it to apply
+// "exactly the same rules the incremental branch applies per closed bar".
+bool OBIsExpired(const int ob_index,const int as_of_closed);
+void OBMarkExpired(const int ob_index,const int as_of_closed);
+string OBStateLabel(const int ob_index);
 double ScoreOrderBlock(const int ob_index,const double price,const double atr,const int anchor_bar=-1);
 double ScoreFVG(const bool is_buy,const double price,const int anchor_bar=-1);
 double ScoreSession();
@@ -10320,6 +10343,7 @@ void PMI_BuildLocation(const int closed,const double atr)
    for(int i=0;i<ArraySize(g_order_blocks);i++)
    {
       if(g_order_blocks[i].state=="MITIGATED") continue;
+      if(g_order_blocks[i].state=="EXPIRED") continue;   // AUDIT-OB1: sticky
       double mid=(g_order_blocks[i].top+g_order_blocks[i].bottom)*0.5;
       double d=MathAbs(mid-price)/atr;
       if(best<=0.0 || d<best) best=d;
@@ -14735,6 +14759,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       for(int i=0;i<ArraySize(g_order_blocks);i++)
       {
          if(g_order_blocks[i].state=="MITIGATED") continue;
+         if(g_order_blocks[i].state=="EXPIRED") continue;   // AUDIT-OB1: sticky
          bool bull=g_order_blocks[i].bullish;
          bool overlap=(g_buf_l[closed]<=g_order_blocks[i].top &&
                        g_buf_h[closed]>=g_order_blocks[i].bottom);
@@ -14759,6 +14784,13 @@ int OnCalculate(const int rates_total, const int prev_calculated,
             g_order_blocks[i].state="MITIGATED";
             g_order_blocks[i].closed_state="MITIGATED";
          }
+         // AUDIT-OB1 AGE BOUND, checked LAST within this closed bar so that a
+         // block which both breaks and ages out on the same bar resolves to
+         // MITIGATED - a price fact outranks a time fact. ReplayClosedBarStates()
+         // applies the identical rule in the identical position, which is what the
+         // design contract above that function demands: the same rules, nothing new.
+         if(g_order_blocks[i].state!="MITIGATED" && OBIsExpired(i,closed))
+            OBMarkExpired(i,closed);
       }
 
       for(int i=0;i<ArraySize(g_zones);i++)
@@ -16873,10 +16905,90 @@ double ScoreLiquidity(const bool is_buy,const int anchor_bar)
    }
    return best;
 }
+//====================================================================
+// AUDIT-OB1  ORDER BLOCK AGE BOUND + DISPLAY VOCABULARY
+//
+// THE GAP THIS CLOSES. SOrderBlock.age has been written since the engine was
+// built (DetectOrderBlocks sets ob.age=closed-ob_bar) and has never been read
+// by anything - a dead field. An order block therefore stayed eligible forever,
+// and the ONLY thing that could ever retire it was a candle body closing through
+// the zone. A block from 900 bars back was still scored, still selectable as an
+// entry OB and still drawn, exactly like one formed last bar.
+//
+// This adds the time bound the rest of the file already has for itself: the zone
+// engine expires on InpZREExpireBars, the Core blacklist on InpBlacklistExpiryBars,
+// the retest window on InpRetestTimeoutBars. Order blocks were the one registry
+// with no horizon.
+//
+// CAUSALITY / NO REPAINT. Measured in CLOSED CHART BARS from ob.bar, which is
+// itself a fully closed origin bar (DetectOrderBlocks refuses st.bar>=closed).
+// as_of_closed is always an already-closed bar, so the verdict for a given
+// (ob.bar, as_of_closed) pair can never change afterwards, and no forming bar and
+// no future bar is read. The bound is EXCLUSIVE - age == limit is still live -
+// matching the InpRetestTimeoutBars convention used elsewhere in this file.
+// Symbol-agnostic: bars, not price, so nothing here is XAUUSD-specific.
+//
+// PRECEDENCE. A close through the zone (MITIGATED) is a fact about PRICE and
+// always outranks a fact about TIME. Both state machines therefore test MITIGATED
+// first and only then ask OBIsExpired(). Keeping that order identical in both
+// paths is what makes a full rebuild reproduce the incremental history exactly.
+//====================================================================
+bool OBIsExpired(const int ob_index,const int as_of_closed)
+{
+   if(!InpOBUseAgeExpiry || InpOBMaxAgeBars<=0) return false;
+   if(ob_index<0 || ob_index>=ArraySize(g_order_blocks)) return false;
+   if(as_of_closed<0) return false;
+   return ((as_of_closed-g_order_blocks[ob_index].bar)>InpOBMaxAgeBars);
+}
+
+// Retire an aging block and journal it through the same channel DetectOrderBlocks
+// already uses, in the same shape the other lifecycle transitions are logged:
+// identity, level, direction, score, reason and what invalidated it. EXPIRED is
+// sticky - every eligibility guard that skips MITIGATED now skips EXPIRED too, so
+// a retired block cannot be scored, selected, drawn or used as a continuation zone.
+void OBMarkExpired(const int ob_index,const int as_of_closed)
+{
+   if(ob_index<0 || ob_index>=ArraySize(g_order_blocks)) return;
+   int age=as_of_closed-g_order_blocks[ob_index].bar;
+   g_order_blocks[ob_index].age=age;   // the dead field, now maintained honestly
+   g_order_blocks[ob_index].state="EXPIRED";
+   g_order_blocks[ob_index].closed_state="EXPIRED";
+   if(InpLogLifecycleTransitions)
+      LogLifecycle(StringFormat("OB %s @ %s %s EXPIRED age=%d limit=%d score=0 reason=closed-bar age beyond InpOBMaxAgeBars invalidation=age",
+                                g_order_blocks[ob_index].id,
+                                DoubleToString(OBMid(ob_index),_Digits),
+                                (g_order_blocks[ob_index].bullish?"BUY":"SELL"),
+                                age,InpOBMaxAgeBars));
+}
+
+// DISPLAY VOCABULARY ONLY - no decision anywhere may read this. The engine's own
+// state strings are ACTIVE / TOUCHED / MITIGATED and they are deliberately NOT
+// renamed, because five eligibility guards and two state machines depend on those
+// exact values. They also mean something slightly different from the usual trader
+// vocabulary: the engine's MITIGATED is set when a candle BODY CLOSES THROUGH the
+// zone (what a trader calls a broken block, and it spawns a Breaker Block), while
+// its TOUCHED is the first mitigation. This maps internal -> trader wording for
+// labels and tooltips, and nothing else.
+string OBStateLabel(const int ob_index)
+{
+   if(ob_index<0 || ob_index>=ArraySize(g_order_blocks)) return "UNKNOWN";
+   string s=g_order_blocks[ob_index].state;
+   string cs=g_order_blocks[ob_index].closed_state;
+   if(s=="EXPIRED"   || cs=="EXPIRED")   return "EXPIRED";
+   if(s=="MITIGATED" || cs=="MITIGATED") return "BROKEN";
+   if(s=="TOUCHED"   || cs=="TOUCHED")   return "MITIGATED";
+   if(s=="ACTIVE")                       return "FRESH";
+   return (s=="" ? "UNKNOWN" : s);
+}
+
 double ScoreOrderBlock(const int ob_index,const double price,const double atr,const int anchor_bar)
 {
    if(ob_index<0 || ob_index>=ArraySize(g_order_blocks)) return 0.0;
    if(g_order_blocks[ob_index].closed_state=="MITIGATED" || g_order_blocks[ob_index].state=="MITIGATED") return 0.0;
+   // AUDIT-OB1: an aged-out block scores nothing, exactly like a broken one. With
+   // InpOBUseAgeExpiry=false no block is ever EXPIRED, so this line is a no-op and
+   // the score returned is byte-identical to before.
+   if(g_order_blocks[ob_index].closed_state=="EXPIRED" || g_order_blocks[ob_index].state=="EXPIRED") return 0.0;
    if(anchor_bar > 0 && g_order_blocks[ob_index].origin_struct_bar != anchor_bar) return 20.0;
    double s=(g_order_blocks[ob_index].strength>=5)?100.0:(g_order_blocks[ob_index].strength>=4)?85.0:65.0;
    if(g_order_blocks[ob_index].closed_state=="TOUCHED" || g_order_blocks[ob_index].state=="TOUCHED") s*=(InpRelaxedMode?0.92:0.85);
@@ -17155,6 +17267,7 @@ int SelectEntryOB(const double price,const bool is_buy,const double atr,const in
       SOrderBlock ob=g_order_blocks[i];
       if(ob.bullish!=is_buy) continue;
       if(ob.state=="MITIGATED" || ob.closed_state=="MITIGATED") continue;
+      if(ob.state=="EXPIRED" || ob.closed_state=="EXPIRED") continue;   // AUDIT-OB1
       if(ob.strength<InpMinEntryOBStrength) continue;
 
       if(InpInstitutionalSequence)
@@ -17374,6 +17487,7 @@ double NearestOpposingBarrier(const double from,const bool is_buy,string &type_o
    {
       SOrderBlock ob=g_order_blocks[i];
       if(ob.bullish==is_buy || ob.state=="MITIGATED" || ob.closed_state=="MITIGATED") continue;
+      if(ob.state=="EXPIRED" || ob.closed_state=="EXPIRED") continue;   // AUDIT-OB1
       int cev=FindCausalEventBySource(CE_ORDER_BLOCK,i);
       if(InpInstitutionalSequence && (cev<0 || g_causal_events[cev].invalidated || !g_causal_events[cev].confirmed)) continue;
       if(model_boundary>0)
@@ -17461,6 +17575,7 @@ double FindInstitutionalTarget(const double from,const double entry,const double
    {
       SOrderBlock ob=g_order_blocks[i];
       if(ob.bullish==is_buy || ob.state=="MITIGATED" || ob.closed_state=="MITIGATED") continue;
+      if(ob.state=="EXPIRED" || ob.closed_state=="EXPIRED") continue;   // AUDIT-OB1
       int cev=FindCausalEventBySource(CE_ORDER_BLOCK,i);
       if(InpInstitutionalSequence && (cev<0 || g_causal_events[cev].invalidated || !g_causal_events[cev].confirmed)) continue;
       if(model_boundary>0)
@@ -21236,6 +21351,7 @@ void ReplayClosedBarStates(const int total)
    for(int i=0;i<ArraySize(g_order_blocks);i++)
    {
       if(g_order_blocks[i].state=="MITIGATED") continue;
+      if(g_order_blocks[i].state=="EXPIRED") continue;   // AUDIT-OB1: sticky
       int from=g_order_blocks[i].bar+1;
       if(g_order_blocks[i].origin_struct_bar>=0)
          from=MathMax(from,g_order_blocks[i].origin_struct_bar+1);
@@ -21265,6 +21381,15 @@ void ReplayClosedBarStates(const int total)
             g_order_blocks[i].mitigated=true;
             g_order_blocks[i].state="MITIGATED";
             g_order_blocks[i].closed_state="MITIGATED";
+         }
+         // AUDIT-OB1: the SAME age rule the incremental branch applies, evaluated
+         // against the bar being replayed rather than the newest closed bar, and in
+         // the same position after the break tests, so a full rebuild reproduces the
+         // incremental history bar for bar. The break ends the walk either way.
+         if(g_order_blocks[i].state!="MITIGATED" && OBIsExpired(i,b))
+         {
+            OBMarkExpired(i,b);
+            break;
          }
       }
    }
@@ -22170,6 +22295,7 @@ void UpdateAnalyticalScalePlan(const int total)
          if(g_order_blocks[i].source_displacement_bar<=confirmed_bar) continue;
          if(g_order_blocks[i].source_displacement_bar>cont1_bar) continue;
          if(g_order_blocks[i].state=="MITIGATED") continue;
+         if(g_order_blocks[i].state=="EXPIRED") continue;   // AUDIT-OB1: sticky
          cont_zone_bar=g_order_blocks[i].bar;
          cont_zone_top=g_order_blocks[i].top;
          cont_zone_bottom=g_order_blocks[i].bottom;
@@ -22268,6 +22394,7 @@ void UpdateAnalyticalScalePlan(const int total)
          if(g_order_blocks[i].source_displacement_bar<=cont1_bar) continue;
          if(g_order_blocks[i].source_displacement_bar>cont2_bar) continue;
          if(g_order_blocks[i].state=="MITIGATED") continue;
+         if(g_order_blocks[i].state=="EXPIRED") continue;   // AUDIT-OB1: sticky
          z2_top=g_order_blocks[i].top; z2_bottom=g_order_blocks[i].bottom;
          have_z2=true; break;
       }
@@ -23048,7 +23175,25 @@ void DetectOrderBlocks(const int total,const double &o[],const double &h[],const
       if(ob_bar<0) continue;
 
       double ob_top,ob_bottom;
-      if(st.bullish){ob_top=MathMax(o[ob_bar],c[ob_bar]); ob_bottom=l[ob_bar];}
+      // AUDIT-OB1 OPT-IN GEOMETRY. The DEFAULT below is unchanged and is a hybrid:
+      // the body edge on the close side plus the wick on the rejection side (a
+      // bullish block runs from the body top down to the candle low), trimmed to the
+      // pure body further down only when it is taller than InpOBMaxHeightATR x ATR.
+      // The flag adds the pure-body variant some traders prefer. A doji body thinner
+      // than one point is rejected rather than published as a zero-height zone.
+      // NOTE ON IDENTITY: GenerateOBId() hashes top and bottom (unlike GenerateFVGId,
+      // which deliberately excludes geometry), so the two geometries are two distinct
+      // identities. That is safe only because g_order_blocks is emptied on OnInit and
+      // again on every full rebuild, so flipping this input can never leave both
+      // variants of one candle alive at the same time. Changing it re-derives the
+      // whole registry from scratch on the next pass.
+      if(InpOBZoneBodyOnly)
+      {
+         ob_top=MathMax(o[ob_bar],c[ob_bar]);
+         ob_bottom=MathMin(o[ob_bar],c[ob_bar]);
+         if(ob_top-ob_bottom<_Point) continue;
+      }
+      else if(st.bullish){ob_top=MathMax(o[ob_bar],c[ob_bar]); ob_bottom=l[ob_bar];}
       else{ob_top=h[ob_bar]; ob_bottom=MathMin(o[ob_bar],c[ob_bar]);}
       double atr=(ob_bar<ArraySize(g_atr_buf) && g_atr_buf[ob_bar]>0.0) ? g_atr_buf[ob_bar] : g_atr;
       double height=ob_top-ob_bottom;
@@ -24034,10 +24179,17 @@ void DrawStructureAndOB()
       int i=g_ob_strength_idx[k];
       SOrderBlock ob=g_order_blocks[i];
       if(ob.state=="MITIGATED" || ob.closed_state=="MITIGATED") continue;
+      if(ob.state=="EXPIRED" || ob.closed_state=="EXPIRED") continue;   // AUDIT-OB1
       string name=PFX+"OB_"+ob.id;
       color col=ob.bullish?InpColorOB:InpColorOB_Bear;
       string label=(ob.bullish?"Bull OB ":"Bear OB ")+QSMC_ClipChars(ob.id,18)+
                    " S"+IntegerToString(ob.strength);
+      // AUDIT-OB1: opt-in lifecycle vocabulary on the box label. Off by default, so
+      // the label string is byte-identical to before unless the flag is set. `i` is
+      // the registry index (ob is a copy), and OBStateLabel is display-only: it maps
+      // ACTIVE/TOUCHED/MITIGATED onto FRESH/MITIGATED/BROKEN for reading, and never
+      // feeds a decision.
+      if(InpOBShowLifecycleLabel) label+=" "+OBStateLabel(i);
       DrawUniqueSMCZoneBox(name,ob.time1,ob.top,ob.time2,ob.bottom,col,label,InpOBTransparency);
       ob_shown++;
    }
