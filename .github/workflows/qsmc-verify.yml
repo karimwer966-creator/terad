@@ -113,6 +113,18 @@ jobs:
       - name: Pure price action (never standalone, no buffer moved, display only)
         run: python3 tools/test_phase4_priceaction.py 2>&1 | tee out/test_phase4_priceaction.log
 
+      # AUDIT-MR1 mean reversion / momentum. Proves the bands reuse the existing
+      # BufVWAP rather than adding iBands, that divergence is measured on CONFIRMED
+      # swings via the file's own IsFractalHigh()/IsFractalLow() and never on the
+      # preview variants that would repaint, that sigma is root-mean-square distance
+      # from VWAP and NOT mean-centred, that the 0.0 "indicator unavailable"
+      # sentinel cannot manufacture a divergence, and that MACD is a FILTER ONLY -
+      # exhaustively, it can zero the score but can never raise it or supply a
+      # direction. Also proves the optional iMACD handle cannot change whether the
+      # indicator loads, and never entangles the file's indicator-copy retry.
+      - name: Mean reversion / momentum (confirmed swings only, MACD veto-only, display only)
+        run: python3 tools/test_phase5_meanreversion.py 2>&1 | tee out/test_phase5_meanreversion.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 

@@ -912,6 +912,31 @@ input bool   InpPAIncludeInsideBar       = true;   // add INSIDE_BAR to the unif
 input int    InpPAInsideBarStrength      = 45;     // an inside bar carries no direction of its own
 input double InpPAZoneToleranceATR       = 0.15;   // how close to a zone still counts as inside it
 input bool   InpPAIncludePOC             = true;   // count the active volume-profile POC as a zone
+input group "====== Mean Reversion / Momentum (AUDIT-MR1, display only) ======"
+// THREE legs, and what each one is allowed to do. The BANDS (VWAP +/- k sigma,
+// reusing the existing BufVWAP rather than adding iBands) say price is stretched.
+// RSI DIVERGENCE says the stretch is exhausting, and is measured on CONFIRMED
+// swings only - IsFractalHigh()/IsFractalLow(), which require InpSwingFractalN
+// fully closed bars to the right, so a swing can never un-confirm itself. MACD is
+// an optional momentum FILTER ONLY: it can veto a fade, and it can never add a
+// direction or a point of its own. Missing evidence scores 0, never a free point.
+input bool   InpEnableMeanReversion     = false;  // master switch; while off the module costs nothing
+input bool   InpMRShowOnDashboard       = false;  // append the mean-reversion verdict to the dashboard tooltip
+input int    InpMRStdDevPeriod          = 20;     // closed bars used for the sigma of (close - VWAP)
+input double InpMRBandSigma             = 2.00;   // band width in sigma; a close beyond it is an overextension
+input int    InpMRDivLookback           = 200;    // closed bars searched for the two confirmed swings
+input double InpMRDivMinRSIDelta        = 2.00;   // minimum RSI gap that counts as divergence, not noise
+input double InpMRRSIOverbought         = 70.0;   // RSI at or above this makes a stretched-up bar exhausted
+input double InpMRRSIOversold           = 30.0;   // RSI at or below this makes a stretched-down bar exhausted
+// OPTIONAL momentum filter. The iMACD handle is created ONLY when this is true,
+// so with the default off nothing in OnInit changes at all. If the handle cannot
+// be created the leg reports "unavailable" and scores 0 - an optional display-only
+// filter must never be able to stop the indicator from loading.
+input bool   InpMRUseMACD               = false;  // use MACD as a veto on fading against momentum
+input int    InpMRFastEMA               = 12;     // MACD fast EMA (standard 12)
+input int    InpMRSlowEMA               = 26;     // MACD slow EMA (standard 26)
+input int    InpMRSignalSMA             = 9;      // MACD signal SMA (standard 9)
+input double InpMRMacdDeadZoneATR       = 0.05;   // histogram must clear this fraction of ATR to count as momentum
 input group "====== Premium / Discount & OTE ======"
 input bool InpShowPremiumDiscount = true;
 input bool InpPDLinesOnly = false;          // draw range boundaries / EQ as Fibonacci-style lines
@@ -1945,6 +1970,31 @@ bool     g_pa_confirms=false;
 int      g_pa_score=0;               // 0-100 rule-based confluence count, NOT a probability
 string   g_pa_reason="";
 string   g_pa_invalidation="";
+//--- AUDIT-MR1 Mean Reversion / Momentum. Display-only published state. --------
+//--- h_macd is declared here rather than added to the existing handle line so
+//--- that line, and the INIT_FAILED test built on it, are not touched.
+int      h_macd=INVALID_HANDLE;      // created only when InpMRUseMACD is true
+bool     g_mr_macd_ready=false;
+double   g_mr_macd_main[];           // plain arrays, NOT indicator buffers
+double   g_mr_macd_sig[];
+double   g_mr_vwap=0.0;
+double   g_mr_sigma=0.0;
+double   g_mr_upper=0.0;
+double   g_mr_lower=0.0;
+double   g_mr_stretch=0.0;           // (close - vwap) / sigma, in sigma units
+int      g_mr_ext_dir=0;             // +1 stretched up, -1 down, 0 inside the bands
+int      g_mr_div_dir=0;             // +1 bullish divergence, -1 bearish, 0 none
+int      g_mr_swing_hi_new=-1, g_mr_swing_hi_old=-1;
+int      g_mr_swing_lo_new=-1, g_mr_swing_lo_old=-1;
+double   g_mr_rsi_new=0.0, g_mr_rsi_old=0.0;
+bool     g_mr_rsi_extreme=false;
+int      g_mr_macd_dir=0;            // +1 momentum up, -1 down, 0 unavailable/flat
+bool     g_mr_macd_conflict=false;   // momentum still pushes in the stretched direction
+int      g_mr_dir=0;
+bool     g_mr_confirms=false;
+int      g_mr_score=0;
+string   g_mr_reason="";
+string   g_mr_invalidation="";
 datetime g_htf_cache_time = 0;
 datetime g_d1_cache_time = 0;
 bool g_memo_hit = false;
@@ -5568,6 +5618,25 @@ bool PA_ZoneAt(const double price,const int closed,const double atr,
 void PA_Update(const int closed);
 void PA_Clear();
 bool PA_SelfTest(string &where);
+//--- AUDIT-MR1 Mean Reversion / Momentum (display only, no buffer, no authority)
+double MR_StdDevAroundVWAP(const int closed,const int period);
+int    MR_BandSide(const double price,const double vwap,const double sigma,const double k);
+double MR_Stretch(const double price,const double vwap,const double sigma);
+int    MR_FindConfirmedSwingPair(const bool want_high,const int closed,const int lookback,
+                                 const int n,const int total,int &bar_new,int &bar_old);
+int    MR_DivergenceDir(const double price_old,const double rsi_old,
+                        const double price_new,const double rsi_new,
+                        const bool is_high,const double min_delta);
+int    MR_MacdDirection(const double main,const double signal,const double dead_zone);
+bool   MR_MacdConflicts(const int ext_dir,const int macd_dir);
+int    MR_ResolveDirection(const bool extended,const int ext_dir,const int div_dir,
+                           const bool rsi_extreme,const bool macd_conflict);
+int    MR_Score(const bool extended,const bool div_agrees,const bool rsi_extreme,
+                const bool macd_conflict);
+bool   MR_RefreshMACD(const int rates_total,const bool full);
+void   MR_Update(const int closed,const int rates_total,const bool full);
+void   MR_Clear();
+bool   MR_SelfTest(string &where);
 bool IsInSession(const datetime server_time,const ENUM_SESSION_ID session_id);
 bool IsInKillZone(const datetime server_time,const ENUM_SESSION_ID session_id);
 int ChartEventBarAtTime(const datetime &chart_time[],const int total,const datetime event_time);
@@ -14345,6 +14414,21 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       Print("Failed to create indicator handles");
       return INIT_FAILED;
    }
+   // AUDIT-MR1 optional MACD handle. Created ONLY when its switch is on, so with
+   // the default off this block does nothing at all and the handle-validity test
+   // above is untouched - an optional display-only filter must not be able to
+   // change whether the indicator loads. A failure here degrades the momentum leg
+   // to "unavailable", it does not fail init.
+   if(InpMRUseMACD)
+   {
+      h_macd=iMACD(_Symbol,PERIOD_CURRENT,InpMRFastEMA,InpMRSlowEMA,InpMRSignalSMA,PRICE_CLOSE);
+      if(h_macd==INVALID_HANDLE)
+      {
+         g_mr_macd_ready=false;
+         Print("[AUDIT-MR1] iMACD handle unavailable - the optional momentum filter stays off");
+      }
+      else g_mr_macd_ready=true;
+   }
    for(int i=0;i<5;i++) if(h_ema_mtf[i]==INVALID_HANDLE) Print("MTF handle ",i," failed");
 
    // v6.5.2 MTF_SniperZone_Engine: create iATR(14) and iRSI(14) handles across all 7 timeframes
@@ -14593,6 +14677,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    SBP3_Clear();
    WY_Clear();
    PA_Clear();
+   MR_Clear();
    if(InpMTEERunSelfTest)
    {
       string mtee_fail="";
@@ -14616,6 +14701,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          Print(">>> ",QSMC_VERSION_TEXT," Pure Price Action self-test: PASS (9/9)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Pure Price Action self-test: FAIL - ",mtee_fail);
+      if(MR_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Mean-reversion / momentum self-test: PASS (9/9)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Mean-reversion / momentum self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
@@ -14678,6 +14767,7 @@ void OnDeinit(const int reason)
 QSMC_RootDestroy();   // v6.6.0: the arbitration root (RAII + leak report)
 IndicatorRelease(h_ema_fast); IndicatorRelease(h_ema_slow);
    IndicatorRelease(h_atr); IndicatorRelease(h_adx); IndicatorRelease(h_rsi);
+   if(h_macd!=INVALID_HANDLE) { IndicatorRelease(h_macd); h_macd=INVALID_HANDLE; }  // AUDIT-MR1
    ZRE_DeleteObjects();   // v6.3.0: every PFX+"ZRE_" object
    RXN_DeleteObjects();   // v6.5.0: every PFX+"RXN_" object
    ScenarioDeleteObjects(); // v6.5.0 DSE: every PFX+"SCN_" conditional-plan object
@@ -15383,6 +15473,14 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // pass, and g_atr_buf / g_atr written earlier in this same pass. Once per closed
    // bar, never per tick, and skipped entirely while its switch is off.
    if(is_new_bar || detection_updated) PA_Update(closed);
+   // AUDIT-MR1 Mean Reversion / Momentum: closed-bar, observational, no entry
+   // authority. It sits beside PA_Update because every input it reads is already
+   // final here: BufVWAP from FillEMAAndVWAP above, g_rsi_buf and g_atr_buf from
+   // the indicator copy above, and the mirrored g_buf_* series. It does not read
+   // the volume profile, so unlike PA_Update it has no ordering constraint against
+   // MVP_Update; it is placed after it only to keep the observational modules
+   // together. Once per closed bar, never per tick, skipped entirely while off.
+   if(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);
    // v6.3.0 Zone Reaction Engine: closed-bar, observational, no entry authority.
    // Runs after MVP_Update so the active profile levels are current.
    ZRE_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);
@@ -25669,6 +25767,608 @@ bool PA_SelfTest(string &where)
    return true;
 }
 
+
+//====================================================================
+// AUDIT-MR1  MEAN REVERSION / MOMENTUM   (DISPLAY ONLY)
+//
+// WHAT ALREADY EXISTED, AND IS THEREFORE NOT REWRITTEN HERE.
+//   * The VWAP. BufVWAP[] is buffer 2, INDICATOR_DATA, filled per bar by
+//     FillEMAAndVWAP() earlier in the same pass. The bands are built from it, so
+//     iBands is not added and no second VWAP is computed.
+//   * Per-bar RSI. g_rsi_buf[] is already copied from h_rsi (iRSI, InpRSIPeriod)
+//     for every bar, so no RSI handle is created here.
+//   * Per-bar ATR. g_atr_buf[] with the g_atr scalar fallback, the file's idiom.
+//   * CONFIRMED SWINGS. IsFractalHigh()/IsFractalLow() already encode this file's
+//     definition of a confirmed swing, and their own opening guard - which refuses
+//     any bar whose i+n has not yet fallen inside the closed bars - is what makes
+//     them non-repainting: a swing needs InpSwingFractalN fully
+//     closed bars to its right, so once confirmed it can never un-confirm. This
+//     module is their FIRST consumer - until now only the PREVIEW variants
+//     (IsPreviewFractalHigh/Low) were called, and only for drawing.
+//
+// THREE LEGS, AND STRICTLY WHAT EACH ONE MAY DO.
+//   1. BANDS - VWAP +/- k*sigma. They say price is STRETCHED. That is context, not
+//      a direction: a stretched market can stay stretched.
+//   2. RSI DIVERGENCE - says the stretch is EXHAUSTING. Measured on confirmed
+//      swings only, on the two most recent of them, and only ever in the direction
+//      price is stretched. Regular divergence only; hidden divergence is NOT
+//      implemented, because it is a trend-continuation reading and would make this
+//      module argue with itself.
+//   3. MACD - an optional momentum FILTER ONLY, and "only" is enforced structurally:
+//      MR_Score() takes a conflict flag and can therefore only VETO. There is no
+//      code path by which MACD adds a point or a direction. If it is switched off,
+//      or its handle could not be created, or the copy came back short, the leg is
+//      reported unavailable and contributes nothing - missing evidence is 0, never
+//      a free point.
+//
+// WHY A STRETCH ALONE IS NOT A SIGNAL. MR_ResolveDirection() returns 0 unless there
+// is exhaustion evidence: a divergence that agrees with the fade, or RSI in the
+// extreme region on the stretched side. Touching a 2-sigma band in a strong trend is
+// ordinary, and printing a fade direction for it is how mean-reversion modules earn
+// their bad reputation. The score reflects the same idea - 35 for the stretch, 45 for
+// an agreeing divergence, 20 for an RSI extreme - so a bare stretch can never reach a
+// score that looks like a setup.
+//
+// SIGMA IS ROOT-MEAN-SQUARE DISTANCE FROM VWAP, NOT MEAN-CENTRED. The deviations
+// (close - VWAP) are squared and averaged WITHOUT subtracting their own mean, because
+// VWAP is already the anchor. Mean-centring would report a near-zero sigma during a
+// persistent trend - exactly when price sits steadily above VWAP - and then every
+// ordinary bar would look like a 10-sigma extreme.
+//
+// CAUSALITY. Everything is read from closed bars through the file's own mirrored
+// g_buf_* series and its per-bar indicator arrays, indexed with closed=rates_total-2.
+// No forming bar and no future bar is read. Nothing is latched: MR_Update() resets all
+// published state at the top of every pass and recomputes, so a full rebuild
+// reproduces exactly what the incremental passes published.
+//
+// 0.0 IS "UNAVAILABLE", NOT A READING. The file documents this for its own indicator
+// copies ("incomplete inputs are unavailable (0.0), never read as stale values"). An
+// RSI of exactly 0.0 is therefore treated as missing evidence everywhere here, which
+// also means a divergence can never be manufactured from a bar the terminal had not
+// served yet.
+//
+// MACD IS COPIED OUTSIDE THE FILE'S RETRY MECHANISM, DELIBERATELY. The ATR/ADX/RSI
+// copies above short-copy into a bounded RETRY that returns prev_calculated before
+// committing the bar identity. An optional display-only filter must not be able to
+// stall that, so MR_RefreshMACD() never returns prev_calculated, never touches
+// g_ind_copy_retries and never blocks a bar: on a short copy it marks the bars it
+// could not fill with the same 0.0 sentinel and reports itself unavailable.
+//
+// SCORES ARE RULE-BASED CONFLUENCE COUNTS, NOT PROBABILITIES.
+//
+// NOTHING IS DRAWN. The bands are reported numerically on the dashboard tooltip
+// rather than drawn as lines, so the module creates no chart objects, needs no
+// entry in the PrepareDynamicRedraw() prefix sweep, and cannot be swept or
+// double-drawn by it.
+//
+// COMPLEXITY: one O(InpMRStdDevPeriod) pass for sigma plus one bounded backward scan
+// for swings, once per closed bar. Skipped entirely while InpEnableMeanReversion is
+// false, which is the default, so the shipped cost is zero.
+//====================================================================
+
+// Root-mean-square distance of the close from VWAP over `period` closed bars ending
+// at `closed`. Returns 0.0 - meaning "no band can be drawn" - unless every sample in
+// the window is present and clean. A partial window would produce a confident-looking
+// sigma from incomplete evidence, which is worse than none.
+double MR_StdDevAroundVWAP(const int closed,const int period)
+{
+   if(period<2) return 0.0;
+   if(closed<period-1) return 0.0;
+   if(closed>=ArraySize(g_buf_c) || closed>=ArraySize(BufVWAP)) return 0.0;
+   int first=closed-period+1;
+   if(first<0) return 0.0;
+   double acc=0.0;
+   for(int i=first;i<=closed;i++)
+   {
+      double v=BufVWAP[i];
+      if(v==EMPTY_VALUE || !(v>0.0)) return 0.0;
+      if(!(g_buf_c[i]>0.0)) return 0.0;
+      double dev=g_buf_c[i]-v;
+      acc+=dev*dev;
+   }
+   return MathSqrt(acc/(double)period);
+}
+
+// PURE. Which side of the bands the price is on. Strict inequality: a close exactly
+// ON the band is not an overextension.
+int MR_BandSide(const double price,const double vwap,const double sigma,const double k)
+{
+   if(!(price>0.0) || !(vwap>0.0) || !(sigma>0.0) || !(k>0.0)) return 0;
+   if(price>vwap+k*sigma) return 1;
+   if(price<vwap-k*sigma) return -1;
+   return 0;
+}
+
+// PURE. How far from VWAP the price is, in sigma units. Signed, so it can be reported
+// and compared without recomputation.
+double MR_Stretch(const double price,const double vwap,const double sigma)
+{
+   if(!(price>0.0) || !(vwap>0.0) || !(sigma>0.0)) return 0.0;
+   return (price-vwap)/sigma;
+}
+
+// The two most recent CONFIRMED swings of one kind, newest first. Confirmation is
+// delegated entirely to IsFractalHigh()/IsFractalLow(), whose own bound check refuses
+// any bar that does not yet have n fully closed bars to its right - so this scan
+// cannot return a swing that a later bar could invalidate. Returns 0, 1 or 2.
+int MR_FindConfirmedSwingPair(const bool want_high,const int closed,const int lookback,
+                              const int n,const int total,int &bar_new,int &bar_old)
+{
+   bar_new=-1; bar_old=-1;
+   if(lookback<1 || n<1 || closed<0 || total<3) return 0;
+   if(closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return 0;
+   int found=0;
+   int first=MathMax(0,closed-lookback+1);
+   for(int i=closed;i>=first;i--)
+   {
+      bool ok=(want_high ? IsFractalHigh(g_buf_h,i,n,total)
+                         : IsFractalLow(g_buf_l,i,n,total));
+      if(!ok) continue;
+      if(found==0) { bar_new=i; found=1; }
+      else { bar_old=i; found=2; break; }
+   }
+   return found;
+}
+
+// PURE. Regular RSI divergence between an older and a newer swing of the same kind.
+//   bearish (-1): price makes a HIGHER high while RSI makes a LOWER high
+//   bullish (+1): price makes a LOWER  low  while RSI makes a HIGHER low
+// A minimum RSI gap is required so that a 0.01 difference is not reported as
+// divergence. An RSI of 0.0 is this file's "unavailable" sentinel, never a reading,
+// so a bar the terminal had not served cannot manufacture a divergence.
+int MR_DivergenceDir(const double price_old,const double rsi_old,
+                     const double price_new,const double rsi_new,
+                     const bool is_high,const double min_delta)
+{
+   if(!(price_old>0.0) || !(price_new>0.0)) return 0;
+   if(!(rsi_old>0.0) || !(rsi_new>0.0)) return 0;
+   double delta=rsi_new-rsi_old;
+   double need=(min_delta>0.0 ? min_delta : 0.0);
+   if(is_high)
+   {
+      if(price_new>price_old && delta<=-need) return -1;
+      return 0;
+   }
+   if(price_new<price_old && delta>=need) return 1;
+   return 0;
+}
+
+// PURE. Momentum direction from the MACD histogram, with an ATR-scaled dead zone so a
+// hair-thin histogram cannot veto anything. The dead zone is what keeps this
+// symbol-agnostic: the histogram is in price units and means different things on
+// XAUUSD and on EURUSD.
+int MR_MacdDirection(const double main,const double signal,const double dead_zone)
+{
+   double hist=main-signal;
+   double dz=(dead_zone>0.0 ? dead_zone : 0.0);
+   if(hist>dz) return 1;
+   if(hist<-dz) return -1;
+   return 0;
+}
+
+// PURE. Momentum conflicts with a fade when it still pushes in the direction price is
+// stretched. An unavailable MACD (0) never conflicts: a filter that did not run must
+// not be able to veto, only to abstain.
+bool MR_MacdConflicts(const int ext_dir,const int macd_dir)
+{
+   return (ext_dir!=0 && macd_dir!=0 && macd_dir==ext_dir);
+}
+
+// PURE. A stretch is not a direction. Something has to say it is exhausting, and
+// nothing may be contradicting it.
+int MR_ResolveDirection(const bool extended,const int ext_dir,const int div_dir,
+                        const bool rsi_extreme,const bool macd_conflict)
+{
+   if(!extended || ext_dir==0) return 0;
+   if(macd_conflict) return 0;
+   int fade=-ext_dir;
+   if(div_dir!=0 && div_dir!=fade) return 0;   // divergence points the other way
+   if(div_dir==0 && !rsi_extreme) return 0;    // a stretch with no exhaustion evidence
+   return fade;
+}
+
+// PURE confluence count, 0-100. MACD appears here ONLY as a veto: it can zero the
+// score, and there is no branch in which it raises it, which is what "optional
+// momentum filter only" has to mean in code rather than in a comment.
+int MR_Score(const bool extended,const bool div_agrees,const bool rsi_extreme,
+             const bool macd_conflict)
+{
+   if(!extended) return 0;
+   if(macd_conflict) return 0;
+   int s=35;
+   if(div_agrees) s+=45;
+   if(rsi_extreme) s+=20;
+   return (s>100?100:s);
+}
+
+// Copy the optional MACD legs into plain arrays. Deliberately independent of the
+// file's bounded indicator-copy retry: this is an optional display-only filter, so a
+// short copy marks the unfilled bars unavailable with the file's own 0.0 sentinel and
+// returns false. It never returns prev_calculated and never blocks a bar.
+bool MR_RefreshMACD(const int rates_total,const bool full)
+{
+   if(!InpMRUseMACD || h_macd==INVALID_HANDLE) { g_mr_macd_ready=false; return false; }
+   if(rates_total<1) { g_mr_macd_ready=false; return false; }
+   int need=(full ? rates_total : MathMin(3,rates_total));
+   if(need<1) { g_mr_macd_ready=false; return false; }
+   if(ArraySize(g_mr_macd_main)<rates_total)
+   {
+      if(ArrayResize(g_mr_macd_main,rates_total,64)<0) { g_mr_macd_ready=false; return false; }
+      if(ArrayResize(g_mr_macd_sig,rates_total,64)<0)  { g_mr_macd_ready=false; return false; }
+   }
+   double tm[],ts[];
+   int nm=CopyBuffer(h_macd,0,0,need,tm);
+   int ns=CopyBuffer(h_macd,1,0,need,ts);
+   bool ok=(nm==need && ns==need && ArraySize(tm)>=need && ArraySize(ts)>=need &&
+            ArraySize(g_mr_macd_main)>=rates_total && ArraySize(g_mr_macd_sig)>=rates_total);
+   int from=rates_total-need;
+   if(from<0) from=0;
+   if(!ok)
+   {
+      for(int k=from;k<rates_total;k++)
+      {
+         if(k<ArraySize(g_mr_macd_main)) g_mr_macd_main[k]=0.0;
+         if(k<ArraySize(g_mr_macd_sig))  g_mr_macd_sig[k]=0.0;
+      }
+      g_mr_macd_ready=false;
+      return false;
+   }
+   // Same index mapping the file already uses for ATR/ADX/RSI: the temporary array is
+   // chronological, so src 0 is the oldest bar of the copied range.
+   for(int k=from;k<rates_total;k++)
+   {
+      int src=k-from;
+      if(k<ArraySize(g_mr_macd_main)) g_mr_macd_main[k]=tm[src];
+      if(k<ArraySize(g_mr_macd_sig))  g_mr_macd_sig[k]=ts[src];
+   }
+   g_mr_macd_ready=true;
+   return true;
+}
+
+// The one pass. Resets everything first, so nothing is carried over from a previous
+// bar and a full rebuild cannot disagree with the incremental passes.
+void MR_Update(const int closed,const int rates_total,const bool full)
+{
+   g_mr_vwap=0.0; g_mr_sigma=0.0; g_mr_upper=0.0; g_mr_lower=0.0; g_mr_stretch=0.0;
+   g_mr_ext_dir=0; g_mr_div_dir=0;
+   g_mr_swing_hi_new=-1; g_mr_swing_hi_old=-1; g_mr_swing_lo_new=-1; g_mr_swing_lo_old=-1;
+   g_mr_rsi_new=0.0; g_mr_rsi_old=0.0; g_mr_rsi_extreme=false;
+   g_mr_macd_dir=0; g_mr_macd_conflict=false;
+   g_mr_dir=0; g_mr_confirms=false; g_mr_score=0;
+   g_mr_reason=""; g_mr_invalidation="";
+   if(!InpEnableMeanReversion) return;
+   if(closed<2 || rates_total<3) return;
+   if(closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return;
+   if(closed>=ArraySize(BufVWAP) || closed>=ArraySize(g_rsi_buf)) return;
+
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ? g_atr_buf[closed] : g_atr;
+
+   //--- leg 1: the bands, from the VWAP the file already publishes.
+   int period=(InpMRStdDevPeriod<2 ? 2 : InpMRStdDevPeriod);
+   g_mr_vwap=BufVWAP[closed];
+   if(g_mr_vwap==EMPTY_VALUE || !(g_mr_vwap>0.0))
+   {
+      g_mr_reason="stand aside: no VWAP value on this closed bar, so no band exists";
+      g_mr_invalidation="a valid VWAP";
+      return;
+   }
+   g_mr_sigma=MR_StdDevAroundVWAP(closed,period);
+   if(!(g_mr_sigma>0.0))
+   {
+      g_mr_reason="stand aside: sigma over the last "+IntegerToString(period)+
+                  " closed bars is unavailable, so no band exists";
+      g_mr_invalidation=IntegerToString(period)+" clean closed bars of close-vs-VWAP";
+      return;
+   }
+   g_mr_upper=g_mr_vwap+InpMRBandSigma*g_mr_sigma;
+   g_mr_lower=g_mr_vwap-InpMRBandSigma*g_mr_sigma;
+   g_mr_stretch=MR_Stretch(g_buf_c[closed],g_mr_vwap,g_mr_sigma);
+   g_mr_ext_dir=MR_BandSide(g_buf_c[closed],g_mr_vwap,g_mr_sigma,InpMRBandSigma);
+
+   //--- leg 2: RSI divergence on CONFIRMED swings only, and only on the side price is
+   //--- stretched. Both sides are still scanned, because a bullish divergence on the
+   //--- lows and a bearish one on the highs at the same time is a contradiction that
+   //--- has to be reported rather than quietly resolved by picking one.
+   int n=FractalRightBars(InpSwingFractalN);
+   int look=(InpMRDivLookback<2 ? 2 : InpMRDivLookback);
+   int got_hi=MR_FindConfirmedSwingPair(true,closed,look,n,rates_total,
+                                        g_mr_swing_hi_new,g_mr_swing_hi_old);
+   int got_lo=MR_FindConfirmedSwingPair(false,closed,look,n,rates_total,
+                                        g_mr_swing_lo_new,g_mr_swing_lo_old);
+   bool div_bear=false, div_bull=false;
+   if(got_hi>=2)
+      div_bear=(MR_DivergenceDir(g_buf_h[g_mr_swing_hi_old],g_rsi_buf[g_mr_swing_hi_old],
+                                 g_buf_h[g_mr_swing_hi_new],g_rsi_buf[g_mr_swing_hi_new],
+                                 true,InpMRDivMinRSIDelta)<0);
+   if(got_lo>=2)
+      div_bull=(MR_DivergenceDir(g_buf_l[g_mr_swing_lo_old],g_rsi_buf[g_mr_swing_lo_old],
+                                 g_buf_l[g_mr_swing_lo_new],g_rsi_buf[g_mr_swing_lo_new],
+                                 false,InpMRDivMinRSIDelta)>0);
+   bool div_both=(div_bull && div_bear);
+   if(!div_both) g_mr_div_dir=(div_bull ? 1 : (div_bear ? -1 : 0));
+   if(g_mr_ext_dir>0 && got_hi>=2)
+   {
+      g_mr_rsi_new=g_rsi_buf[g_mr_swing_hi_new];
+      g_mr_rsi_old=g_rsi_buf[g_mr_swing_hi_old];
+   }
+   else if(g_mr_ext_dir<0 && got_lo>=2)
+   {
+      g_mr_rsi_new=g_rsi_buf[g_mr_swing_lo_new];
+      g_mr_rsi_old=g_rsi_buf[g_mr_swing_lo_old];
+   }
+
+   //--- RSI extreme counts only on the stretched side. An oversold RSI while price is
+   //--- stretched ABOVE the upper band is not evidence for a short fade.
+   double rsi_now=g_rsi_buf[closed];
+   g_mr_rsi_extreme=(rsi_now>0.0 &&
+                     ((g_mr_ext_dir>0 && rsi_now>=InpMRRSIOverbought) ||
+                      (g_mr_ext_dir<0 && rsi_now<=InpMRRSIOversold)));
+
+   //--- leg 3: the optional momentum filter. Available or abstaining; never guessed.
+   bool macd_ran=false;
+   if(InpMRUseMACD)
+   {
+      macd_ran=MR_RefreshMACD(rates_total,full);
+      if(macd_ran && closed<ArraySize(g_mr_macd_main) && closed<ArraySize(g_mr_macd_sig))
+         g_mr_macd_dir=MR_MacdDirection(g_mr_macd_main[closed],g_mr_macd_sig[closed],
+                                        (atr>0.0 ? atr*InpMRMacdDeadZoneATR : 0.0));
+   }
+
+   bool extended=(g_mr_ext_dir!=0);
+   bool div_agrees=(extended && g_mr_div_dir!=0 && g_mr_div_dir==-g_mr_ext_dir);
+   g_mr_macd_conflict=MR_MacdConflicts(g_mr_ext_dir,g_mr_macd_dir);
+   g_mr_dir=MR_ResolveDirection(extended,g_mr_ext_dir,g_mr_div_dir,
+                                g_mr_rsi_extreme,g_mr_macd_conflict);
+   g_mr_confirms=(g_mr_dir!=0);
+   g_mr_score=MR_Score(extended,div_agrees,g_mr_rsi_extreme,g_mr_macd_conflict);
+
+   //--- Four mutually exclusive reason branches. A side is named only where a
+   //--- direction was actually resolved, so this can never print SELL next to a
+   //--- stand-aside or CONFIRMED next to a suppressed verdict.
+   string k_txt=DoubleToString(InpMRBandSigma,2);
+   string stretch_txt=DoubleToString(MathAbs(g_mr_stretch),2);
+   if(!extended)
+   {
+      g_mr_reason="no overextension: the close is inside the VWAP +/-"+k_txt+
+                  " sigma bands ("+stretch_txt+" sigma from VWAP)";
+      g_mr_invalidation="a closed bar beyond the "+k_txt+" sigma band";
+   }
+   else if(div_both)
+   {
+      g_mr_reason="CONFLICT - a bullish divergence on the confirmed lows and a bearish "+
+                  "one on the confirmed highs are both live, so neither is used";
+      g_mr_invalidation="one of the two divergences to be broken by a newer confirmed swing";
+   }
+   else if(g_mr_macd_conflict)
+   {
+      g_mr_reason="CONFLICT - price is stretched "+stretch_txt+" sigma "+
+                  (g_mr_ext_dir>0?"above":"below")+" VWAP but MACD momentum still pushes "+
+                  "that way, so fading it would fight momentum";
+      g_mr_invalidation="the MACD histogram turning against the stretch";
+   }
+   else if(g_mr_div_dir!=0 && !div_agrees)
+   {
+      g_mr_reason="CONFLICT - the live divergence points "+
+                  (g_mr_div_dir>0?"bullish":"bearish")+" while the stretch points "+
+                  (g_mr_ext_dir>0?"up":"down")+", so they disagree";
+      g_mr_invalidation="a newer confirmed swing resolving the disagreement";
+   }
+   else if(g_mr_dir==0)
+   {
+      g_mr_reason="stand aside: price is stretched "+stretch_txt+" sigma "+
+                  (g_mr_ext_dir>0?"above":"below")+" VWAP but nothing says it is "+
+                  "exhausting - no agreeing divergence on a confirmed swing and RSI "+
+                  "is not extreme on that side";
+      g_mr_invalidation="a confirming divergence, or RSI beyond "+
+                        (g_mr_ext_dir>0?DoubleToString(InpMRRSIOverbought,1)
+                                       :DoubleToString(InpMRRSIOversold,1));
+   }
+   else
+   {
+      g_mr_reason=(g_mr_dir>0?"BUY":"SELL")+" context: stretched "+stretch_txt+
+                  " sigma "+(g_mr_ext_dir>0?"above":"below")+" VWAP"+
+                  (div_agrees?" with an agreeing RSI divergence on a confirmed swing":"")+
+                  (g_mr_rsi_extreme?" and RSI extreme":"")+
+                  " - a mean-reversion reading, not an entry";
+      g_mr_invalidation="a closed bar back inside the bands";
+   }
+   if(InpMRUseMACD && !macd_ran && extended)
+      g_mr_reason=g_mr_reason+" [MACD unavailable - the momentum filter did not run]";
+
+   if(InpLogLifecycleTransitions && g_mr_confirms)
+      LogLifecycle(StringFormat("MR dir=%+d score=%d stretch=%.2f k=%.2f div=%d rsi_ext=%s macd=%s",
+                                g_mr_dir,g_mr_score,g_mr_stretch,InpMRBandSigma,g_mr_div_dir,
+                                (g_mr_rsi_extreme?"yes":"no"),
+                                (g_mr_macd_conflict?"conflict":(macd_ran?"ok":"n/a"))));
+}
+
+// Reset to inert, so a disabled or freshly initialised module publishes nothing.
+void MR_Clear()
+{
+   g_mr_vwap=0.0; g_mr_sigma=0.0; g_mr_upper=0.0; g_mr_lower=0.0; g_mr_stretch=0.0;
+   g_mr_ext_dir=0; g_mr_div_dir=0;
+   g_mr_swing_hi_new=-1; g_mr_swing_hi_old=-1; g_mr_swing_lo_new=-1; g_mr_swing_lo_old=-1;
+   g_mr_rsi_new=0.0; g_mr_rsi_old=0.0; g_mr_rsi_extreme=false;
+   g_mr_macd_dir=0; g_mr_macd_conflict=false; g_mr_macd_ready=false;
+   g_mr_dir=0; g_mr_confirms=false; g_mr_score=0;
+   g_mr_reason=""; g_mr_invalidation="";
+}
+
+// AUDIT-MR1 self-test. It exercises the PURE cores with local values only - no
+// chart, no series, no terminal state - so a logic regression is caught at OnInit
+// instead of on a live bar. Gated by InpMTEERunSelfTest, the file's existing
+// general self-test switch. MR_StdDevAroundVWAP() and MR_FindConfirmedSwingPair()
+// read the mirrored bar arrays and are therefore covered only for the guards that
+// return before any array access; their arithmetic and their scan are pinned by
+// tools/test_phase5_meanreversion.py instead.
+bool MR_SelfTest(string &where)
+{
+   where="";
+
+   // MR-1 The sigma guards that must refuse BEFORE touching any array. A window that
+   //      cannot be filled completely reports "no band", never a partial estimate.
+   if(MR_StdDevAroundVWAP(0,2)!=0.0)
+   { where="MR-1 a window with no closed bars behind it has no sigma"; return false; }
+   if(MR_StdDevAroundVWAP(5,1)!=0.0)
+   { where="MR-1 a one-bar window cannot produce a standard deviation"; return false; }
+   if(MR_StdDevAroundVWAP(5,0)!=0.0 || MR_StdDevAroundVWAP(-1,20)!=0.0)
+   { where="MR-1 a degenerate period or bar index must return no sigma"; return false; }
+   if(MR_StdDevAroundVWAP(3,20)!=0.0)
+   { where="MR-1 a window longer than the history has no sigma"; return false; }
+
+   // MR-2 Band side. Strict inequality, so a close exactly ON the band is not an
+   //      overextension, and no band at all means no side.
+   if(MR_BandSide(105.0,100.0,2.0,2.0)!=1)
+   { where="MR-2 a close beyond VWAP+2 sigma is stretched up"; return false; }
+   if(MR_BandSide(95.0,100.0,2.0,2.0)!=-1)
+   { where="MR-2 a close beyond VWAP-2 sigma is stretched down"; return false; }
+   if(MR_BandSide(104.0,100.0,2.0,2.0)!=0)
+   { where="MR-2 a close exactly ON the upper band is not an overextension"; return false; }
+   if(MR_BandSide(96.0,100.0,2.0,2.0)!=0)
+   { where="MR-2 a close exactly ON the lower band is not an overextension"; return false; }
+   if(MR_BandSide(101.0,100.0,2.0,2.0)!=0)
+   { where="MR-2 a close inside the bands is not stretched"; return false; }
+   if(MR_BandSide(105.0,100.0,0.0,2.0)!=0 || MR_BandSide(105.0,0.0,2.0,2.0)!=0 ||
+      MR_BandSide(105.0,100.0,2.0,0.0)!=0 || MR_BandSide(0.0,100.0,2.0,2.0)!=0)
+   { where="MR-2 a missing sigma, VWAP, width or price means no band and no side"; return false; }
+   if(MR_BandSide(102.5,100.0,1.0,2.0)!=1 || MR_BandSide(102.5,100.0,1.0,3.0)!=0)
+   { where="MR-2 a wider k must move the band out, not leave it where it was"; return false; }
+
+   // MR-3 Stretch is signed and expressed in sigma units.
+   if(MathAbs(MR_Stretch(104.0,100.0,2.0)-2.0)>1e-9)
+   { where="MR-3 a close 4 above VWAP with sigma 2 is a stretch of +2.00"; return false; }
+   if(MathAbs(MR_Stretch(96.0,100.0,2.0)+2.0)>1e-9)
+   { where="MR-3 the stretch below VWAP is negative"; return false; }
+   if(MR_Stretch(104.0,100.0,0.0)!=0.0)
+   { where="MR-3 with no sigma there is no stretch to report"; return false; }
+
+   // MR-4 Regular divergence, both directions, on an older and a newer swing.
+   if(MR_DivergenceDir(100.0,75.0,102.0,68.0,true,2.0)!=-1)
+   { where="MR-4 a higher high with a lower RSI high is bearish divergence"; return false; }
+   if(MR_DivergenceDir(100.0,25.0,98.0,33.0,false,2.0)!=1)
+   { where="MR-4 a lower low with a higher RSI low is bullish divergence"; return false; }
+   if(MR_DivergenceDir(100.0,75.0,102.0,80.0,true,2.0)!=0)
+   { where="MR-4 a higher high with a higher RSI high is not divergence"; return false; }
+   if(MR_DivergenceDir(100.0,75.0,98.0,68.0,true,2.0)!=0)
+   { where="MR-4 a LOWER high in price cannot be a bearish divergence"; return false; }
+   if(MR_DivergenceDir(100.0,25.0,102.0,33.0,false,2.0)!=0)
+   { where="MR-4 a HIGHER low in price cannot be a bullish divergence"; return false; }
+   if(MR_DivergenceDir(100.0,75.0,102.0,74.5,true,2.0)!=0)
+   { where="MR-4 an RSI gap below the minimum is noise, not divergence"; return false; }
+   if(MR_DivergenceDir(100.0,75.0,102.0,73.0,true,2.0)!=-1)
+   { where="MR-4 an RSI gap exactly at the minimum does count"; return false; }
+   // 0.0 is this file's "indicator unavailable" sentinel, never a reading.
+   if(MR_DivergenceDir(100.0,0.0,102.0,68.0,true,2.0)!=0 ||
+      MR_DivergenceDir(100.0,75.0,102.0,0.0,true,2.0)!=0)
+   { where="MR-4 an unavailable RSI must not manufacture a divergence"; return false; }
+   if(MR_DivergenceDir(0.0,75.0,102.0,68.0,true,2.0)!=0)
+   { where="MR-4 an unavailable price must not manufacture a divergence"; return false; }
+
+   // MR-5 MACD momentum with an ATR-scaled dead zone, and the conflict test.
+   if(MR_MacdDirection(1.00,0.50,0.10)!=1)
+   { where="MR-5 a histogram above the dead zone is momentum up"; return false; }
+   if(MR_MacdDirection(0.50,1.00,0.10)!=-1)
+   { where="MR-5 a histogram below the dead zone is momentum down"; return false; }
+   if(MR_MacdDirection(1.00,0.95,0.10)!=0)
+   { where="MR-5 a hair-thin histogram inside the dead zone is not momentum"; return false; }
+   if(MR_MacdDirection(1.00,1.00,0.10)!=0)
+   { where="MR-5 a flat histogram is not momentum"; return false; }
+   if(MR_MacdDirection(1.00,0.95,0.0)!=1)
+   { where="MR-5 a zero dead zone falls back to the plain sign"; return false; }
+   if(!MR_MacdConflicts(1,1) || !MR_MacdConflicts(-1,-1))
+   { where="MR-5 momentum pushing in the stretched direction conflicts with a fade"; return false; }
+   if(MR_MacdConflicts(1,-1) || MR_MacdConflicts(-1,1))
+   { where="MR-5 momentum against the stretch does NOT conflict - it supports the fade"; return false; }
+   if(MR_MacdConflicts(1,0) || MR_MacdConflicts(0,1) || MR_MacdConflicts(0,0))
+   { where="MR-5 a filter that did not run abstains, it never vetoes"; return false; }
+
+   // MR-6 A stretch is not a direction. Something has to say it is exhausting.
+   if(MR_ResolveDirection(false,0,0,false,false)!=0 ||
+      MR_ResolveDirection(false,1,1,true,false)!=0)
+   { where="MR-6 with no overextension there is nothing to fade"; return false; }
+   if(MR_ResolveDirection(true,1,0,false,false)!=0)
+   { where="MR-6 a stretch with no exhaustion evidence resolves to nothing"; return false; }
+   if(MR_ResolveDirection(true,1,-1,false,false)!=-1)
+   { where="MR-6 stretched up with bearish divergence fades DOWN"; return false; }
+   if(MR_ResolveDirection(true,-1,1,false,false)!=1)
+   { where="MR-6 stretched down with bullish divergence fades UP"; return false; }
+   if(MR_ResolveDirection(true,1,0,true,false)!=-1)
+   { where="MR-6 an RSI extreme is exhaustion evidence on its own"; return false; }
+   if(MR_ResolveDirection(true,1,-1,false,true)!=0)
+   { where="MR-6 momentum still pushing up vetoes the short fade"; return false; }
+   if(MR_ResolveDirection(true,-1,1,false,true)!=0)
+   { where="MR-6 momentum still pushing down vetoes the long fade"; return false; }
+   if(MR_ResolveDirection(true,1,1,false,false)!=0)
+   { where="MR-6 a divergence pointing WITH the stretch contradicts the fade"; return false; }
+   if(MR_ResolveDirection(true,-1,-1,false,false)!=0)
+   { where="MR-6 the same contradiction on the low side resolves to nothing"; return false; }
+
+   // MR-7 Score arithmetic. Missing evidence is 0, never a free point.
+   if(MR_Score(false,true,true,false)!=0)
+   { where="MR-7 with no overextension nothing scores, however good the evidence"; return false; }
+   if(MR_Score(true,false,false,false)!=35)
+   { where="MR-7 the stretch alone is worth 35 and can never look like a setup"; return false; }
+   if(MR_Score(true,true,false,false)!=80)
+   { where="MR-7 an agreeing divergence is worth 45 more"; return false; }
+   if(MR_Score(true,false,true,false)!=55)
+   { where="MR-7 an RSI extreme is worth 20 more"; return false; }
+   if(MR_Score(true,true,true,false)!=100)
+   { where="MR-7 the full set of evidence is exactly 100, with MACD contributing nothing"; return false; }
+
+   // MR-8 THE "FILTER ONLY" CONTRACT: MACD can veto, and there is no combination in
+   //      which it raises the score. Checked exhaustively, not asserted in prose.
+   for(int ci=0;ci<2;ci++)
+   {
+      for(int da=0;da<2;da++)
+      {
+         for(int re=0;re<2;re++)
+         {
+            bool c=(ci==1), d=(da==1), r=(re==1);
+            int vetoed=MR_Score(true,d,r,c);
+            int plain=MR_Score(true,d,r,false);
+            if(vetoed>plain)
+            { where="MR-8 MACD must never raise the score"; return false; }
+            if(c && vetoed!=0)
+            { where="MR-8 a MACD conflict must zero the score, not merely reduce it"; return false; }
+            if(vetoed<0 || vetoed>100 || plain<0 || plain>100)
+            { where="MR-8 the score must stay inside 0..100"; return false; }
+         }
+      }
+   }
+   if(MR_Score(true,true,true,true)!=0)
+   { where="MR-8 even perfect evidence scores 0 when momentum vetoes the fade"; return false; }
+
+   // MR-9 Consistency: the verdict and the score can never contradict each other, so
+   //      the dashboard cannot print a direction next to a suppressed or zero verdict.
+   for(int e=-1;e<=1;e++)
+   {
+      for(int d=-1;d<=1;d++)
+      {
+         for(int re=0;re<2;re++)
+         {
+            for(int ci=0;ci<2;ci++)
+            {
+               bool ext=(e!=0), rsi=(re==1), conf=(ci==1);
+               int dir=MR_ResolveDirection(ext,e,d,rsi,conf);
+               int sc=MR_Score(ext,(ext && d!=0 && d==-e),rsi,conf);
+               if(conf && (dir!=0 || sc!=0))
+               { where="MR-9 a vetoed bar must show neither a direction nor a score"; return false; }
+               if(dir!=0 && sc<=0)
+               { where="MR-9 a resolved direction must carry a non-zero score"; return false; }
+               if(dir!=0 && !ext)
+               { where="MR-9 no direction without an overextension"; return false; }
+               if(dir!=0 && e!=0 && dir==e)
+               { where="MR-9 a mean-reversion direction is always OPPOSITE the stretch"; return false; }
+               if(dir!=0 && d!=0 && d!=dir)
+               { where="MR-9 a live divergence must agree with the direction printed"; return false; }
+            }
+         }
+      }
+   }
+   return true;
+}
+
 //====================================================================
 // KILL ZONES (session-local windows mapped to broker server time)
 //====================================================================
@@ -31087,6 +31787,32 @@ void DrawQuantumDashboard(const int total,const double &c[])
                   DoubleToString(g_pa_zone_top,_Digits);
       if(g_pa_reason!="") tooltip+="\nPA why: "+g_pa_reason;
       if(g_pa_invalidation!="") tooltip+="\nPA invalidation: "+g_pa_invalidation;
+   }
+
+   // AUDIT-MR1 Mean Reversion / Momentum. Tooltip, never the 11-row card, for the
+   // same reason as the modules above.
+   if(InpEnableMeanReversion && InpMRShowOnDashboard)
+   {
+      // A side is printed only when one is actually resolved, so a bare stretch or
+      // a vetoed fade can never show a direction next to a stand-aside.
+      string mr_dir=(g_mr_dir>0?"BUY":(g_mr_dir<0?"SELL":"none"));
+      tooltip+="\nMR: stretch "+DoubleToString(g_mr_stretch,2)+" sigma | dir "+mr_dir+
+               " | score "+IntegerToString(g_mr_score)+"/100 (confluence, not a win rate)";
+      if(g_mr_sigma>0.0)
+         tooltip+="\nMR bands: VWAP "+DoubleToString(g_mr_vwap,_Digits)+
+                  "  upper "+DoubleToString(g_mr_upper,_Digits)+
+                  "  lower "+DoubleToString(g_mr_lower,_Digits);
+      if(g_mr_div_dir!=0)
+         tooltip+="\nMR divergence: "+(g_mr_div_dir>0?"BULLISH":"BEARISH")+
+                  " on confirmed swings (RSI "+DoubleToString(g_mr_rsi_old,1)+" -> "+
+                  DoubleToString(g_mr_rsi_new,1)+")";
+      if(InpMRUseMACD)
+         tooltip+="\nMR momentum: "+
+                  (g_mr_macd_ready?(g_mr_macd_dir>0?"up":(g_mr_macd_dir<0?"down":"flat"))
+                                   :"unavailable")+
+                  (g_mr_macd_conflict?" - VETOES the fade":"");
+      if(g_mr_reason!="") tooltip+="\nMR why: "+g_mr_reason;
+      if(g_mr_invalidation!="") tooltip+="\nMR invalidation: "+g_mr_invalidation;
    }
 
    int chart_w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);

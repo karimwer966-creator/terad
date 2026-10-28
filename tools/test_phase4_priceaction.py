@@ -494,13 +494,22 @@ c_all = strip_comments(TEXT)
 
 
 def call_count(sig_call):
-    """Occurrences of a call, minus the forward declaration that shares its text.
-    `void PA_Clear();` contains `PA_Clear();`, so a raw count reports a call that
-    is only a declaration."""
-    n = c_all.count(sig_call)
-    d = sum(c_all.count(pre + sig_call)
-            for pre in ("void ", "int ", "bool ", "string ", "double ", "datetime "))
-    return n - d
+    """Occurrences of a real CALL of `sig_call`, excluding declarations.
+
+    A declaration and a call can share text exactly (`void   MR_Clear();` contains
+    `MR_Clear();`), so a raw count over-reports. Subtracting fixed type prefixes is
+    also wrong, because this file aligns its declarations with run-on spaces. A line
+    is a declaration when it starts with a return type and ends with a semicolon."""
+    n = 0
+    for m in re.finditer(re.escape(sig_call), c_all):
+        ls = c_all.rfind('\n', 0, m.start()) + 1
+        le = c_all.find('\n', m.end())
+        line = c_all[ls:le if le >= 0 else len(c_all)]
+        if re.match(r'^\s*(?:void|int|bool|string|double|datetime|long|ushort)\s+', line) \
+                and line.rstrip().endswith(';'):
+            continue
+        n += 1
+    return n
 
 
 check(call_count("PA_Update(closed);") == 1,
