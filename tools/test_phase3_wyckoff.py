@@ -466,10 +466,51 @@ check(consumers_checked >= 14,
       "B5 the display-only claim was checked against %d real function bodies"
       % consumers_checked, "too few located - the check would be vacuous")
 
-_i0 = TEXT.find("// AUDIT-WY1  WYCKOFF SPRING")
-_i1 = TEXT.find("// KILL ZONES (session-local windows mapped to broker server time)")
+def _fn_end(text, sig_at):
+    """Offset just past the closing brace of the function DEFINED at sig_at.
+    Braces are counted only outside comments and string literals."""
+    i, depth, started, n = sig_at, 0, False, len(text)
+    while i < n:
+        c = text[i]
+        if c == '/' and i + 1 < n and text[i+1] == '/':
+            i = text.find('\n', i)
+            if i < 0: return -1
+            continue
+        if c == '/' and i + 1 < n and text[i+1] == '*':
+            i = text.find('*/', i + 2)
+            if i < 0: return -1
+            i += 2; continue
+        if c in '"\'':
+            q = c; i += 1
+            while i < n:
+                if text[i] == '\\': i += 2; continue
+                if text[i] == q: break
+                i += 1
+            i += 1; continue
+        if c == '{': depth += 1; started = True
+        elif c == '}':
+            depth -= 1
+            if started and depth == 0: return i + 1
+        i += 1
+    return -1
+
+def _section(text, banner, sig):
+    """Slice a module's section from its banner to the end of its OWN self-test.
+    A section must never end at a shared downstream marker: ending these slices at
+    the KILL ZONES banner silently swallowed whatever module was inserted before
+    that banner, so the section contracts started testing code that did not belong
+    to them. Brace-matching the module's own last function is insertion-proof.
+    The banner precedes the definition, so searching for sig from the banner skips
+    the forward declaration."""
+    i0 = text.find(banner)
+    if i0 < 0: return -1, -1, ""
+    j = text.find(sig, i0)
+    if j < 0: return -1, -1, ""
+    e = _fn_end(text, j)
+    if e < 0: return -1, -1, ""
+    return i0, e, text[i0:e]
+_i0, _i1, wy_section = _section(TEXT, "// AUDIT-WY1  WYCKOFF SPRING", "bool WY_SelfTest(string &where)")
 check(0 < _i0 < _i1, "B the WY1 engine section was located", "%d..%d" % (_i0, _i1))
-wy_section = TEXT[_i0:_i1]
 check(len(wy_section) > 8000,
       "B the WY1 section slice is substantial (%d chars)" % len(wy_section))
 check("BufSig" not in wy_section and "SetIndexBuffer" not in wy_section,

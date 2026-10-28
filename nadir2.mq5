@@ -892,6 +892,26 @@ input int    InpWyckoffMinTouches       = 2;      // required tests of EACH boun
 input double InpWyckoffTouchTolATR      = 0.25;   // how close to a boundary still counts as touching it
 input bool   InpWyckoffRequireVolume    = true;   // require the existing displacement-or-volume sweep confirmation
 input int    InpWyckoffMaxAgeBars       = 96;     // an event older than this many closed bars is stale
+input group "====== Pure Price Action (AUDIT-PA1, display only) ======"
+// The unified pattern function ALREADY EXISTS: AnalyzeClosedCandle() returns one
+// pattern label and one 0-100 strength for nine patterns, and a "Pin Bar" is its
+// HAMMER / SHOOTING_STAR geometry. This module does not reimplement any of that.
+// It adds the one pattern from the brief that was missing (Inside Bar, which
+// lived only in PMI's g_pmi_pa.inside_bar) and, above all, it enforces the rule
+// the brief asks for and the existing scorer does not: a candle pattern is
+// CONFIRMATION ONLY inside a valid zone, never standalone.
+input bool   InpEnablePriceAction        = false;  // unify patterns and require a zone for confirmation
+input bool   InpPAShowOnDashboard        = false;  // append the price-action verdict to the dashboard tooltip
+// OPT-IN, DEFAULT OFF. ContextualCandleScore() currently awards candle.score*0.45
+// with NO zone requirement, then adds the zone as a BONUS (+12 zone_ok, +8 inside).
+// So a candle outside every zone still contributes. Turning this on makes the zone
+// a hard requirement and such a candle scores 0. While it is off - the default -
+// ContextualCandleScore() is bit-identical to what it was before this change.
+input bool   InpPARequireZoneContext     = false;  // make the zone a prerequisite, not a bonus
+input bool   InpPAIncludeInsideBar       = true;   // add INSIDE_BAR to the unified pattern set
+input int    InpPAInsideBarStrength      = 45;     // an inside bar carries no direction of its own
+input double InpPAZoneToleranceATR       = 0.15;   // how close to a zone still counts as inside it
+input bool   InpPAIncludePOC             = true;   // count the active volume-profile POC as a zone
 input group "====== Premium / Discount & OTE ======"
 input bool InpShowPremiumDiscount = true;
 input bool InpPDLinesOnly = false;          // draw range boundaries / EQ as Fibonacci-style lines
@@ -1905,6 +1925,26 @@ bool     g_wy_conflict=false;        // disagrees with the Judas verdict on the 
 int      g_wy_score=0;               // 0-100 rule-based confluence count, NOT a probability
 string   g_wy_reason="";
 string   g_wy_invalidation="";
+
+//--- AUDIT-PA1 PURE PRICE ACTION (display only). One pattern, one strength, and
+//--- a verdict that is empty unless price is inside a valid zone. The zone scan
+//--- reads the arrays the existing detectors already publish (g_order_blocks,
+//--- g_fvgs, g_zones, g_mvp) and honours their own state vocabulary, so no second
+//--- zone system and no second opinion about whether a zone is still alive.
+string   g_pa_pattern="NONE";        // unified label from the existing 9 + INSIDE_BAR
+int      g_pa_strength=0;            // 0-100
+int      g_pa_pattern_dir=0;         // direction the pattern itself carries (0 = none)
+bool     g_pa_inside_bar=false;
+bool     g_pa_in_zone=false;
+string   g_pa_zone_name="";          // OB / FVG / SR / POC
+double   g_pa_zone_top=0.0;
+double   g_pa_zone_bottom=0.0;
+int      g_pa_zone_dir=0;
+int      g_pa_dir=0;                 // resolved direction, 0 when there is no zone
+bool     g_pa_confirms=false;
+int      g_pa_score=0;               // 0-100 rule-based confluence count, NOT a probability
+string   g_pa_reason="";
+string   g_pa_invalidation="";
 datetime g_htf_cache_time = 0;
 datetime g_d1_cache_time = 0;
 bool g_memo_hit = false;
@@ -5510,6 +5550,24 @@ bool WY_SelfTest(string &where);
 bool WY_BuildRange(const int end_bar,const double atr,const int max_bars,const double max_height_atr,
                    const double touch_tol,int &start_bar,double &hi,double &lo,
                    int &touches_high,int &touches_low);
+// AUDIT-PA1 Pure Price Action. The first five are PURE - no global, no series and
+// no terminal call - so they are exercisable offline by
+// tools/test_phase4_priceaction.py and in-terminal by PA_SelfTest(), the same
+// arrangement the AUDIT-SB1 and AUDIT-WY1 cores use so transcriptions cannot drift.
+bool PA_InsideBarGeometry(const double h,const double l,const double prev_h,const double prev_l);
+string PA_UnifyPattern(const string candle_pattern,const bool inside_bar,
+                       const bool include_inside_bar);
+int PA_UnifyStrength(const string candle_pattern,const int candle_score,
+                     const bool is_inside_bar,const int inside_bar_strength);
+int PA_PatternDirection(const string pattern);
+bool PA_IsConflict(const int pattern_dir,const int zone_dir);
+int PA_ResolveDirection(const bool in_zone,const int pattern_dir,const int zone_dir);
+int PA_Score(const bool in_zone,const int pattern_strength,const bool direction_agrees);
+bool PA_ZoneAt(const double price,const int closed,const double atr,
+               string &name,double &top,double &bottom,int &dir);
+void PA_Update(const int closed);
+void PA_Clear();
+bool PA_SelfTest(string &where);
 bool IsInSession(const datetime server_time,const ENUM_SESSION_ID session_id);
 bool IsInKillZone(const datetime server_time,const ENUM_SESSION_ID session_id);
 int ChartEventBarAtTime(const datetime &chart_time[],const int total,const datetime event_time);
@@ -14534,6 +14592,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    ScenarioClear();
    SBP3_Clear();
    WY_Clear();
+   PA_Clear();
    if(InpMTEERunSelfTest)
    {
       string mtee_fail="";
@@ -14553,6 +14612,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          Print(">>> ",QSMC_VERSION_TEXT," Wyckoff Spring/Upthrust self-test: PASS (9/9)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Wyckoff Spring/Upthrust self-test: FAIL - ",mtee_fail);
+      if(PA_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Pure Price Action self-test: PASS (9/9)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Pure Price Action self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
@@ -15311,6 +15374,15 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    PMI_UpdateAll(rates_total,is_new_bar || detection_updated);
    // v6.2.0 Master Volume Profile: closed-bar, observational, no entry authority.
    MVP_Update(rates_total, is_new_bar || prev_calculated==0, is_new_bar || prev_calculated==0);
+   // AUDIT-PA1 Pure Price Action: closed-bar, observational, no entry authority.
+   // It runs HERE and not at the detection convergence point above, for the same
+   // reason the next block states for ZRE_Update: PA_ZoneAt() reads the active
+   // profile's POC as one of its zone sources, so calling it before MVP_Update
+   // would test price against a stale or absent POC. Its other inputs are already
+   // final by this point - g_order_blocks / g_fvgs / g_zones from the detection
+   // pass, and g_atr_buf / g_atr written earlier in this same pass. Once per closed
+   // bar, never per tick, and skipped entirely while its switch is off.
+   if(is_new_bar || detection_updated) PA_Update(closed);
    // v6.3.0 Zone Reaction Engine: closed-bar, observational, no entry authority.
    // Runs after MVP_Update so the active profile levels are current.
    ZRE_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);
@@ -17286,6 +17358,16 @@ int ContextualCandleScore(const SCandleIntel &candle,const bool is_buy,const dou
    double zone_mid=(zone_top+zone_bottom)*0.5;
    bool candle_in_zone=(price<=zone_top+MathMax(_Point,atr*0.15) &&
                         price>=zone_bottom-MathMax(_Point,atr*0.15));
+   // AUDIT-PA1 OPT-IN HARD GATE, DEFAULT OFF. The two lines above award
+   // candle.score*0.45 BEFORE any zone is considered and then add the zone as a
+   // BONUS (+12 zone_ok, +8 candle_in_zone), so a candle outside every zone still
+   // contributes - a MORNING_STAR of 88 scores about 40 standalone. The brief for
+   // this module is "confirmation only inside a valid zone, never standalone", so
+   // this gate exists to deliver it. It is OFF by default: while
+   // InpPARequireZoneContext is false the statement below is skipped and every
+   // line of this function is bit-identical to what it was before this change,
+   // so no existing score, weight or historical value moves.
+   if(InpPARequireZoneContext && !zone_ok && !candle_in_zone) return 0;
    if(zone_ok) score+=12.0;
    if(candle_in_zone) score+=8.0;
    if(sweep_ok) score+=10.0;
@@ -25164,6 +25246,429 @@ bool WY_SelfTest(string &where)
    return true;
 }
 
+
+//====================================================================
+// AUDIT-PA1  PURE PRICE ACTION   (DISPLAY ONLY)
+//
+// WHAT ALREADY EXISTED, AND IS THEREFORE NOT REWRITTEN HERE.
+// AnalyzeClosedCandle() (defined far above) IS the unified pattern function the
+// brief asks for: one call, one pattern label, one 0-100 strength, covering nine
+// patterns - BULLISH/BEARISH_ENGULFING, MORNING/EVENING_STAR, HAMMER,
+// SHOOTING_STAR, PIERCING, DARK_CLOUD, DOJI and the two displacement candles.
+// A "Pin Bar" is not a separate pattern in this file and does not need to be: it
+// IS the HAMMER / SHOOTING_STAR geometry. CandleConfirmsDirection() already
+// enforces agreement between a pattern and a side.
+//
+// So this module reimplements none of that. It adds exactly two things:
+//
+//   1. INSIDE BAR - the one pattern from the brief that AnalyzeClosedCandle()
+//      does not detect. It existed only as g_pmi_pa.inside_bar inside PMI, so the
+//      unified answer was incomplete. It is added WITHOUT reordering the existing
+//      chain: INSIDE_BAR is reported only when AnalyzeClosedCandle() found
+//      nothing, so no bar that is classified today can be reclassified. In
+//      particular a small-bodied inside bar stays a DOJI, exactly as before.
+//
+//   2. THE ZONE RULE - "confirmation only inside a valid zone, never standalone".
+//      This is the part the file did NOT enforce. ContextualCandleScore() awards
+//      candle.score*0.45 with no zone requirement at all and then adds the zone as
+//      a BONUS (+12 zone_ok, +8 candle_in_zone), so a MORNING_STAR outside every
+//      zone still contributes about 40 points. PA_ResolveDirection() returns 0
+//      direction and PA_Score() returns 0 whenever there is no zone. The existing
+//      scorer is left alone except for one opt-in, default-OFF gate - see
+//      InpPARequireZoneContext - so nothing changes until an operator asks for it.
+//
+// ZONE SOURCES ARE THE EXISTING ONES, WITH THEIR OWN STATE VOCABULARY. The scan
+// reads g_order_blocks, g_fvgs, g_zones and the active g_mvp profile, and honours
+// the states those detectors already maintain: an order block that is MITIGATED or
+// EXPIRED is not a zone, an FVG that is FILLED is not a zone, an S/R zone that is
+// MITIGATED is not a zone. No parallel zone system, and no second opinion about
+// whether a zone is still alive. The POC validity test is the one the volume
+// profile already applies to itself.
+//
+// DIRECTION, AND WHY AN INSIDE BAR HAS NONE. A pattern that carries its own
+// direction (engulfing, star, hammer, shooting star, piercing, dark cloud,
+// displacement) keeps it. A pattern that does not - INSIDE_BAR and DOJI are both
+// compression, not reversal - takes the ZONE's direction instead, which is the
+// only honest reading: an inside bar inside a bullish order block is bullish
+// because of where it is, not because of what it is. When a directional pattern
+// CONTRADICTS the zone it sits in, the answer is 0 and the reason says CONFLICT,
+// rather than one of the two being quietly preferred.
+//
+// CAUSALITY. Everything is read from the closed bar and the one before it, via the
+// file's own closed-bar convention and its mirrored g_buf_* series. No forming bar
+// and no future bar is read, and nothing is latched between passes: PA_Update()
+// recomputes from scratch, so a full rebuild reproduces what the incremental
+// passes published.
+//
+// SCORES ARE RULE-BASED CONFLUENCE COUNTS, NOT PROBABILITIES. Missing evidence
+// scores 0 and no leg is ever awarded for free.
+//
+// COMPLEXITY: one AnalyzeClosedCandle() call (O(1)) plus one pass over each zone
+// array, all of which the file already caps (InpMaxStrongOB, InpMaxLiquidityKeep
+// and friends). Skipped entirely while InpEnablePriceAction is false, which is the
+// default, so the shipped cost is zero.
+//
+// KNOWN PRE-EXISTING DIVERGENCE, DELIBERATELY NOT CHANGED HERE. The MTF sniper's
+// C1 gate re-implements engulfing and a "pin bar" from scratch with looser
+// thresholds (lower_wick >= 0.50 * range) than AnalyzeClosedCandle() applies
+// (lower >= body*2.0 with close_location >= 0.62). They disagree: C1 accepts a bar
+// with a large upper wick and no rejection quality as a pin bar. Unifying them
+// would TIGHTEN an existing entry gate and change historical behavior, so it is
+// reported and pinned by tools/test_phase4_priceaction.py instead of being fixed.
+//====================================================================
+
+// PURE. Strict inequality, matching the test PMI already applies at
+// g_pmi_pa.inside_bar, so the two cannot disagree about the same two bars.
+bool PA_InsideBarGeometry(const double h,const double l,const double prev_h,const double prev_l)
+{
+   if(!(prev_h>0.0) || !(prev_l>0.0)) return false;   // an unknown parent bar is not an inside bar
+   if(!(h>0.0) || !(l>0.0)) return false;
+   return (h<prev_h && l>prev_l);
+}
+
+// PURE. The unified label. The existing chain is never reordered and never
+// overridden: a pattern AnalyzeClosedCandle() already named is returned as it is,
+// and INSIDE_BAR fills only the gap where it found nothing.
+string PA_UnifyPattern(const string candle_pattern,const bool inside_bar,
+                       const bool include_inside_bar)
+{
+   if(candle_pattern!="NONE" && candle_pattern!="") return candle_pattern;
+   if(include_inside_bar && inside_bar) return "INSIDE_BAR";
+   return "NONE";
+}
+
+// PURE. The strength that goes with the unified label. An inside bar carries no
+// reversal claim, so it is worth less than any named reversal pattern and its
+// value is an input rather than a number buried in the logic.
+int PA_UnifyStrength(const string candle_pattern,const int candle_score,
+                     const bool is_inside_bar,const int inside_bar_strength)
+{
+   if(is_inside_bar)
+   {
+      int s=inside_bar_strength;
+      if(s<0) s=0;
+      if(s>100) s=100;
+      return s;
+   }
+   if(candle_score<0) return 0;
+   if(candle_score>100) return 100;
+   return candle_score;
+}
+
+// PURE. Which patterns carry a direction of their own, and which do not. DOJI and
+// INSIDE_BAR are compression: they say price is coiling, not which way it breaks.
+int PA_PatternDirection(const string pattern)
+{
+   if(pattern=="BULLISH_ENGULFING" || pattern=="MORNING_STAR" || pattern=="HAMMER" ||
+      pattern=="PIERCING" || pattern=="BULLISH_DISPLACEMENT_CANDLE") return 1;
+   if(pattern=="BEARISH_ENGULFING" || pattern=="EVENING_STAR" || pattern=="SHOOTING_STAR" ||
+      pattern=="DARK_CLOUD" || pattern=="BEARISH_DISPLACEMENT_CANDLE") return -1;
+   return 0;
+}
+
+// PURE. A directional pattern inside a zone that points the other way is a
+// contradiction, and contradictions are surfaced rather than resolved by
+// preferring one source silently.
+bool PA_IsConflict(const int pattern_dir,const int zone_dir)
+{
+   return (pattern_dir!=0 && zone_dir!=0 && pattern_dir!=zone_dir);
+}
+
+// PURE, and this is the rule the brief actually asks for. No zone means no
+// direction: a candle pattern on its own is NOT confirmation, however strong it
+// looks. An undirectional pattern inside a zone takes the zone's direction.
+int PA_ResolveDirection(const bool in_zone,const int pattern_dir,const int zone_dir)
+{
+   if(!in_zone) return 0;
+   if(PA_IsConflict(pattern_dir,zone_dir)) return 0;
+   if(pattern_dir!=0) return pattern_dir;
+   return zone_dir;
+}
+
+// PURE confluence count, 0-100. Being inside a valid zone is worth 25 on its own,
+// the pattern contributes up to 45 scaled from its own strength, and a resolved
+// direction that the zone agrees with is worth 30. Outside a zone the answer is 0
+// - there is no partial credit for a standalone candle.
+int PA_Score(const bool in_zone,const int pattern_strength,const bool direction_agrees)
+{
+   if(!in_zone) return 0;
+   int s=25;
+   int strength=pattern_strength;
+   if(strength<0) strength=0;
+   if(strength>100) strength=100;
+   s+=(int)MathRound((double)strength*0.45);
+   if(direction_agrees) s+=30;
+   return (s>100?100:s);
+}
+
+// The zone scan. Returns the highest-priority LIVE zone containing `price`,
+// reading only what the existing detectors already published. Priority is
+// OB > FVG > S/R > POC: the causal zones first, the statistical level last.
+bool PA_ZoneAt(const double price,const int closed,const double atr,
+               string &name,double &top,double &bottom,int &dir)
+{
+   name=""; top=0.0; bottom=0.0; dir=0;
+   if(!(price>0.0) || closed<0) return false;
+   // The same tolerance idiom ContextualCandleScore() already uses for
+   // candle_in_zone, so "inside a zone" means the same thing in both places.
+   double tol=MathMax(_Point,(atr>0.0 ? atr*InpPAZoneToleranceATR : 0.0));
+
+   int i=0;
+   //--- order blocks: honour the state machine, including the EXPIRED state that
+   //--- AUDIT-OB1 added. A mitigated or expired block is not a zone to confirm at.
+   for(i=0;i<ArraySize(g_order_blocks);i++)
+   {
+      if(g_order_blocks[i].mitigated) continue;
+      if(g_order_blocks[i].state=="MITIGATED" || g_order_blocks[i].state=="EXPIRED") continue;
+      if(!(g_order_blocks[i].top>g_order_blocks[i].bottom)) continue;
+      if(price<=g_order_blocks[i].top+tol && price>=g_order_blocks[i].bottom-tol)
+      {
+         name="OB"; top=g_order_blocks[i].top; bottom=g_order_blocks[i].bottom;
+         dir=(g_order_blocks[i].bullish?1:-1);
+         return true;
+      }
+   }
+   //--- fair value gaps: a FILLED gap is history, not a zone.
+   for(i=0;i<ArraySize(g_fvgs);i++)
+   {
+      if(g_fvgs[i].filled) continue;
+      if(g_fvgs[i].state=="FILLED") continue;
+      if(!(g_fvgs[i].top>g_fvgs[i].bottom)) continue;
+      if(price<=g_fvgs[i].top+tol && price>=g_fvgs[i].bottom-tol)
+      {
+         name="FVG"; top=g_fvgs[i].top; bottom=g_fvgs[i].bottom;
+         dir=(g_fvgs[i].bullish?1:-1);
+         return true;
+      }
+   }
+   //--- support / resistance zones.
+   for(i=0;i<ArraySize(g_zones);i++)
+   {
+      if(g_zones[i].state=="MITIGATED") continue;
+      if(!(g_zones[i].top>g_zones[i].bottom)) continue;
+      if(price<=g_zones[i].top+tol && price>=g_zones[i].bottom-tol)
+      {
+         name="SR"; top=g_zones[i].top; bottom=g_zones[i].bottom;
+         dir=(g_zones[i].bullish?1:-1);
+         return true;
+      }
+   }
+   //--- the active volume-profile POC. A level, not a box, and it carries no
+   //--- direction of its own - which is exactly why a pattern is still needed.
+   //--- The validity test is the one the volume profile already applies to itself.
+   if(InpPAIncludePOC && InpUseMasterVolumeProfile &&
+      g_mvp_active>=0 && g_mvp_active<g_mvp_count && g_mvp[g_mvp_active].valid &&
+      g_mvp[g_mvp_active].bar_end>=0 && g_mvp[g_mvp_active].bar_end<=closed &&
+      g_mvp[g_mvp_active].poc>0.0)
+   {
+      if(MathAbs(price-g_mvp[g_mvp_active].poc)<=tol)
+      {
+         name="POC"; top=g_mvp[g_mvp_active].poc; bottom=g_mvp[g_mvp_active].poc;
+         dir=0;
+         return true;
+      }
+   }
+   return false;
+}
+
+// The adapter. It asks the EXISTING unified function for the pattern, adds the one
+// pattern that was missing, finds the zone from the arrays that already exist, and
+// then applies the rule that a pattern without a zone is not confirmation.
+void PA_Update(const int closed)
+{
+   g_pa_pattern="NONE"; g_pa_strength=0; g_pa_pattern_dir=0; g_pa_inside_bar=false;
+   g_pa_in_zone=false; g_pa_zone_name=""; g_pa_zone_top=0.0; g_pa_zone_bottom=0.0;
+   g_pa_zone_dir=0; g_pa_dir=0; g_pa_confirms=false; g_pa_score=0;
+   g_pa_reason=""; g_pa_invalidation="";
+   if(!InpEnablePriceAction) return;
+   if(closed<2 || closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_h) ||
+      closed>=ArraySize(g_buf_l) || closed>=ArraySize(g_buf_o)) return;
+
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ? g_atr_buf[closed] : g_atr;
+
+   // The existing unified function, unchanged and un-reimplemented.
+   SCandleIntel candle=AnalyzeClosedCandle(closed,g_buf_o,g_buf_h,g_buf_l,g_buf_c,atr);
+   bool inside=PA_InsideBarGeometry(g_buf_h[closed],g_buf_l[closed],
+                                    g_buf_h[closed-1],g_buf_l[closed-1]);
+   g_pa_inside_bar=inside;
+
+   g_pa_pattern=PA_UnifyPattern(candle.pattern,inside,InpPAIncludeInsideBar);
+   bool became_inside=(g_pa_pattern=="INSIDE_BAR");
+   g_pa_strength=PA_UnifyStrength(candle.pattern,candle.score,became_inside,
+                                  InpPAInsideBarStrength);
+   g_pa_pattern_dir=PA_PatternDirection(g_pa_pattern);
+
+   // The zone is tested at the CLOSED bar's close, which is the price that has to
+   // still be inside the zone for the pattern to mean anything.
+   g_pa_in_zone=PA_ZoneAt(g_buf_c[closed],closed,atr,g_pa_zone_name,
+                          g_pa_zone_top,g_pa_zone_bottom,g_pa_zone_dir);
+
+   bool conflict=PA_IsConflict(g_pa_pattern_dir,g_pa_zone_dir);
+   g_pa_dir=PA_ResolveDirection(g_pa_in_zone,g_pa_pattern_dir,g_pa_zone_dir);
+   bool agrees=(g_pa_dir!=0 && g_pa_dir==g_pa_zone_dir);
+   g_pa_confirms=(g_pa_dir!=0 && g_pa_strength>0);
+   g_pa_score=PA_Score(g_pa_in_zone,g_pa_strength,agrees);
+
+   if(!g_pa_in_zone)
+   {
+      // The whole point of the module: a standalone candle is not confirmation,
+      // and the reason says so instead of leaving a score of 0 unexplained.
+      g_pa_reason="stand aside: "+g_pa_pattern+" is not inside any valid zone"+
+                  " - a candle pattern on its own is not confirmation";
+      g_pa_invalidation="price is outside every live OB / FVG / S-R / POC";
+   }
+   else if(conflict)
+   {
+      g_pa_reason="CONFLICT - "+g_pa_pattern+" points against the "+g_pa_zone_name+
+                  " zone it sits in, so neither is preferred";
+      g_pa_invalidation="the pattern and the zone disagree about direction";
+   }
+   else if(g_pa_dir==0)
+   {
+      g_pa_reason=g_pa_pattern+" inside "+g_pa_zone_name+
+                  " carries no direction and the zone gives none";
+      g_pa_invalidation="no side is resolved";
+   }
+   else
+   {
+      g_pa_reason=g_pa_pattern+" inside "+g_pa_zone_name+
+                  " confirms "+(g_pa_dir>0?"the buy side":"the sell side");
+      g_pa_invalidation="a closed bar out of the zone, or against the pattern";
+   }
+   if(g_pa_in_zone)
+      g_pa_reason=g_pa_reason+" ("+g_pa_zone_name+" "+
+                  DoubleToString(g_pa_zone_bottom,_Digits)+"-"+
+                  DoubleToString(g_pa_zone_top,_Digits)+")";
+
+   if(InpLogLifecycleTransitions && g_pa_confirms)
+      LogLifecycle(StringFormat("PA %s strength=%d dir=%+d zone=%s score=%d %s",
+                                g_pa_pattern,g_pa_strength,g_pa_dir,g_pa_zone_name,
+                                g_pa_score,g_pa_reason));
+}
+
+// Reset to the inert state, beside the other module resets.
+void PA_Clear()
+{
+   g_pa_pattern="NONE"; g_pa_strength=0; g_pa_pattern_dir=0; g_pa_inside_bar=false;
+   g_pa_in_zone=false; g_pa_zone_name=""; g_pa_zone_top=0.0; g_pa_zone_bottom=0.0;
+   g_pa_zone_dir=0; g_pa_dir=0; g_pa_confirms=false; g_pa_score=0;
+   g_pa_reason=""; g_pa_invalidation="";
+}
+
+
+// AUDIT-PA1 self-test. It exercises the PURE cores with local values only - no
+// chart, no series, no terminal state - so a logic regression is caught at OnInit
+// instead of on a live bar. Gated by InpMTEERunSelfTest, the file's existing
+// general self-test switch.
+bool PA_SelfTest(string &where)
+{
+   where="";
+
+   // PA-1 Inside-bar geometry. Strict inequality, matching the test PMI already
+   //      applies, so an equal high or an equal low is NOT an inside bar.
+   if(!PA_InsideBarGeometry(101.0,99.0,102.0,98.0))
+   { where="PA-1 a bar strictly contained by its parent is an inside bar"; return false; }
+   if(PA_InsideBarGeometry(102.0,99.0,102.0,98.0))
+   { where="PA-1 an equal high is not an inside bar (the bound is strict)"; return false; }
+   if(PA_InsideBarGeometry(101.0,98.0,102.0,98.0))
+   { where="PA-1 an equal low is not an inside bar (the bound is strict)"; return false; }
+   if(PA_InsideBarGeometry(103.0,97.0,102.0,98.0))
+   { where="PA-1 an engulfing bar is not an inside bar"; return false; }
+   if(PA_InsideBarGeometry(101.0,99.0,0.0,0.0))
+   { where="PA-1 an unknown parent bar must not be guessed as an inside bar"; return false; }
+
+   // PA-2 Unification NEVER reclassifies. This is the property that keeps the
+   //      existing AnalyzeClosedCandle() output intact: a pattern it already named
+   //      is returned unchanged even when the bar is also an inside bar, and
+   //      INSIDE_BAR fills only the gap where it found nothing. Without this, a
+   //      small-bodied inside bar that is a DOJI today would silently become
+   //      INSIDE_BAR and change its score.
+   if(PA_UnifyPattern("DOJI",true,true)!="DOJI")
+   { where="PA-2 a DOJI that is also an inside bar must stay a DOJI"; return false; }
+   if(PA_UnifyPattern("HAMMER",true,true)!="HAMMER")
+   { where="PA-2 a named pattern is never overridden by INSIDE_BAR"; return false; }
+   if(PA_UnifyPattern("NONE",true,true)!="INSIDE_BAR")
+   { where="PA-2 INSIDE_BAR fills the gap where nothing else matched"; return false; }
+   if(PA_UnifyPattern("NONE",false,true)!="NONE")
+   { where="PA-2 a bar that is not an inside bar stays NONE"; return false; }
+   if(PA_UnifyPattern("NONE",true,false)!="NONE")
+   { where="PA-2 the inside-bar leg is switchable and off means off"; return false; }
+   if(PA_UnifyPattern("",true,true)!="INSIDE_BAR")
+   { where="PA-2 an empty pattern label is treated as no pattern"; return false; }
+
+   // PA-3 Strength mapping and clamping. An inside bar takes the configured value,
+   //      every other pattern keeps the strength AnalyzeClosedCandle() assigned.
+   if(PA_UnifyStrength("NONE",0,true,45)!=45)
+   { where="PA-3 an inside bar takes its configured strength"; return false; }
+   if(PA_UnifyStrength("MORNING_STAR",88,false,45)!=88)
+   { where="PA-3 a named pattern keeps its own strength"; return false; }
+   if(PA_UnifyStrength("NONE",0,true,999)!=100)
+   { where="PA-3 an out-of-range inside-bar strength is clamped to 100"; return false; }
+   if(PA_UnifyStrength("NONE",0,true,-5)!=0)
+   { where="PA-3 a negative inside-bar strength is clamped to 0"; return false; }
+   if(PA_UnifyStrength("X",150,false,45)!=100 || PA_UnifyStrength("X",-3,false,45)!=0)
+   { where="PA-3 an out-of-range candle score is clamped both ways"; return false; }
+
+   // PA-4 Direction vocabulary. Compression patterns carry NO direction of their
+   //      own - that is what makes the zone necessary rather than decorative.
+   if(PA_PatternDirection("BULLISH_ENGULFING")!=1 || PA_PatternDirection("MORNING_STAR")!=1 ||
+      PA_PatternDirection("HAMMER")!=1 || PA_PatternDirection("PIERCING")!=1 ||
+      PA_PatternDirection("BULLISH_DISPLACEMENT_CANDLE")!=1)
+   { where="PA-4 every bullish pattern must resolve to +1"; return false; }
+   if(PA_PatternDirection("BEARISH_ENGULFING")!=-1 || PA_PatternDirection("EVENING_STAR")!=-1 ||
+      PA_PatternDirection("SHOOTING_STAR")!=-1 || PA_PatternDirection("DARK_CLOUD")!=-1 ||
+      PA_PatternDirection("BEARISH_DISPLACEMENT_CANDLE")!=-1)
+   { where="PA-4 every bearish pattern must resolve to -1"; return false; }
+   if(PA_PatternDirection("DOJI")!=0 || PA_PatternDirection("INSIDE_BAR")!=0 ||
+      PA_PatternDirection("NONE")!=0 || PA_PatternDirection("SOMETHING_NEW")!=0)
+   { where="PA-4 compression and unknown patterns must carry no direction"; return false; }
+
+   // PA-5 THE RULE THE BRIEF ASKS FOR: never standalone. Without a zone there is
+   //      no direction, however strong or however clearly directional the pattern.
+   if(PA_ResolveDirection(false,1,1)!=0 || PA_ResolveDirection(false,-1,-1)!=0)
+   { where="PA-5 a directional pattern outside any zone must resolve to no direction"; return false; }
+   if(PA_ResolveDirection(false,1,0)!=0 || PA_ResolveDirection(false,0,1)!=0)
+   { where="PA-5 no combination escapes the zone requirement"; return false; }
+
+   // PA-6 Inside a zone, an undirectional pattern takes the ZONE's direction - an
+   //      inside bar in a bullish order block is bullish because of where it is.
+   if(PA_ResolveDirection(true,0,1)!=1 || PA_ResolveDirection(true,0,-1)!=-1)
+   { where="PA-6 an undirectional pattern inside a zone takes the zone's side"; return false; }
+   if(PA_ResolveDirection(true,1,1)!=1 || PA_ResolveDirection(true,-1,-1)!=-1)
+   { where="PA-6 an agreeing pattern keeps its own direction"; return false; }
+
+   // PA-7 A pattern that contradicts the zone it sits in resolves to nothing, and
+   //      is flagged - neither source is silently preferred over the other.
+   if(PA_ResolveDirection(true,1,-1)!=0 || PA_ResolveDirection(true,-1,1)!=0)
+   { where="PA-7 a pattern contradicting its zone must resolve to no direction"; return false; }
+   if(!PA_IsConflict(1,-1) || !PA_IsConflict(-1,1))
+   { where="PA-7 opposite pattern and zone directions are a conflict"; return false; }
+   if(PA_IsConflict(0,1) || PA_IsConflict(1,0) || PA_IsConflict(1,1) || PA_IsConflict(0,0))
+   { where="PA-7 an undirectional pattern or an undirectional zone is not a conflict"; return false; }
+
+   // PA-8 Score arithmetic. Outside a zone the score is 0 - there is no partial
+   //      credit for a standalone candle, which is precisely the behavior
+   //      ContextualCandleScore() does not have today.
+   if(PA_Score(false,88,true)!=0 || PA_Score(false,100,true)!=0)
+   { where="PA-8 a candle outside any zone scores 0, not a fraction of its strength"; return false; }
+   if(PA_Score(true,0,false)!=25)
+   { where="PA-8 being inside a valid zone is worth 25 on its own"; return false; }
+   if(PA_Score(true,100,false)!=70)
+   { where="PA-8 a maximum-strength pattern adds 45, giving 70 without agreement"; return false; }
+   if(PA_Score(true,100,true)!=100)
+   { where="PA-8 zone + maximum pattern + agreement is exactly 100"; return false; }
+   if(PA_Score(true,45,true)!=75)
+   { where="PA-8 an inside bar of strength 45 with agreement scores 75"; return false; }
+
+   // PA-9 The score cannot be pushed out of range by a bad strength input.
+   if(PA_Score(true,9999,true)!=100 || PA_Score(true,-9999,true)!=55)
+   { where="PA-9 an out-of-range pattern strength must be clamped, not propagated"; return false; }
+   if(PA_Score(true,88,true)>100 || PA_Score(true,88,true)<0)
+   { where="PA-9 the score must stay inside 0..100"; return false; }
+   return true;
+}
+
 //====================================================================
 // KILL ZONES (session-local windows mapped to broker server time)
 //====================================================================
@@ -30565,6 +31070,24 @@ void DrawQuantumDashboard(const int total,const double &c[])
       if(g_wy_active && g_wy_invalidation!="") tooltip+="\nWY invalidation: "+g_wy_invalidation;
    }
    WY_DrawRange(closed);
+
+   // AUDIT-PA1 Pure Price Action. Tooltip, never the 11-row card, for the same
+   // reason as the modules above.
+   if(InpEnablePriceAction && InpPAShowOnDashboard)
+   {
+      // A direction is printed only when one is actually resolved, so a standalone
+      // or conflicted pattern can never show a side next to a stand-aside.
+      string pa_dir=(g_pa_dir>0?"BUY":(g_pa_dir<0?"SELL":"none"));
+      tooltip+="\nPA: "+g_pa_pattern+" strength "+IntegerToString(g_pa_strength)+
+               "/100 | dir "+pa_dir+" | "+(g_pa_confirms?"CONFIRMS":"not confirmation")+
+               " | score "+IntegerToString(g_pa_score)+"/100 (confluence, not a win rate)";
+      if(g_pa_in_zone)
+         tooltip+="\nPA zone: "+g_pa_zone_name+" "+
+                  DoubleToString(g_pa_zone_bottom,_Digits)+"-"+
+                  DoubleToString(g_pa_zone_top,_Digits);
+      if(g_pa_reason!="") tooltip+="\nPA why: "+g_pa_reason;
+      if(g_pa_invalidation!="") tooltip+="\nPA invalidation: "+g_pa_invalidation;
+   }
 
    int chart_w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
 

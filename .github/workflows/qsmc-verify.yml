@@ -100,6 +100,19 @@ jobs:
       - name: Wyckoff Spring/Upthrust (reconciled with Judas, no buffer moved, display only)
         run: python3 tools/test_phase3_wyckoff.py 2>&1 | tee out/test_phase3_wyckoff.log
 
+      # AUDIT-PA1 pure price action. Proves the module reuses AnalyzeClosedCandle()
+      # instead of re-implementing it, that INSIDE_BAR is reported only where the
+      # existing chain found nothing (so no bar is reclassified), that a pattern
+      # outside every zone resolves to no direction and a score of 0, and that the
+      # single edit to existing code - the ContextualCandleScore() zone gate - is
+      # inert while InpPARequireZoneContext is false. It also PINS the pre-existing
+      # three-way candle divergence by searching for bars on which
+      # AnalyzeClosedCandle(), AnalyzeCandleIntelligence() and the MTF sniper C1
+      # gate disagree, so that divergence cannot be silently "fixed" by tightening
+      # an entry gate.
+      - name: Pure price action (never standalone, no buffer moved, display only)
+        run: python3 tools/test_phase4_priceaction.py 2>&1 | tee out/test_phase4_priceaction.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 
