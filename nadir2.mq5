@@ -16612,7 +16612,7 @@ int SelectBestStructureAnchor(const int total,const double &c[],int &sweep_event
       g_gate_audit.type_ok++;
       int sw=-1,dp=-1,se=-1,ob=-1,fv=-1;
       if(!ResolveCausalPath(si,sw,dp,se,ob,fv)) continue;
-      GateProfileNote("path",(double)(sw>=0 && dp>=0 && se>=0 ? 1 : 0));
+      GateProfileNote("path",1.0);   // anchors that RESOLVED a causal path (a funnel count)
       if(fv>=0)
       {
          int fi=g_causal_events[fv].source_index;
@@ -18183,7 +18183,7 @@ double g_gp_best_need=0.0;               // points it was short (0 = it would pa
 // Slot map (kept in step with the companion's ProfileCodeText()).
 //  0 confidence |  1 reliability |  2 RR1 points |  3 stop ATR (+3 left room)
 //  4 anchors |  5 type-ok |  6 causal path |  7 location |  8 geometry
-//  9 score | 10 spread pts | 11 sweep->disp bars | 12 disp->break bars
+//  9 (unused) | 10 spread pts | 11 sweep->disp bars | 12 disp->break bars
 // 13 displacement body ATR | 14 anchor age bars | 23 confidence need
 // 24 reliability need | 25 RR need | 26 stop need | 21 cone/flags | 15 pool
 int GateProfileSlot(const string what)
@@ -18197,7 +18197,6 @@ int GateProfileSlot(const string what)
    if(what=="path")          return 6;
    if(what=="location")      return 7;
    if(what=="geometry")      return 8;
-   if(what=="score")         return 9;
    if(what=="spread")        return 10;
    if(what=="sweepdisp")     return 11;
    if(what=="dispbreak")     return 12;
@@ -19846,7 +19845,6 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       return;
    }
    string loc_why="";
-   GateProfileNote("location",1.0);
    if(!IsInstitutionalLocation(is_buy,zone_top,zone_bottom,atr,loc_why))
    {
       g_causal_diag.watch=true;
@@ -19858,6 +19856,7 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       return;
    }
    g_gate_audit.location_ok++;
+   GateProfileNote("location",1.0);   // counted only when the gate PASSED
 
    //--- v6.4.2 AUDIT-C1: the same single source of truth the ZRE layer uses.
    //--- A demand zone cannot produce a SELL and a supply zone cannot produce a
@@ -20216,7 +20215,6 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    }
    int conf=(int)MathRound(final_score);
    GateProfileNote("confidence",(double)conf);
-   GateProfileNote("score",(double)conf);
    if(conf<InpMinConfidenceScore)
    {
       GateProfileNeed("confneed",(double)InpMinConfidenceScore-(double)conf);

@@ -168,7 +168,7 @@ require(set(gp_host) == set(gp_ea),
 # --- the indicator records a value at every gate it claims to profile
 note_sites = set(re.findall(r'GateProfileNote\("(\w+)",', host))
 for what in ("confidence", "reliability", "rr1", "stopatr", "spread", "location",
-             "anchorage", "path", "sweepdisp", "dispbreak", "score"):
+             "anchorage", "path", "sweepdisp", "dispbreak"):
     require(what in note_sites, f"the indicator measures `{what}` at the gate that uses it")
 
 # --- a shortfall is only claimed for the four threshold gates, never for structure
