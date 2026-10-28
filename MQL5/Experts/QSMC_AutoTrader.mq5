@@ -876,6 +876,13 @@ string IndicatorVerdictSuffix()
            " confirmed "+IntegerToString((long)dc);
    if(DiagRead("TIME",dt) && dt>0.0)
       out+=" | last closed bar "+TimeToString((datetime)(long)dt,TIME_DATE|TIME_MINUTES);
+   // v6.6.12: which gate profile the indicator is running. A relaxed threshold
+   // must never be something the operator discovers by accident, weeks later.
+   double prof=-1.0;
+   if(DiagRead("PROFILE",prof) && prof>=0.0)
+      out+=" | indicator gate profile: "+(prof>0.5 ?
+           "PRACTICAL (entry thresholds relaxed - read the indicator's init banner)" :
+           "STRICT (thresholds as entered)");
    out+=GateProfileSuffix();
    return out;
   }

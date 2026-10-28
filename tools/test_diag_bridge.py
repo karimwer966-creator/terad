@@ -178,13 +178,16 @@ require(set(need_sites) == {"confneed", "relneed", "rrneed", "stopneed"},
         f"(found {sorted(need_sites)}): 'you are 3 points short' must not be said about a "
         "pattern the market never produced")
 
-# --- the shortfall is compared against the same input the gate used
-for gate, inp in [("confneed", "InpMinConfidenceScore"), ("relneed", "InpMinReliability"),
-                  ("rrneed", "InpMinRR1"), ("stopneed", "InpMaxStopATR")]:
+# --- the shortfall is measured against the SAME value the gate compares.
+# Since v6.6.12 that value comes from an Eff*() helper (gate profile), never
+# from the raw input, so a shortfall can never describe a threshold the gate
+# did not actually use.
+for gate, eff in [("confneed", "EffMinConfidenceScore()"), ("relneed", "EffMinReliability()"),
+                  ("rrneed", "EffMinRR1()"), ("stopneed", "EffMaxStopATR()")]:
     block = re.search(r'GateProfileNeed\("' + gate + r'",([^;]+);', host)
     require(block is not None, f"the `{gate}` shortfall is computed")
-    require(inp in block.group(1),
-            f"the `{gate}` shortfall is measured against {inp}, the input the gate actually compares")
+    require(eff in block.group(1),
+            f"the `{gate}` shortfall is measured against {eff}, the value the gate compares")
 
 # --- slot routing: every name the note/need helpers can emit maps to a real slot
 routing = re.search(r"int GateProfileSlot\(const string what\)\s*\{(.*?)\n\}", host, re.S)

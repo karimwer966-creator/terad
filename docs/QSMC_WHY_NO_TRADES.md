@@ -105,6 +105,48 @@
 
 ---
 
+## 0.3 v6.6.12: وضع عملي **باسمه** بدل تعديل الحدود خفية
+
+إن قال المقياس في §0.2 إن الفارق نقطة أو نقطتان، فهناك مفتاح واحد صريح:
+
+```text
+InpGateProfile = QSMC_GATE_STRICT      (الافتراضي — كل حدّ كما كتبته)
+InpGateProfile = QSMC_GATE_PRACTICAL   (اختياري — تخفيف خمس عتبات رقمية، معلن)
+```
+
+PRACTICAL يفعل **خمسة أشياء فقط**، وكل واحد منها يُطبع في Journal عند الإرفاق:
+
+| المدخل | STRICT | PRACTICAL |
+| --- | --- | --- |
+| `InpMinConfidenceScore` | 75 | 60 |
+| `InpMinReliability` | 80 | 60 |
+| `InpMinRR1` | 1.50 | 1.20 |
+| `InpMaxStopATR` | 4.0 | 6.0 |
+| `InpAnchorSearchBars` | 60 | 120 |
+
+وهو **لا** يصل إلى: السلسلة السببية، فحص الموقع، القائمة السوداء، بوابة
+السجل غير القابل للتغيير، مفتاح الاتجاه العام، ولا إلى أي قاعدة مخاطر في
+الـ EA (سقف 1%، الحجم، الوقف، الحد اليومي). ولا يشدّ عتبة كتبتها أنت أشدّ
+منها: `MathMin/MathMax` تتحرّك في اتجاه التساهل فقط.
+
+يقول سطر الافتتاح بالحرف:
+
+```text
+>>> QSMC v6.6.9 GATE PROFILE: PRACTICAL (opt-in) - the following entry thresholds are RELAXED:
+>>>   reliability 80 -> 60  (InpMinReliability, floored at 60)
+>>>   ...
+>>>   UNCHANGED: causal chain, location, blacklist, journal gate, top-down switch, and every risk rule of the execution companion.
+>>>   WARNING: this makes MORE trades possible, not better ones.
+```
+
+وسطر النبضة في الـ EA يعرض الوضع النشط: `indicator gate profile: PRACTICAL`.
+
+**الحدّ الصادق:** هذا يجعل الصفقات **أكثر**، لا **أفضل**. وإن كان المانع
+بنيوياً (أكواد 10–16: لا سلسلة سببية مكتملة) فهذا المفتاح لن يفتح شيئاً،
+لأنه لا يمسّ السلسلة. اقرأ `closest rejection` أولاً ثم قرّر.
+
+---
+
 ## 1. الطبقة الأولى: هل يوجد مُنفّذ أصلاً؟
 
 | السبب | كيف تتأكد | الحل |

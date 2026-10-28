@@ -69,6 +69,9 @@ jobs:
       - name: Diagnostic bridge (the indicator's verdict -> the companion's heartbeat)
         run: python3 tools/test_diag_bridge.py 2>&1 | tee out/test_diag_bridge.log
 
+      - name: Gate profile (STRICT by default, five thresholds, logged, reversible)
+        run: python3 tools/test_gate_profile.py 2>&1 | tee out/test_gate_profile.log
+
       - name: EdgeBook persistence contract
         run: python3 tools/test_edgebook_contract.py 2>&1 | tee out/test_edgebook.log
 

@@ -1148,6 +1148,21 @@ input bool InpUniversalInstrumentMode = true;
 input bool InpUseExchangeTickSize      = true;
 input bool InpUseBrokerStopsGeometry   = true;
 
+enum ENUM_QSMC_GATE_PROFILE
+  {
+   QSMC_GATE_STRICT    = 0,   // STRICT: every threshold is the input as entered (default)
+   QSMC_GATE_PRACTICAL = 1    // PRACTICAL: the five numeric entry thresholds are relaxed, and logged at init
+  };
+
+input group "====== v6.6.12 GATE PROFILE (explicit, logged, default STRICT) ======"
+// STRICT: every threshold is exactly the input you see (the shipping behaviour).
+// PRACTICAL: the five numeric entry thresholds below are relaxed to the values
+// printed at init, one line per change ("old -> new"). It is never silent, it
+// never touches the causal chain, the blacklist, the journal or the EA's risk
+// logic, and it never overrides a stricter value you typed yourself. It makes
+// MORE trades possible; it does not make them better.
+input ENUM_QSMC_GATE_PROFILE InpGateProfile = QSMC_GATE_STRICT; // STRICT = inputs as entered | PRACTICAL = documented relaxations
+
 input group "====== v5.6.3 Causal Institutional Sequence ======"
 input bool   InpInstitutionalSequence       = true;
 input int    InpSweepToStructureMaxBars     = 8;
@@ -14244,6 +14259,9 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    // v6.6.11: the profiler window is "since this attach", so it must start
    // clean here and not inherit the previous chart's peaks.
    GateProfileReset();
+   // v6.6.12: state the active gate profile in the journal at attach, so a
+   // relaxed threshold is never something the operator has to discover later.
+   PrintGateProfileBanner();
    // Phase 1 signal outcome log: measurement only, no entry authority.
    SigLog_Init();
    if(InpSigLogCSV)
@@ -16601,7 +16619,7 @@ int SelectBestStructureAnchor(const int total,const double &c[],int &sweep_event
       if(direction_filter>0 && !st.bullish) continue;
       if(direction_filter<0 && st.bullish) continue;
       int age=(total-2)-st.bar;
-      if(age<0 || (InpAnchorSearchBars>0 && age>InpAnchorSearchBars)) continue;
+      if(age<0 || (EffAnchorSearchBars()>0 && age>EffAnchorSearchBars())) continue;
       g_gate_audit.anchors++;
       GateProfileNote("anchorage",(double)age);
       if(InpRequireMSSAfterSweep && st.type!="MSS")
@@ -16893,7 +16911,7 @@ int CalculateReliability(const int conf,const int knap,const int dp,const int ma
       if(g_selected_structure_event>=0 && g_selected_structure_event<ArraySize(g_causal_events))
       {
          int age=g_causal_events[g_selected_structure_event].age;
-         recency=MathMax(0.0,100.0-(double)age*100.0/MathMax(1,InpAnchorSearchBars));
+         recency=MathMax(0.0,100.0-(double)age*100.0/MathMax(1,EffAnchorSearchBars()));
       }
       double market=50.0;
       if(g_adx>=InpADXTrendLevel) market=100.0;
@@ -18150,6 +18168,70 @@ string GateAuditTopBlocker()
 }
 
 //====================================================================
+// v6.6.12 GATE PROFILE: the ONE place where a threshold may be relaxed.
+// Every gate below asks an Eff*() helper instead of reading its input
+// directly, so "which profile is active" is a single, auditable question and
+// STRICT is provably identical to the pre-profile behaviour (the helpers
+// return the input unchanged). PRACTICAL only ever moves a value in the
+// permissive direction and only for the five numeric entry thresholds; it
+// cannot reach the causal chain, the blacklist, the location re-check, the
+// journal gate or anything in the execution companion.
+//====================================================================
+int EffMinConfidenceScore()
+{
+   if(InpGateProfile!=QSMC_GATE_PRACTICAL) return InpMinConfidenceScore;
+   return MathMin(InpMinConfidenceScore,60);            // practical floor: 60
+}
+int EffMinReliability()
+{
+   if(InpGateProfile!=QSMC_GATE_PRACTICAL) return InpMinReliability;
+   return MathMin(InpMinReliability,60);                // practical floor: 60
+}
+double EffMinRR1()
+{
+   if(InpGateProfile!=QSMC_GATE_PRACTICAL) return InpMinRR1;
+   return MathMin(InpMinRR1,1.20);                      // practical floor: 1.2R
+}
+double EffMaxStopATR()
+{
+   if(InpGateProfile!=QSMC_GATE_PRACTICAL) return InpMaxStopATR;
+   return MathMax(InpMaxStopATR,6.0);                   // practical ceiling: 6 ATR
+}
+int EffAnchorSearchBars()
+{
+   if(InpGateProfile!=QSMC_GATE_PRACTICAL) return InpAnchorSearchBars;
+   return MathMax(InpAnchorSearchBars,120);             // practical window: 120 bars
+}
+
+// Printed once at init. A relaxation the operator cannot read is a silent one.
+void PrintGateProfileBanner()
+{
+   if(InpGateProfile!=QSMC_GATE_PRACTICAL)
+   {
+      Print(">>> ",QSMC_VERSION_TEXT," GATE PROFILE: STRICT | every threshold is the input as entered"+
+            " | confidence ",InpMinConfidenceScore," | reliability ",InpMinReliability,
+            " | RR1 ",DoubleToString(InpMinRR1,2)," | stop ",DoubleToString(InpMaxStopATR,2),
+            " ATR | anchor window ",InpAnchorSearchBars," bars");
+      return;
+   }
+   Print(">>> ",QSMC_VERSION_TEXT," GATE PROFILE: PRACTICAL (opt-in) - the following entry thresholds are RELAXED:");
+   Print(">>>   confidence  ",InpMinConfidenceScore," -> ",EffMinConfidenceScore(),
+         "  (InpMinConfidenceScore, floored at 60)");
+   Print(">>>   reliability ",InpMinReliability," -> ",EffMinReliability(),
+         "  (InpMinReliability, floored at 60)");
+   Print(">>>   RR1         ",DoubleToString(InpMinRR1,2)," -> ",DoubleToString(EffMinRR1(),2),
+         "  (InpMinRR1, floored at 1.20)");
+   Print(">>>   stop max    ",DoubleToString(InpMaxStopATR,2)," -> ",DoubleToString(EffMaxStopATR(),2),
+         " ATR  (InpMaxStopATR, capped at 6.00)");
+   Print(">>>   anchor window ",InpAnchorSearchBars," -> ",EffAnchorSearchBars(),
+         " bars  (InpAnchorSearchBars, widened to 120)");
+   Print(">>>   UNCHANGED: causal chain, location, blacklist, journal gate, top-down switch,",
+         " and every risk rule of the execution companion.");
+   Print(">>>   WARNING: this makes MORE trades possible, not better ones. Read the",
+         " profile line in the companion's heartbeat before keeping it on.");
+}
+
+//====================================================================
 // v6.6.11 GATE PROFILER: what did each candidate ACTUALLY score?
 // Until now the only durable record of a refusal was the top blocker, which is
 // a vote count: it says which gate fires most, never how far a candidate was
@@ -18382,6 +18464,7 @@ void DiagPublishCoreState(const int closed)
 
    string p=DiagPrefix();
    GlobalVariableSet(p+"CORE",(double)code);
+   GlobalVariableSet(p+"PROFILE",(double)(InpGateProfile==QSMC_GATE_PRACTICAL ? 1 : 0));
    GlobalVariableSet(p+"BARS",(double)(long)g_gate_audit.bars);
    GlobalVariableSet(p+"ARMED",(double)(long)g_gate_audit.armed);
    GlobalVariableSet(p+"CONF",(double)(long)g_gate_audit.confirmed);
@@ -19959,9 +20042,9 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    entry=NormalizePriceToTick(entry);
    double risk=MathAbs(entry-sl);
    GateProfileNote("stopatr",risk/MathMax(atr,_Point));
-   if(risk<=_Point || risk>atr*InpMaxStopATR)
+   if(risk<=_Point || risk>atr*EffMaxStopATR())
    {
-      GateProfileNeed("stopneed",(risk/MathMax(atr,_Point))-InpMaxStopATR);
+      GateProfileNeed("stopneed",(risk/MathMax(atr,_Point))-EffMaxStopATR());
       g_causal_diag.watch=true;
       g_causal_diag.causal_fail_reason=StringFormat("stop geometry out of range (%.1f ATR)",
                                                     risk/MathMax(atr,_Point));
@@ -20215,13 +20298,13 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    }
    int conf=(int)MathRound(final_score);
    GateProfileNote("confidence",(double)conf);
-   if(conf<InpMinConfidenceScore)
+   if(conf<EffMinConfidenceScore())
    {
-      GateProfileNeed("confneed",(double)InpMinConfidenceScore-(double)conf);
+      GateProfileNeed("confneed",(double)EffMinConfidenceScore()-(double)conf);
       g_causal_diag.watch=true;
       g_causal_diag.quality_score=conf;
       g_causal_diag.causal_fail_reason=StringFormat("confidence %d < min %d",
-                                                    conf,InpMinConfidenceScore);
+                                                    conf,EffMinConfidenceScore());
       GateAuditReject("score: confidence below InpMinConfidenceScore");
       ApplyCausalDecisionState();
       DiagnoseDirectionalWatch(total,o,h,l,c);
@@ -20310,11 +20393,11 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    g_trade_setup.mtf_conflict_label=conflict_label;
 
    GateProfileNote("rr1",rr1);
-   if(rr1<InpMinRR1)
+   if(rr1<EffMinRR1())
    {
-      GateProfileNeed("rrneed",InpMinRR1-rr1);
+      GateProfileNeed("rrneed",EffMinRR1()-rr1);
       g_causal_diag.watch=true;
-      g_causal_diag.causal_fail_reason=StringFormat("RR1 %.2f < min %.2f",rr1,InpMinRR1);
+      g_causal_diag.causal_fail_reason=StringFormat("RR1 %.2f < min %.2f",rr1,EffMinRR1());
       GateAuditReject("geometry: RR1 below InpMinRR1");
       ApplyCausalDecisionState();
       DiagnoseDirectionalWatch(total,o,h,l,c);
@@ -20359,12 +20442,12 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       return;
    }
    GateProfileNote("reliability",(double)reliability);
-   if(reliability<InpMinReliability)
+   if(reliability<EffMinReliability())
    {
-      GateProfileNeed("relneed",(double)InpMinReliability-(double)reliability);
+      GateProfileNeed("relneed",(double)EffMinReliability()-(double)reliability);
       g_causal_diag.watch=true;
       g_causal_diag.causal_fail_reason=StringFormat("reliability %d < min %d",
-                                                    reliability,InpMinReliability);
+                                                    reliability,EffMinReliability());
       GateAuditReject("score: reliability below InpMinReliability");
       ApplyCausalDecisionState();
       DiagnoseDirectionalWatch(total,o,h,l,c);

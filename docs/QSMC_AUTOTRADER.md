@@ -184,6 +184,36 @@ position.
 the same closed-bar buffers, so it cannot create a signal that `OnTick` would not
 see.
 
+### v6.6.12 — `InpGateProfile`: the one sanctioned way to relax a threshold
+
+`InpGateProfile` is an enum with two values. `QSMC_GATE_STRICT` (the default)
+returns every input untouched, so an existing installation is byte-for-byte
+unchanged. `QSMC_GATE_PRACTICAL` relaxes exactly five numeric entry thresholds
+and prints each change at init:
+
+| Input | STRICT | PRACTICAL |
+| --- | --- | --- |
+| `InpMinConfidenceScore` | 75 | 60 |
+| `InpMinReliability` | 80 | 60 |
+| `InpMinRR1` | 1.50 | 1.20 |
+| `InpMaxStopATR` | 4.0 | 6.0 |
+| `InpAnchorSearchBars` | 60 | 120 |
+
+Why this is not "the AI lowered the gates": the gates read effective values
+from five `Eff*()` helpers, and each helper returns the raw input unless the
+operator chose PRACTICAL. `tools/test_gate_profile.py` proves structurally that
+(a) the default is STRICT, (b) the profile is read **only** by those five
+helpers, the banner and the publisher, (c) no gate still compares against a raw
+input, (d) the location check, blacklist, top-down switch and journal gate are
+unreachable from it, and (e) the companion cannot set it — it can only print
+which one is active.
+
+The profile never tightens a value you set stricter yourself (`MathMin` /
+`MathMax`, permissive direction only), and it says out loud what it does not
+fix: *"this makes MORE trades possible, not better ones."* If the measured
+blocker is structural (`closest rejection: none`), the profile changes nothing,
+because it does not touch the causal chain.
+
 ### v6.6.11 — the heartbeat reports the DISTANCE, not only the vote count
 
 The verdict names the gate that refused most often. That is still a count: it
