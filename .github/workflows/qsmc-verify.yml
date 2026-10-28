@@ -91,6 +91,15 @@ jobs:
       - name: Power of 3 + Silver Bullet (display only, no buffer moved, cannot authorize)
         run: python3 tools/test_phase2_modules.py 2>&1 | tee out/test_phase2_modules.log
 
+      # Phase 3 (AUDIT-WY1). The risk here is not the new logic, it is a THIRD
+      # opinion about the same bar: DetectJudasSwing already sweeps the Asia range
+      # and DetectLiquidity already clusters equal highs/lows. These contracts
+      # check the module reconciles with Judas instead of contradicting it, reuses
+      # the existing sweep validator rather than inventing a looser one, and cannot
+      # let the bar under test widen the range it pierces.
+      - name: Wyckoff Spring/Upthrust (reconciled with Judas, no buffer moved, display only)
+        run: python3 tools/test_phase3_wyckoff.py 2>&1 | tee out/test_phase3_wyckoff.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 
