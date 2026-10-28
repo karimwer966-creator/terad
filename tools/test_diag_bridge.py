@@ -134,3 +134,99 @@ require(re.search(r"string DiagCodeText", ea) is not None,
 print("-" * 74)
 print("Diagnostic-bridge contract checks passed. This is a source contract, not an")
 print("MT5 run: the line only becomes evidence after F7 and one closed bar.")
+
+# =====================================================================
+# v6.6.11 GATE PROFILER: does the published distance mean what it says?
+# =====================================================================
+GP_BEGIN = "// GP_TABLE_BEGIN"
+GP_END = "// GP_TABLE_END"
+
+
+def gp_table(text, label):
+    start, stop = text.find(GP_BEGIN), text.find(GP_END)
+    require(start >= 0 and stop > start, f"{label} carries a {GP_BEGIN} .. {GP_END} block")
+    block = text[start + len(GP_BEGIN):stop]
+    slots = {}
+    for line in block.splitlines():
+        m = re.match(r"\s*//\s*(-?\d+)((?:\s*-\s*\d+)?)\s+([A-Z0-9_]+)", line)
+        if m:
+            for slot in ([int(m.group(1))] if not m.group(2) else
+                         list(range(int(m.group(1)), int(m.group(2).split("-")[1]) + 1))):
+                slots[slot] = m.group(3)
+    require(len(slots) >= 15, f"{label} GP table parses into a usable slot map ({len(slots)} slots)")
+    return slots, block
+
+
+gp_host, gp_host_block = gp_table(host, "the indicator")
+gp_ea, gp_ea_block = gp_table(ea, "the companion")
+require(gp_host_block.replace("\r\n", "\n") == gp_ea_block,
+        "the GP_TABLE block is byte-identical in both programs (one map, two copies)")
+require(set(gp_host) == set(gp_ea),
+        f"both sides describe the same slots (indicator-only {sorted(set(gp_host) - set(gp_ea))}, "
+        f"companion-only {sorted(set(gp_ea) - set(gp_host))})")
+
+# --- the indicator records a value at every gate it claims to profile
+note_sites = set(re.findall(r'GateProfileNote\("(\w+)",', host))
+for what in ("confidence", "reliability", "rr1", "stopatr", "spread", "location",
+             "anchorage", "path", "sweepdisp", "dispbreak", "score"):
+    require(what in note_sites, f"the indicator measures `{what}` at the gate that uses it")
+
+# --- a shortfall is only claimed for the four threshold gates, never for structure
+need_sites = set(re.findall(r'GateProfileNeed\("(\w+)"', host))
+require(set(need_sites) == {"confneed", "relneed", "rrneed", "stopneed"},
+        f"a shortfall is recorded ONLY for threshold gates, never for the causal chain "
+        f"(found {sorted(need_sites)}): 'you are 3 points short' must not be said about a "
+        "pattern the market never produced")
+
+# --- the shortfall is compared against the same input the gate used
+for gate, inp in [("confneed", "InpMinConfidenceScore"), ("relneed", "InpMinReliability"),
+                  ("rrneed", "InpMinRR1"), ("stopneed", "InpMaxStopATR")]:
+    block = re.search(r'GateProfileNeed\("' + gate + r'",([^;]+);', host)
+    require(block is not None, f"the `{gate}` shortfall is computed")
+    require(inp in block.group(1),
+            f"the `{gate}` shortfall is measured against {inp}, the input the gate actually compares")
+
+# --- slot routing: every name the note/need helpers can emit maps to a real slot
+routing = re.search(r"int GateProfileSlot\(const string what\)\s*\{(.*?)\n\}", host, re.S)
+require(routing is not None, "the indicator has a GateProfileSlot() router")
+emitted = set(re.findall(r'if\(what=="(\w+)"\)', routing.group(1)))
+require(set(note_sites) | {"confneed", "relneed", "rrneed", "stopneed"} <= emitted,
+        f"every measured name has a slot (unrouted: "
+        f"{sorted((set(note_sites) | {'confneed','relneed','rrneed','stopneed'}) - emitted)})")
+
+# --- the companion decodes every slot the router can return
+router_codes = {int(n) for n in re.findall(r"return\s+(\d+);", routing.group(1))}
+ea_cases = {int(n) for n in re.findall(r"case\s+(\d+):\s*return", ea)}
+missing_gp = sorted(router_codes - ea_cases)
+require(not missing_gp, f"the companion names every slot the indicator can publish (missing: {missing_gp})")
+require("return \"UNKNOWN\";" in ea, "an unmapped slot is reported as UNKNOWN, never silently as a gate")
+
+# --- the profiler is read-only and per-session, never per-tick
+require("GateProfileReset();" in host, "the profiler window is reset at init (since this attach)")
+require(host.find("GateProfileReset();") < host.find("SigLog_Init();"),
+        "the reset happens during OnInit, before the first calculation")
+require("GateProfilePublish(closed);" in host, "the profile is published once per closed bar")
+require(host.find("DiagPublishCoreState(closed);") < host.find("GateProfilePublish(closed);"),
+        "the profile is published next to the verdict, from the same finished pass")
+require(re.search(r"void GateProfilePublish\(const int closed\)\s*\{\s*"
+                  r"if\(closed<0 \|\| closed\+1>=ArraySize\(g_buf_t\)\) return;", host) is not None,
+        "it refuses an out-of-range bar instead of publishing a guess")
+require('GlobalVariableSet(p+"GP_BARS"' in host and "g_gate_audit.bars" in host,
+        "the sample size travels with the peak (a peak without a window is not evidence)")
+require("GlobalVariableSet(DiagVarName(" not in ea and 'GlobalVariableSet(p+"GP_' not in ea,
+        "the companion never writes a profile value back")
+require("out+=GateProfileSuffix();" in ea,
+        "the profile rides on every heartbeat exit, not only the complete one")
+
+prof = re.search(r"string GateProfileSuffix\(\)\s*\{(.*?)\n  \}", ea, re.S)
+require(prof is not None, "the companion has a GateProfileSuffix()")
+for forbidden in ("OrderSend", "CTrade", "OrderCalcMargin", "PositionOpen"):
+    require(forbidden not in prof.group(1),
+            f"the profile is text only, it cannot reach the trade API ({forbidden} absent)")
+require("no threshold in the indicator was the reason" in prof.group(1),
+        "when no candidate reached a scoring gate, the line says so instead of inventing a "
+        "threshold to blame")
+
+print("-" * 74)
+print("Gate-profiler checks passed. The distance is measured, not inferred;")
+print("acting on it is a policy decision that still needs F7 and a demo run.")

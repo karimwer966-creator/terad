@@ -137,6 +137,19 @@
 // 34 OTHER                some other gate refused the candidate
 // DIAG_TABLE_END
 
+// GP_TABLE_BEGIN
+//  -1                       no candidate reached a scoring gate this session
+//  0 CONFIDENCE             points short of InpMinConfidenceScore
+//  1 RELIABILITY            points short of InpMinReliability
+//  2 RR1                    ratio short of InpMinRR1
+//  3 STOP_TOO_WIDE          ATR over InpMaxStopATR
+//  4-15 STRUCTURAL          the chain never proposed a trade (not a threshold)
+// 23 CONFIDENCE             points short (explicit gate)
+// 24 RELIABILITY            points short (explicit gate)
+// 25 RR1                    ratio short (explicit gate)
+// 26 STOP_TOO_WIDE          ATR over (explicit gate)
+// GP_TABLE_END
+
 enum ENUM_QSMC_LOT_MODE
   {
    QSMC_LOT_RISK_PERCENT = 0,   // risk % of equity per trade
@@ -745,6 +758,70 @@ bool DiagRead(const string leaf,double &value)
    return true;
   }
 
+//+------------------------------------------------------------------+
+//| v6.6.11 gate profile (read-only).                                |
+//| The heartbeat already names the gate that refuses most often.    |
+//| That is a vote count, not a distance: it cannot say whether a     |
+//| threshold is 1 point too high or the market never produced the    |
+//| pattern. These lines carry the measured distance instead, so a    |
+//| threshold change can be argued with a number - or refused.        |
+//+------------------------------------------------------------------+
+string ProfileSlotText(const int slot)
+  {
+   switch(slot)
+     {
+      case 0:  return "CONFIDENCE";
+      case 1:  return "RELIABILITY";
+      case 2:  return "RR1";
+      case 3:  return "STOP_TOO_WIDE";
+      case 23: return "CONFIDENCE";
+      case 24: return "RELIABILITY";
+      case 25: return "RR1";
+      case 26: return "STOP_TOO_WIDE";
+      case 4:  return "ANCHOR_AGE";
+      case 5:  return "ANCHOR_TYPE";
+      case 6:  return "CAUSAL_PATH";
+      case 7:  return "LOCATION";
+      case 8:  return "GEOMETRY";
+      case 9:  return "SCORE";
+      case 10: return "SPREAD";
+      case 11: return "SWEEP_TO_DISP";
+      case 12: return "DISP_TO_BREAK";
+      case 13: return "DISPLACEMENT_BODY";
+      case 14: return "ANCHOR_AGE";
+      case 15: return "LIQUIDITY_POOL";
+     }
+   return "UNKNOWN";
+  }
+
+string GateProfileSuffix()
+  {
+   double slot=-1.0,need=0.0,bars=-1.0;
+   if(!DiagRead("GP_SLOT",slot)) return "";
+   string out="";
+   if(DiagRead("GP_BARS",bars) && bars>=0.0)
+      out+=" | profile window: "+IntegerToString((long)bars)+" closed bars since attach";
+   int code=(int)MathRound(slot);
+   if(code<0)
+      out+=" | closest rejection: none - no candidate reached a scoring gate; no threshold in the indicator was the reason (the causal chain did not complete)";
+   else if(DiagRead("GP_NEED",need) && need>0.0)
+     {
+      bool ratio=(code==2 || code==25 || code==3 || code==26);
+      out+=" | closest rejection: "+ProfileSlotText(code)+" short by "+
+           DoubleToString(need,ratio?2:1)+(ratio?" (ATR or RR, not points)":" point(s)")+
+           " - the best candidate of this session was ONE input away from passing";
+     }
+   double conf=-1.0,rel=-1.0,rr=-1.0,anch=-1.0;
+   string peaks="";
+   if(DiagRead("GP_CONF",conf) && conf>=0.0) peaks+="conf "+DoubleToString(conf,0);
+   if(DiagRead("GP_REL",rel) && rel>=0.0)    peaks+=(peaks==""?"":", ")+"reliability "+DoubleToString(rel,0);
+   if(DiagRead("GP_RR",rr) && rr>=0.0)       peaks+=(peaks==""?"":", ")+"RR1 "+DoubleToString(rr,2);
+   if(DiagRead("GP_ANCH",anch) && anch>=0.0)  peaks+=(peaks==""?"":", ")+"anchors "+IntegerToString((long)anch);
+   if(peaks!="")
+      out+=" | best reached: "+peaks+" (compare with the indicator's own minimum inputs)";
+   return out;
+  }
+
 string DiagCodeText(const int code)
   {
    switch(code)
@@ -799,6 +876,7 @@ string IndicatorVerdictSuffix()
            " confirmed "+IntegerToString((long)dc);
    if(DiagRead("TIME",dt) && dt>0.0)
       out+=" | last closed bar "+TimeToString((datetime)(long)dt,TIME_DATE|TIME_MINUTES);
+   out+=GateProfileSuffix();
    return out;
   }
 

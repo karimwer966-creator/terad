@@ -2239,6 +2239,7 @@ SConfirmedSignalJournalEntry  g_confirmed_signal_journal[];
 // the cached global-variable prefix for this chart's symbol/timeframe.
 datetime                        g_diag_core_bar=0;
 string                          g_diag_prefix="";
+datetime                        g_gp_bar_time=0;
 bool                            g_signal_journal_integrity_ok=true;
 SStatisticalMetrics            g_stats_metrics;
 ENUM_SIGNAL_STATE       g_current_signal_state = STATE_WATCH;
@@ -5131,6 +5132,11 @@ string GateAuditTopReason();
 // can name the blocker instead of saying only "no signal".
 int    DiagBlockerCode(const string key);
 void   DiagPublishCoreState(const int closed);
+// v6.6.11 GATE PROFILER (read-only): how far each candidate was from passing.
+void   GateProfileReset();
+void   GateProfileNote(const string what,const double value);
+void   GateProfileNeed(const string what,const double short_by);
+void   GateProfilePublish(const int closed);
 string AlertWhyNoPopup(const int closed,const datetime bar_time);
 void DashPushWrapped(string &L[],int &ln,const string s,const int width);
 int MTFAlignmentPercent();
@@ -14235,6 +14241,9 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
             Print(">>> ",QSMC_VERSION_TEXT," RXN self-test: FAIL - ",rxn_fail);
       }
    }
+   // v6.6.11: the profiler window is "since this attach", so it must start
+   // clean here and not inherit the previous chart's peaks.
+   GateProfileReset();
    // Phase 1 signal outcome log: measurement only, no entry authority.
    SigLog_Init();
    if(InpSigLogCSV)
@@ -14957,6 +14966,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    SigLog_Update(rates_total,prev_calculated);
    // v6.6.10: publish the verdict of this closed bar for QSMC_AutoTrader.
    DiagPublishCoreState(closed);
+   GateProfilePublish(closed);
    RunRuntimeDisplayNoLookaheadAudit(closed,g_buf_t);
 
    RunRuntimeCausalValidation();
@@ -16526,6 +16536,12 @@ bool ResolveCausalPath(const int structure_source,int &sweep_event,int &displace
       GateAuditReject("chain: sweep has no confirmed liquidity-pool ancestor");
       return false;
    }
+   GateProfileNote("sweepdisp",
+      (double)MathAbs(g_causal_events[displacement_event].event_bar-
+                      g_causal_events[sweep_event].event_bar));
+   GateProfileNote("dispbreak",
+      (double)MathAbs(g_causal_events[structure_event].event_bar-
+                      g_causal_events[displacement_event].event_bar));
 
    double best_ob=-DBL_MAX,best_fvg=-DBL_MAX;
    string best_ob_id="",best_fvg_id="";
@@ -16587,6 +16603,7 @@ int SelectBestStructureAnchor(const int total,const double &c[],int &sweep_event
       int age=(total-2)-st.bar;
       if(age<0 || (InpAnchorSearchBars>0 && age>InpAnchorSearchBars)) continue;
       g_gate_audit.anchors++;
+      GateProfileNote("anchorage",(double)age);
       if(InpRequireMSSAfterSweep && st.type!="MSS")
       {
          GateAuditReject("anchor: "+st.type+" break rejected (InpRequireMSSAfterSweep)");
@@ -16595,6 +16612,7 @@ int SelectBestStructureAnchor(const int total,const double &c[],int &sweep_event
       g_gate_audit.type_ok++;
       int sw=-1,dp=-1,se=-1,ob=-1,fv=-1;
       if(!ResolveCausalPath(si,sw,dp,se,ob,fv)) continue;
+      GateProfileNote("path",(double)(sw>=0 && dp>=0 && se>=0 ? 1 : 0));
       if(fv>=0)
       {
          int fi=g_causal_events[fv].source_index;
@@ -18129,6 +18147,124 @@ string GateAuditTopBlocker()
    if(best<0) return "";
    return StringFormat("%s (%d)",g_gate_audit.reason[best],
                        (int)g_gate_audit.reason_hits[best]);
+}
+
+//====================================================================
+// v6.6.11 GATE PROFILER: what did each candidate ACTUALLY score?
+// Until now the only durable record of a refusal was the top blocker, which is
+// a vote count: it says which gate fires most, never how far a candidate was
+// from passing. Without that distance nobody can tell whether a threshold is
+// one point too high or whether the market simply never produced the pattern.
+//
+// So every scoring gate now reports the value it saw. READ-ONLY: nothing here
+// feeds a decision, and the whole profiler can be deleted without changing one
+// published signal. It reads the same closed-bar variables the gate just used.
+//====================================================================
+#define QSMC_PROFILE_SLOTS 31
+// GP_TABLE_BEGIN
+//  -1                       no candidate reached a scoring gate this session
+//  0 CONFIDENCE             points short of InpMinConfidenceScore
+//  1 RELIABILITY            points short of InpMinReliability
+//  2 RR1                    ratio short of InpMinRR1
+//  3 STOP_TOO_WIDE          ATR over InpMaxStopATR
+//  4-15 STRUCTURAL          the chain never proposed a trade (not a threshold)
+// 23 CONFIDENCE             points short (explicit gate)
+// 24 RELIABILITY            points short (explicit gate)
+// 25 RR1                    ratio short (explicit gate)
+// 26 STOP_TOO_WIDE          ATR over (explicit gate)
+// GP_TABLE_END
+
+double g_gp_peak[QSMC_PROFILE_SLOTS];    // best value by slot (-DBL_MAX = never reached)
+double g_gp_last[QSMC_PROFILE_SLOTS];    // value of the last candidate that reached it
+int    g_gp_hits[QSMC_PROFILE_SLOTS];    // how many candidates reached the gate
+int    g_gp_best_slot=-1;                // slot with the largest standalone headroom
+double g_gp_best_need=0.0;               // points it was short (0 = it would pass alone)
+
+// Slot map (kept in step with the companion's ProfileCodeText()).
+//  0 confidence |  1 reliability |  2 RR1 points |  3 stop ATR (+3 left room)
+//  4 anchors |  5 type-ok |  6 causal path |  7 location |  8 geometry
+//  9 score | 10 spread pts | 11 sweep->disp bars | 12 disp->break bars
+// 13 displacement body ATR | 14 anchor age bars | 23 confidence need
+// 24 reliability need | 25 RR need | 26 stop need | 21 cone/flags | 15 pool
+int GateProfileSlot(const string what)
+{
+   if(what=="confidence")    return 0;
+   if(what=="reliability")   return 1;
+   if(what=="rr1")           return 2;
+   if(what=="stopatr")       return 3;
+   if(what=="anchors")       return 4;
+   if(what=="typeok")        return 5;
+   if(what=="path")          return 6;
+   if(what=="location")      return 7;
+   if(what=="geometry")      return 8;
+   if(what=="score")         return 9;
+   if(what=="spread")        return 10;
+   if(what=="sweepdisp")     return 11;
+   if(what=="dispbreak")     return 12;
+   if(what=="dispbody")      return 13;
+   if(what=="anchorage")     return 14;
+   if(what=="pool")          return 15;
+   if(what=="confneed")      return 23;
+   if(what=="relneed")       return 24;
+   if(what=="rrneed")        return 25;
+   if(what=="stopneed")      return 26;
+   return -1;
+}
+
+void GateProfileReset()
+{
+   for(int i=0;i<QSMC_PROFILE_SLOTS;i++)
+   {
+      g_gp_peak[i]=-DBL_MAX;
+      g_gp_last[i]=0.0;
+      g_gp_hits[i]=0;
+   }
+   g_gp_best_slot=-1;
+   g_gp_best_need=0.0;
+}
+
+void GateProfileNote(const string what,const double value)
+{
+   int i=GateProfileSlot(what);
+   if(i<0) return;
+   g_gp_hits[i]++;
+   g_gp_last[i]=value;
+   if(g_gp_peak[i]==-DBL_MAX || value>g_gp_peak[i]) g_gp_peak[i]=value;
+}
+
+// A shortfall is recorded only for a candidate that already cleared the gates
+// before it. Reporting "how short" for a candidate rejected at the anchor would
+// describe a trade the chain never proposed.
+void GateProfileNeed(const string what,const double short_by)
+{
+   int i=GateProfileSlot(what);
+   if(i<0 || short_by<=0.0) return;
+   if(g_gp_best_slot<0 || short_by<g_gp_best_need-1e-9 ||
+      (MathAbs(short_by-g_gp_best_need)<=1e-9 &&
+       i<g_gp_best_slot))
+   {
+      g_gp_best_slot=i;
+      g_gp_best_need=short_by;
+   }
+}
+
+// Published once per closed bar (same bridge as the blocker code), so the
+// companion can print "closest rejection: RELIABILITY by 3.1 points" and the
+// operator can decide, with a number, whether to move a threshold.
+void GateProfilePublish(const int closed)
+{
+   if(closed<0 || closed+1>=ArraySize(g_buf_t)) return;
+   datetime bar_time=g_buf_t[closed];
+   if(bar_time<=0 || bar_time==g_gp_bar_time) return;
+   g_gp_bar_time=bar_time;
+   string p=DiagPrefix();
+   GlobalVariableSet(p+"GP_SLOT",(double)g_gp_best_slot);
+   GlobalVariableSet(p+"GP_NEED",g_gp_best_need);
+   GlobalVariableSet(p+"GP_CONF",(g_gp_hits[0]>0 ? g_gp_peak[0] : -1.0));
+   GlobalVariableSet(p+"GP_REL",(g_gp_hits[1]>0 ? g_gp_peak[1] : -1.0));
+   GlobalVariableSet(p+"GP_RR",(g_gp_hits[2]>0 ? g_gp_peak[2] : -1.0));
+   GlobalVariableSet(p+"GP_ANCH",(double)g_gp_hits[4]);
+   GlobalVariableSet(p+"GP_BARS",(double)(long)g_gate_audit.bars);
 }
 
 //====================================================================
@@ -19710,6 +19846,7 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       return;
    }
    string loc_why="";
+   GateProfileNote("location",1.0);
    if(!IsInstitutionalLocation(is_buy,zone_top,zone_bottom,atr,loc_why))
    {
       g_causal_diag.watch=true;
@@ -19782,6 +19919,7 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       DiagnoseCausalChain(total,o,h,l,c,g_buf_t);
       return;
    }
+   GateProfileNote("spread",(double)g_spread);
    if(!spread_ok)
    {
       g_causal_diag.watch=true;
@@ -19821,8 +19959,10 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    sl=NormalizePriceToTick(sl);
    entry=NormalizePriceToTick(entry);
    double risk=MathAbs(entry-sl);
+   GateProfileNote("stopatr",risk/MathMax(atr,_Point));
    if(risk<=_Point || risk>atr*InpMaxStopATR)
    {
+      GateProfileNeed("stopneed",(risk/MathMax(atr,_Point))-InpMaxStopATR);
       g_causal_diag.watch=true;
       g_causal_diag.causal_fail_reason=StringFormat("stop geometry out of range (%.1f ATR)",
                                                     risk/MathMax(atr,_Point));
@@ -20075,8 +20215,11 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       g_secondary_candidate.rank  = RANK_NONE;
    }
    int conf=(int)MathRound(final_score);
+   GateProfileNote("confidence",(double)conf);
+   GateProfileNote("score",(double)conf);
    if(conf<InpMinConfidenceScore)
    {
+      GateProfileNeed("confneed",(double)InpMinConfidenceScore-(double)conf);
       g_causal_diag.watch=true;
       g_causal_diag.quality_score=conf;
       g_causal_diag.causal_fail_reason=StringFormat("confidence %d < min %d",
@@ -20168,8 +20311,10 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    g_trade_setup.relationship_label=rel_label;
    g_trade_setup.mtf_conflict_label=conflict_label;
 
+   GateProfileNote("rr1",rr1);
    if(rr1<InpMinRR1)
    {
+      GateProfileNeed("rrneed",InpMinRR1-rr1);
       g_causal_diag.watch=true;
       g_causal_diag.causal_fail_reason=StringFormat("RR1 %.2f < min %.2f",rr1,InpMinRR1);
       GateAuditReject("geometry: RR1 below InpMinRR1");
@@ -20215,8 +20360,10 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       DiagnoseCausalChain(total,o,h,l,c,g_buf_t);
       return;
    }
+   GateProfileNote("reliability",(double)reliability);
    if(reliability<InpMinReliability)
    {
+      GateProfileNeed("relneed",(double)InpMinReliability-(double)reliability);
       g_causal_diag.watch=true;
       g_causal_diag.causal_fail_reason=StringFormat("reliability %d < min %d",
                                                     reliability,InpMinReliability);

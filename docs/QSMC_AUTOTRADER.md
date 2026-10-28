@@ -184,6 +184,36 @@ position.
 the same closed-bar buffers, so it cannot create a signal that `OnTick` would not
 see.
 
+### v6.6.11 — the heartbeat reports the DISTANCE, not only the vote count
+
+The verdict names the gate that refused most often. That is still a count: it
+cannot distinguish "the threshold is one point too high" from "the market never
+produced the pattern". The companion now also prints the measured shortfall of
+the best candidate of the session:
+
+```
+... | closest rejection: RELIABILITY short by 3.1 point(s) - the best candidate of
+this session was ONE input away from passing | best reached: conf 71,
+reliability 77, RR1 1.42, anchors 118 | profile window: 143 closed bars since attach
+```
+
+* `closest rejection: <GATE> short by N` — the gap to the input that refused it.
+* `closest rejection: none … the causal chain did not complete` — no threshold
+  was the reason; lowering one would open nothing. This is the single most
+  useful sentence in the whole diagnostic, because it stops a pointless
+  threshold change.
+* `best reached: …` — the highest value any candidate achieved, to compare with
+  the indicator's own minimum inputs.
+* `profile window: N closed bars` — the sample size. A peak without a window is
+  not evidence.
+
+A shortfall is only ever computed for the four numeric thresholds (confidence,
+reliability, RR1, stop distance in ATR) and only for a candidate that already
+cleared the structural gates — the chain never gets "you were 3 points short".
+The profiler is read-only: no value it records reaches a gate, and deleting it
+leaves every published signal identical. Acting on a number is your decision,
+made explicitly, not something the code does quietly.
+
 ### v6.6.10 — the heartbeat now carries the INDICATOR'S verdict
 
 `CORE signals in last 200 closed bars: 0` proves the transport is healthy and
