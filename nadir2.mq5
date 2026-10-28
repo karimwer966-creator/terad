@@ -752,6 +752,15 @@ enum ENUM_P3_PHASE
    P3_PHASE_DISTRIBUTION
 };
 
+// AUDIT-WY1 Wyckoff range event. Its OWN enum, added as a new type, so no
+// existing enumerator value anywhere in the file can shift.
+enum ENUM_WYCKOFF_EVENT
+{
+   WY_EVENT_NONE=0,      // no qualifying range, or no qualifying test bar
+   WY_EVENT_SPRING,      // wick below the range low,  close back inside -> bullish
+   WY_EVENT_UPTHRUST     // wick above the range high, close back inside -> bearish
+};
+
 // v6.0 MarketConflictEngine (master-prompt Sections 5 & 12).
 // Classifies the relationship between the current chart's structural
 // direction (the "LTF" from this engine's perspective) and the higher
@@ -862,6 +871,27 @@ input int    InpSBWin1Start = 180, InpSBWin1End = 240;   // window 1, 03:00-04:0
 input int    InpSBWin2Start = 600, InpSBWin2End = 660;   // window 2, 10:00-11:00
 input int    InpSBWin3Start = 840, InpSBWin3End = 900;   // window 3, 14:00-15:00
 input int    InpSBChainMaxAgeBars       = 240;    // a chain element older than this many closed bars cannot open a window setup
+input group "====== Wyckoff Spring / Upthrust (AUDIT-WY1, display only) ======"
+// Display only. This module never feeds the arbiter, the Core lifecycle, the
+// Directional Scenario Engine, the confluence scorers, or any buffer, and it
+// cannot authorize, arm or execute a trade.
+//
+// The RANGE is found by expanding left from the last closed bar while the
+// running height stays inside InpWyckoffMaxRangeATR, so it is the actual
+// consolidation rather than an arbitrary fixed window. It is deliberately NOT
+// DetectDealingRange(): that finds the swing range for premium/discount and is
+// meant to be large, while a Wyckoff range is meant to be tight. Different
+// measurement, so nothing is duplicated.
+input bool   InpEnableWyckoff           = false;  // detect Spring / Upthrust at a structural range
+input bool   InpWyckoffShowOnDashboard  = false;  // append the event to the dashboard tooltip (needs InpEnableWyckoff)
+input bool   InpWyckoffShowRange        = false;  // draw the range box the event was measured against
+input int    InpWyckoffMinRangeBars     = 16;     // a range shorter than this is noise, not accumulation
+input int    InpWyckoffMaxRangeBars     = 240;    // leftward expansion stops here
+input double InpWyckoffMaxRangeATR      = 6.00;   // max range height in ATR - above this it is a trend, not a range
+input int    InpWyckoffMinTouches       = 2;      // required tests of EACH boundary
+input double InpWyckoffTouchTolATR      = 0.25;   // how close to a boundary still counts as touching it
+input bool   InpWyckoffRequireVolume    = true;   // require the existing displacement-or-volume sweep confirmation
+input int    InpWyckoffMaxAgeBars       = 96;     // an event older than this many closed bars is stale
 input group "====== Premium / Discount & OTE ======"
 input bool InpShowPremiumDiscount = true;
 input bool InpPDLinesOnly = false;          // draw range boundaries / EQ as Fibonacci-style lines
@@ -1851,6 +1881,30 @@ double   g_sb_entry_low=0.0;
 string   g_sb_reason="";
 int      g_sb_score=0;               // 0-100 rule-based confluence count, NOT a probability
 string   g_sb_invalidation="";
+
+//--- AUDIT-WY1 WYCKOFF SPRING / UPTHRUST (display only). The range geometry is
+//--- new because nothing in the file measured a TIGHT consolidation before; the
+//--- sweep confirmation is NOT new - it reuses SweepHasDisplacementOrVolume(),
+//--- which already tests displacement or relative volume on existing data, so no
+//--- new volume source is introduced. Reconciled against g_judas rather than
+//--- allowed to contradict it: see WY_Update().
+double   g_wy_range_high=0.0;
+double   g_wy_range_low=0.0;
+int      g_wy_range_start=-1;        // first bar of the range window
+int      g_wy_range_end=-1;          // last bar of the range window (closed-1)
+bool     g_wy_range_valid=false;
+int      g_wy_touches_high=0;
+int      g_wy_touches_low=0;
+int      g_wy_event=WY_EVENT_NONE;
+int      g_wy_dir=0;                 // +1 spring, -1 upthrust, 0 unresolved
+int      g_wy_bar=-1;                // the closed bar the event fired on
+double   g_wy_extreme=0.0;           // the wick that pierced the boundary
+bool     g_wy_active=false;
+bool     g_wy_volume_ok=false;
+bool     g_wy_conflict=false;        // disagrees with the Judas verdict on the same bar
+int      g_wy_score=0;               // 0-100 rule-based confluence count, NOT a probability
+string   g_wy_reason="";
+string   g_wy_invalidation="";
 datetime g_htf_cache_time = 0;
 datetime g_d1_cache_time = 0;
 bool g_memo_hit = false;
@@ -5437,6 +5491,25 @@ string SB_WindowName(const int win);
 bool SB_InWindow(const datetime server_time,const datetime ref_time,const int win);
 bool SB_ChainComplete(const int fvg_index,int &shift_index,int &sweep_index);
 void SB_DrawEntryZone(const int closed);
+// AUDIT-WY1 Wyckoff. The first four are PURE - no global, no series and no
+// terminal call - so they are exercisable offline by tools/test_phase3_wyckoff.py
+// and in-terminal by WY_SelfTest(), the same arrangement the AUDIT-SB1 cores use.
+string WY_EventName(const int event);
+bool WY_RangeValid(const int bars_in_range,const int min_bars,const double height_atr,
+                   const double max_height_atr,const int touches_high,const int touches_low,
+                   const int min_touches);
+ENUM_WYCKOFF_EVENT WY_Detect(const bool range_valid,const bool pierced_low,
+                             const bool closed_above_low,const bool pierced_high,
+                             const bool closed_below_high,string &reason,string &invalidation);
+int WY_Score(const bool range_valid,const bool touches_ok,const bool event_ok,
+             const bool volume_ok,const bool conflicted);
+void WY_Update(const int closed);
+void WY_DrawRange(const int closed);
+void WY_Clear();
+bool WY_SelfTest(string &where);
+bool WY_BuildRange(const int end_bar,const double atr,const int max_bars,const double max_height_atr,
+                   const double touch_tol,int &start_bar,double &hi,double &lo,
+                   int &touches_high,int &touches_low);
 bool IsInSession(const datetime server_time,const ENUM_SESSION_ID session_id);
 bool IsInKillZone(const datetime server_time,const ENUM_SESSION_ID session_id);
 int ChartEventBarAtTime(const datetime &chart_time[],const int total,const datetime event_time);
@@ -6997,6 +7070,8 @@ void PrepareDynamicRedraw()
    ObjectsDeleteAll(0,PFX+"SNIPER_");// v6.5.2: sniper zones are redrawn by MTF_SniperZone_Draw
    ObjectsDeleteAll(0,PFX+"SBP3_"); // AUDIT-SB1: the Silver Bullet entry zone is
                                    // redrawn by SB_DrawEntryZone from the dashboard
+   ObjectsDeleteAll(0,PFX+"WY_");   // AUDIT-WY1: the Wyckoff range box is redrawn
+                                   // by WY_DrawRange from the dashboard
    ObjectsDeleteAll(0,PFX+"ZN_");
    ObjectsDeleteAll(0,PFX+"STR_");
    // v6.1.3 (L5b): the live objects are named STRUCT_/ZONE_/PD_ - the two
@@ -14458,6 +14533,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    RXN_Clear();
    ScenarioClear();
    SBP3_Clear();
+   WY_Clear();
    if(InpMTEERunSelfTest)
    {
       string mtee_fail="";
@@ -14473,6 +14549,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          Print(">>> ",QSMC_VERSION_TEXT," Power-of-3 / Silver-Bullet self-test: PASS (9/9)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Power-of-3 / Silver-Bullet self-test: FAIL - ",mtee_fail);
+      if(WY_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Wyckoff Spring/Upthrust self-test: PASS (9/9)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Wyckoff Spring/Upthrust self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
@@ -15001,6 +15081,10 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    {
       P3_Update(closed);
       SB_Update(closed);
+      // AUDIT-WY1 reads only closed bars, the per-bar ATR and g_judas, all of
+      // which are final here. It re-derives its event from scratch every pass, so
+      // a full rebuild reproduces what the incremental passes published.
+      WY_Update(closed);
    }
 
    // Complete a pending same-bar replay comparison before any decision can
@@ -24641,6 +24725,445 @@ bool SBP3_SelfTest(string &where)
 }
 
 
+
+//====================================================================
+// AUDIT-WY1  WYCKOFF SPRING / UPTHRUST   (DISPLAY ONLY)
+//
+// WHAT IS NEW AND WHAT IS REUSED. Only the RANGE GEOMETRY is new, because
+// nothing in this file measured a TIGHT consolidation before: DetectDealingRange()
+// finds the swing range for premium/discount and is meant to be large, and the
+// EQH/EQL pools in g_liquidity[] cluster equal fractal levels but keep no touch
+// count, so neither can answer "at least two tests of each side".
+//
+// Everything else is reused, deliberately:
+//   - the sweep confirmation is SweepHasDisplacementOrVolume(), which already
+//     tests displacement (body >= 0.40 ATR or range >= 0.75 ATR) OR relative
+//     volume (>= 1.6x the 20-bar average) on the tick volume already in
+//     g_buf_tv. No new volume source is introduced, and no second opinion about
+//     what makes a sweep credible.
+//   - the minimum wick beyond a boundary is the SAME threshold that function
+//     already enforces (0.15 ATR, with a 3-pip floor), so a Spring here and a
+//     credible sweep there can never disagree about the same wick.
+//   - the touch tolerance follows DetectLiquidity()'s idiom: an ATR multiple with
+//     a PipSize() floor, so it is symbol- and timeframe-agnostic.
+//   - closed bars use the file's own convention (closed = total - 2).
+//
+// RECONCILED WITH JUDAS, NOT DUPLICATED. DetectJudasSwing() sweeps the ASIA
+// SESSION range once per local day; this sweeps a STRUCTURAL range in any
+// session. They are different ranges, so both can legitimately fire on the same
+// bar. When they agree, the reason says so. When they point opposite ways the
+// module sets g_wy_conflict and scores 0 rather than showing one confident
+// direction - two sources disagreeing about the same bar is a reason to stand
+// aside, not partial evidence for either side.
+//
+// CAUSALITY. The range window always ends at closed-1 and the test bar is
+// closed, so the bar being tested is by construction outside the range it
+// pierces - a Spring can never widen its own range. Every input is a closed bar.
+//
+// NO REPAINT, AND REPLAY-DETERMINISTIC. Nothing is latched between passes: each
+// pass RE-DERIVES the most recent qualifying event by scanning back over closed
+// bars. A full rebuild therefore reproduces exactly what the incremental passes
+// published, which is what makes a timeframe switch a valid no-repaint test. An
+// event already invalidated by a later closed bar is reported as invalidated
+// rather than being shown as live, and an older event is never resurrected to
+// replace it.
+//
+// SCORES ARE RULE-BASED CONFLUENCE COUNTS, NOT PROBABILITIES. Missing evidence
+// scores 0 and no leg is ever awarded for free.
+//
+// COMPLEXITY, stated because this runs once per newly closed bar: the scan is
+// bounded by InpWyckoffMaxAgeBars candidate bars, and for each one the leftward
+// expansion stops as soon as the running height exceeds InpWyckoffMaxRangeATR -
+// which in a trending market is only a few bars - and in any case never runs past
+// InpWyckoffMaxRangeBars. It is skipped entirely while InpEnableWyckoff is false,
+// which is the default, so the shipped cost is zero.
+//====================================================================
+
+string WY_EventName(const int event)
+{
+   if(event==(int)WY_EVENT_SPRING)   return "SPRING";
+   if(event==(int)WY_EVENT_UPTHRUST) return "UPTHRUST";
+   if(event==(int)WY_EVENT_NONE)     return "NONE";
+   return "UNKNOWN";
+}
+
+// The PURE range test. `height_atr` is the range height divided by ATR, and the
+// caller passes a negative value when ATR is unavailable - an unmeasured range is
+// not a valid range, and a non-positive cap would accept anything including a
+// trend, so neither is given the benefit of the doubt.
+bool WY_RangeValid(const int bars_in_range,const int min_bars,const double height_atr,
+                   const double max_height_atr,const int touches_high,const int touches_low,
+                   const int min_touches)
+{
+   // A range needs at least three bars to have two sides and something between them.
+   if(bars_in_range<3) return false;
+   if(min_bars>0 && bars_in_range<min_bars) return false;
+   if(max_height_atr<=0.0) return false;
+   if(!(height_atr>0.0)) return false;
+   if(height_atr>=max_height_atr) return false;
+   if(min_touches>0)
+   {
+      if(touches_high<min_touches) return false;
+      if(touches_low<min_touches) return false;
+   }
+   return true;
+}
+
+// The PURE event test. The four booleans are already resolved by the caller from
+// closed bars, so this decides nothing about price and cannot read a series.
+ENUM_WYCKOFF_EVENT WY_Detect(const bool range_valid,const bool pierced_low,
+                             const bool closed_above_low,const bool pierced_high,
+                             const bool closed_below_high,string &reason,string &invalidation)
+{
+   reason=""; invalidation="";
+   if(!range_valid)
+   {
+      reason="no qualifying Wyckoff range on the closed bars";
+      return WY_EVENT_NONE;
+   }
+   bool spring  =(pierced_low  && closed_above_low);
+   bool upthrust=(pierced_high && closed_below_high);
+
+   // A bar that pierced BOTH boundaries and still closed inside says nothing about
+   // which side won. Naming one would be a guess, so this refuses - the same
+   // principle that makes a conflicting source produce NO TRADE rather than a
+   // forced direction.
+   if(spring && upthrust)
+   {
+      reason="both boundaries were pierced on the same bar and it closed inside - no side";
+      return WY_EVENT_NONE;
+   }
+   if(spring)
+   {
+      reason="the range low was pierced and the bar closed back inside the range";
+      invalidation="a closed bar below the spring's wick low";
+      return WY_EVENT_SPRING;
+   }
+   if(upthrust)
+   {
+      reason="the range high was pierced and the bar closed back inside the range";
+      invalidation="a closed bar above the upthrust's wick high";
+      return WY_EVENT_UPTHRUST;
+   }
+   // Pierced but CLOSED OUTSIDE is a break of the range, not a Spring or an
+   // Upthrust. Calling it one would be the single most expensive mistake this
+   // module could make, so it gets its own explicit answer.
+   if(pierced_low)
+   {
+      reason="the range low was pierced but the bar closed BELOW it - a break, not a spring";
+      return WY_EVENT_NONE;
+   }
+   if(pierced_high)
+   {
+      reason="the range high was pierced but the bar closed ABOVE it - a break, not an upthrust";
+      return WY_EVENT_NONE;
+   }
+   reason="the range held - no boundary was pierced and closed back inside";
+   return WY_EVENT_NONE;
+}
+
+// PURE confluence count, 0-100: range 25, two touches per side 20, the event
+// itself 30, volume/displacement confirmation 25. A conflicted event scores 0.
+int WY_Score(const bool range_valid,const bool touches_ok,const bool event_ok,
+             const bool volume_ok,const bool conflicted)
+{
+   if(conflicted) return 0;
+   int s=0;
+   if(range_valid) s+=25;
+   if(touches_ok)  s+=20;
+   if(event_ok)    s+=30;
+   if(volume_ok)   s+=25;
+   return (s>100?100:s);
+}
+
+// Expand left from `end_bar` while the running height stays inside the ATR cap,
+// then count how many bars tested each boundary. This is the only genuinely new
+// geometry in the module. Reads series, so it is an adapter helper, not a pure one.
+bool WY_BuildRange(const int end_bar,const double atr,const int max_bars,const double max_height_atr,
+                   const double touch_tol,int &start_bar,double &hi,double &lo,
+                   int &touches_high,int &touches_low)
+{
+   start_bar=-1; hi=0.0; lo=0.0; touches_high=0; touches_low=0;
+   int n_h=ArraySize(g_buf_h), n_l=ArraySize(g_buf_l);
+   if(end_bar<0 || end_bar>=n_h || end_bar>=n_l) return false;
+   if(atr<=0.0 || max_height_atr<=0.0 || max_bars<3) return false;
+
+   hi=g_buf_h[end_bar]; lo=g_buf_l[end_bar];
+   int s=end_bar;
+   int floor_bar=MathMax(0,end_bar-(max_bars-1));
+   for(int b=end_bar-1;b>=floor_bar;b--)
+   {
+      double n_hi=MathMax(hi,g_buf_h[b]);
+      double n_lo=MathMin(lo,g_buf_l[b]);
+      // Stop BEFORE accepting a bar that would blow the height cap, so the
+      // published range is always inside it.
+      if((n_hi-n_lo)/atr>=max_height_atr) break;
+      hi=n_hi; lo=n_lo; s=b;
+   }
+   int bars=end_bar-s+1;
+   if(bars<3) return false;
+
+   // A touch is a wick that came within tolerance of the boundary. Tolerance is an
+   // ATR multiple with a PipSize floor, following DetectLiquidity()'s idiom.
+   double tol=(touch_tol>0.0 ? MathMax(atr*touch_tol,2.0*PipSize()) : MathMax(atr*0.25,2.0*PipSize()));
+   for(int b=s;b<=end_bar;b++)
+   {
+      if(g_buf_h[b]>=hi-tol) touches_high++;
+      if(g_buf_l[b]<=lo+tol) touches_low++;
+   }
+   start_bar=s;
+   return true;
+}
+
+// The adapter. It re-derives everything from closed bars on every pass.
+void WY_Update(const int closed)
+{
+   g_wy_range_valid=false; g_wy_range_start=-1; g_wy_range_end=-1;
+   g_wy_range_high=0.0; g_wy_range_low=0.0;
+   g_wy_touches_high=0; g_wy_touches_low=0;
+   g_wy_event=WY_EVENT_NONE; g_wy_dir=0; g_wy_bar=-1; g_wy_extreme=0.0;
+   g_wy_active=false; g_wy_volume_ok=false; g_wy_conflict=false;
+   g_wy_score=0; g_wy_reason=""; g_wy_invalidation="";
+   if(!InpEnableWyckoff) return;
+   if(closed<3) return;
+   int n_c=ArraySize(g_buf_c), n_h=ArraySize(g_buf_h), n_l=ArraySize(g_buf_l);
+   if(closed>=n_c || closed>=n_h || closed>=n_l) return;
+
+   // The file's ATR idiom: per-bar history when available, scalar fallback otherwise.
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ? g_atr_buf[closed] : g_atr;
+   if(atr<=0.0)
+   {
+      g_wy_reason="stand aside: ATR is not available yet, so the range cannot be measured";
+      return;
+   }
+
+   int max_bars=MathMax(3,InpWyckoffMaxRangeBars);
+   int lookback=(InpWyckoffMaxAgeBars>0 ? InpWyckoffMaxAgeBars : 0);
+   // The minimum wick beyond a boundary is the SAME threshold
+   // SweepHasDisplacementOrVolume() already enforces, so this module cannot invent
+   // a second, looser idea of what counts as a pierce.
+   double wick_tol=MathMax(atr*0.15,3.0*PipSize());
+
+   int first_bar=MathMax(3,closed-lookback);
+   for(int b=closed;b>=first_bar;b--)
+   {
+      int s=-1,th=0,tl=0;
+      double hi=0.0,lo=0.0;
+      bool have=WY_BuildRange(b-1,atr,max_bars,InpWyckoffMaxRangeATR,
+                              InpWyckoffTouchTolATR,s,hi,lo,th,tl);
+
+      // The CURRENT range is published even when no event fires, so the box on the
+      // chart and the tooltip always describe the live closed bars.
+      if(b==closed)
+      {
+         g_wy_range_start=s; g_wy_range_end=b-1;
+         g_wy_range_high=hi; g_wy_range_low=lo;
+         g_wy_touches_high=th; g_wy_touches_low=tl;
+         int bars=(have? (b-1)-s+1 : 0);
+         g_wy_range_valid=(have && WY_RangeValid(bars,InpWyckoffMinRangeBars,
+                            (hi-lo)/atr,InpWyckoffMaxRangeATR,th,tl,InpWyckoffMinTouches));
+      }
+      if(!have) continue;
+
+      int bars=(b-1)-s+1;
+      bool range_ok=WY_RangeValid(bars,InpWyckoffMinRangeBars,(hi-lo)/atr,
+                                  InpWyckoffMaxRangeATR,th,tl,InpWyckoffMinTouches);
+      bool pierced_low  =(g_buf_l[b]<lo-wick_tol);
+      bool pierced_high =(g_buf_h[b]>hi+wick_tol);
+      bool closed_above_low =(g_buf_c[b]>lo);
+      bool closed_below_high=(g_buf_c[b]<hi);
+
+      string reason="",invalidation="";
+      ENUM_WYCKOFF_EVENT ev=WY_Detect(range_ok,pierced_low,closed_above_low,
+                                      pierced_high,closed_below_high,reason,invalidation);
+      if(ev==WY_EVENT_NONE) continue;
+
+      int dir=(ev==WY_EVENT_SPRING ? 1 : -1);
+      bool is_high=(ev==WY_EVENT_UPTHRUST);
+      double level=(is_high?hi:lo);
+      // Confirmation reuses the existing sweep validator rather than a new one.
+      bool vol_ok=true;
+      if(InpWyckoffRequireVolume)
+         vol_ok=SweepHasDisplacementOrVolume(b,is_high,level,atr,
+                                             g_buf_h,g_buf_l,g_buf_o,g_buf_c,g_buf_tv);
+      if(InpWyckoffRequireVolume && !vol_ok) continue;
+
+      // RECONCILE WITH JUDAS. Same bar, opposite verdicts: report the conflict and
+      // score 0 instead of showing a direction that another module contradicts.
+      bool judas_same_bar=(InpDetectJudas && g_judas!=0 && g_judas_bar==b);
+      bool conflict=(judas_same_bar && g_judas!=dir);
+
+      double extreme=(ev==WY_EVENT_SPRING ? g_buf_l[b] : g_buf_h[b]);
+      // An event already invalidated by a LATER closed bar is reported as
+      // invalidated, not shown as live - and no older event is resurrected to
+      // replace it, because the most recent one is the one that matters.
+      bool dead=false;
+      for(int k=b+1;k<=closed;k++)
+      {
+         if(ev==WY_EVENT_SPRING   && g_buf_c[k]<extreme){ dead=true; break; }
+         if(ev==WY_EVENT_UPTHRUST && g_buf_c[k]>extreme){ dead=true; break; }
+      }
+
+      bool touches_ok=(th>=MathMax(1,InpWyckoffMinTouches) &&
+                       tl>=MathMax(1,InpWyckoffMinTouches));
+      g_wy_event=(int)ev; g_wy_bar=b; g_wy_extreme=extreme;
+      g_wy_dir=(dead||conflict ? 0 : dir);
+      g_wy_active=(!dead && !conflict);
+      g_wy_volume_ok=vol_ok;
+      g_wy_conflict=conflict;
+      g_wy_score=WY_Score(range_ok,touches_ok,true,vol_ok,conflict);
+      g_wy_invalidation=(dead?"already invalidated":invalidation);
+      g_wy_reason=reason+
+         " (range "+DoubleToString(lo,_Digits)+"-"+DoubleToString(hi,_Digits)+
+         ", "+IntegerToString(bars)+" bars, touches "+IntegerToString(th)+
+         "/"+IntegerToString(tl)+")";
+      if(dead)
+         g_wy_reason="INVALIDATED - "+g_wy_reason+
+                     "; a later closed bar went through the wick extreme";
+      else if(conflict)
+         g_wy_reason="CONFLICT - "+g_wy_reason+
+                     "; the Judas sweep of the Asia range points the other way on the same bar, so stand aside";
+      else if(judas_same_bar)
+         g_wy_reason=g_wy_reason+
+                     "; agrees with the Judas sweep of the Asia range on the same bar";
+      else if(!vol_ok)
+         g_wy_reason=g_wy_reason+"; no displacement or volume confirmation";
+
+      if(InpLogLifecycleTransitions && g_wy_active)
+         LogLifecycle(StringFormat("WYCKOFF %s dir=%+d bar=%d score=%d %s",
+                                   WY_EventName((int)ev),dir,b,g_wy_score,g_wy_reason));
+      break;
+   }
+}
+
+// Optional display of the range the event was measured against. Reuses
+// DrawZoneBox(), so the existing display gate, visual-band test and prefix
+// cleanup all apply unchanged, and it owns exactly ONE object.
+void WY_DrawRange(const int closed)
+{
+   const string name=PFX+"WY_RANGE";
+   if(!InpEnableWyckoff || !InpWyckoffShowRange || !g_wy_range_valid ||
+      !(g_wy_range_high>g_wy_range_low) || g_wy_range_start<0 ||
+      g_wy_range_end<0 || g_wy_range_end>=ArraySize(g_buf_t) ||
+      g_wy_range_start>=ArraySize(g_buf_t))
+   {
+      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
+      return;
+   }
+   datetime t1=g_buf_t[g_wy_range_start];
+   datetime t2=g_buf_t[MathMin(g_wy_range_end,closed)];
+   color col=(g_wy_active?(g_wy_dir>0?clrDarkSeaGreen:clrTomato):clrGray);
+   DrawZoneBox(name,t1,g_wy_range_high,t2,g_wy_range_low,col,
+               "WYCKOFF RANGE "+IntegerToString(g_wy_range_end-g_wy_range_start+1)+
+               " BARS - CONTEXT, NOT AN ENTRY");
+}
+
+// Reset to the inert state, beside the other module resets.
+void WY_Clear()
+{
+   g_wy_range_valid=false; g_wy_range_start=-1; g_wy_range_end=-1;
+   g_wy_range_high=0.0; g_wy_range_low=0.0;
+   g_wy_touches_high=0; g_wy_touches_low=0;
+   g_wy_event=WY_EVENT_NONE; g_wy_dir=0; g_wy_bar=-1; g_wy_extreme=0.0;
+   g_wy_active=false; g_wy_volume_ok=false; g_wy_conflict=false;
+   g_wy_score=0; g_wy_reason=""; g_wy_invalidation="";
+}
+
+
+// AUDIT-WY1 self-test. It exercises the PURE cores with local values only - no
+// chart, no series, no terminal state - so a logic regression is caught at OnInit
+// instead of on a live bar. Gated by InpMTEERunSelfTest, the file's existing
+// general self-test switch.
+bool WY_SelfTest(string &where)
+{
+   where="";
+   string r="",iv="";
+
+   // WY-1 A valid range: enough bars, height inside the cap, and at least the
+   //      required number of tests of EACH side.
+   if(!WY_RangeValid(20,16,4.0,6.0,3,3,2))
+   { where="WY-1 a 20-bar range of 4 ATR with 3 touches per side must be valid"; return false; }
+   if(WY_RangeValid(10,16,4.0,6.0,3,3,2))
+   { where="WY-1 a range shorter than InpWyckoffMinRangeBars must be rejected"; return false; }
+   if(WY_RangeValid(20,16,7.0,6.0,3,3,2))
+   { where="WY-1 a range taller than the cap is a trend, not a range"; return false; }
+   if(WY_RangeValid(20,16,4.0,6.0,1,3,2))
+   { where="WY-1 one touch of the upper boundary is not two"; return false; }
+   if(WY_RangeValid(20,16,4.0,6.0,3,1,2))
+   { where="WY-1 one touch of the lower boundary is not two"; return false; }
+   if(WY_RangeValid(20,16,6.0,6.0,3,3,2))
+   { where="WY-1 the height cap is exclusive (height == cap is too tall)"; return false; }
+
+   // WY-2 Nothing is given the benefit of the doubt. An unmeasured height, a
+   //      non-positive cap and a degenerate bar count all refuse, because each of
+   //      them would otherwise validate a range that was never really measured.
+   if(WY_RangeValid(20,16,-1.0,6.0,3,3,2))
+   { where="WY-2 an unmeasured height (ATR unavailable) must not validate"; return false; }
+   if(WY_RangeValid(20,16,0.0,6.0,3,3,2))
+   { where="WY-2 a zero height is degenerate and must not validate"; return false; }
+   if(WY_RangeValid(20,16,4.0,0.0,3,3,2))
+   { where="WY-2 a zero height cap would accept a trend and must be refused"; return false; }
+   if(WY_RangeValid(20,16,4.0,-1.0,3,3,2))
+   { where="WY-2 a negative height cap must be refused"; return false; }
+   if(WY_RangeValid(2,0,4.0,6.0,3,3,0))
+   { where="WY-2 fewer than three bars cannot have two sides"; return false; }
+
+   // WY-3 A Spring: the low is pierced and the bar closes back inside.
+   if(WY_Detect(true,true,true,false,false,r,iv)!=WY_EVENT_SPRING || iv=="")
+   { where="WY-3 a pierced low with a close back inside is a SPRING, with an invalidation"; return false; }
+
+   // WY-4 An Upthrust: the high is pierced and the bar closes back inside.
+   if(WY_Detect(true,false,false,true,true,r,iv)!=WY_EVENT_UPTHRUST || iv=="")
+   { where="WY-4 a pierced high with a close back inside is an UPTHRUST, with an invalidation"; return false; }
+
+   // WY-5 Both boundaries pierced and closed inside: refuses to name a side.
+   //      Guessing here would publish a direction the same bar contradicts.
+   if(WY_Detect(true,true,true,true,true,r,iv)!=WY_EVENT_NONE ||
+      StringFind(r,"both boundaries")<0)
+   { where="WY-5 a bar that pierced both sides and closed inside must refuse to pick one"; return false; }
+
+   // WY-6 Pierced but CLOSED OUTSIDE is a break, not a Spring/Upthrust, and must
+   //      say so rather than reporting that the range held.
+   if(WY_Detect(true,true,false,false,false,r,iv)!=WY_EVENT_NONE ||
+      StringFind(r,"break, not a spring")<0)
+   { where="WY-6 a close below the pierced low is a BREAK and must be named as one"; return false; }
+   if(WY_Detect(true,false,false,true,false,r,iv)!=WY_EVENT_NONE ||
+      StringFind(r,"break, not an upthrust")<0)
+   { where="WY-6 a close above the pierced high is a BREAK and must be named as one"; return false; }
+
+   // WY-7 No range, no event - however dramatic the bar was.
+   if(WY_Detect(false,true,true,true,true,r,iv)!=WY_EVENT_NONE || r=="")
+   { where="WY-7 without a valid range there is no Spring and no Upthrust"; return false; }
+   if(WY_Detect(true,false,true,false,true,r,iv)!=WY_EVENT_NONE ||
+      StringFind(r,"the range held")<0)
+   { where="WY-7 an unpierced range reports that it held"; return false; }
+
+   // WY-8 Score arithmetic: range 25, touches 20, event 30, confirmation 25. No
+   //      evidence scores 0, the full event scores exactly 100, and a CONFLICT
+   //      scores 0 - two sources disagreeing is a stand-aside, not partial credit.
+   if(WY_Score(false,false,false,false,false)!=0)
+   { where="WY-8 no evidence must score 0"; return false; }
+   if(WY_Score(true,false,false,false,false)!=25)
+   { where="WY-8 the range leg is worth 25"; return false; }
+   if(WY_Score(true,true,true,false,false)!=75)
+   { where="WY-8 an event without confirmation is worth 75, not 100"; return false; }
+   if(WY_Score(true,true,true,true,false)!=100)
+   { where="WY-8 the fully confirmed event is worth exactly 100"; return false; }
+   if(WY_Score(true,true,true,true,true)!=0)
+   { where="WY-8 a conflicted event must score 0, not keep its evidence"; return false; }
+
+   // WY-9 The event vocabulary is complete and distinct, so a card can never print
+   //      a blank or a duplicate label for a real event.
+   if(WY_EventName((int)WY_EVENT_NONE)!="NONE" ||
+      WY_EventName((int)WY_EVENT_SPRING)!="SPRING" ||
+      WY_EventName((int)WY_EVENT_UPTHRUST)!="UPTHRUST")
+   { where="WY-9 the Wyckoff event names drifted"; return false; }
+   if(WY_EventName(999)!="UNKNOWN")
+   { where="WY-9 an out-of-range event must be labelled UNKNOWN, not guessed"; return false; }
+   return true;
+}
+
 //====================================================================
 // KILL ZONES (session-local windows mapped to broker server time)
 //====================================================================
@@ -30022,6 +30545,26 @@ void DrawQuantumDashboard(const int total,const double &c[])
    // The optional entry zone is drawn here, after PrepareDynamicRedraw() has
    // already swept the SBP3_ prefix earlier in this same pass.
    SB_DrawEntryZone(closed);
+
+   // AUDIT-WY1 Wyckoff Spring / Upthrust. Tooltip, never the 11-row card, for the
+   // same reason as the two above.
+   if(InpEnableWyckoff && InpWyckoffShowOnDashboard)
+   {
+      // A direction is printed only while the event is ACTIVE, so an invalidated or
+      // conflicted event can never show a side next to a stand-aside.
+      string wy_dir=(g_wy_active?(g_wy_dir>0?"BUY":(g_wy_dir<0?"SELL":"none")):"stand aside");
+      tooltip+="\nWY: "+WY_EventName(g_wy_event)+(g_wy_active?"":" (not active)")+
+               " | dir "+wy_dir+
+               " | score "+IntegerToString(g_wy_score)+"/100 (confluence, not a win rate)";
+      if(g_wy_range_valid)
+         tooltip+="\nWY range: "+DoubleToString(g_wy_range_low,_Digits)+"-"+
+                  DoubleToString(g_wy_range_high,_Digits)+" ("+
+                  IntegerToString(g_wy_range_end-g_wy_range_start+1)+" bars, touches "+
+                  IntegerToString(g_wy_touches_high)+"/"+IntegerToString(g_wy_touches_low)+")";
+      if(g_wy_reason!="") tooltip+="\nWY why: "+g_wy_reason;
+      if(g_wy_active && g_wy_invalidation!="") tooltip+="\nWY invalidation: "+g_wy_invalidation;
+   }
+   WY_DrawRange(closed);
 
    int chart_w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
 
