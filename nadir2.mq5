@@ -1891,6 +1891,17 @@ string   g_last_mtf_entry_key="";    // one CONFIRMED alert/mark per signal (per
 datetime g_last_mtf_preview_bar=0;   // PREVIEW alerts: at most once per execution bar
 bool     g_mtf_entry_late=false;    // chase filter tripped (display + journal only)
 datetime g_mtf_sig_time=0;           // v6.4.1: signal bar of the CONFIRMED tactical entry (InpAlertOnSignalBar)
+//--- v6.6.10 AUDIT-TAC: the authoritative-state verdict behind the tactical
+//--- display, and the sentence that explains it. The tactical path is
+//--- NON-AUTHORITATIVE, but until now it drew its label without ever asking the
+//--- modules that ARE authoritative (Core lifecycle blacklist, Directional
+//--- Scenario Engine) whether that side was still alive. That is how a chart
+//--- could carry "BUY PLAN - CONDITIONAL - INVALIDATED" next to a live
+//--- "TACTICAL / PREVIEW MTF BUY ENTRY PREVIEW". Display + observability only:
+//--- nothing below authorizes, arms or executes anything.
+string   g_mtf_entry_authority="";   // why the tactical display is what it is ("" = unremarkable)
+bool     g_mtf_entry_blocked=false;  // true: the display AND the arbiter feed were refused
+int      g_mtf_entry_src=-1;         // 0=early-break preview 1=Core-owned 2=HTF-bias only
 string   g_entry_last_key="";         // v6.4.1 dedup key of the newest CONFIRMED core signal
 bool     g_entry_last_late=false;     // v6.4.1 chase verdict for that signal
 string g_blacklist_zone_type[]; // "BUY"/"SELL"
@@ -4415,6 +4426,19 @@ enum ENUM_SCENARIO_STATE
    SCN_COUNTERTREND_WATCH       = 14
 };
 
+// v6.6.10 AUDIT-TAC: the verdict of the authoritative-state gate that the
+// NON-AUTHORITATIVE tactical preview must now pass before it may draw an
+// "ENTRY" word, an arrow or a mark. One total order, no per-module guesses:
+// a retired scenario outranks a stale trigger, which outranks a bias-only
+// direction, which outranks "allowed".
+enum ENUM_TACTICAL_AUTHORITY
+{
+   TAC_AUTH_OK      = 0,  // an authoritative module still owns a live plan here
+   TAC_AUTH_CONTEXT = 1,  // HTF bias alone: context, never the word "ENTRY"
+   TAC_AUTH_STALE   = 2,  // the trigger is older than the Core retirement window
+   TAC_AUTH_BLOCKED = 3   // an authoritative module retired this exact side
+};
+
 enum ENUM_SCENARIO_VERDICT
 {
    SCV_NO_TRADE                 = 0,
@@ -5300,6 +5324,22 @@ bool IsInSession(const datetime server_time,const ENUM_SESSION_ID session_id);
 bool IsInKillZone(const datetime server_time,const ENUM_SESSION_ID session_id);
 int ChartEventBarAtTime(const datetime &chart_time[],const int total,const datetime event_time);
 int ChartClosedBarAtTime(const datetime &chart_time[],const int total,const datetime availability_time);
+// v6.6.10 AUDIT-TAC: defined in the Directional Scenario Engine section, next to
+// the state they read. Declared here because UpdateMTFExecutionEntry() runs
+// earlier in the file than the DSE.
+bool TacticalScenarioTerminal(const bool bull,string &state_name,string &why);
+bool TacticalScenarioLive(const bool bull,string &state_name);
+string TacticalAuthorityName(const int auth);
+ENUM_TACTICAL_AUTHORITY TacticalAuthorityDecide(const bool bull,const int src,
+                                                const int trigger_age_bars,const int retest_timeout_bars,
+                                                const bool dse_on,const bool dse_terminal,
+                                                const string terminal_state,const string terminal_why,
+                                                const bool blacklisted,
+                                                const bool dse_live,const string live_state,
+                                                string &reason);
+ENUM_TACTICAL_AUTHORITY TacticalAuthorityGate(const bool bull,const int src,const int trigger_bar,
+                                              const double trigger,string &reason);
+bool TacticalAuthoritySelfTest(string &where);
 void DetectStructure(const int total,const double &o[],const double &h[],const double &l[],const double &c[],const datetime &t[],const bool incremental=false);
 int FractalRightBars(const int n);
 int PreviewFractalRightBars(const int n);
@@ -5332,6 +5372,10 @@ void ClearMTFExecutionEntry()
 {
    g_mtf_entry_state=""; g_mtf_entry_price=0.0; g_mtf_entry_time=0;
    g_mtf_entry_late=false; g_mtf_sig_time=0;
+   // v6.6.10 AUDIT-TAC: the authority verdict belongs to this display, so it is
+   // cleared with it. A caller that wants to KEEP the reason (because the clear
+   // was itself the decision) re-publishes it immediately after this call.
+   g_mtf_entry_authority=""; g_mtf_entry_blocked=false; g_mtf_entry_src=-1;
    ObjectDelete(0,PFX+"MTF_ENTRY"); ObjectDelete(0,PFX+"MTF_ENTRY_TX");
    EntryMarkClearTactical();   // v6.4.1: no orphan arrow/preview mark when the signal lapses
 }
@@ -5339,19 +5383,60 @@ void UpdateMTFExecutionEntry()
 {
    if(!InpUseMTFExecutionEntry){ ClearMTFExecutionEntry(); return; }
    bool have_dir=false,bull=false,core_owned=false; double trigger=0.0; datetime trigger_time=0;
+   // v6.6.10 AUDIT-TAC2: WHICH module supplied the direction decides how much the
+   // display may claim. 0 = early-break live preview, 1 = the Core lifecycle owns
+   // it, 2 = the higher-timeframe bias alone. Only src==2 can be downgraded to
+   // CONTEXT, because that is the one branch with no location fact behind it -
+   // exactly the rule the arbitration layer already enforces for alerts
+   // (QSMC_Root.mqh BuildTacticalCandidate: "LOCATION FIRST (R1). Direction comes
+   // from the zone, never from the HTF bias alone"). The display used to be the
+   // only reader that did not apply it.
+   int src=-1,trigger_bar=-1;
    if(g_early_break_structure_idx>=0 && g_early_break_price>0.0 &&
       g_early_break_status=="LIVE_PREVIEW")
-   { have_dir=true; bull=g_early_break_bull; trigger=g_early_break_price; trigger_time=g_early_break_structure_time; }
+   { have_dir=true; bull=g_early_break_bull; trigger=g_early_break_price; trigger_time=g_early_break_structure_time; src=0; }
    else if(g_active_setup.active)
-   { have_dir=true; core_owned=true; bull=g_active_setup.is_buy; trigger=g_active_setup.entry; trigger_time=g_active_setup.created_time; }
+   { have_dir=true; core_owned=true; bull=g_active_setup.is_buy; trigger=g_active_setup.entry; trigger_time=g_active_setup.created_time; src=1; }
    else if(g_htf_bias==1 || g_htf_bias==-1)
    {
-      have_dir=true; bull=(g_htf_bias>0);
+      have_dir=true; bull=(g_htf_bias>0); src=2;
       for(int i=ArraySize(g_structures)-1;i>=0;i--)
-      { if(g_structures[i].type=="INIT" || g_structures[i].bullish!=bull) continue; trigger=g_structures[i].price; trigger_time=g_structures[i].time; break; }
+      {
+         if(g_structures[i].type=="INIT" || g_structures[i].bullish!=bull) continue;
+         trigger=g_structures[i].price; trigger_time=g_structures[i].time;
+         trigger_bar=g_structures[i].bar;   // chronological chart bar of the event
+         break;
+      }
    }
    if(!have_dir || trigger<=0.0){ ClearMTFExecutionEntry(); return; }
    if(InpUseHTFBias && g_htf_bias!=(bull?1:-1)){ ClearMTFExecutionEntry(); return; }
+   //--- v6.6.10 AUDIT-TAC1 AUTHORITATIVE-STATE GATE. Runs before anything is
+   //--- drawn, marked or handed to the arbiter, so a retired scenario cannot keep
+   //--- a live preview and a stale trigger cannot look like a fresh entry.
+   //--- CAUSALITY: this reads the last PUBLISHED closed-bar verdicts (DSE plans,
+   //--- Core blacklist). UpdateMTFExecutionEntry() is called earlier in
+   //--- OnCalculate than ScenarioUpdate(), so on the first tick of a new chart bar
+   //--- the DSE snapshot is still the previous closed bar's. That is the newest
+   //--- authoritative verdict that exists at this instant - strictly causal, never
+   //--- look-ahead - and it is replaced by the current bar's verdict later in the
+   //--- same OnCalculate pass, before the dashboard is drawn.
+   string auth_reason="";
+   ENUM_TACTICAL_AUTHORITY auth=TacticalAuthorityGate(bull,src,trigger_bar,trigger,auth_reason);
+   if(auth==TAC_AUTH_BLOCKED || auth==TAC_AUTH_STALE)
+   {
+      ClearMTFExecutionEntry();
+      // re-publish: the clear IS the decision, and the panel has to say why
+      g_mtf_entry_src=src;
+      g_mtf_entry_blocked=true;
+      g_mtf_entry_authority=TacticalAuthorityName((int)auth)+" - "+auth_reason;
+      // Same debug channel every other veto site uses (CORE / ZRE / RXN
+      // proximity and direction vetoes); it is a no-op unless InpDebugLog.
+      if(InpDebugLog)
+         DebugLogSignal("MTF-TACTICAL","authority-gate",(bull?1:-1),0.0,0.0,trigger,0.0,
+                        (bull?"BUY":"SELL"),TacticalAuthorityName((int)auth),
+                        0.0,0.0,0.0,0.0,"",auth_reason);
+      return;
+   }
    ENUM_TIMEFRAMES etf=SelectExecutionTF(); g_mtf_entry_tf=etf;
    double atr=g_atr; if(atr<=0.0) atr=MathMax(100.0*_Point,10.0*_Point);
    double lh=iHigh(_Symbol,etf,0), ll=iLow(_Symbol,etf,0), lo=iOpen(_Symbol,etf,0), lc=iClose(_Symbol,etf,0);
@@ -5390,7 +5475,24 @@ void UpdateMTFExecutionEntry()
    // PREVIEW when the condition lapses and re-arms (that loop is what produced
    // the "same CONFIRMED entry over and over" journal spam).
    if(state=="PREVIEW" && g_last_mtf_entry_key==id+"|CONFIRMED"){ ClearMTFExecutionEntry(); return; }
+   // v6.6.10 AUDIT-TAC3 (RESTORED DEDUP KEY). tools/apply_qsmc_arb_patch.py
+   // EDIT 6 deleted the alert block that held the ONLY write to
+   // g_last_mtf_entry_key and left both of its readers in place, so the key was
+   // permanently "" and
+   //   * the guard above - "a signal that already fired CONFIRMED never re-alerts
+   //     as a PREVIEW when the condition lapses and re-arms (that loop is what
+   //     produced the 'same CONFIRMED entry over and over' journal spam)" - could
+   //     never fire, and
+   //   * the g_mtf_sig_time re-anchor condition below was permanently true.
+   // Writing the key back restores the documented v6.4.1 semantics. Alerts stay
+   // owned by the arbitration layer; this key dedups the DISPLAY and the
+   // signal-bar anchor only. It is deliberately never reset: the dedup is
+   // permanent per (symbol, exec TF, trigger time, direction, trigger price).
+   if(closed_confirm) g_last_mtf_entry_key=id+"|CONFIRMED";
    g_mtf_entry_state=state; g_mtf_entry_price=ep; g_mtf_entry_time=et;
+   g_mtf_entry_src=src;
+   g_mtf_entry_blocked=false;
+   g_mtf_entry_authority=(auth==TAC_AUTH_CONTEXT ? TacticalAuthorityName((int)auth)+" - "+auth_reason : "");
    // v6.4.1: the honest anchor of a tactical signal is the bar that PRODUCED the
    // fact. live_cross reads the forming bar (it can still repaint), so the signal
    // bar is that bar only once it has closed; otherwise it is the closed bar.
@@ -5442,15 +5544,25 @@ void UpdateMTFExecutionEntry()
       // every gate. The closed execution bar is an execution fact, not
       // a trade signal, so the label says TACTICAL-INFO.
       if(InpArbEnabled && InpArbGateTactical) chase+=" | gated by ARB";
+      // v6.6.10 AUDIT-TAC2: a CONTEXT verdict says so on the label itself, not
+      // only in a panel row - the label is what a trader reads first.
+      if(auth==TAC_AUTH_CONTEXT) chase+=" | CONTEXT: "+auth_reason;
       if(g_mtf_sig_time>0 && g_mtf_sig_time!=et)
          chase+=" | @"+TimeToString(g_mtf_sig_time,TIME_MINUTES)+" (exec bar "+exect+")";
+      // v6.6.10 AUDIT-TAC2: the word ENTRY is printed only when an authoritative
+      // module still owns a live scenario on this side. "TACTICAL / PREVIEW MTF
+      // BUY ENTRY PREVIEW" can therefore no longer appear over a side the
+      // Directional Scenario Engine has retired or never had a plan for.
+      string verb=(auth==TAC_AUTH_CONTEXT?"CONTEXT":"ENTRY");
       DrawTextLabel(PFX+"MTF_ENTRY_TX",g_mtf_sig_time,ep,
-                    StringFormat("%s MTF %s ENTRY %s @ %.2f | exec %s | grade %s%s",
+                    StringFormat("%s MTF %s %s %s @ %.2f | exec %s | grade %s%s",
                                  (closed_confirm?"TACTICAL-INFO (exec bar closed)":"TACTICAL / PREVIEW"),
-                                 bull?"BUY":"SELL",state,ep,TFName(etf),
+                                 bull?"BUY":"SELL",verb,state,ep,TFName(etf),
                                  MTFEntryGrade(closed_confirm,core_owned),chase),
                     (g_mtf_entry_late?clrOrange:(closed_confirm?(bull?clrLime:clrTomato):clrAqua)),!bull,9);
-      if(!far || closed_confirm)
+      // v6.6.10: a CONTEXT verdict keeps its level line but never paints an entry
+      // mark or arrow - the mark is the thing a trader reads as "here".
+      if(auth!=TAC_AUTH_CONTEXT && (!far || closed_confirm))
       {
          EntryMarkTactical(bull,closed_confirm,ep);
          if(ArraySize(g_buf_t)>0)
@@ -14228,6 +14340,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    if(InpMTEERunSelfTest)
    {
       string mtee_fail="";
+      if(TacticalAuthoritySelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Tactical-authority self-test: PASS (7/7)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Tactical-authority self-test: FAIL - ",mtee_fail);
       if(ScenarioMTEESelfTest(mtee_fail))
          Print(">>> ",QSMC_VERSION_TEXT," MTEE synthetic self-test: PASS (7/7)");
       else
@@ -27090,6 +27206,290 @@ void ScenarioMarkLate(SScenarioPlan &p)
                     : g_scn_ctx.close_price<p.zone_low-chase*g_scn_ctx.selection_atr);
 }
 
+//====================================================================
+// v6.6.10 AUDIT-TAC  TACTICAL AUTHORITY GATE
+//
+// THE DEFECT THIS CLOSES. Three modules publish a direction for the same
+// symbol and the same bar, and before this pass only two of them asked
+// anybody else what the state was:
+//
+//   * the Core lifecycle        (g_active_setup, blacklist, STATE_INVALIDATED)
+//   * the Directional Scenario  (g_scn_buy / g_scn_sell, SCN_INVALIDATED,
+//     Engine                      SCN_EXPIRED, plan_dead)  <- prints
+//                                 "BUY PLAN - CONDITIONAL - INVALIDATED"
+//   * the MTF tactical preview  (UpdateMTFExecutionEntry)  <- prints
+//                                 "TACTICAL / PREVIEW MTF BUY ENTRY PREVIEW"
+//
+// The tactical preview read NONE of the others. Its direction could come from
+// the higher-timeframe bias alone plus any past structure event of the same
+// side, with no age bound, so an invalidated BUY plan and a live BUY entry
+// preview were drawn on the same chart at the same time. Two independent
+// modules, two inconsistent snapshots - the contradiction the operator sees.
+//
+// THE RULE, in one total order (highest wins):
+//   BLOCKED  an authoritative module retired this exact side  -> no display,
+//            no entry mark, and the fact is NOT handed to the arbiter either;
+//   STALE    the bias-only trigger is older than the Core retirement window
+//            -> same as BLOCKED;
+//   CONTEXT  the direction came from the HTF bias alone and the DSE holds no
+//            live plan on that side -> the level line stays, the word becomes
+//            CONTEXT, no entry mark is painted, and the arbiter still receives
+//            the fact so its own refusal stays explainable;
+//   OK       an authoritative module still owns a live scenario on this side.
+//
+// Nothing here authorizes, arms, scores or executes anything, no threshold is
+// relaxed, and no gate loses authority: this only removes a display that
+// contradicted the modules that already had the authority.
+//
+// CAUSALITY: every input is a published CLOSED-BAR verdict (a DSE plan built by
+// ScenarioUpdate for the last closed bar, or a Core blacklist entry whose own
+// horizon is InpBlacklistExpiryBars). No forming-bar value is read, and no
+// future bar can change a verdict already returned here.
+//====================================================================
+
+// Does the Directional Scenario Engine hold a TERMINAL plan for this side?
+// Mirrored halves rather than a struct pointer: MQL5 has no pointer to a struct
+// and copying an SScenarioPlan (it owns ~40 strings) per tick would be waste.
+bool TacticalScenarioTerminal(const bool bull,string &state_name,string &why)
+{
+   state_name=""; why="";
+   if(bull)
+   {
+      if(!g_scn_buy.valid) return false;
+      if(!g_scn_buy.invalidated && !g_scn_buy.plan_dead &&
+         g_scn_buy.state!=SCN_INVALIDATED && g_scn_buy.state!=SCN_EXPIRED) return false;
+      state_name=ScenarioStateName(g_scn_buy.state);
+      why=(g_scn_buy.plan_dead && g_scn_buy.dead_note!="" ? g_scn_buy.dead_note
+                                                          : g_scn_buy.qualification_reason);
+      return true;
+   }
+   if(!g_scn_sell.valid) return false;
+   if(!g_scn_sell.invalidated && !g_scn_sell.plan_dead &&
+      g_scn_sell.state!=SCN_INVALIDATED && g_scn_sell.state!=SCN_EXPIRED) return false;
+   state_name=ScenarioStateName(g_scn_sell.state);
+   why=(g_scn_sell.plan_dead && g_scn_sell.dead_note!="" ? g_scn_sell.dead_note
+                                                         : g_scn_sell.qualification_reason);
+   return true;
+}
+
+// Does it hold a LIVE (non-terminal, currently relevant) plan for this side?
+// `relevant` is ScenarioMarkRelevant's own Priority-A verdict: live, correctly
+// sided, fresh, unchased and inside the closed-H1 approach horizon. A plan the
+// DSE is still tracking but has NOT made current (LATE, countertrend, outside the
+// approach horizon) is not live - and `state_name` then carries the DSE's own
+// state name, so the reason printed on the chart is the DSE's wording and never a
+// guess. state_name stays "" when the DSE has no plan for this side at all.
+bool TacticalScenarioLive(const bool bull,string &state_name)
+{
+   state_name="";
+   if(bull)
+   {
+      if(!g_scn_buy.valid) return false;
+      state_name=ScenarioStateName(g_scn_buy.state);
+      return (g_scn_buy.relevant && !g_scn_buy.invalidated && !g_scn_buy.plan_dead &&
+              g_scn_buy.state!=SCN_INVALIDATED && g_scn_buy.state!=SCN_EXPIRED);
+   }
+   if(!g_scn_sell.valid) return false;
+   state_name=ScenarioStateName(g_scn_sell.state);
+   return (g_scn_sell.relevant && !g_scn_sell.invalidated && !g_scn_sell.plan_dead &&
+           g_scn_sell.state!=SCN_INVALIDATED && g_scn_sell.state!=SCN_EXPIRED);
+}
+
+string TacticalAuthorityName(const int auth)
+{
+   if(auth==(int)TAC_AUTH_BLOCKED) return "BLOCKED";
+   if(auth==(int)TAC_AUTH_STALE)   return "STALE";
+   if(auth==(int)TAC_AUTH_CONTEXT) return "CONTEXT";
+   if(auth==(int)TAC_AUTH_OK)      return "OK";
+   return "UNKNOWN";
+}
+
+// The PURE total order. No global is read in here, which is what makes it
+// exercisable from TacticalAuthoritySelfTest() with local values only, and
+// transcribable 1:1 by tools/test_tactical_authority.py - the same arrangement
+// QSMC_BuildGeometry() already uses so the two implementations cannot diverge.
+// `trigger_age_bars` is -1 when the trigger's chart bar is unknown, which skips
+// the staleness rule instead of guessing an age.
+ENUM_TACTICAL_AUTHORITY TacticalAuthorityDecide(const bool bull,const int src,
+                                                const int trigger_age_bars,const int retest_timeout_bars,
+                                                const bool dse_on,const bool dse_terminal,
+                                                const string terminal_state,const string terminal_why,
+                                                const bool blacklisted,
+                                                const bool dse_live,const string live_state,
+                                                string &reason)
+{
+   reason="";
+   string side=(bull?"BUY":"SELL");
+
+   //--- (1) BLOCKED: the Directional Scenario Engine retired this side. This is
+   //---     the module that prints "<SIDE> PLAN - <state>" on the same chart, so
+   //---     it is the one a contradictory preview must yield to.
+   if(dse_on && dse_terminal)
+   {
+      reason="the DSE "+side+" scenario is "+terminal_state+
+             (terminal_why!=""?" ("+terminal_why+")":"")+" - a retired scenario keeps no preview";
+      return TAC_AUTH_BLOCKED;
+   }
+
+   //--- (2) BLOCKED: the Core lifecycle retired the SAME side-and-level idea and
+   //---     the retirement is still inside its own documented horizon. This is
+   //---     the existing veto CalculateAITradeSetup already applies before it
+   //---     seeds a new setup; the tactical preview was the only reader that
+   //---     never asked. Bounded by InpBlacklistExpiryBars, so it cannot stick
+   //---     forever and silently mute a genuinely new setup on the same side.
+   if(src!=1 && blacklisted)
+   {
+      reason="the Core lifecycle blacklisted this "+side+" idea within InpBlacklistExpiryBars "+
+             IntegerToString(InpBlacklistExpiryBars)+" bars - a retired idea keeps no preview";
+      return TAC_AUTH_BLOCKED;
+   }
+
+   //--- (3) STALE: a bias-only trigger carries no age bound of its own, so any
+   //---     structure event still in g_structures could produce a fresh-looking
+   //---     preview whenever price wandered back to it. The bound reused here is
+   //---     the Core lifecycle's own retirement window (InpRetestTimeoutBars,
+   //---     measured in closed CHART bars) - an existing, documented parameter,
+   //---     not a new one. Only src==2 is bounded: an early-break preview and a
+   //---     Core-owned entry are anchored to a recent event by construction.
+   if(src==2 && retest_timeout_bars>0 && trigger_age_bars>=0 &&
+      trigger_age_bars>retest_timeout_bars)
+   {
+      reason="the "+side+" trigger is "+IntegerToString(trigger_age_bars)+
+             " closed chart bars old (limit InpRetestTimeoutBars "+
+             IntegerToString(retest_timeout_bars)+
+             ") - returning to an old level is not a fresh entry";
+      return TAC_AUTH_STALE;
+   }
+
+   //--- (4) CONTEXT: the direction came from the higher-timeframe bias alone.
+   //---     A bullish bias is contextual evidence, not an unconditional BUY
+   //---     instruction, and the arbitration layer already refuses to trade on it
+   //---     ("the MTF trigger alone is not a location fact"). The display now says
+   //---     the same thing instead of printing ENTRY. The fact is STILL handed to
+   //---     the arbiter, so its own explained refusal is unchanged. `live_state`
+   //---     is the DSE's own wording, so a LATE plan is reported as LATE and
+   //---     never as "no scenario".
+   if(src==2 && !(dse_on && dse_live))
+   {
+      reason=(dse_on?(live_state!=""?"the DSE "+side+" scenario is "+live_state
+                                   :"no DSE "+side+" scenario")
+                    :"the scenario engine is off")+
+             " - the direction came from the HTF bias alone, which is context, not an entry";
+      return TAC_AUTH_CONTEXT;
+   }
+   return TAC_AUTH_OK;
+}
+
+// The adapter: it gathers the PUBLISHED closed-bar facts and nothing else, then
+// hands them to the pure order above. Every input here is a fact some
+// authoritative module already committed on a closed bar - a DSE plan built by
+// ScenarioUpdate(), or a Core blacklist entry inside its own horizon.
+//
+// COMPLEXITY, stated because this runs on the per-tick path: the DSE predicates
+// are O(1) field reads plus one switch in ScenarioStateName(); the age bound is
+// O(1); IsSameIdeaAsBlacklisted() is O(1) when the blacklist is empty (its own
+// first statement) and otherwise O(B*log N) with B<=64 retained entries (the list
+// prunes itself at 64) and N retained chart bars, each probe being the binary
+// search IsBlacklistEntryActive() already performs. Nothing is cached here on
+// purpose: a cached authority verdict is exactly the stale state that would let a
+// retired scenario keep a preview, which is the defect this gate exists to close.
+ENUM_TACTICAL_AUTHORITY TacticalAuthorityGate(const bool bull,const int src,const int trigger_bar,
+                                              const double trigger,string &reason)
+{
+   reason="";
+   string terminal_state="",terminal_why="",live_state="";
+   bool dse_on=(InpUseDirectionalScenarioEngine && g_scn_built_time>0);
+   bool dse_terminal=(dse_on && TacticalScenarioTerminal(bull,terminal_state,terminal_why));
+   bool dse_live=(dse_on && TacticalScenarioLive(bull,live_state));
+   bool blacklisted=(src!=1 && trigger>0.0 && IsSameIdeaAsBlacklisted(bull,trigger,trigger));
+   int closed_now=ArraySize(g_buf_t)-2;
+   int age=((src==2 && trigger_bar>=0 && closed_now>=trigger_bar) ? closed_now-trigger_bar : -1);
+   return TacticalAuthorityDecide(bull,src,age,InpRetestTimeoutBars,dse_on,dse_terminal,
+                                  terminal_state,terminal_why,blacklisted,dse_live,
+                                  live_state,reason);
+}
+
+// In-terminal contract for the pure order above. Runs once from OnInit next to
+// ScenarioMTEESelfTest(); it touches no global and draws nothing, so it cannot
+// change a decision - it only proves the total order still holds in the build
+// that is actually attached to the chart.
+bool TacticalAuthoritySelfTest(string &where)
+{
+   where="";
+   string r="";
+
+   // T1 A terminal DSE scenario outranks everything else on that side.
+   if(TacticalAuthorityDecide(true,2,0,40,true,true,"INVALIDATED","closed M5 breached 4044.00",
+                              false,true,"EXECUTION READY",r)!=TAC_AUTH_BLOCKED ||
+      StringFind(r,"INVALIDATED")<0 || StringFind(r,"4044.00")<0)
+   { where="TAC-1 terminal DSE scenario must block, and say why"; return false; }
+
+   // T2 The Core blacklist veto is horizon-bounded and never applies to a
+   //    Core-owned direction (src==1).
+   if(TacticalAuthorityDecide(true,0,-1,40,true,false,"","",true,true,"WATCHING ZONE",r)
+      !=TAC_AUTH_BLOCKED)
+   { where="TAC-2 a blacklisted idea must block"; return false; }
+   if(TacticalAuthorityDecide(true,1,-1,40,true,false,"","",true,true,"WATCHING ZONE",r)
+      !=TAC_AUTH_OK)
+   { where="TAC-2 a Core-owned direction is exempt from the blacklist veto"; return false; }
+   if(TacticalAuthorityDecide(true,0,-1,40,true,false,"","",false,true,"WATCHING ZONE",r)
+      ==TAC_AUTH_BLOCKED)
+   { where="TAC-2 releasing the blacklist must unblock the side"; return false; }
+
+   // T3 A stale bias-only trigger is refused; the same age is fine when the
+   //    trigger bar is unknown, and src!=2 is never aged out here.
+   if(TacticalAuthorityDecide(true,2,180,40,true,false,"","",false,true,"WATCHING ZONE",r)
+      !=TAC_AUTH_STALE || StringFind(r,"180")<0)
+   { where="TAC-3 a 180-bar-old bias-only trigger must be STALE"; return false; }
+   if(TacticalAuthorityDecide(true,2,-1,40,true,false,"","",false,true,"WATCHING ZONE",r)
+      ==TAC_AUTH_STALE)
+   { where="TAC-3 an unknown trigger age must not be guessed"; return false; }
+   if(TacticalAuthorityDecide(true,0,180,40,true,false,"","",false,true,"WATCHING ZONE",r)
+      ==TAC_AUTH_STALE)
+   { where="TAC-3 only the bias-only source is aged out by this rule"; return false; }
+   if(TacticalAuthorityDecide(true,2,40,40,true,false,"","",false,true,"WATCHING ZONE",r)
+      ==TAC_AUTH_STALE)
+   { where="TAC-3 the age bound is exclusive (age == limit is still fresh)"; return false; }
+
+   // T4 A bias-only direction with no live scenario is CONTEXT, quoting the DSE's
+   //    own state name when it has one - a LATE plan is never called "no plan".
+   if(TacticalAuthorityDecide(false,2,0,40,true,false,"","",false,false,"LATE - WAIT FOR RETEST",r)
+      !=TAC_AUTH_CONTEXT || StringFind(r,"LATE - WAIT FOR RETEST")<0)
+   { where="TAC-4 CONTEXT must quote the DSE state name"; return false; }
+   if(TacticalAuthorityDecide(false,2,0,40,true,false,"","",false,false,"",r)
+      !=TAC_AUTH_CONTEXT || StringFind(r,"no DSE SELL scenario")<0)
+   { where="TAC-4 with no plan at all CONTEXT must say so"; return false; }
+   if(TacticalAuthorityDecide(false,2,0,40,false,false,"","",false,false,"",r)
+      !=TAC_AUTH_CONTEXT || StringFind(r,"scenario engine is off")<0)
+   { where="TAC-4 with the DSE off a bias-only preview is still CONTEXT"; return false; }
+
+   // T5 A live scenario on that side is allowed, for every direction source.
+   if(TacticalAuthorityDecide(true,2,0,40,true,false,"","",false,true,"REACTION CONFIRMED",r)
+      !=TAC_AUTH_OK || r!="")
+   { where="TAC-5 a live scenario must be allowed with no reason"; return false; }
+   if(TacticalAuthorityDecide(true,1,0,40,false,false,"","",false,false,"",r)!=TAC_AUTH_OK)
+   { where="TAC-5 a Core-owned direction is never CONTEXT"; return false; }
+   if(TacticalAuthorityDecide(true,0,0,40,false,false,"","",false,false,"",r)!=TAC_AUTH_OK)
+   { where="TAC-5 an early-break preview is never CONTEXT"; return false; }
+
+   // T6 Determinism: identical inputs give an identical verdict and reason.
+   string r2="";
+   ENUM_TACTICAL_AUTHORITY a1=TacticalAuthorityDecide(true,2,10,40,true,false,"","",false,false,
+                                                      "WATCHING ZONE",r);
+   ENUM_TACTICAL_AUTHORITY a2=TacticalAuthorityDecide(true,2,10,40,true,false,"","",false,false,
+                                                      "WATCHING ZONE",r2);
+   if(a1!=a2 || r!=r2)
+   { where="TAC-6 the order is not deterministic"; return false; }
+
+   // T7 The verdict vocabulary the panel prints is complete and stable.
+   if(TacticalAuthorityName((int)TAC_AUTH_OK)!="OK" ||
+      TacticalAuthorityName((int)TAC_AUTH_CONTEXT)!="CONTEXT" ||
+      TacticalAuthorityName((int)TAC_AUTH_STALE)!="STALE" ||
+      TacticalAuthorityName((int)TAC_AUTH_BLOCKED)!="BLOCKED")
+   { where="TAC-7 authority verdict names drifted"; return false; }
+   return true;
+}
+
 // Directional location is read from the same D1 closed range and price stored in
 // SScenarioContext. Premium favours SELL; discount favours BUY; equilibrium and
 // missing data are explicit non-favourable states, not neutral substitutes.
@@ -28091,17 +28491,30 @@ void ScenarioDeleteObjects()
 
 void ScenarioDrawOne(const SScenarioPlan &p,const string tag)
 {
-   if(!p.valid || p.invalidated || p.execution_ready || !(p.zone_high>p.zone_low)) return;
+   if(!p.valid || p.execution_ready || !(p.zone_high>p.zone_low)) return;
    if(g_scn_ctx.closed<0 || g_scn_ctx.closed>=ArraySize(g_buf_t)) return;
-   color col=(p.is_buy?clrDarkSeaGreen:clrTomato);
+   // v6.6.10 AUDIT-DSE1: a TERMINAL plan is still drawn, but as what it is.
+   // The old guard dropped the plan when `invalidated` was set and KEPT it when
+   // only `plan_dead` was set, so the chart could carry a tinted conditional
+   // retest box tagged "BUY PLAN - CONDITIONAL - INVALIDATED": a live-looking
+   // zone whose own tag said it was dead. One rule now - a terminal plan is drawn
+   // in the terminal colour, its tag never says CONDITIONAL, and its tooltip says
+   // retired instead of "a plan to monitor". Hiding it was not an option either:
+   // an operator has to be able to SEE that a scenario was retired and why.
+   bool terminal=(p.invalidated || p.plan_dead ||
+                  p.state==SCN_INVALIDATED || p.state==SCN_EXPIRED);
+   color col=(terminal?clrDarkGray:(p.is_buy?clrDarkSeaGreen:clrTomato));
    datetime t1=g_buf_t[MathMax(0,g_scn_ctx.closed-6)];
    datetime t2=g_buf_t[g_scn_ctx.closed];
    string base=PFX+"SCN_"+tag+"_";
    // A tinted box is explicitly a conditional retest area, not an entry arrow.
    DrawZoneBox(base+"ZONE",t1,p.zone_high,t2,p.zone_low,col,"",92);
    ObjectSetString(0,base+"ZONE",OBJPROP_TOOLTIP,
-                   "DIRECTIONAL SCENARIO ENGINE / CONDITIONAL ONLY\n"+
-                   "This zone is a plan to monitor, not an authorized entry.\n"+
+                   (terminal?"DIRECTIONAL SCENARIO ENGINE / RETIRED PLAN\n"+
+                             "This scenario is terminal. It stays on the chart so the retirement is\n"+
+                             "visible and explainable; it is not a plan to monitor and not an entry.\n":
+                    "DIRECTIONAL SCENARIO ENGINE / CONDITIONAL ONLY\n"+
+                    "This zone is a plan to monitor, not an authorized entry.\n")+
                    "State: "+ScenarioStateName(p.state)+"\n"+
                    "Headline: "+ScenarioPlanHeadline(p)+"\n"+
                    "Zone timeframe provenance: "+p.zone_timeframe+"\n"+
@@ -28119,7 +28532,9 @@ void ScenarioDrawOne(const SScenarioPlan &p,const string tag)
                    p.volume_context);
    if(InpShowEntries)
       DrawTextLabel(base+"TAG",t2,(p.is_buy?p.zone_low:p.zone_high),
-                    string(p.is_buy?"BUY":"SELL")+" PLAN — CONDITIONAL — "+ScenarioStateName(p.state),
+                    string(p.is_buy?"BUY":"SELL")+" PLAN — "+
+                       (terminal?ScenarioStateName(p.state)+" — NOT AN ENTRY":
+                                 "CONDITIONAL — "+ScenarioStateName(p.state)),
                     col,!p.is_buy,8);
    if(InpShowSLTP && p.structural_invalidation>0.0)
       DrawHLine(base+"INV",p.structural_invalidation,col,
@@ -28152,8 +28567,11 @@ void ScenarioDraw()
       g_scn_sell.target1_type+"|"+g_scn_sell.target2_type+"|"+g_scn_sell.target3_type+"|"+
       g_scn_sell.m30_state+"|"+g_scn_sell.m15_state+"|"+g_scn_sell.m5_state+"|"+
       g_scn_sell.blocking_gate+"|"+g_scn_entry_status+"|"+IntegerToString(g_scn_verdict);
-   bool expect_buy=(g_scn_buy.valid && !g_scn_buy.invalidated && !g_scn_buy.execution_ready);
-   bool expect_sell=(g_scn_sell.valid && !g_scn_sell.invalidated && !g_scn_sell.execution_ready);
+   // v6.6.10 AUDIT-DSE1: must match ScenarioDrawOne's own guard exactly, or the
+   // redraw signature either waits forever for an object that is never drawn or
+   // leaves a retired plan's objects on the chart after the plan changed.
+   bool expect_buy=(g_scn_buy.valid && !g_scn_buy.execution_ready);
+   bool expect_sell=(g_scn_sell.valid && !g_scn_sell.execution_ready);
    bool objects_ok=(!expect_buy || ObjectFind(0,PFX+"SCN_BUY_ZONE")>=0) &&
                    (!expect_sell || ObjectFind(0,PFX+"SCN_SELL_ZONE")>=0);
    if(sig==g_scn_draw_sig && objects_ok) return;
@@ -28285,6 +28703,15 @@ void ScenarioDashCompact(string &L[],color &C[],int &ln,const int cap)
    ScenarioDashAdd(L,C,ln,cap,"VERDICT: "+ScenarioVerdictName(g_scn_verdict)+" | "+g_scn_verdict_reason,
                    (g_scn_verdict==SCV_BUY_EXECUTION_READY?clrLime:
                     (g_scn_verdict==SCV_SELL_EXECUTION_READY?clrTomato:clrSilver)));
+   // v6.6.10 AUDIT-TAC2: the non-authoritative tactical preview and this card
+   // used to be able to disagree about the same side with nothing explaining it.
+   // One row now states the tactical verdict and its reason. It appears ONLY when
+   // there is something to explain (a suppression or a downgrade), so the compact
+   // card's normal row budget is unchanged.
+   if(g_mtf_entry_authority!="")
+      ScenarioDashAdd(L,C,ln,cap,"TACTICAL: "+(g_mtf_entry_blocked?"SUPPRESSED":"DOWNGRADED")+
+                      " | "+g_mtf_entry_authority,
+                      (g_mtf_entry_blocked?clrDarkGray:clrOrange));
 }
 
 string ScenarioPlanEntryText(const SScenarioPlan &p)
@@ -28442,6 +28869,20 @@ void ScenarioDashFull(string &L[],color &C[],int &ln,const int cap)
                    (lead.execution_ready?(lead.is_buy?clrLime:clrTomato):(lead.late?clrOrange:clrSilver)));
    ScenarioDashAdd(L,C,ln,cap,"SCENARIO BLOCKER: "+(lead.valid?lead.blocking_gate:g_scn_ctx.data_reason),clrOrange);
    ScenarioDashAdd(L,C,ln,cap,"NEXT ACTION: "+g_scn_next_action,clrSilver);
+   // v6.6.10 AUDIT-TAC2: same reconciliation row as the compact card. States the
+   // tactical preview's own verdict so a reader can never be left choosing
+   // between two chart annotations that appear to disagree.
+   ScenarioDashAdd(L,C,ln,cap,"TACTICAL PREVIEW: "+
+                   (g_mtf_entry_state==""?"none":
+                     (g_mtf_entry_src==2?"HTF-bias only":
+                      (g_mtf_entry_src==1?"Core-owned":"early-break preview")))+
+                   (g_mtf_entry_state!=""?" | "+g_mtf_entry_state+" @ "+
+                     DoubleToString(g_mtf_entry_price,_Digits)+" on "+TFName(g_mtf_entry_tf):""),
+                   (g_mtf_entry_blocked?clrDarkGray:(g_mtf_entry_state!=""?clrAqua:clrDimGray)));
+   if(g_mtf_entry_authority!="")
+      ScenarioDashAdd(L,C,ln,cap,"TACTICAL AUTHORITY: "+(g_mtf_entry_blocked?"SUPPRESSED":"DOWNGRADED")+
+                      " | "+g_mtf_entry_authority,
+                      (g_mtf_entry_blocked?clrDarkGray:clrOrange));
    ScenarioDashAdd(L,C,ln,cap,"Evidence-quality score only — not a probability or win rate.",clrDimGray);
 }
 
