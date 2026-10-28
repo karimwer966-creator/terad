@@ -26,7 +26,6 @@ import io
 import math
 import os
 import re
-import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -662,14 +661,44 @@ check("if(ln>11) ln=11;" in TEXT and "string lines[11]; color cols[11]; int ln=0
 # =====================================================================
 # D. NOTHING EXISTING WAS MODIFIED
 # =====================================================================
-r = subprocess.run(["git", "--no-pager", "diff", "--numstat", "HEAD", "--", "nadir2.mq5"],
-                   cwd=ROOT, capture_output=True, text=True)
-parts = r.stdout.split()
-check(len(parts) == 3, "D the diff against HEAD was readable", r.stdout.strip())
-if len(parts) == 3:
-    added, deleted = int(parts[0]), int(parts[1])
-    check(deleted == 0, "D Phase 5 deletes ZERO lines from nadir2.mq5 (%d added)" % added)
-    check(added > 500, "D the phase added %d lines" % added)
+# NO GIT HERE, DELIBERATELY. This section used to diff the working tree against
+# HEAD to prove the phase deletes nothing. That is unsound twice over: on a clean
+# tree `git diff HEAD` is empty, so the check only ever passed while the file was
+# still uncommitted, and actions/checkout@v4 defaults to depth 1, so HEAD~1 does
+# not exist in CI either. A contract test over a file should be a pure function of
+# that file. "Zero deletions" is therefore verified from the commit diff and
+# reported in the PR, while what actually matters - that no existing behaviour was
+# rerouted - is pinned below from the file alone.
+code_only = strip_comments(TEXT)
+check(code_only.count("return INIT_FAILED;") == 2,
+      "D there are still exactly 2 code-level INIT_FAILED returns (%d), so the "
+      "optional handle added no init-failure path" % code_only.count("return INIT_FAILED;"))
+check(TEXT.count("INIT_FAILED") - code_only.count("INIT_FAILED") <= 1,
+      "D INIT_FAILED is mentioned in at most one comment")
+EXISTING_HANDLE_TEST = ("if(h_ema_fast==INVALID_HANDLE || h_ema_slow==INVALID_HANDLE ||\r\n"
+                        "      h_atr==INVALID_HANDLE || h_adx==INVALID_HANDLE || h_rsi==INVALID_HANDLE)")
+check(EXISTING_HANDLE_TEST.replace("\r\n", "\n") in TEXT.replace("\r\n", "\n"),
+      "D the pre-existing handle-validity test is byte-intact")
+check(code_only.count("IndicatorRelease(h_rsi);") == 1 and
+      code_only.count("IndicatorRelease(h_atr);") == 1,
+      "D the pre-existing handle releases are untouched")
+check("FillEMAAndVWAP(rates_total,g_buf_o,g_buf_h,g_buf_l,g_buf_c,g_buf_t,g_buf_tv,full_indicators);"
+      in code_only,
+      "D the pre-existing FillEMAAndVWAP call is untouched")
+check(code_only.count("g_rsi_buf[k]=tr[src];") == 1,
+      "D the pre-existing per-bar RSI copy is untouched")
+# Membership is not a pin: this idiom occurs at five separate sites, so `in` still
+# passes after any one of them is altered. Count them.
+CLOSED_CONV = code_only.count("int closed=rates_total-2;")
+check(CLOSED_CONV == 12,
+      "D all 12 closed=rates_total-2 sites are unchanged (%d)" % CLOSED_CONV)
+check(code_only.count("int closed=rates_total-1;") == 0 and
+      code_only.count("int closed=ArraySize(g_buf_c)-1;") == 0,
+      "D no site was moved onto the forming bar")
+check(code_only.count("int closed=ArraySize(g_buf_c)-2;") == 3,
+      "D all 3 mirrored-array closed-bar sites are unchanged")
+check(code_only.count("int closed=g_rates_total-2;") == 8,
+      "D all 8 replay-path closed-bar sites are unchanged")
 check(TEXT.count('#property version   "6.69"') == 1, "D the version property is unchanged")
 check(TEXT.count('"v6.6.9"') >= 1, "D the version text is unchanged")
 check(len(re.findall(r'(?m)^#property indicator_buffers\s+19\b', TEXT)) == 1,
