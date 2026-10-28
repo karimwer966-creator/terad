@@ -2235,6 +2235,10 @@ SetupCandidate          g_primary_candidate;
 SetupCandidate          g_secondary_candidate;
 SHistoricalSetup               g_history_setups[];
 SConfirmedSignalJournalEntry  g_confirmed_signal_journal[];
+// v6.6.10 diagnostic bridge state: the last closed bar already published and
+// the cached global-variable prefix for this chart's symbol/timeframe.
+datetime                        g_diag_core_bar=0;
+string                          g_diag_prefix="";
 bool                            g_signal_journal_integrity_ok=true;
 SStatisticalMetrics            g_stats_metrics;
 ENUM_SIGNAL_STATE       g_current_signal_state = STATE_WATCH;
@@ -5121,6 +5125,12 @@ string SignalGateOutcomeLine();
 string SignalGateSourceLine();
 string SignalGateRXNLine();   // v6.5.0 Reaction Signal Layer funnel (display only)
 string GateAuditTopBlocker();
+string GateAuditTopReason();
+// v6.6.10 DIAGNOSTIC BRIDGE (read-only): the indicator publishes its own
+// verdict on the closed bar as terminal globals, so the execution companion
+// can name the blocker instead of saying only "no signal".
+int    DiagBlockerCode(const string key);
+void   DiagPublishCoreState(const int closed);
 string AlertWhyNoPopup(const int closed,const datetime bar_time);
 void DashPushWrapped(string &L[],int &ln,const string s,const int width);
 int MTFAlignmentPercent();
@@ -14945,6 +14955,8 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // Phase 1 signal outcome log + hidden signal buffers: reads published
    // facts after the fact; never alters a setup, a journal or ZRE state.
    SigLog_Update(rates_total,prev_calculated);
+   // v6.6.10: publish the verdict of this closed bar for QSMC_AutoTrader.
+   DiagPublishCoreState(closed);
    RunRuntimeDisplayNoLookaheadAudit(closed,g_buf_t);
 
    RunRuntimeCausalValidation();
@@ -18117,6 +18129,128 @@ string GateAuditTopBlocker()
    if(best<0) return "";
    return StringFormat("%s (%d)",g_gate_audit.reason[best],
                        (int)g_gate_audit.reason_hits[best]);
+}
+
+//====================================================================
+// v6.6.10 DIAGNOSTIC BRIDGE: "why is there no trade?"
+// The indicator cannot trade, and the execution companion cannot read a chart
+// panel. The verdict of the last closed bar is therefore published as terminal
+// globals (doubles: GlobalVariableSet accepts no strings) that the companion
+// reads with GlobalVariableGet. READ-ONLY: this function copies state into no
+// gate, no setup, no alert and no order path - deleting it would change nothing
+// about which signals are published.
+//
+// The companion prints the decoded sentence in its heartbeat, so a silent chart
+// finally answers "the indicator published nothing AND here is the gate that
+// refused it" in one line.
+//====================================================================
+// DIAG_TABLE_BEGIN
+//  0 NO_DATA              no closed-bar pass of the signal chain yet
+//  1 CORE_PUBLISHED       a CORE signal was published on this closed bar
+//  2 SETUP_ARMED          a setup is armed and waiting for its retest
+//  3 SETUP_PENDING        a setup is waiting for a closed-bar confirmation
+// 10 NO_STRUCTURE_ANCHOR  setup: no causally valid structure anchor
+// 11 INCOMPLETE_CHAIN     setup: incomplete causal chain (hop or zone)
+// 12 NO_SWEEP             chain: no confirmed liquidity sweep
+// 13 NO_DISPLACEMENT      chain: no displacement event behind the break
+// 14 NO_STRUCTURE_EVENT   chain: structure event missing or invalidated
+// 15 NO_CAUSAL_ZONE       chain: no causal OB/FVG bound to the displacement
+// 16 SWEEP_NO_POOL        chain: sweep has no confirmed liquidity-pool ancestor
+// 17 LOCATION             location: the zone failed the location re-check
+// 18 ANCHOR_RECHECK       anchor: the bound zone failed the causality re-check
+// 19 LEG_GEOMETRY         leg: the sweep/displacement leg is too weak or too close
+// 20 RR_TOO_LOW           geometry: RR1 below InpMinRR1
+// 21 STOP_TOO_WIDE        geometry: stop distance above InpMaxStopATR
+// 22 TARGET_ORDER         geometry: targets could not be ordered before the barrier
+// 23 CONFIDENCE           score: confidence below InpMinConfidenceScore
+// 24 RELIABILITY          score: reliability below InpMinReliability
+// 25 GRADE                score: grade below InpMinGrade
+// 26 EMA_VWAP_OPPOSE      score: EMA200/VWAP confluence opposes this direction
+// 27 SPREAD               setup: spread above InpMaxSpreadPts
+// 28 TOPDOWN              topdown: the D1->M5 chain blocks this direction
+// 29 OWNERSHIP            ownership: another setup holds the execution lane
+// 30 DIRECTION_VETO       direction veto: contrary to the zone role
+// 31 BLACKLIST            setup: same idea blacklisted after an invalidation
+// 32 LIFECYCLE            lifecycle: a state transition was rejected
+// 33 BRANCH_ROLLBACK      setup: the causal branch was rejected or rolled back
+// 34 OTHER                some other gate refused the candidate
+// DIAG_TABLE_END
+string GateAuditTopReason()
+{
+   int best=-1;
+   for(int i=0;i<g_gate_audit.reason_n;i++)
+      if(best<0 || g_gate_audit.reason_hits[i]>g_gate_audit.reason_hits[best]) best=i;
+   if(best<0) return "";
+   return g_gate_audit.reason[best];
+}
+
+// The gate-audit key is a literal sentence built at the rejection site. The
+// mapping is prefix-driven and deliberately tolerant: a new, unmapped reason
+// lands on OTHER (34) instead of crashing or silently reading as "published".
+int DiagBlockerCode(const string key)
+{
+   if(key=="") return 0;
+   if(StringFind(key,"chain: no confirmed liquidity sweep")>=0)         return 12;
+   if(StringFind(key,"chain: no displacement event")>=0)                return 13;
+   if(StringFind(key,"chain: structure event")>=0)                      return 14;
+   if(StringFind(key,"chain: no causal OB/FVG")>=0)                     return 15;
+   if(StringFind(key,"chain: sweep has no confirmed liquidity-pool")>=0) return 16;
+   if(StringFind(key,"setup: no causally valid structure anchor")>=0)   return 10;
+   if(StringFind(key,"setup: incomplete causal chain")>=0)              return 11;
+   if(StringFind(key,"setup: causal branch")>=0)                        return 33;
+   if(StringFind(key,"setup: spread above")>=0)                         return 27;
+   if(StringFind(key,"setup: same idea blacklisted")>=0)                return 31;
+   if(StringFind(key,"score: confidence")>=0)                           return 23;
+   if(StringFind(key,"score: reliability")>=0)                          return 24;
+   if(StringFind(key,"score: grade")>=0)                                return 25;
+   if(StringFind(key,"score: EMA200/VWAP")>=0)                          return 26;
+   if(StringFind(key,"geometry: RR1")>=0)                               return 20;
+   if(StringFind(key,"geometry: stop distance")>=0)                     return 21;
+   if(StringFind(key,"geometry: targets")>=0)                           return 22;
+   if(StringFind(key,"location:")>=0)                                   return 17;
+   if(StringFind(key,"anchor:")>=0)                                     return 18;
+   if(StringFind(key,"leg:")>=0)                                        return 19;
+   if(StringFind(key,"topdown:")>=0)                                    return 28;
+   if(StringFind(key,"ownership:")>=0)                                  return 29;
+   if(StringFind(key,"direction veto:")>=0)                             return 30;
+   if(StringFind(key,"lifecycle:")>=0)                                  return 32;
+   return 34;
+}
+
+string DiagPrefix()
+{
+   if(g_diag_prefix=="")
+      g_diag_prefix="QSMC_DIAG_"+_Symbol+"_"+IntegerToString((long)_Period)+"_";
+   return g_diag_prefix;
+}
+
+// Once per closed bar, after the whole decision chain and SigLog_Update() ran,
+// publish the verdict. "published" is read from the immutable journal (the same
+// fact the companion's buffers are filled from), never from a display flag.
+void DiagPublishCoreState(const int closed)
+{
+   if(closed<0 || closed+1>=ArraySize(g_buf_t)) return;
+   datetime bar_time=g_buf_t[closed];
+   if(bar_time<=0 || bar_time==g_diag_core_bar) return;   // once per closed bar
+   g_diag_core_bar=bar_time;
+
+   int code=0;
+   bool published=false;
+   int n=ArraySize(g_confirmed_signal_journal);
+   if(n>0 && g_confirmed_signal_journal[n-1].availability_time==g_buf_t[closed+1])
+      published=true;   // the fact became available exactly when this bar closed
+
+   if(published)                                                       code=1;
+   else if(g_active_setup.active)                                      code=2;
+   else if(g_trade_setup.confirmation_pending || g_trade_setup.valid)   code=3;
+   else                                    code=DiagBlockerCode(GateAuditTopReason());
+
+   string p=DiagPrefix();
+   GlobalVariableSet(p+"CORE",(double)code);
+   GlobalVariableSet(p+"BARS",(double)(long)g_gate_audit.bars);
+   GlobalVariableSet(p+"ARMED",(double)(long)g_gate_audit.armed);
+   GlobalVariableSet(p+"CONF",(double)(long)g_gate_audit.confirmed);
+   GlobalVariableSet(p+"TIME",(double)(long)bar_time);
 }
 
 //====================================================================

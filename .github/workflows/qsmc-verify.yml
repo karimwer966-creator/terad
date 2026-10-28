@@ -66,6 +66,9 @@ jobs:
       - name: Execution companion contract (buffer map, switches, sizing)
         run: python3 tools/test_autotrader_contract.py 2>&1 | tee out/test_autotrader.log
 
+      - name: Diagnostic bridge (the indicator's verdict -> the companion's heartbeat)
+        run: python3 tools/test_diag_bridge.py 2>&1 | tee out/test_diag_bridge.log
+
       - name: EdgeBook persistence contract
         run: python3 tools/test_edgebook_contract.py 2>&1 | tee out/test_edgebook.log
 

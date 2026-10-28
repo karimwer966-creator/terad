@@ -73,6 +73,16 @@
 //|  InpHeartbeatLookback bars and states which one it is, plus the   |
 //|  last skip reason. It is read-only: no gate, order or position is |
 //|  touched, and InpHeartbeatSeconds=0 switches it off.              |
+//|                                                                   |
+//|  v6.6.10: the heartbeat also prints the INDICATOR'S OWN VERDICT.  |
+//|  The indicator cannot trade and this EA cannot read a chart       |
+//|  panel, so nadir2 publishes the result of its gate chain for the  |
+//|  last closed bar as terminal globals (QSMC_DIAG_<symbol>_<tf>_*); |
+//|  this EA decodes them. That is what turns "CORE signals: 0" into  |
+//|  a named reason such as "RELIABILITY - score: reliability below   |
+//|  InpMinReliability" without opening a single chart. The codes are |
+//|  the DIAG_TABLE block below; it is shared verbatim with nadir2    |
+//|  and checked by tools/test_diag_bridge.py.                        |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
 #property version   "6.69"
@@ -91,6 +101,41 @@
 #define QSMC_BUF_CORE_TP3   12
 
 #define QSMC_AT_SEEN_RING   64
+
+//--- The indicator's published blocker codes (nadir2.mq5, DiagPublishCoreState).
+//--- Shared VERBATIM with nadir2.mq5 and checked by tools/test_diag_bridge.py:
+//--- editing one side without the other fails the build, on purpose.
+// DIAG_TABLE_BEGIN
+//  0 NO_DATA              no closed-bar pass of the signal chain yet
+//  1 CORE_PUBLISHED       a CORE signal was published on this closed bar
+//  2 SETUP_ARMED          a setup is armed and waiting for its retest
+//  3 SETUP_PENDING        a setup is waiting for a closed-bar confirmation
+// 10 NO_STRUCTURE_ANCHOR  setup: no causally valid structure anchor
+// 11 INCOMPLETE_CHAIN     setup: incomplete causal chain (hop or zone)
+// 12 NO_SWEEP             chain: no confirmed liquidity sweep
+// 13 NO_DISPLACEMENT      chain: no displacement event behind the break
+// 14 NO_STRUCTURE_EVENT   chain: structure event missing or invalidated
+// 15 NO_CAUSAL_ZONE       chain: no causal OB/FVG bound to the displacement
+// 16 SWEEP_NO_POOL        chain: sweep has no confirmed liquidity-pool ancestor
+// 17 LOCATION             location: the zone failed the location re-check
+// 18 ANCHOR_RECHECK       anchor: the bound zone failed the causality re-check
+// 19 LEG_GEOMETRY         leg: the sweep/displacement leg is too weak or too close
+// 20 RR_TOO_LOW           geometry: RR1 below InpMinRR1
+// 21 STOP_TOO_WIDE        geometry: stop distance above InpMaxStopATR
+// 22 TARGET_ORDER         geometry: targets could not be ordered before the barrier
+// 23 CONFIDENCE           score: confidence below InpMinConfidenceScore
+// 24 RELIABILITY          score: reliability below InpMinReliability
+// 25 GRADE                score: grade below InpMinGrade
+// 26 EMA_VWAP_OPPOSE      score: EMA200/VWAP confluence opposes this direction
+// 27 SPREAD               setup: spread above InpMaxSpreadPts
+// 28 TOPDOWN              topdown: the D1->M5 chain blocks this direction
+// 29 OWNERSHIP            ownership: another setup holds the execution lane
+// 30 DIRECTION_VETO       direction veto: contrary to the zone role
+// 31 BLACKLIST            setup: same idea blacklisted after an invalidation
+// 32 LIFECYCLE            lifecycle: a state transition was rejected
+// 33 BRANCH_ROLLBACK      setup: the causal branch was rejected or rolled back
+// 34 OTHER                some other gate refused the candidate
+// DIAG_TABLE_END
 
 enum ENUM_QSMC_LOT_MODE
   {
@@ -682,6 +727,62 @@ void ProcessSignals()
   }
 
 //+------------------------------------------------------------------+
+//| The indicator's published verdict (v6.6.10).                     |
+//| nadir2 writes QSMC_DIAG_<symbol>_<tf>_CORE / _BARS / _ARMED /     |
+//| _CONF / _TIME once per closed bar. Reading them changes nothing;  |
+//| a missing variable is reported as "no record", never guessed.     |
+//+------------------------------------------------------------------+
+string DiagVarName(const string leaf)
+  {
+   return ("QSMC_DIAG_"+_Symbol+"_"+IntegerToString((long)_Period)+"_"+leaf);
+  }
+
+bool DiagRead(const string leaf,double &value)
+  {
+   string name=DiagVarName(leaf);
+   if(!GlobalVariableCheck(name)) return false;
+   value=GlobalVariableGet(name);
+   return true;
+  }
+
+string DiagCodeText(const int code)
+  {
+   switch(code)
+     {
+      case 0:  return "NO_DATA - the indicator has not finished a closed-bar pass yet (still loading, or the wrong symbol/timeframe)";
+      case 1:  return "CORE_PUBLISHED - a CORE signal is published on the last closed bar (if no order follows, read the skip line)";
+      case 2:  return "SETUP_ARMED - a setup is armed and waiting for its retest (nothing to execute yet, by design)";
+      case 3:  return "SETUP_PENDING - a setup is waiting for its closed-bar confirmation (nothing to execute yet, by design)";
+      case 10: return "NO_STRUCTURE_ANCHOR - no causally valid structure anchor (no MSS/BOS/CHoCH behind a bound zone)";
+      case 11: return "INCOMPLETE_CHAIN - the causal chain sweep -> displacement -> structure -> zone is not complete";
+      case 12: return "NO_SWEEP - no confirmed liquidity sweep behind the displacement";
+      case 13: return "NO_DISPLACEMENT - no displacement event behind the break";
+      case 14: return "NO_STRUCTURE_EVENT - the structure event is missing or invalidated in the causal graph";
+      case 15: return "NO_CAUSAL_ZONE - no order block / FVG is causally bound to that displacement";
+      case 16: return "SWEEP_NO_POOL - the sweep has no confirmed liquidity-pool ancestor";
+      case 17: return "LOCATION - the zone failed the location re-check (premium/discount or distance)";
+      case 18: return "ANCHOR_RECHECK - the bound zone failed the causality re-check";
+      case 19: return "LEG_GEOMETRY - the sweep/displacement leg is too weak or too close in time";
+      case 20: return "RR_TOO_LOW - RR1 is below InpMinRR1 in the indicator";
+      case 21: return "STOP_TOO_WIDE - the stop distance is above InpMaxStopATR";
+      case 22: return "TARGET_ORDER - the targets could not be ordered before the barrier";
+      case 23: return "CONFIDENCE - score below InpMinConfidenceScore in the indicator";
+      case 24: return "RELIABILITY - score below InpMinReliability in the indicator";
+      case 25: return "GRADE - the quality grade is below InpMinGrade";
+      case 26: return "EMA_VWAP_OPPOSE - EMA200/VWAP confluence opposes this direction";
+      case 27: return "SPREAD - the spread is above InpMaxSpreadPts in the indicator";
+      case 28: return "TOPDOWN - the D1->M5 top-down chain blocks this direction";
+      case 29: return "OWNERSHIP - another setup holds the execution lane";
+      case 30: return "DIRECTION_VETO - the direction contradicts the zone role";
+      case 31: return "BLACKLIST - the same idea was blacklisted after a recent invalidation";
+      case 32: return "LIFECYCLE - a signal-state transition was rejected";
+      case 33: return "BRANCH_ROLLBACK - the causal branch was rejected or rolled back";
+      case 34: return "OTHER - some other gate in the indicator refused the candidate";
+     }
+   return ("UNKNOWN code "+IntegerToString((long)code)+" - this companion is older than the indicator build; copy both files and press F7");
+  }
+
+//+------------------------------------------------------------------+
 //| Diagnostic heartbeat. Read-only: it copies the CORE direction    |
 //| buffer and prints, it never changes a gate, an order or a        |
 //| position. It answers the one question a silent chart cannot:     |
@@ -716,10 +817,24 @@ void DiagnosticHeartbeat()
             "` handle INVALID - not compiled or missing from MQL5\\Indicators; no signal can ever be read");
       return;
      }
+   // v6.6.10: a valid handle is not a working indicator. BarsCalculated()<0
+   // means the instance exists but never calculated (its OnInit failed, the
+   // symbol/timeframe has no history, or the parameters were rejected). That
+   // used to be reported as "still warming up" forever, which sent the operator
+   // looking at the wrong layer.
+   int calc=BarsCalculated(g_handle);
+   if(calc<0)
+     {
+      Print("[QSMC_AT] heartbeat: ",mode," | indicator `",InpIndicatorName,
+            "` exists but is NOT calculating (BarsCalculated=",IntegerToString((long)calc),
+            ") - its OnInit failed or its history is unavailable; read the nadir2 lines in the Experts log");
+      return;
+     }
    if(!g_last_copy_ok)
      {
       Print("[QSMC_AT] heartbeat: ",mode," | indicator `",InpIndicatorName,
-            "` is still warming up (the last CopyBuffer returned fewer bars than requested); waiting, nothing is wrong yet");
+            "` is still warming up (",IntegerToString((long)calc),
+            " bars calculated; the last CopyBuffer returned fewer bars than requested); waiting, nothing is wrong yet");
       return;
      }
 
@@ -778,6 +893,26 @@ void DiagnosticHeartbeat()
          (g_day_blocked ? " | daily loss guard ACTIVE" : "");
    if(g_last_note!="")
       line+=" | last skip: "+g_last_note;
+
+   // v6.6.10: the indicator's own verdict on the last closed bar. Without it,
+   // "CORE signals: 0" is a symptom with no cause; with it, the line names the
+   // gate that refused the candidate (see the DIAG_TABLE block above).
+   double diag_core=0.0;
+   if(DiagRead("CORE",diag_core))
+     {
+      line+=" | indicator verdict: "+DiagCodeText((int)MathRound(diag_core));
+      double diag_bars=0.0,diag_armed=0.0,diag_conf=0.0,diag_time=0.0;
+      if(DiagRead("BARS",diag_bars) && DiagRead("ARMED",diag_armed) && DiagRead("CONF",diag_conf))
+         line+=" | indicator funnel: bars "+IntegerToString((long)diag_bars)+
+               " armed "+IntegerToString((long)diag_armed)+
+               " confirmed "+IntegerToString((long)diag_conf);
+      if(DiagRead("TIME",diag_time) && diag_time>0.0)
+         line+=" | last closed bar "+TimeToString((datetime)(long)diag_time,TIME_DATE|TIME_MINUTES);
+     }
+   else
+      line+=" | indicator verdict: no diagnostic record for "+
+            IntegerToString((long)_Period)+" on this symbol - the indicator has not completed a"+
+            " closed-bar pass here (not attached, not compiled, or a different symbol/timeframe)";
    Print(line);
   }
 
