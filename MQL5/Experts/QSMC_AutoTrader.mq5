@@ -781,6 +781,27 @@ string DiagCodeText(const int code)
      }
    return ("UNKNOWN code "+IntegerToString((long)code)+" - this companion is older than the indicator build; copy both files and press F7");
   }
+// One suffix for every heartbeat exit path, so an early return (no handle, no
+// history, still warming up) still carries the indicator's own verdict instead
+// of leaving the operator with half the answer.
+string IndicatorVerdictSuffix()
+  {
+   double core=0.0;
+   if(!DiagRead("CORE",core))
+      return (" | indicator verdict: no diagnostic record for "+
+              IntegerToString((long)_Period)+" on this symbol - the indicator has not completed a"+
+              " closed-bar pass here (not attached, not compiled, or a different symbol/timeframe)");
+   string out=" | indicator verdict: "+DiagCodeText((int)MathRound(core));
+   double db=0.0,da=0.0,dc=0.0,dt=0.0;
+   if(DiagRead("BARS",db) && DiagRead("ARMED",da) && DiagRead("CONF",dc))
+      out+=" | indicator funnel: bars "+IntegerToString((long)db)+
+           " armed "+IntegerToString((long)da)+
+           " confirmed "+IntegerToString((long)dc);
+   if(DiagRead("TIME",dt) && dt>0.0)
+      out+=" | last closed bar "+TimeToString((datetime)(long)dt,TIME_DATE|TIME_MINUTES);
+   return out;
+  }
+
 
 //+------------------------------------------------------------------+
 //| Diagnostic heartbeat. Read-only: it copies the CORE direction    |
@@ -814,7 +835,8 @@ void DiagnosticHeartbeat()
    if(g_handle==INVALID_HANDLE)
      {
       Print("[QSMC_AT] heartbeat: ",mode," | indicator `",InpIndicatorName,
-            "` handle INVALID - not compiled or missing from MQL5\\Indicators; no signal can ever be read");
+            "` handle INVALID - not compiled or missing from MQL5\\Indicators; no signal can ever be read"+
+            IndicatorVerdictSuffix());
       return;
      }
    // v6.6.10: a valid handle is not a working indicator. BarsCalculated()<0
@@ -827,14 +849,16 @@ void DiagnosticHeartbeat()
      {
       Print("[QSMC_AT] heartbeat: ",mode," | indicator `",InpIndicatorName,
             "` exists but is NOT calculating (BarsCalculated=",IntegerToString((long)calc),
-            ") - its OnInit failed or its history is unavailable; read the nadir2 lines in the Experts log");
+            ") - its OnInit failed or its history is unavailable; read the nadir2 lines in the Experts log"+
+            IndicatorVerdictSuffix());
       return;
      }
    if(!g_last_copy_ok)
      {
       Print("[QSMC_AT] heartbeat: ",mode," | indicator `",InpIndicatorName,
             "` is still warming up (",IntegerToString((long)calc),
-            " bars calculated; the last CopyBuffer returned fewer bars than requested); waiting, nothing is wrong yet");
+            " bars calculated; the last CopyBuffer returned fewer bars than requested); waiting, nothing is wrong yet"+
+            IndicatorVerdictSuffix());
       return;
      }
 
@@ -847,7 +871,8 @@ void DiagnosticHeartbeat()
    if(got<look)
      {
       Print("[QSMC_AT] heartbeat: ",mode," | indicator history not ready (",
-            IntegerToString(got),"/",IntegerToString(look)," bars) - nothing to evaluate yet");
+            IntegerToString(got),"/",IntegerToString(look)," bars) - nothing to evaluate yet"+
+            IndicatorVerdictSuffix());
       return;
      }
 
@@ -897,22 +922,7 @@ void DiagnosticHeartbeat()
    // v6.6.10: the indicator's own verdict on the last closed bar. Without it,
    // "CORE signals: 0" is a symptom with no cause; with it, the line names the
    // gate that refused the candidate (see the DIAG_TABLE block above).
-   double diag_core=0.0;
-   if(DiagRead("CORE",diag_core))
-     {
-      line+=" | indicator verdict: "+DiagCodeText((int)MathRound(diag_core));
-      double diag_bars=0.0,diag_armed=0.0,diag_conf=0.0,diag_time=0.0;
-      if(DiagRead("BARS",diag_bars) && DiagRead("ARMED",diag_armed) && DiagRead("CONF",diag_conf))
-         line+=" | indicator funnel: bars "+IntegerToString((long)diag_bars)+
-               " armed "+IntegerToString((long)diag_armed)+
-               " confirmed "+IntegerToString((long)diag_conf);
-      if(DiagRead("TIME",diag_time) && diag_time>0.0)
-         line+=" | last closed bar "+TimeToString((datetime)(long)diag_time,TIME_DATE|TIME_MINUTES);
-     }
-   else
-      line+=" | indicator verdict: no diagnostic record for "+
-            IntegerToString((long)_Period)+" on this symbol - the indicator has not completed a"+
-            " closed-bar pass here (not attached, not compiled, or a different symbol/timeframe)";
+   line+=IndicatorVerdictSuffix();
    Print(line);
   }
 
