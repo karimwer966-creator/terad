@@ -385,6 +385,32 @@ def strip_comments(src):
     return code
 
 
+def fn_body(sig, label):
+    """Body of the DEFINITION of `sig`.
+
+    Anchors on the signature rather than on a line number, so the check survives
+    unrelated insertions elsewhere in this 41k-line file. Forward declarations
+    (same signature, line ends in ';') are skipped. This file's brace style puts a
+    function's closing brace at column 0, so the first CRLF-}-CRLF after the
+    signature ends the body; nested braces are always indented.
+    """
+    pos = 0
+    while True:
+        i = TEXT.find(sig, pos)
+        if i < 0:
+            check(False, "B locate %s" % label, "definition not found: %r" % sig[:60])
+            return ""
+        line_end = TEXT.find("\r\n", i)
+        if TEXT[i:line_end].rstrip().endswith(";"):      # forward declaration
+            pos = line_end
+            continue
+        j = TEXT.find("\r\n}\r\n", i)
+        if j < 0:
+            check(False, "B locate end of %s" % label, "no column-0 closing brace")
+            return ""
+        return TEXT[i:j + 5]
+
+
 def region(start_marker, end_marker, label):
     i = TEXT.find(start_marker)
     if i < 0:
@@ -480,10 +506,19 @@ expired_guards = len(re.findall(r'==\s*"EXPIRED"', TEXT))
 check(expired_guards >= 10,
       "B4 EXPIRED is honoured at every eligibility site (%d comparisons; "
       "5 loops + 2 scoring/draw pairs + the helpers)" % expired_guards)
-for site, fn in ((10346, "PMI_BuildLocation"), (16991, "ScoreOrderBlock"),
-                 (24182, "DrawStructureAndOB")):
-    check('"EXPIRED"' in TEXT.split("\r\n")[site - 1],
-          "B4 %s skips EXPIRED (line %d)" % (fn, site))
+# Anchored on each function's DEFINITION, not on a line number: line numbers move
+# whenever anything is inserted above them, which made this check fail on an
+# unrelated edit while the guards it protects were still perfectly intact.
+for sig, fn in (("void PMI_BuildLocation(const int closed,const double atr)",
+                 "PMI_BuildLocation"),
+                ("double ScoreOrderBlock(const int ob_index,const double price,"
+                 "const double atr,const int anchor_bar)", "ScoreOrderBlock"),
+                ("void DrawStructureAndOB()", "DrawStructureAndOB")):
+    body = fn_body(sig, fn)
+    check('state=="EXPIRED"' in body,
+          "B4 %s skips EXPIRED" % fn)
+    check(len(body) > 200,
+          "B4 %s body was located and is substantial (%d chars)" % (fn, len(body)))
 
 # --- B5 buffer safety: nothing moved, nothing added -------------------
 m = re.search(r"^#property indicator_buffers\s+(\d+)", TEXT, re.M)

@@ -84,6 +84,13 @@ jobs:
       - name: Order block lifecycle (one age rule, two state machines, no buffer moved)
         run: python3 tools/test_orderblock_lifecycle.py 2>&1 | tee out/test_orderblock_lifecycle.log
 
+      # Phase 2 (AUDIT-SB1). Two display-only modules were added to a file whose
+      # Core buffers an Expert Advisor reads by index, so the contracts that
+      # matter are the negative ones: no buffer moved, no existing default
+      # changed, and no execution-adjacent function can read the new state.
+      - name: Power of 3 + Silver Bullet (display only, no buffer moved, cannot authorize)
+        run: python3 tools/test_phase2_modules.py 2>&1 | tee out/test_phase2_modules.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 
