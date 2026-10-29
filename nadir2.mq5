@@ -858,6 +858,17 @@ input int    InpResWeightZone        = 25;    // resolver weight: causal zone ro
 input int    InpResWeightReaction    = 30;    // resolver weight: reaction evidence
 input int    InpResWeightTactical    = 20;    // resolver weight: tactical trigger cross
 input int    InpResMinScore          = 60;    // weighted points a lone side needs = CONFIRMED
+input group "====== Weighted Gate Scoring (AUDIT-GS1, evidence weighted, vetoes hard) ======"
+input bool   InpUseWeightedGates     = false; // OFF = the existing hard-AND chain, unchanged
+input int    InpWGWeightLevel        = 25;    // weight: level reached the alert minimum
+input int    InpWGWeightEvidence     = 25;    // weight: evidence score reached InpWGMinEvidenceScore
+input int    InpWGWeightProximity    = 20;    // weight: distance to the zone within InpAlertMaxDistanceATR
+input int    InpWGWeightAlignment    = 15;    // weight: HTF + D1 signed context agrees
+input int    InpWGWeightRoom         = 15;    // weight: room to the opposing zone not exhausted
+input int    InpWGMinScore           = 60;    // weighted points a candidate needs to be published
+input int    InpWGMinEvidenceScore   = 68;    // evidence floor for the evidence leg (mirrors the
+                                              // existing 68; changes no shipped threshold)
+input double InpWGMinRoomATR         = 1.0;   // room to the opposing zone, in ATR units
 input group "====== All Seven Modules At Once (AUDIT-UX1) ======"
 input bool   InpEnableAllModules        = false;  // one switch: all seven strategy modules ON plus
                                              // their tooltip output. Does NOT enable the chart-object
@@ -4726,6 +4737,11 @@ string g_final_why="";     // the layer votes, or the conflicting pair
 // trigger cross; the resolver reads these and must not write them.
 int    g_tac_dir=0;        // +1/-1 while a tactical trigger is live, else 0
 bool   g_tac_closed=false; // the execution bar closed through the trigger
+// AUDIT-GS1: the weighted gate decision for the candidate the dispatcher is
+// looking at. Written only by WeightedGateAllows(), read only for display.
+int    g_wgate_score=0;    // weighted evidence points of the tested candidate, 0-100
+string g_wgate_why="";     // the legs it earned, or the hard veto that stopped it
+bool   g_wgate_veto=false; // true only for data/spread/news - never for evidence
 SAlertCandidate  g_alert_primary;
 SAlertCandidate  g_alert_opposite;
 string           g_alert_context_text="";
@@ -14551,6 +14567,21 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       InpResWeightBias+InpResWeightZone+InpResWeightReaction+InpResWeightTactical!=100)
      {
       Print("Invalid Quantum SMC resolver weights: they must sum to exactly 100");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+
+   // AUDIT-GS1: same rule as the resolver - refuse rather than renormalise, so
+   // an edited weight can never silently rescale what PUBLISH means.
+   if(InpUseWeightedGates &&
+      InpWGWeightLevel+InpWGWeightEvidence+InpWGWeightProximity+
+      InpWGWeightAlignment+InpWGWeightRoom!=100)
+     {
+      Print("Invalid Quantum SMC weighted-gate weights: they must sum to exactly 100");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpUseWeightedGates && (InpWGMinScore<0 || InpWGMinScore>100))
+     {
+      Print("Invalid Quantum SMC InpWGMinScore: it must be between 0 and 100");
       return INIT_PARAMETERS_INCORRECT;
      }
 
@@ -33070,6 +33101,8 @@ void DrawQuantumDashboard(const int total,const double &c[])
                   "Primary: "+(g_alert_primary_tooltip==""?"none":g_alert_primary_tooltip)+"\n"+
                   (InpUseFinalResolver?
                    "Resolver: "+(g_final_why==""?"none":g_final_why)+"\n":"")+
+                  (InpUseWeightedGates?
+                   "Weighted gate: "+(g_wgate_why==""?"none":g_wgate_why)+"\n":"")+
                   "Core state: "+core_state+" | blocker: "+CoreDashBlocker(core_state,path)+"\n"+
                   "Core chain: "+CoreDashChain(path,core_state,closed)+"\n"+
                   CoreDashBiasLine(g_buf_t[closed+1])+"\n"+
@@ -41609,6 +41642,81 @@ void AlertDispatcherDrawPrimary(const SAlertCandidate &a)
    }
 }
 
+//--------------------------------------------------------------------
+// AUDIT-GS1: weighted evidence gates, hard vetoes first.
+//
+// Publication used to be a conjunction: eligibility (which carries the level
+// minimum) AND proximity AND channels AND cooldown. Every extra gate
+// multiplied the miss rate, and a candidate that failed one weak leg looked
+// exactly like a candidate with no evidence at all - the reason was never
+// written down anywhere.
+//
+// This keeps the vetoes that must never be traded away - invalid data,
+// spread, high-impact news - and tests them FIRST, so no weight can outvote
+// them. The remaining legs are EVIDENCE and are weighted: level, evidence
+// score, proximity, HTF+D1 alignment, room to the opposing zone. The weights
+// ship at 25/25/20/15/15 = 100 and OnInit refuses to run if an operator
+// edits them to anything else; it never renormalises.
+//
+// The score is a confluence count, not a probability. It reads published
+// state only, writes only g_wgate_*, and sends no order.
+//--------------------------------------------------------------------
+bool WeightedGateAllows(const SAlertCandidate &c,const datetime bar_time,string &why)
+  {
+   why="";
+   g_wgate_veto=false;
+   g_wgate_score=0;
+   // ---- hard vetoes: tested first, reported first, never weighted away ----
+   if(!c.valid || c.direction==0 || c.bar_time<=0 || c.closed_index<0)
+     {
+      why="HARD VETO: invalid candidate data (no direction or no closed bar) - WAIT";
+      g_wgate_veto=true;
+      return false;
+     }
+   if(!(g_is_backtest && InpIgnoreSpreadInBacktest) && g_spread>(long)InpMaxSpreadPts)
+     {
+      why="HARD VETO: spread "+IntegerToString((int)g_spread)+" pts above InpMaxSpreadPts "+
+          IntegerToString((int)InpMaxSpreadPts)+" - WAIT";
+      g_wgate_veto=true;
+      return false;
+     }
+   if(MTF_SniperIsNewsBlackout(bar_time))
+     {
+      why="HARD VETO: high-impact news blackout (Golden Rule 6) - WAIT";
+      g_wgate_veto=true;
+      return false;
+     }
+   // ---- weighted evidence legs ----
+   int min_level=(int)MathMax(2,MathMin(5,InpRXNAlertMinLevel));
+   double maxd=InpAlertMaxDistanceATR;
+   if(!MathIsValidNumber(maxd) || maxd<0.0) maxd=2.0;
+   int got=0; string have=""; string miss="";
+   if(c.level>=min_level)            { got+=InpWGWeightLevel;     have+="level "; }
+   else                                miss+="level<"+IntegerToString(min_level)+" ";
+   if(c.score>=InpWGMinEvidenceScore){ got+=InpWGWeightEvidence;  have+="evidence "; }
+   else                                miss+="score "+IntegerToString(c.score)+"<"+
+                                        IntegerToString(InpWGMinEvidenceScore)+" ";
+   if(c.distance_atr<=maxd)          { got+=InpWGWeightProximity; have+="proximity "; }
+   else                                miss+="distance "+DoubleToString(c.distance_atr,2)+"ATR>"+
+                                        DoubleToString(maxd,2)+" ";
+   if(c.alignment>0)                 { got+=InpWGWeightAlignment; have+="alignment "; }
+   else                                miss+="alignment "+IntegerToString(c.alignment)+" ";
+   if(c.opposing_room_atr<0.0 || c.opposing_room_atr>=InpWGMinRoomATR)
+                                     { got+=InpWGWeightRoom;      have+="room "; }
+   else                                miss+="opposing room "+DoubleToString(c.opposing_room_atr,2)+"ATR ";
+   g_wgate_score=got;
+   if(got<InpWGMinScore)
+     {
+      why=(c.direction>0?"BUY":"SELL")+" evidence "+IntegerToString(got)+
+          "/100 from "+(have==""?"nothing ":have)+"below InpWGMinScore "+
+          IntegerToString(InpWGMinScore)+" - missed: "+(miss==""?"none":miss)+"- WAIT";
+      return false;
+     }
+   why=(c.direction>0?"BUY":"SELL")+" PUBLISH "+IntegerToString(got)+"/100 from "+have+
+       "- a weighted confluence count, not a probability";
+   return true;
+  }
+
 void AlertDispatcherFinalize(const int rates_total)
 {
    if(rates_total<3 || ArraySize(g_buf_t)<rates_total || ArraySize(g_buf_c)<rates_total) return;
@@ -41637,6 +41745,7 @@ void AlertDispatcherFinalize(const int rates_total)
    SAlertCandidate best_any,best_near,best_alert,best_other;
    AlertCandidateInit(best_any); AlertCandidateInit(best_near);
    AlertCandidateInit(best_alert); AlertCandidateInit(best_other);
+   string gs_why="";
    for(int i=0;i<g_alert_candidate_count;i++)
    {
       SAlertCandidate c=g_alert_candidates[i];
@@ -41644,7 +41753,16 @@ void AlertDispatcherFinalize(const int rates_total)
       if(AlertCandidateBetter(c,best_any)) best_any=c;
       if(c.distance_atr<=maxd && AlertCandidateBetter(c,best_near)) best_near=c;
       bool ap=false,asnd=false,apush=false;
-      if(c.alert_eligible && c.distance_atr<=maxd && AlertChannelsFor(c,ap,apush,asnd) &&
+      // AUDIT-GS1: with the flag ON the two EVIDENCE gates (eligibility, which
+      // carries the level minimum, and proximity) become one weighted score with
+      // the hard vetoes tested first inside it. With the flag OFF this is the
+      // original conjunction, token for token - channels, cooldown and ranking
+      // stay hard either way because they are delivery and de-duplication, not
+      // evidence.
+      bool gs_evidence=InpUseWeightedGates
+                       ?WeightedGateAllows(c,bar_time,gs_why)
+                       :(c.alert_eligible && c.distance_atr<=maxd);
+      if(gs_evidence && AlertChannelsFor(c,ap,apush,asnd) &&
          AlertCooldownAllows(c,AlertExactKey(c)) && AlertCandidateBetter(c,best_alert)) best_alert=c;
    }
    // If an alertable scenario exists, the chart/dashboard primary is the same
@@ -41652,6 +41770,16 @@ void AlertDispatcherFinalize(const int rates_total)
    if(best_alert.valid) g_alert_primary=best_alert;
    else if(best_near.valid) g_alert_primary=best_near;
    else g_alert_primary=best_any;
+   // AUDIT-GS1: keep the weighted decision of the candidate that actually won,
+   // not of whichever candidate the loop happened to test last.
+   if(InpUseWeightedGates)
+     {
+      string wfinal="";
+      if(best_alert.valid) WeightedGateAllows(best_alert,bar_time,wfinal);
+      else wfinal=(g_wgate_why!=""?g_wgate_why:
+                   "no candidate reached the weighted gate - WAIT");
+      g_wgate_why=wfinal;
+     }
 
    if(g_alert_primary.valid)
    {
