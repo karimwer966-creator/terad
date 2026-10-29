@@ -1593,7 +1593,19 @@ plus comment-only lines) and on check 2 (no surviving reference to anything dele
 not on a test run — a dead function by definition has no effect, but the *set* being
 dead is a measurement, and the measurement was wrong once already this session.
 
-## 12. Known risks and what is NOT implemented## 12. Known risks and what is NOT implemented
+**What is deliberately left.** The purge stops at functions. Fourteen file-scope
+variables lost their last reader with the code that used them —
+`g_memo_hit` (L2137), `g_ui_last_panel_ms` (L2149), `g_pmi_panel_y` (L2151),
+`g_pmi_panel_height` (L2152), `g_badge_x` (L2164), `g_panel_stack_top` (L2165),
+`g_panel_stack_bottom` (L2166), `g_last_mtf_entry_id` (L2246), `g_mtf_last_confirm_bar`
+(L2253), `g_last_mtf_preview_bar` (L2255), `g_mtf_event_time` (L3711),
+`g_mtf_avail_time` (L3712), `g_pmi_panel_ticks` (L12715), `g_pmi_panel_last_closed`
+(L12716). They are inert, they cost nothing at run time, and deleting them would move
+every citation below them — 213 in this document and 132 in the tools — for fourteen
+lines of noise. That trade is not worth a second repin wave tonight; say the word and
+they go with it.
+
+## 12. Known risks and what is NOT implemented
 
 **Compilation.** F7 has now been run once (§11.1): 42 errors from a single
 missing `//`, fixed, and the file rescanned lexically with zero further prose
