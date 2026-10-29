@@ -545,7 +545,7 @@ comment-stripped text.
 | `tools/test_phase3_wyckoff.py` | 182 | 0 |
 | `tools/test_phase4_priceaction.py` | 234 | 0 |
 | `tools/test_phase5_meanreversion.py` | 256 | 0 |
-| `tools/test_phase6_confluence.py` | 286 | 0 |
+| `tools/test_phase6_confluence.py` | 313 | 0 |
 | `tools/test_phase7_riskmodel.py` | 292 | 0 |
 | **Seven phase suites** | **1 557** | **0** |
 | `tools/test_docs_freshness.py` | 294 | 0 |
@@ -555,7 +555,7 @@ comment-stripped text.
 | `tools/test_declutter_cap.py` | 197 | 0 |
 | `tools/test_tactical_authority.py` | 177 | 0 |
 
-Full gate: **5 static tools PASS · 29 suites · 3 541 PASS lines · 0 failures**.
+Full gate: **5 static tools PASS · 29 suites · 3 568 PASS lines · 0 failures**.
 CI: **36 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`, step 34 = `tools/test_scalping.py`, step 35 = `tools/test_decision_journal.py`, step 36 = `tools/test_declutter_cap.py`; AUDIT-A3 added no step - its Part C runs inside the existing `One authoritative scenario state` step).
 
 ### 10.1b This document is itself under test
@@ -1287,6 +1287,87 @@ and that CI can no longer miss drift ahead of it. It does not make the build new
 any behavioural sense — no threshold, gate or strategy changed — and it compiles
 nothing: **F7 remains the only compiler evidence**, outstanding for
 RS1 + GS1 + SC1 + OBS1 + D1.
+
+## 11.11 AUDIT-C — the four conflicts that are still your decision (C1, C3, C4, C6)
+
+§8 records nine conflicts found in code that already existed and were **reported
+rather than repaired**, because repairing them changes live behaviour. This section
+re-derives the four that are still open, with numbers measured against the file, and
+puts each in front of the operator as a decision. **No threshold, weight or gate was
+changed.** Every fact below is pinned by `tools/test_phase6_confluence.py` (313
+checks), so changing one is a visible act that must edit this section too.
+
+### C3 — the score weights sum to 1.10, and a gate reads that score
+
+Measured, not quoted: summing the decimal literals of both branches of the
+aggregation gives **1.1000** in each — the institutional branch (**L21840–21851**)
+and the default branch (**L21857–21862**). Both then clamp to `0…100`
+(**L21853** / **L21867**), and that clamp is what hides the scale.
+
+The consequence is concrete, and it is **not** display-only: `final_score` becomes
+`conf`, and `if(conf<EffMinConfidenceScore())` rejects the entry (**L21952–21959**).
+`EffMinConfidenceScore()` (**L19831–19835**) returns `InpMinConfidenceScore`
+(default **75**) and applies no compensation of any kind. So:
+
+| | reads as | actually admits |
+|---|---|---|
+| STRICT profile | confidence ≥ 75 | a true weighted average of **75 / 1.1 ≈ 68.2** |
+| PRACTICAL profile | confidence ≥ 60 | **≈ 54.5** |
+
+The gate is therefore about **9.1 % looser** than its own input label, and the
+"confidence %" printed to the chart is inflated by up to 10 % until the clamp
+saturates at 100.
+
+| Option | Effect | Risk |
+|---|---|---|
+| **A. Leave it** | nothing changes; the label stays misleading | none, but the drift is permanent |
+| **B. Normalise both branches to 1.00** (divide by 1.1, i.e. scale each coefficient) | every score drops ~9 %; the same 75 threshold now admits ~3 fewer expected signals per week-class; displayed confidence becomes honest | **changes which trades pass** — a strategy change |
+| **C. Re-label without touching maths** (state in the input comment and doc that the effective threshold is `T/1.1`) | zero behaviour change; the operator can calibrate | none |
+
+### C4 — two free points exist, and the confluence engine already neutralises them
+
+Verified at the source: `ScoreSession()` (**L18430–18438**) falls through to
+`return 30.0;` when no session matched — free credit for absent evidence — and
+`ScoreHTF()` (**L18439–18444**) returns **50.0** twice, for "bias disabled" and for
+"no higher-timeframe structure". Both feed the **legacy** weighted score.
+
+The engine built in this pass does not inherit them: `CF_Update`
+(**L27574–27721**) detects the floor (`sess_raw>CF_SESSION_NO_EVIDENCE+0.001`) and
+zeroes that pillar, and it reads `g_htf_bias` directly rather than calling
+`ScoreHTF()` at all. Both checks are pinned. So C4 is **closed by mitigation**: the
+two functions are untouched (and pinned byte-for-byte) because editing them would
+silently re-price every legacy score. Nothing further is required unless the legacy
+score itself is ever revisited.
+
+### C1 — a textbook doji passes the entry gate as a pin bar
+
+The pin-bar branch of `MTF_SniperEvaluateEntryTriggers` (**L45097–45245**) reads
+`bull_pin=(lower_wick>=0.50*c_range && c_close>=c_open)`, and `c1_candle_inside`
+never consults the body. With the example from §8 — body/range `(95,100,90,95)`,
+i.e. body `0`, range `10`, lower wick `5` — the test passes **exactly at its
+boundary** (`5 >= 0.50*10` and `95 >= 95`), while `AnalyzeClosedCandle`'s doji rule
+(`x.body_ratio<=0.12`, **L5674**) classifies the same bar as **DOJI**. The label and
+the gate describe one bar differently, which is what §8 recorded.
+
+| Option | Effect |
+|---|---|
+| **A. Leave it** | a doji with a long lower wick keeps qualifying as a bullish pin bar |
+| **B. Require a body** (`&& c_body>0`) | excludes the exact doji only; the smallest possible tightening |
+| **C. Align with the label** (`c_body/c_range>0.12`) | excludes every doji and near-doji; the largest behaviour change |
+
+### C6 — the brief named inputs the file does not have
+
+Confirmed: **`InpMinRR` and `InpRiskPercent` do not exist** as inputs, and were not
+invented. The stop used when no zone or pool sits behind the entry is
+`InpRMNoZoneSLATR = **1.50**` ATR, not the "1%" the brief described. This is a
+documentation conflict, already recorded in §3.7; the pinned check now stops a
+future doc from naming a non-existent input as if it were one.
+
+**What this section is NOT.** It is not a recommendation to change any of the four.
+It is the arithmetic behind each decision, so that choosing B or C for C3 or C1 is a
+deliberate, reviewable change rather than an accident of refactoring. And it is not
+compiler evidence: nothing here has been through MetaEditor — **F7 remains the only
+compiler evidence**, outstanding for RS1 + GS1 + SC1 + OBS1 + D1.
 
 ## 12. Known risks and what is NOT implemented
 
