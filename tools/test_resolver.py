@@ -242,7 +242,7 @@ check("ObjectCreate" not in RB and "DrawTradeBox" not in RB,
       "D the resolver draws nothing: it decides, the surfaces render")
 
 # --------------------------------------------------------------- E. wiring
-ON_INIT = 15090
+ON_INIT = 15260
 check(re.search(r"if\(InpUseFinalResolver &&", line_at(ON_INIT))
       and "InpResWeightBias+InpResWeightZone+InpResWeightReaction+"
           "InpResWeightTactical!=100" in line_at(ON_INIT + 1),
@@ -257,8 +257,8 @@ check("renormalise" in line_at(ON_INIT - 1),
       "E the comment above it says why: refuse rather than renormalise",
       "L%d is %r" % (ON_INIT - 1, line_at(ON_INIT - 1).strip()[:80]))
 
-FINALIZE = 16348
-CALL_GATE = 16351
+FINALIZE = 16522
+CALL_GATE = 16525
 check("AlertDispatcherFinalize(rates_total);" in line_at(FINALIZE),
       "E AlertDispatcherFinalize is called at L%d" % FINALIZE,
       "L%d is %r" % (FINALIZE, line_at(FINALIZE).strip()[:70]))
@@ -293,7 +293,7 @@ check(PUB < DEF,
       "E publication (L%d) precedes the resolver definition (L%d)" % (PUB, DEF))
 
 # -------------------------------------------------------------- F. surfaces
-DASH = 33509
+DASH = 33683
 check(line_at(DASH).strip() == "if(InpUseFinalResolver)",
       "F the dashboard override starts at L%d" % DASH,
       "L%d is %r" % (DASH, line_at(DASH).strip()[:70]))
@@ -307,7 +307,7 @@ check("primary_dir>0" in line_at(DASH - 4),
       "F with the flag off the card still reads primary_dir exactly as before",
       "L%d is %r" % (DASH - 4, line_at(DASH - 4).strip()[:70]))
 
-TIP = 33677
+TIP = 33851
 check('"Resolver: "+(g_final_why==""?"none":g_final_why)' in line_at(TIP),
       "F the tooltip carries the resolver's own why-text at L%d" % TIP,
       "L%d is %r" % (TIP, line_at(TIP).strip()[:90]))
@@ -355,12 +355,12 @@ check(inputs == 583, "G nadir2.mq5 has 583 input lines (538 + 10 RS1 + 10 GS1 + 
       "got %d" % inputs)
 check(TEXT.count("{") == TEXT.count("}"),
       "G braces balance (%d/%d)" % (TEXT.count("{"), TEXT.count("}")))
-check(TEXT.count("{") == 3821, "G brace count is the pinned 3821",
+check(TEXT.count("{") == 3842, "G brace count is the pinned 3842",
       "got %d" % TEXT.count("{"))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 45664,
-      "G the file is 45664 lines - no scratch rewrite, only the RS1 + GS1 insertions",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 45838,
+      "G the file is 45838 lines - no scratch rewrite, only the RS1 + GS1 insertions",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check(len(re.findall(r"(?m)^#include", TEXT)) == 1
       and "#include <QSMC/QSMC_Root.mqh>" in line_at(639),

@@ -344,7 +344,7 @@ check("g_sc_" in UB and UB.count("g_sc_") >= 12,
       "G the overlay writes its own state (%d g_sc_ references)" % UB.count("g_sc_"))
 
 # ---------------------------------------------------------------- H. wiring
-OI_W, OI_G, OI_P, CALL, HOOK, TIP = 15115, 15120, 15127, 16332, 15532, 33681
+OI_W, OI_G, OI_P, CALL, HOOK, TIP = 15285, 15290, 15297, 16506, 15702, 33855
 check("if(InpEnableScalping && SCALP_WeightsSum()!=100)" in line_at(OI_W),
       "H OnInit refuses a weight sum that is not 100 (L%d)" % OI_W,
       line_at(OI_W).strip()[:70])
@@ -421,10 +421,10 @@ check("InpEnableAllModules" not in body(GRP, SESS + 1),
 check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "J 583 input lines (574 + the 9 OBS1 lines)",
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
-check(TEXT.count("{") == TEXT.count("}") == 3821, "J braces balance at 3821",
+check(TEXT.count("{") == TEXT.count("}") == 3842, "J braces balance at 3842",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 45664,
-      "J the file is 45664 lines: insertions only, no scratch rewrite",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 45838,
+      "J the file is 45838 lines: insertions only, no scratch rewrite",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""), "J no bare LF: CRLF everywhere")
 check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,

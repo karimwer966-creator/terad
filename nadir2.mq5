@@ -7897,6 +7897,158 @@ void MarkZREEntry(const SZRESignal &s)
    g_gate_audit.marks++;   g_gate_audit.zre_marks++;
 }
 
+//--------------------------------------------------------------------
+// AUDIT-D1: the declutter cap, made to do what it says.
+//
+// SmartObjectCleanup() has always promised that when the chart passes the
+// object cap it drops THE OLDEST ZONE_/STRUCT_/OB_/FVG_ decorations and never
+// an entry mark. It did not: it measured with ObjectsTotal() (every object on
+// the chart, not just ours), it deleted with ObjectsDeleteAll() (a whole family
+// rather than the excess), and it filtered on OBJ_RECTANGLE (which the STRUCT_
+// family never was, so that family could not contribute). Being one object over
+// the cap could therefore erase every demand/supply box on the chart.
+//
+// These four functions are the corrected mechanism. Two are pure - the excess
+// arithmetic and the oldest-slot choice - so both are testable at OnInit without
+// a chart. Display only: nothing here reads a price series, changes a threshold,
+// touches a verdict, or sends an order, and the cap value itself is unchanged
+// (InpMaxChartObjects, else 900 with Clean and 1200 without).
+//--------------------------------------------------------------------
+
+// PURE. How many objects must go for the owned count to reach the cap. At the
+// cap nothing is pruned (the cap is inclusive), and a non-positive cap means no
+// cap at all, so nothing is pruned either.
+int QSMC_DeclutterExcess(const int owned,const int cap)
+  {
+   if(cap<=0) return 0;
+   if(owned<=0) return 0;
+   if(owned<=cap) return 0;
+   return owned-cap;
+  }
+
+// PURE. Index of the oldest slot not yet taken, or -1 when none is left. Ties go
+// to the lower index, so a pass is reproducible. "Oldest" is the object's own
+// anchor time: no price, no history and no symbol assumption. A shorter mask is
+// treated as the bound, so a size mismatch can never read past either array.
+int QSMC_OldestSlot(const datetime &times[],const bool &taken[])
+  {
+   int n=ArraySize(times);
+   int m=ArraySize(taken);
+   if(m<n) n=m;
+   int best=-1;
+   for(int i=0;i<n;i++)
+     {
+      if(taken[i]) continue;
+      if(best<0 || times[i]<times[best]) best=i;
+     }
+   return best;
+  }
+
+// How many objects on this chart are ours. Walks the chart's own object list
+// once, and is called once per new bar from the declutter path only - the same
+// idiom QSMC_ApplyVisualPolicy() already uses.
+int QSMC_CountOwnedObjects()
+  {
+   int owned=0;
+   int total=ObjectsTotal(0,-1,-1);
+   for(int i=total-1;i>=0;i--)
+     {
+      string name=ObjectName(0,i,-1,-1);
+      if(name!="" && StringFind(name,PFX)==0) owned++;
+     }
+   return owned;
+  }
+
+// Delete at most `want` objects of one family, oldest first, and report how many
+// really went. Any object type is eligible, so a family drawn as text is pruned
+// like a family drawn as boxes. Two passes over the object list and no dynamic
+// growth inside a loop; entry marks are in no family this is ever called with.
+int QSMC_DeleteOldestFamily(const string prefix,const int want)
+  {
+   if(want<=0 || prefix=="") return 0;
+   int total=ObjectsTotal(0,-1,-1);
+   int found=0;
+   for(int i=total-1;i>=0;i--)
+     {
+      string name=ObjectName(0,i,-1,-1);
+      if(name!="" && StringFind(name,prefix)==0) found++;
+     }
+   if(found<=0) return 0;
+   string   names[];
+   datetime times[];
+   bool     taken[];
+   ArrayResize(names,found);
+   ArrayResize(times,found);
+   ArrayResize(taken,found);
+   int k=0;
+   for(int i=total-1;i>=0;i--)
+     {
+      string name=ObjectName(0,i,-1,-1);
+      if(name=="" || StringFind(name,prefix)!=0) continue;
+      names[k]=name;
+      times[k]=(datetime)ObjectGetInteger(0,name,OBJPROP_TIME,0);
+      taken[k]=false;
+      k++;
+     }
+   int n=MathMin(want,k);
+   int removed=0;
+   for(int d=0;d<n;d++)
+     {
+      int slot=QSMC_OldestSlot(times,taken);
+      if(slot<0) break;
+      taken[slot]=true;
+      if(ObjectDelete(0,names[slot])) removed++;
+     }
+   return removed;
+  }
+
+// AUDIT-D1 self-test: the two pure cores only - no chart, no object list, no
+// terminal state - so a regression is caught at OnInit instead of on a long
+// chart. Gated by InpMTEERunSelfTest, the file's existing self-test switch.
+bool QSMC_DeclutterSelfTest(string &where)
+  {
+   where="";
+   // DC-1 under the cap nothing is pruned.
+   if(QSMC_DeclutterExcess(500,1200)!=0)
+   { where="DC-1 under the cap nothing may be pruned"; return false; }
+   // DC-2 the cap is inclusive: exactly at it, nothing is pruned.
+   if(QSMC_DeclutterExcess(1200,1200)!=0)
+   { where="DC-2 the cap is inclusive"; return false; }
+   // DC-3 one over the cap costs ONE object, not a whole family.
+   if(QSMC_DeclutterExcess(1201,1200)!=1)
+   { where="DC-3 one over the cap must cost exactly one object"; return false; }
+   // DC-4 the excess is the difference, so the chart lands on the cap.
+   if(QSMC_DeclutterExcess(1500,900)!=600)
+   { where="DC-4 the excess must be owned minus cap"; return false; }
+   // DC-5 a non-positive cap means no cap: nothing is pruned.
+   if(QSMC_DeclutterExcess(5000,0)!=0 || QSMC_DeclutterExcess(5000,-1)!=0)
+   { where="DC-5 a non-positive cap must prune nothing"; return false; }
+   // DC-6 a non-positive owned count can never produce a phantom excess.
+   if(QSMC_DeclutterExcess(0,1200)!=0 || QSMC_DeclutterExcess(-5,1200)!=0)
+   { where="DC-6 a non-positive owned count must prune nothing"; return false; }
+   datetime t[4]; bool tk[4];
+   t[0]=(datetime)300; t[1]=(datetime)100; t[2]=(datetime)200; t[3]=(datetime)100;
+   tk[0]=false; tk[1]=false; tk[2]=false; tk[3]=false;
+   // DC-7 the oldest slot is chosen by the object's own anchor time.
+   if(QSMC_OldestSlot(t,tk)!=1)
+   { where="DC-7 the oldest slot must be chosen by anchor time"; return false; }
+   // DC-8 a tie goes to the lower index, so one pass is reproducible.
+   if(QSMC_OldestSlot(t,tk)!=1)
+   { where="DC-8 a tie must go to the lower index"; return false; }
+   tk[1]=true;
+   // DC-9 slots already taken are skipped, and the next oldest is chosen.
+   if(QSMC_OldestSlot(t,tk)!=3)
+   { where="DC-9 a taken slot must be skipped"; return false; }
+   tk[0]=true; tk[2]=true; tk[3]=true;
+   // DC-10 when every slot is taken the answer is -1, never an index.
+   if(QSMC_OldestSlot(t,tk)!=-1)
+   { where="DC-10 no free slot must return -1"; return false; }
+   bool none[]; datetime notime[];
+   if(QSMC_OldestSlot(notime,none)!=-1)
+   { where="DC-11 an empty list must return -1"; return false; }
+   return true;
+  }
+
 void SmartObjectCleanup(const bool isNewBar)
 {
    if(!InpSmartObjectManagement) return;
@@ -7907,20 +8059,38 @@ void SmartObjectCleanup(const bool isNewBar)
    if(isNewBar)
    {
       int cap=(InpMaxChartObjects>0 ? InpMaxChartObjects : (InpDeclutterMode?900:1200));
-      int total=ObjectsTotal(0,-1,-1);
-      if(total>cap)
+      // AUDIT-D1: the cap is on QSMC_* objects, which is what this input's own
+      // label ("hard cap on QSMC_* chart objects per pass") and the comment above
+      // have always said. ObjectsTotal() counts every object on the chart,
+      // including other indicators' and the operator's own drawings, so measuring
+      // with it pruned our zones to pay for somebody else's clutter.
+      int owned=QSMC_CountOwnedObjects();
+      int excess=QSMC_DeclutterExcess(owned,cap);
+      if(excess>0)
       {
+         // AUDIT-D1: "drop the oldest decorations" now means exactly that, and
+         // only that many. The previous code called ObjectsDeleteAll(), which
+         // removed EVERY object in a family - one object over the cap cost the
+         // whole ZONE_ family - and it filtered on OBJ_RECTANGLE, which the
+         // STRUCT_ family never was (structure marks are OBJ_TEXT, drawn by
+         // DrawTextLabel), so cut[1] could never contribute at all.
          string cut[4]; cut[0]=PFX+"ZONE_"; cut[1]=PFX+"STRUCT_"; cut[2]=PFX+"OB_"; cut[3]=PFX+"FVG";
-         int excess=total-cap;
          for(int c=0;c<4 && excess>0;c++)
          {
-            int removed=ObjectsDeleteAll(0,cut[c],-1,OBJ_RECTANGLE);
+            int removed=QSMC_DeleteOldestFamily(cut[c],excess);
             if(removed>0)
             {
-               Print("[Objects] ",removed," ",cut[c],"* rectangles removed (cap ",cap,", was ",total,")");
+               Print("[Objects] ",removed," ",cut[c],"* objects removed, oldest first (cap ",cap,
+                     ", owned ",owned,")");
                excess-=removed;
             }
          }
+         // Said out loud rather than hidden: if the four decoration families
+         // cannot cover the excess, the chart stays over the cap. Entry marks,
+         // the dashboard and every other family are never pruned to reach it.
+         if(excess>0)
+            Print("[Objects] still ",excess," over the cap ",cap," after pruning",
+                  " ZONE_/STRUCT_/OB_/FVG oldest-first: entry marks and the dashboard are never pruned");
       }
    }
 
@@ -15537,6 +15707,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          Print(">>> ",QSMC_VERSION_TEXT," Decision journal self-test: PASS (11/11)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Decision journal self-test: FAIL - ",mtee_fail);
+      if(QSMC_DeclutterSelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Declutter cap self-test: PASS (11/11)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Declutter cap self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
