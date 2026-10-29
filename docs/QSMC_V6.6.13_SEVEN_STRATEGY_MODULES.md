@@ -527,6 +527,7 @@ and did not add one.
 | Symbol-agnostic | no literal price level in any module core | Phases 2, 3, 5, 7 suites |
 | Enums | 43, all appended — none renumbered | Phase 5 suite |
 | Inputs | 583 total, 67 new, all new ones default `false` where behavioural | release gate + suites |
+| Inputs that read nothing | **6 of 519** — 3 legacy, 3 reserved; each labelled with a reason (§11.12) | `check_release_gate.py` G3 |
 
 Line-ending discipline: pure CRLF, **0 bare LF** (`*.mq5`/`*.mqh` are byte-exact
 via `.gitattributes`). Braces **3740/3740**; paren balance verified on
@@ -1368,6 +1369,58 @@ It is the arithmetic behind each decision, so that choosing B or C for C3 or C1 
 deliberate, reviewable change rather than an accident of refactoring. And it is not
 compiler evidence: nothing here has been through MetaEditor — **F7 remains the only
 compiler evidence**, outstanding for RS1 + GS1 + SC1 + OBS1 + D1.
+
+## 11.12 AUDIT-DEAD — six switches that do nothing, and the gate that keeps it that way
+
+An input the operator can flip with no effect is worse than a missing feature: the
+properties dialog promises a behaviour the code does not have. Finding them needs the
+**code**, not the file, so the audit built a declaration-vs-read index over
+`nadir2.mq5`: every `input`/`sinput` name, then every identifier that survives
+comment-stripping, then subtract the declaration line itself.
+
+**The stripping order is load-bearing, and it cost three wrong answers to find.**
+Line **635** contains `QSMC/*.mqh` *inside a `//` comment*. Strip block comments
+first and that `/*` opens a comment which closes 21 000 lines later, deleting most of
+the program - and every input then looks dead. The index is built strings -> line
+comments -> block comments, and a `\s+` inside the declaration pattern was replaced
+with `[ \t]+` because it was spanning newlines and matching 519 of 583 lines.
+
+**Result: 6 of 519 inputs are read by nothing but their own declaration.**
+
+| Input | Line | What it claimed | What the code does |
+|---|---|---|---|
+| `InpScalpShowOnDashboard` | L874 | "add the advisory line to the tooltip" | no scalping row exists in the tooltip |
+| `InpDockDashboard` | L1169 | legacy | nothing (label already said so) |
+| `InpPanelsStartCollapsed` | L1174 | legacy | nothing (label already said so) |
+| `InpShowGateAudit` | L1236 | "dashboard: per-gate survival + top blocker" | `SignalGateAuditLine()` is only **printed**, at L16285, gated by `InpGateAuditLogEveryBars`; `GateAuditTopBlocker()` also feeds the idle note at L42709. No dashboard row. |
+| `InpAlertOnEntryPreview` | L1253 | legacy | nothing (label already said so) |
+| `InpShowEntryQualityPanel` | L1416 | "Show STRUCTURAL/CONTEXT/EXECUTION/GEOMETRY rows" | those rows are not built |
+
+Three were already honest (their comments say "legacy"). Three were not.
+
+**Decision: correct the labels, do not build the missing UI.** Building a scalping
+tooltip row, a gate-audit dashboard row and four quality rows to justify three
+switches would be new user-facing surface invented by an audit, and the 11-row
+dashboard cap (§11.5) is already tight. The three misleading comments now say
+`RESERVED: ... (doc 11.12)` and name the real path where one exists. **Comment-only:
+45 838 lines, 583 inputs, 3 842 braces and 44 enums are unchanged, and so is every
+default** - `InpShowGateAudit` and `InpShowEntryQualityPanel` stay `true` because
+turning them `false` would change nothing either, and the operator may prefer a
+future row to appear.
+
+**The half that makes this stay true is a check.** `check_release_gate.py` **G3**
+now rebuilds the same index and fails on any input read by nothing, unless it is in
+`DEAD_ALLOWED` with a reason; if a listed input starts being read, it warns that the
+entry is stale. Both branches were proven by mutation, not asserted:
+
+| Mutation | Result |
+|---|---|
+| add `input bool InpPhantomFeature` | **BLOCK** - G3 names it and the gate exits 1 |
+| list a *live* input (`InpDebugLog`) as dead | **WARN** - "these were listed as dead but are read now" |
+| restore | GO, 0 warnings, file byte-identical |
+
+The check is not tautological in either direction, and it is cheaper than the
+alternative - a comment nobody re-reads.
 
 ## 12. Known risks and what is NOT implemented
 

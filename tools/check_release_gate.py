@@ -185,6 +185,48 @@ for n in QUIET_FALSE:
              "attention" % (n, defaults[n].strip()))
 NOTES.append("G3 verbose log + CSV logging default to false")
 
+# ------------------------------------------------- G3b inputs that do nothing
+# A switch the operator can flip with no effect is worse than a missing feature: it
+# is a lie in the properties dialog. Detecting one needs the CODE, not the file - and
+# the order of stripping matters. nadir2.mq5:635 carries `QSMC/*.mqh` inside a `//`
+# comment, so stripping block comments first deletes 21 000 lines and reports every
+# input as dead. Strings, then line comments, then block comments.
+DEAD_ALLOWED = {
+    "InpDockDashboard": "legacy, and its own comment says so",
+    "InpPanelsStartCollapsed": "legacy, and its own comment says so",
+    "InpAlertOnEntryPreview": "legacy, and its own comment says so",
+    "InpScalpShowOnDashboard": "RESERVED: no scalping tooltip row exists yet (doc 11.12)",
+    "InpShowGateAudit": "RESERVED: no dashboard row exists yet; the audit prints instead",
+    "InpShowEntryQualityPanel": "RESERVED: those rows are not built (doc 11.12)",
+}
+_host = read(os.path.join(ROOT, "nadir2.mq5"))
+_code = re.sub(r'"(?:\\.|[^"\\\n])*"', '""', _host)
+_code = re.sub(r"//[^\n]*", "", _code)
+_code = re.sub(r"/\*.*?\*/", "", _code, flags=re.S)
+_read_at = {}
+for _i, _line in enumerate(_code.split("\n")):
+    for _w in set(re.findall(r"[A-Za-z_]\w*", _line)):
+        _read_at.setdefault(_w, []).append(_i)
+_decl = {}
+for _i, _line in enumerate(_host.split("\n")):
+    _m = re.match(r"^[ \t]*(?:sinput|input)[ \t]+(?:group[ \t]+\"[^\"]*\"|"
+                  r"(?:[A-Za-z_]\w*(?:[ \t]*\*)?[ \t]+)+([A-Za-z_]\w*)[ \t]*=)", _line)
+    if _m and _m.group(1):
+        _decl.setdefault(_m.group(1), _i)
+_dead = [n for n, i in _decl.items() if not [j for j in _read_at.get(n, []) if j != i]]
+_unexpected = sorted(n for n in _dead if n not in DEAD_ALLOWED)
+_stale = sorted(n for n in DEAD_ALLOWED if n not in _dead)
+if _unexpected:
+    fail("G3 %s read by nothing but its own declaration - a switch the operator can "
+         "flip with no effect. Wire it, correct its label, or list it in "
+         "DEAD_ALLOWED with a reason" % ", ".join(_unexpected))
+elif _stale:
+    warn("G3 these were listed as dead but are read now: %s - drop them from "
+         "DEAD_ALLOWED" % ", ".join(_stale))
+else:
+    NOTES.append("G3 %d inputs parsed; %d read by nothing, every one of them listed "
+                 "with a reason" % (len(_decl), len(_dead)))
+
 # --------------------------------------------------------------- G4 no trading
 # Scoped on purpose. The QSMC LAYER (headers + the indicator + the probe) must not
 # be able to trade, reach the network, or delete files. The optional companion EA in

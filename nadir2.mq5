@@ -871,7 +871,7 @@ input int    InpWGMinEvidenceScore   = 68;    // evidence floor for the evidence
 input double InpWGMinRoomATR         = 1.0;   // room to the opposing zone, in ATR units
 input group "====== Scalping Strategies (AUDIT-SC1, M1-M5, display only, advisory) ======"
 input bool   InpEnableScalping           = false; // overlay switch: six scalping strategies
-input bool   InpScalpShowOnDashboard     = false; // add the advisory line to the tooltip
+input bool   InpScalpShowOnDashboard     = false; // RESERVED: no scalping row exists in the tooltip yet (doc 11.12)
 input int    InpScalpWeightMomentum      = 20;    // SC-MOM  closed-bar displacement burst
 input int    InpScalpWeightEdge          = 20;    // SC-EDGE zone-edge fade with MR stretch
 input int    InpScalpWeightSilverBullet  = 15;    // SC-SB   inside a resolved SB window
@@ -1233,7 +1233,7 @@ input group "====== DEBUGGING ======"
 input bool InpShowDebugAlerts = false;
 input bool InpLogSignalDetails = true;
 input group "====== SIGNAL GATE AUDIT (why is there no signal?) ======"
-input bool InpShowGateAudit = true;        // dashboard: per-gate survival + top blocker
+input bool InpShowGateAudit = true;        // RESERVED: no dashboard row yet; the audit prints via InpGateAuditLogEveryBars (doc 11.12)
 input int  InpGateAuditLogEveryBars = 0;   // log the audit every N closed bars (0 = off)
 input group "====== REAL-TIME MODE ======"
 input bool InpRealTimeZones = true;
@@ -1413,7 +1413,7 @@ input group "====== v5.8.0 ENTRY QUALITY ENGINE ======"
 // Transparent soft-score model (Phase 21). The hard gates remain the
 // existing causal/retest/confirmation architecture and are mirrored,
 // never duplicated. Soft scores only RANK valid candidates.
-input bool   InpShowEntryQualityPanel = true;   // Show STRUCTURAL/CONTEXT/EXECUTION/GEOMETRY rows
+input bool   InpShowEntryQualityPanel = true;   // RESERVED: those rows are not built yet (doc 11.12)
 input double InpQualityHighThreshold  = 75.0;   // final blend >= this  -> HIGH_QUALITY
 input double InpQualityAPlusThreshold = 88.0;   // final blend >= this  -> A_PLUS
 
