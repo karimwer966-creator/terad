@@ -949,6 +949,15 @@ input int    InpCFWeightMTF             = 15;     // weight: MTF bias (higher-ti
 input int    InpCFMinDisplayScore       = 60;     // minimum score to name a side; below it the engine stands aside
 input bool   InpCFVetoOnConflict        = true;   // NO TRADE when a source that HAS evidence contradicts the side
 input bool   InpCFRequireActiveStrategy = false;  // additionally require one strategy module (P3/SB/WY/PA/MR) to agree
+input group "====== Risk Model (AUDIT-RM1, display only, advisory text) ======"
+input bool   InpEnableRiskModel         = false;  // master switch for the advisory Entry/SL/TP/R:R readout
+input bool   InpRMShowOnDashboard       = false;  // show the risk readout in the dashboard tooltip
+input double InpRMSLBufferATR           = 0.30;   // ATR buffer beyond the zone or pool the stop sits behind
+input double InpRMSLMaxATR              = 2.00;   // hard cap on stop distance in ATR; beyond it the plan is rejected
+input double InpRMNoZoneSLATR           = 1.50;   // stop distance in ATR when no zone and no pool sits behind entry
+input bool   InpRMUseRRFloor            = true;   // reject when TP1 R:R is below the file's hard floor InpTopDownMinRR
+input bool   InpRMPreferTopDownPlan     = true;   // adopt the TopDown chain's own entry/SL/TP1 when it agrees
+input int    InpRMMaxPoolScan           = 40;     // how many recent liquidity pools to scan for the stop and targets
 input group "====== Premium / Discount & OTE ======"
 input bool InpShowPremiumDiscount = true;
 input bool InpPDLinesOnly = false;          // draw range boundaries / EQ as Fibonacci-style lines
@@ -2040,6 +2049,35 @@ int      g_cf_best_strategy_dir=0;
 int      g_cf_contradictions=0;       // sources that HAD evidence and disagreed with the side
 int      g_cf_weight_sum=0;           // the six configured weights; must equal exactly 100
 bool     g_cf_weights_valid=false;
+//--- AUDIT-RM1 Risk Model. Display-only advisory published state. -------------
+// Entry / SL / TP1-3 / R:R for the side the Confluence Engine named, plus a
+// suggested size AS TEXT ONLY. Nothing here is an order, a buffer, or a drawing,
+// and no value here may be parsed back into an execution call.
+#define RM_RR_EPSILON 1e-9              // same tolerance the TopDown R:R gate uses
+string   g_rm_verdict="WAIT";           // OK / REJECT_RR / REJECT_SL / WAIT
+int      g_rm_dir=0;                    // the side this plan belongs to, 0 when none
+string   g_rm_plan_src="";              // TOPDOWN (adopted) or DERIVED (computed here)
+double   g_rm_entry=0.0;                // the last closed bar's close: the next bar's open
+double   g_rm_sl=0.0;
+double   g_rm_sl_dist=0.0;
+double   g_rm_sl_dist_atr=0.0;          // stop distance expressed in ATR, symbol-agnostic
+double   g_rm_tp1=0.0;
+double   g_rm_tp2=0.0;
+double   g_rm_tp3=0.0;
+double   g_rm_rr1=0.0;                  // reward:risk, NOT a probability
+double   g_rm_rr2=0.0;
+double   g_rm_rr3=0.0;
+string   g_rm_sl_src="";                // what the stop is sitting behind
+string   g_rm_tp1_src="";               // what the first target is
+bool     g_rm_rejected=false;
+string   g_rm_reason="";                // carries "NO PLAN: <reason>" when rejected
+string   g_rm_invalidation="";
+double   g_rm_risk_pct=0.0;             // the clamped percentage actually used
+double   g_rm_risk_money=0.0;           // equity x pct, in account currency
+double   g_rm_money_per_lot=0.0;        // from the existing TheoreticalRiskMoney()
+double   g_rm_size_units=0.0;           // 0.0 means it could not be computed
+bool     g_rm_size_available=false;
+string   g_rm_size_text="";             // TEXT ONLY - the entire output of the sizing step
 datetime g_htf_cache_time = 0;
 datetime g_d1_cache_time = 0;
 bool g_memo_hit = false;
@@ -5700,6 +5738,24 @@ string CF_StandAsideReason(const int side,const int buy_score,const int sell_sco
 void   CF_Update(const int closed,const int rates_total);
 void   CF_Clear();
 bool   CF_SelfTest(string &where);
+//--- AUDIT-RM1 Risk Model (display only, advisory text, no order, no buffer) --
+double RM_ClampRiskPct(const double pct);
+double RM_RewardRisk(const double entry,const double sl,const double tp);
+double RM_StopBehind(const bool is_buy,const double level,const double atr,const double buffer_atr);
+bool   RM_StopDistanceOK(const double sl_dist,const double atr,const double max_atr);
+double RM_FallbackTP(const double entry,const double sl_dist,const bool is_buy,const double multiple);
+bool   RM_TPsOrdered(const bool is_buy,const double entry,
+                     const double tp1,const double tp2,const double tp3);
+double RM_PositionSize(const double equity,const double risk_pct,const double money_per_lot);
+string RM_Verdict(const double rr1,const double floor_rr,const bool use_floor);
+string RM_SizeText(const bool available,const double units,const double risk_money,
+                   const double pct,const string currency);
+int    RM_PoolsAhead(const bool is_buy,const double price,const int max_scan,
+                     double &p1,double &p2,double &p3);
+double RM_NearestPoolBehind(const bool is_buy,const double price,const int max_scan);
+void   RM_Update(const int closed,const int rates_total);
+void   RM_Clear();
+bool   RM_SelfTest(string &where);
 bool IsInSession(const datetime server_time,const ENUM_SESSION_ID session_id);
 bool IsInKillZone(const datetime server_time,const ENUM_SESSION_ID session_id);
 int ChartEventBarAtTime(const datetime &chart_time[],const int total,const datetime event_time);
@@ -14742,6 +14798,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    PA_Clear();
    MR_Clear();
    CF_Clear();
+   RM_Clear();
    if(InpMTEERunSelfTest)
    {
       string mtee_fail="";
@@ -14773,6 +14830,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          Print(">>> ",QSMC_VERSION_TEXT," Confluence Engine self-test: PASS (10/10)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Confluence Engine self-test: FAIL - ",mtee_fail);
+      if(RM_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Risk model self-test: PASS (10/10)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Risk model self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
@@ -15555,6 +15616,11 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // mean-reversion verdict, alongside P3/SB/WY above. Scoring the same bar they
    // scored is what makes the summary a summary rather than a stale echo.
    if(is_new_bar || detection_updated) CF_Update(closed,rates_total);
+   // AUDIT-RM1 Risk Model: display-only advisory. It runs AFTER CF_Update
+   // because it attaches a plan to the side the confluence engine named, and
+   // AFTER TopDown_Update() above so the chain's own entry/SL/TP1 can be
+   // adopted instead of re-derived. No buffer, no drawing, no order.
+   if(is_new_bar || detection_updated) RM_Update(closed,rates_total);
    // v6.3.0 Zone Reaction Engine: closed-bar, observational, no entry authority.
    // Runs after MVP_Update so the active profile levels are current.
    ZRE_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);
@@ -26940,6 +27006,607 @@ bool CF_SelfTest(string &where)
 }
 
 //====================================================================
+// AUDIT-RM1 RISK MODEL (display only - advisory TEXT, never an order)
+//====================================================================
+// WHAT THIS MODULE IS
+//   For the side the Confluence Engine named, it publishes Entry, Stop Loss,
+//   TP1/TP2/TP3, the R:R of each target, a rejection when TP1's R:R is below the
+//   file's hard floor, and a suggested position size AS TEXT ONLY. It draws
+//   nothing, allocates no buffer, and contains no trade API. The word "units" is
+//   used instead of "lots" in the published text on purpose: this is an advisory
+//   number for a human to read, not an instruction to anything.
+//
+// WHAT ALREADY EXISTED, AND WHAT THIS MODULE THEREFORE DOES NOT REBUILD
+//   A complete trade-management model is already in this file. Rather than build
+//   a second one beside it, this module reuses it:
+//
+//   * MTF_SniperComputeTradeManagement() already derives entry, a stop behind the
+//     Sniper Zone by SNIPER_SL_BUFFER_ATR (0.30) x ATR OR the most recent opposing
+//     swing whichever is farther, a hard stop cap of SNIPER_SL_HARD_MAX_H1_ATR
+//     (2.00) x H1 ATR that SKIPs the trade, TP1/TP2/TP3 from the nearest opposing
+//     zone / HTF zone / D1-W1 liquidity with a 1R/2R/3R fallback, break-even,
+//     trailing, and rec_lot_size from equity x risk%.
+//   * The TopDown chain already builds opposing-liquidity targets (H1 VAH/VAL/POC,
+//     H1 dealing extreme, PDH, PDL), computes rr, and REJECTS below
+//     InpTopDownMinRR with the message "R:R %.2f below required %.2f".
+//   * TheoreticalRiskMoney(entry,sl,volume) already converts a stop distance into
+//     money via the symbol's tick size and tick value, and returns 0.0 when the
+//     instrument data is unavailable.
+//   * STopDownState's own header comment says its published tuple exists so that a
+//     downstream planner can "reconcile ITS zone with the chain's zone instead of
+//     re-deriving (and possibly contradicting) it". This module is that downstream
+//     planner, and it takes the invitation: when the chain has computed a plan and
+//     its direction agrees with the confluence verdict, that plan is adopted
+//     VERBATIM and labelled TOPDOWN. Only when there is no agreeing plan does this
+//     module derive one itself, labelled DERIVED. Two risk plans for one bar that
+//     disagree would be worse than either alone.
+//
+// INPUTS THAT DO NOT EXIST, AND WERE NOT INVENTED
+//   The brief for this phase named InpMinRR (2.0) and InpRiskPercent (1%). Neither
+//   exists in this file. What exists is InpTopDownMinRR = 2.0, documented as
+//   "hard R:R floor (policy: never below 1:2)", and InpSniperMaxRiskPct = 1.50,
+//   documented as "Advisory equity risk % per trade (1.0-2.0%)". Both are reused
+//   here rather than duplicated, because adding a second R:R floor and a second
+//   risk percentage would put two knobs in the same file that can disagree with
+//   each other. Consequence, stated plainly: the risk percentage this module
+//   reports defaults to 1.50, NOT the 1.0 the brief mentioned, and it is clamped
+//   to 1.0-2.0 by the same MathMax/MathMin the Sniper model uses. Changing that
+//   default would change the Sniper model too, which is out of scope.
+//
+// CAUSALITY
+//   Entry is the last CLOSED bar's close - the price the next bar opens at, and
+//   the only entry price knowable without a future candle. Every scan is bounded
+//   and reads only closed-bar state. The forming bar is refused explicitly.
+//   Nothing is latched: RM_Update() clears all published state before its early
+//   exits, so switching the module off cannot leave a stale plan on the dashboard.
+//====================================================================
+
+// PURE. The same clamp MTF_SniperComputeTradeManagement() applies to
+// InpSniperMaxRiskPct, reproduced here so this module cannot report a risk
+// percentage the rest of the file would refuse.
+double RM_ClampRiskPct(const double pct)
+{
+   if(!(pct>0.0)) return 1.0;
+   return MathMax(1.0,MathMin(2.0,pct));
+}
+
+// PURE. Reward divided by risk. Returns 0.0 for any degenerate triple, so a
+// zero-distance stop can never produce an infinite or meaningless R:R.
+double RM_RewardRisk(const double entry,const double sl,const double tp)
+{
+   if(!(entry>0.0) || !(sl>0.0) || !(tp>0.0)) return 0.0;
+   double risk=MathAbs(entry-sl);
+   if(!(risk>0.0)) return 0.0;
+   double reward=MathAbs(tp-entry);
+   if(!(reward>0.0)) return 0.0;
+   return reward/risk;
+}
+
+// PURE. The stop goes BEYOND the level it is protecting, by an ATR buffer, so
+// that a wick through the level is not automatically a stopped-out trade.
+double RM_StopBehind(const bool is_buy,const double level,const double atr,const double buffer_atr)
+{
+   if(!(level>0.0)) return 0.0;
+   double buf=(atr>0.0 && buffer_atr>0.0 ? atr*buffer_atr : 0.0);
+   return (is_buy ? level-buf : level+buf);
+}
+
+// PURE. The hard stop cap. A stop this wide means the entry is simply in the
+// wrong place, which is the doctrine the Sniper model already applies as
+// SKIP_SL_MAX - so it is a REJECTION here, never a widened stop.
+bool RM_StopDistanceOK(const double sl_dist,const double atr,const double max_atr)
+{
+   if(!(sl_dist>0.0)) return false;
+   if(!(atr>0.0)) return false;
+   if(!(max_atr>0.0)) return false;
+   return (sl_dist<=atr*max_atr+RM_RR_EPSILON);
+}
+
+// PURE. The 1R/2R/3R fallback the Sniper model uses when no opposing zone or
+// pool is available to target instead.
+double RM_FallbackTP(const double entry,const double sl_dist,const bool is_buy,const double multiple)
+{
+   if(!(entry>0.0) || !(sl_dist>0.0) || !(multiple>0.0)) return 0.0;
+   return (is_buy ? entry+sl_dist*multiple : entry-sl_dist*multiple);
+}
+
+// PURE. Targets must sit in increasing distance from entry, or the published
+// R:R sequence would be misleading - a TP3 nearer than TP1 implies TP1 was
+// already the better exit.
+bool RM_TPsOrdered(const bool is_buy,const double entry,
+                   const double tp1,const double tp2,const double tp3)
+{
+   if(!(entry>0.0)) return false;
+   if(!(tp1>0.0) || !(tp2>0.0) || !(tp3>0.0)) return false;
+   // Every target must lie on the PROFIT side of entry, and at a distance that
+   // never decreases. Testing the side and not just the distance is what stops a
+   // target behind entry - which would be a second stop, not a target - from
+   // passing as an ordered plan.
+   if(is_buy) return (tp1>entry && tp2>=tp1 && tp3>=tp2);
+   return (tp1<entry && tp2<=tp1 && tp3<=tp2);
+}
+
+// PURE. Suggested size in units. Returns 0.0 whenever it cannot be computed, so
+// the caller can say "unavailable" instead of printing a fabricated number.
+// Note the divisor: TheoreticalRiskMoney() returns 0.0 when the symbol's tick
+// value is not reported, and dividing by that would be a division by zero.
+double RM_PositionSize(const double equity,const double risk_pct,const double money_per_lot)
+{
+   if(!(equity>0.0)) return 0.0;
+   if(!(money_per_lot>0.0)) return 0.0;
+   double pct=RM_ClampRiskPct(risk_pct);
+   double size=(equity*(pct/100.0))/money_per_lot;
+   if(!(size>0.0)) return 0.0;
+   return size;
+}
+
+// PURE. The R:R gate. With no measurable reward, or with TP1's R:R below the
+// floor, the answer is a rejection - never a quieter target and never a pass.
+string RM_Verdict(const double rr1,const double floor_rr,const bool use_floor)
+{
+   if(!(rr1>0.0)) return "REJECT_RR";
+   if(use_floor && rr1+RM_RR_EPSILON<floor_rr) return "REJECT_RR";
+   return "OK";
+}
+
+// PURE (formats only). TEXT ONLY: this string is the entire output of the sizing
+// step, and it says so. Nothing downstream may parse it into an order.
+string RM_SizeText(const bool available,const double units,const double risk_money,
+                   const double pct,const string currency)
+{
+   if(!available)
+      return "unavailable (tick value or equity not reported) - advisory only, no order";
+   return "about "+DoubleToString(units,2)+" units at "+DoubleToString(pct,2)+
+          "% risk ("+DoubleToString(risk_money,2)+" "+currency+
+          ") - advisory text only, no order";
+}
+
+// Bounded scan of the pools the file already detected, on the PROFIT side of
+// entry. Returns how many distinct targets it found (0-3), nearest first.
+int RM_PoolsAhead(const bool is_buy,const double price,const int max_scan,
+                  double &p1,double &p2,double &p3)
+{
+   p1=0.0; p2=0.0; p3=0.0;
+   if(!(price>0.0)) return 0;
+   int n=ArraySize(g_liquidity);
+   if(n<1) return 0;
+   int scan=(max_scan>0 ? (int)MathMin((double)max_scan,(double)n) : n);
+   if(scan<1) return 0;
+   int found=0;
+   for(int k=n-scan;k<n;k++)
+   {
+      if(k<0) continue;
+      double lv=g_liquidity[k].price;
+      if(!(lv>0.0)) continue;
+      // A target must lie AHEAD of entry in the profit direction.
+      if(is_buy ? (lv<=price) : (lv>=price)) continue;
+      if(lv==p1 || lv==p2 || lv==p3) continue;      // distinct levels only
+      double d1=(p1>0.0?MathAbs(p1-price):-1.0);
+      double d2=(p2>0.0?MathAbs(p2-price):-1.0);
+      double d3=(p3>0.0?MathAbs(p3-price):-1.0);
+      double d=MathAbs(lv-price);
+      if(found==0){ p1=lv; found=1; continue; }
+      if(found==1)
+      {
+         if(d<d1){ p2=p1; p1=lv; } else { p2=lv; }
+         found=2; continue;
+      }
+      if(found==2)
+      {
+         if(d<d1){ p3=p2; p2=p1; p1=lv; }
+         else if(d<d2){ p3=p2; p2=lv; }
+         else { p3=lv; }
+         found=3; continue;
+      }
+      if(d<d3)
+      {
+         if(d<d1){ p3=p2; p2=p1; p1=lv; }
+         else if(d<d2){ p3=p2; p2=lv; }
+         else { p3=lv; }
+      }
+   }
+   return found;
+}
+
+// Bounded scan for the nearest pool on the RISK side of entry - what a stop
+// should sit behind when price is not inside a zone.
+double RM_NearestPoolBehind(const bool is_buy,const double price,const int max_scan)
+{
+   if(!(price>0.0)) return 0.0;
+   int n=ArraySize(g_liquidity);
+   if(n<1) return 0.0;
+   int scan=(max_scan>0 ? (int)MathMin((double)max_scan,(double)n) : n);
+   if(scan<1) return 0.0;
+   double best=0.0;
+   double best_d=0.0;
+   for(int k=n-scan;k<n;k++)
+   {
+      if(k<0) continue;
+      double lv=g_liquidity[k].price;
+      if(!(lv>0.0)) continue;
+      if(is_buy ? (lv>=price) : (lv<=price)) continue;   // risk side only
+      double d=MathAbs(price-lv);
+      if(best<=0.0 || d<best_d){ best=lv; best_d=d; }
+   }
+   return best;
+}
+
+// The per-bar driver. Advisory only: it publishes a plan for a human to read.
+void RM_Update(const int closed,const int rates_total)
+{
+   RM_Clear();
+   if(!InpEnableRiskModel) return;
+   if(rates_total<3) return;
+   if(closed<1 || closed>rates_total-2) return;    // never touch the forming bar
+   if(closed>=ArraySize(g_buf_c)) return;
+
+   // The readout is an advisory ATTACHED to the Phase 6 verdict. With no named
+   // side there is nothing to size, and inventing a direction here would be
+   // exactly the forced direction CF_PickSide() refuses to produce.
+   if(g_cf_dir==0)
+   {
+      g_rm_verdict="WAIT";
+      g_rm_reason=(g_cf_reason=="" ? "no confluence verdict to attach a plan to" : g_cf_reason);
+      return;
+   }
+   bool is_buy=(g_cf_dir>0);
+   g_rm_dir=g_cf_dir;
+
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0) ? g_atr_buf[closed] : g_atr;
+   double price=g_buf_c[closed];
+   if(!(atr>0.0) || !(price>0.0))
+   {
+      g_rm_verdict="WAIT";
+      g_rm_reason="ATR or close unavailable on this bar";
+      return;
+   }
+
+   double sl_dist=0.0;
+
+   //---- 1. ENTRY / STOP / TP1: adopt the TopDown chain's plan when it agrees. --
+   if(InpRMPreferTopDownPlan && g_td.computed && g_td.dir==g_cf_dir &&
+      g_td.entry>0.0 && g_td.sl>0.0 && g_td.tp1>0.0)
+   {
+      g_rm_plan_src="TOPDOWN";
+      g_rm_entry=g_td.entry;
+      g_rm_sl=g_td.sl;
+      g_rm_tp1=g_td.tp1;
+      g_rm_rr1=(g_td.rr>0.0 ? g_td.rr : RM_RewardRisk(g_rm_entry,g_rm_sl,g_rm_tp1));
+      g_rm_sl_src="TopDown chain";
+      g_rm_tp1_src=(g_td.tp_src=="" ? "TopDown target" : g_td.tp_src);
+   }
+   else
+   {
+      g_rm_plan_src="DERIVED";
+      // Entry is the last closed bar's close: the price the next bar opens at,
+      // and the only entry knowable without a future candle.
+      g_rm_entry=price;
+
+      // Stop: behind the zone price is standing in, else behind the nearest pool
+      // on the risk side, else a plain ATR distance. PA_ZoneAt() is the file's one
+      // zone scan and is read-only, so calling it here cannot disturb Phase 4.
+      string zname=""; double ztop=0.0; double zbot=0.0; int zdir=0;
+      bool in_zone=PA_ZoneAt(price,closed,atr,zname,ztop,zbot,zdir);
+      double pool=RM_NearestPoolBehind(is_buy,price,InpRMMaxPoolScan);
+      if(in_zone)
+      {
+         g_rm_sl=RM_StopBehind(is_buy,(is_buy?zbot:ztop),atr,InpRMSLBufferATR);
+         g_rm_sl_src=zname+" zone";
+      }
+      else if(pool>0.0)
+      {
+         g_rm_sl=RM_StopBehind(is_buy,pool,atr,InpRMSLBufferATR);
+         g_rm_sl_src="liquidity pool";
+      }
+      else
+      {
+         g_rm_sl=(is_buy ? price-InpRMNoZoneSLATR*atr : price+InpRMNoZoneSLATR*atr);
+         g_rm_sl_src="ATR fallback (no zone, no pool behind entry)";
+      }
+      if(!(g_rm_sl>0.0))
+      {
+         g_rm_verdict="WAIT";
+         g_rm_reason="no usable stop level could be derived";
+         return;
+      }
+      g_rm_tp1=0.0;                 // filled in step 2, with TP2 and TP3
+      g_rm_tp1_src="";
+   }
+
+   //---- 2. Hard stop cap. A rejection, never a widened stop. ------------------
+   sl_dist=MathAbs(g_rm_entry-g_rm_sl);
+   if(!(sl_dist>0.0))
+   {
+      g_rm_verdict="REJECT_SL";
+      g_rm_rejected=true;
+      g_rm_reason="NO PLAN: stop distance is zero";
+      return;
+   }
+   g_rm_sl_dist=sl_dist;
+   g_rm_sl_dist_atr=sl_dist/atr;
+   if(!RM_StopDistanceOK(sl_dist,atr,InpRMSLMaxATR))
+   {
+      g_rm_verdict="REJECT_SL";
+      g_rm_rejected=true;
+      g_rm_reason="NO PLAN: stop is "+DoubleToString(g_rm_sl_dist_atr,2)+
+                  " ATR away, beyond the "+DoubleToString(InpRMSLMaxATR,2)+
+                  " ATR cap - the entry is in the wrong place";
+      return;
+   }
+
+   //---- 3. TP1/TP2/TP3: the next opposing liquidity, else 1R/2R/3R. ----------
+   if(g_rm_plan_src=="TOPDOWN")
+   {
+      // The chain publishes TP1 only, so TP2/TP3 extend from it.
+      g_rm_tp2=RM_FallbackTP(g_rm_entry,sl_dist,is_buy,2.0);
+      g_rm_tp3=RM_FallbackTP(g_rm_entry,sl_dist,is_buy,3.0);
+      g_rm_tp1_src=(g_rm_tp1_src==""?"TopDown target":g_rm_tp1_src);
+   }
+   else
+   {
+      double p1=0.0; double p2=0.0; double p3=0.0;
+      int np=RM_PoolsAhead(is_buy,g_rm_entry,InpRMMaxPoolScan,p1,p2,p3);
+      g_rm_tp1=(np>=1 ? p1 : RM_FallbackTP(g_rm_entry,sl_dist,is_buy,1.0));
+      g_rm_tp2=(np>=2 ? p2 : RM_FallbackTP(g_rm_entry,sl_dist,is_buy,2.0));
+      g_rm_tp3=(np>=3 ? p3 : RM_FallbackTP(g_rm_entry,sl_dist,is_buy,3.0));
+      g_rm_tp1_src=(np>=1 ? "next opposing liquidity" : "1R fallback");
+   }
+
+   // Enforce increasing distance. Mixing a pool target with an R-multiple
+   // fallback can otherwise put a later target nearer than an earlier one.
+   double d1=MathAbs(g_rm_tp1-g_rm_entry);
+   double d2=MathMax(MathAbs(g_rm_tp2-g_rm_entry),d1);
+   double d3=MathMax(MathAbs(g_rm_tp3-g_rm_entry),d2);
+   g_rm_tp1=(is_buy ? g_rm_entry+d1 : g_rm_entry-d1);
+   g_rm_tp2=(is_buy ? g_rm_entry+d2 : g_rm_entry-d2);
+   g_rm_tp3=(is_buy ? g_rm_entry+d3 : g_rm_entry-d3);
+
+   // Final consistency guard. The enforcement above should make this
+   // unreachable; if it ever fires, the honest output is WAIT rather than a plan
+   // whose targets do not describe what they claim to.
+   if(!RM_TPsOrdered(is_buy,g_rm_entry,g_rm_tp1,g_rm_tp2,g_rm_tp3))
+   {
+      g_rm_verdict="WAIT";
+      g_rm_reason="NO PLAN: the derived targets are not in a usable order";
+      return;
+   }
+
+   g_rm_rr1=RM_RewardRisk(g_rm_entry,g_rm_sl,g_rm_tp1);
+   g_rm_rr2=RM_RewardRisk(g_rm_entry,g_rm_sl,g_rm_tp2);
+   g_rm_rr3=RM_RewardRisk(g_rm_entry,g_rm_sl,g_rm_tp3);
+
+   //---- 4. The R:R floor, reusing the file's existing hard policy input. -----
+   string v=RM_Verdict(g_rm_rr1,InpTopDownMinRR,InpRMUseRRFloor);
+   if(v!="OK")
+   {
+      g_rm_verdict="REJECT_RR";
+      g_rm_rejected=true;
+      g_rm_reason="NO PLAN: R:R "+DoubleToString(g_rm_rr1,2)+" below the required "+
+                  DoubleToString(InpTopDownMinRR,2)+" ("+g_rm_tp1_src+")";
+   }
+   else
+   {
+      g_rm_verdict="OK";
+      g_rm_rejected=false;
+      g_rm_reason=(is_buy?"BUY":"SELL")+" plan R:R "+DoubleToString(g_rm_rr1,2)+
+                  "/"+DoubleToString(g_rm_rr2,2)+"/"+DoubleToString(g_rm_rr3,2)+
+                  " from "+g_rm_plan_src;
+   }
+
+   //---- 5. Suggested size, AS TEXT ONLY. Never an order. --------------------
+   double equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   double pct=RM_ClampRiskPct(InpSniperMaxRiskPct);
+   double per_lot=TheoreticalRiskMoney(g_rm_entry,g_rm_sl,1.0);
+   g_rm_risk_pct=pct;
+   g_rm_money_per_lot=per_lot;
+   g_rm_risk_money=(equity>0.0 ? equity*(pct/100.0) : 0.0);
+   g_rm_size_units=RM_PositionSize(equity,pct,per_lot);
+   g_rm_size_available=(g_rm_size_units>0.0);
+   g_rm_size_text=RM_SizeText(g_rm_size_available,g_rm_size_units,g_rm_risk_money,
+                              pct,AccountInfoString(ACCOUNT_CURRENCY));
+
+   //---- Invalidation: the one price that cancels this plan. ------------------
+   g_rm_invalidation="a body close beyond the stop at "+DoubleToString(g_rm_sl,_Digits);
+
+   if(InpLogLifecycleTransitions && (g_rm_verdict=="OK" || g_rm_rejected))
+      LogLifecycle(StringFormat("RM %s dir=%+d rr1=%.2f plan=%s size=%s",
+                                g_rm_verdict,g_rm_dir,g_rm_rr1,g_rm_plan_src,
+                                (g_rm_size_available?"quoted":"unavailable")));
+}
+
+// Resets every published value.
+void RM_Clear()
+{
+   g_rm_verdict="WAIT";
+   g_rm_dir=0;
+   g_rm_plan_src="";
+   g_rm_entry=0.0; g_rm_sl=0.0; g_rm_sl_dist=0.0; g_rm_sl_dist_atr=0.0;
+   g_rm_tp1=0.0; g_rm_tp2=0.0; g_rm_tp3=0.0;
+   g_rm_rr1=0.0; g_rm_rr2=0.0; g_rm_rr3=0.0;
+   g_rm_sl_src=""; g_rm_tp1_src="";
+   g_rm_rejected=false; g_rm_reason=""; g_rm_invalidation="";
+   g_rm_risk_pct=0.0; g_rm_risk_money=0.0; g_rm_money_per_lot=0.0;
+   g_rm_size_units=0.0; g_rm_size_available=false; g_rm_size_text="";
+}
+
+// AUDIT-RM1 synthetic self-test. Exercises the PURE cores only - it reads no
+// chart history and no account data, so it is identical on every symbol.
+bool RM_SelfTest(string &where)
+{
+   where="";
+
+   // RM-1 The risk-percentage clamp must match the one the Sniper model applies
+   //      to the very same input, or this module could quote a percentage the
+   //      rest of the file would refuse.
+   if(MathAbs(RM_ClampRiskPct(1.50)-1.50)>1e-9)
+   { where="RM-1 a percentage inside 1.0-2.0 passes through unchanged"; return false; }
+   if(MathAbs(RM_ClampRiskPct(0.25)-1.0)>1e-9)
+   { where="RM-1 a percentage below 1.0 is raised to 1.0"; return false; }
+   if(MathAbs(RM_ClampRiskPct(9.0)-2.0)>1e-9)
+   { where="RM-1 a percentage above 2.0 is cut to 2.0"; return false; }
+   if(MathAbs(RM_ClampRiskPct(0.0)-1.0)>1e-9 || MathAbs(RM_ClampRiskPct(-3.0)-1.0)>1e-9)
+   { where="RM-1 a zero or negative percentage falls back to 1.0"; return false; }
+
+   // RM-2 Reward over risk, and 0.0 for every degenerate triple. A zero-distance
+   //      stop must never yield an infinite or meaningless ratio.
+   if(MathAbs(RM_RewardRisk(100.0,98.0,104.0)-2.0)>1e-9)
+   { where="RM-2 a 4-point reward on a 2-point risk is 2.0"; return false; }
+   if(MathAbs(RM_RewardRisk(100.0,102.0,96.0)-2.0)>1e-9)
+   { where="RM-2 the short side measures the same way"; return false; }
+   if(RM_RewardRisk(100.0,100.0,104.0)!=0.0)
+   { where="RM-2 a zero-distance stop has no measurable R:R"; return false; }
+   if(RM_RewardRisk(100.0,98.0,100.0)!=0.0)
+   { where="RM-2 a target at entry has no reward"; return false; }
+   if(RM_RewardRisk(0.0,98.0,104.0)!=0.0 || RM_RewardRisk(100.0,0.0,104.0)!=0.0 ||
+      RM_RewardRisk(100.0,98.0,0.0)!=0.0)
+   { where="RM-2 a missing entry, stop or target has no R:R"; return false; }
+
+   // RM-3 The stop sits BEYOND the level it protects, by the ATR buffer.
+   if(MathAbs(RM_StopBehind(true,100.0,10.0,0.30)-97.0)>1e-9)
+   { where="RM-3 a long stop goes below the level by 0.30 ATR"; return false; }
+   if(MathAbs(RM_StopBehind(false,100.0,10.0,0.30)-103.0)>1e-9)
+   { where="RM-3 a short stop goes above the level by 0.30 ATR"; return false; }
+   if(MathAbs(RM_StopBehind(true,100.0,0.0,0.30)-100.0)>1e-9)
+   { where="RM-3 with no ATR the buffer is zero and the stop sits ON the level"; return false; }
+   if(RM_StopBehind(true,0.0,10.0,0.30)!=0.0)
+   { where="RM-3 a missing level cannot produce a stop"; return false; }
+   if(RM_StopBehind(true,100.0,10.0,0.30)>=100.0)
+   { where="RM-3 a long stop must be strictly below the level it protects"; return false; }
+   if(RM_StopBehind(false,100.0,10.0,0.30)<=100.0)
+   { where="RM-3 a short stop must be strictly above the level it protects"; return false; }
+
+   // RM-4 The hard cap is inclusive at the limit and refuses degenerate inputs.
+   if(!RM_StopDistanceOK(20.0,10.0,2.00))
+   { where="RM-4 a stop exactly at the cap is still acceptable"; return false; }
+   if(RM_StopDistanceOK(20.1,10.0,2.00))
+   { where="RM-4 a stop beyond the cap must be rejected, not widened"; return false; }
+   if(RM_StopDistanceOK(0.0,10.0,2.00) || RM_StopDistanceOK(10.0,0.0,2.00) ||
+      RM_StopDistanceOK(10.0,10.0,0.0))
+   { where="RM-4 a missing distance, ATR or cap cannot be judged acceptable"; return false; }
+
+   // RM-5 The 1R/2R/3R fallback, on both sides.
+   if(MathAbs(RM_FallbackTP(100.0,2.0,true,1.0)-102.0)>1e-9 ||
+      MathAbs(RM_FallbackTP(100.0,2.0,true,2.0)-104.0)>1e-9 ||
+      MathAbs(RM_FallbackTP(100.0,2.0,true,3.0)-106.0)>1e-9)
+   { where="RM-5 the long fallbacks are entry plus 1R, 2R and 3R"; return false; }
+   if(MathAbs(RM_FallbackTP(100.0,2.0,false,1.0)-98.0)>1e-9 ||
+      MathAbs(RM_FallbackTP(100.0,2.0,false,3.0)-94.0)>1e-9)
+   { where="RM-5 the short fallbacks are entry minus 1R, 2R and 3R"; return false; }
+   if(RM_FallbackTP(100.0,0.0,true,1.0)!=0.0 || RM_FallbackTP(100.0,2.0,true,0.0)!=0.0)
+   { where="RM-5 a zero risk distance or zero multiple cannot produce a target"; return false; }
+
+   // RM-6 Targets must sit in increasing distance from entry.
+   if(!RM_TPsOrdered(true,100.0,102.0,104.0,106.0))
+   { where="RM-6 increasing long targets are ordered"; return false; }
+   if(!RM_TPsOrdered(false,100.0,98.0,96.0,94.0))
+   { where="RM-6 decreasing short prices are still increasing distances"; return false; }
+   if(RM_TPsOrdered(true,100.0,106.0,104.0,102.0))
+   { where="RM-6 a TP3 nearer than TP1 is not ordered"; return false; }
+   if(RM_TPsOrdered(true,100.0,102.0,102.0,106.0))
+   { where="RM-6 two targets at the same distance are still considered ordered"; return false; }
+   if(RM_TPsOrdered(true,100.0,100.0,104.0,106.0))
+   { where="RM-6 a target at entry is not a usable first target"; return false; }
+   if(RM_TPsOrdered(true,100.0,102.0,0.0,106.0))
+   { where="RM-6 a missing target is not ordered"; return false; }
+
+   // RM-7 Position size. The divisor is what matters: TheoreticalRiskMoney()
+   //      returns 0.0 when tick data is unavailable, and that must never be
+   //      divided by.
+   if(MathAbs(RM_PositionSize(10000.0,1.0,100.0)-1.0)>1e-9)
+   { where="RM-7 risking 1% of 10000 at 100 per unit is exactly 1 unit"; return false; }
+   if(MathAbs(RM_PositionSize(10000.0,2.0,100.0)-2.0)>1e-9)
+   { where="RM-7 doubling the risk percentage doubles the size"; return false; }
+   if(RM_PositionSize(10000.0,1.0,0.0)!=0.0)
+   { where="RM-7 a zero money-per-unit must return 0, never a division by zero"; return false; }
+   if(RM_PositionSize(0.0,1.0,100.0)!=0.0 || RM_PositionSize(-5.0,1.0,100.0)!=0.0)
+   { where="RM-7 no equity means no size"; return false; }
+   if(RM_PositionSize(10000.0,50.0,100.0)>2.0+1e-9)
+   { where="RM-7 an absurd percentage is clamped before it can inflate the size"; return false; }
+
+   // RM-8 The R:R gate. The floor is inclusive and no reward means no plan.
+   if(RM_Verdict(2.0,2.0,true)!="OK")
+   { where="RM-8 an R:R exactly at the floor passes"; return false; }
+   if(RM_Verdict(1.99,2.0,true)!="REJECT_RR")
+   { where="RM-8 an R:R just below the floor is rejected"; return false; }
+   if(RM_Verdict(0.0,2.0,true)!="REJECT_RR" || RM_Verdict(-1.0,2.0,true)!="REJECT_RR")
+   { where="RM-8 no measurable reward is rejected"; return false; }
+   if(RM_Verdict(0.5,2.0,false)!="OK")
+   { where="RM-8 with the floor disabled a low R:R is reported, not rejected"; return false; }
+   if(RM_Verdict(0.0,2.0,false)!="REJECT_RR")
+   { where="RM-8 disabling the floor still cannot pass a zero reward"; return false; }
+
+   // RM-9 The sizing output is TEXT and must always say it is not an order.
+   string t_ok=RM_SizeText(true,1.25,125.0,1.25,"USD");
+   string t_no=RM_SizeText(false,0.0,0.0,1.00,"USD");
+   if(StringFind(t_ok,"no order")<0)
+   { where="RM-9 an available size must still state that no order is placed"; return false; }
+   if(StringFind(t_no,"no order")<0 || StringFind(t_no,"unavailable")<0)
+   { where="RM-9 an unavailable size must say so and state that no order is placed"; return false; }
+   if(StringFind(t_ok,"1.25")<0)
+   { where="RM-9 the quoted size must appear in the text"; return false; }
+   if(StringFind(t_no,"0.00 units")>=0)
+   { where="RM-9 an unavailable size must not quote a fabricated number"; return false; }
+
+   // RM-10 Exhaustive: the invariants that must hold for ANY geometry. The
+   //       round-trip is the important one - size x money-per-unit must equal the
+   //       money the operator asked to risk, which is what makes the number
+   //       arithmetically meaningful rather than merely plausible.
+   int combos=0;
+   for(int e=80;e<=120;e+=10)
+   {
+      for(int sd=1;sd<=8;sd++)
+      {
+         for(int m1=1;m1<=4;m1++)
+         {
+            for(int side=0;side<2;side++)
+            {
+               bool is_buy=(side==0);
+               double entry=(double)e;
+               double sl=(is_buy ? entry-(double)sd : entry+(double)sd);
+               double tp1=RM_FallbackTP(entry,(double)sd,is_buy,(double)m1);
+               double tp2=RM_FallbackTP(entry,(double)sd,is_buy,(double)(m1+1));
+               double tp3=RM_FallbackTP(entry,(double)sd,is_buy,(double)(m1+2));
+               combos++;
+               if(!RM_TPsOrdered(is_buy,entry,tp1,tp2,tp3))
+               { where="RM-10 R-multiple targets must always be ordered"; return false; }
+               double r1=RM_RewardRisk(entry,sl,tp1);
+               double r2=RM_RewardRisk(entry,sl,tp2);
+               double r3=RM_RewardRisk(entry,sl,tp3);
+               if(!(r2>=r1 && r3>=r2))
+               { where="RM-10 the R:R sequence must never decrease"; return false; }
+               if(MathAbs(r1-(double)m1)>1e-9)
+               { where="RM-10 an mR target must measure exactly m of reward per risk"; return false; }
+               if(RM_Verdict(r1,2.0,true)=="OK" && r1+1e-9<2.0)
+               { where="RM-10 the gate must never pass an R:R below the floor"; return false; }
+               if(RM_Verdict(r1,2.0,true)!="OK" && r1>=2.0)
+               { where="RM-10 the gate must never reject an R:R at or above the floor"; return false; }
+               // Round-trip the sizing arithmetic on a SYNTHETIC money-per-unit.
+               // The real TheoreticalRiskMoney() depends on the symbol's tick size
+               // and tick value, so calling it here would make this self-test's
+               // result depend on the environment it runs in.
+               double eq=10000.0;
+               for(int q=1;q<=3;q++)
+               {
+                  double per=(double)sd*2.5*(double)q;
+                  double sz=RM_PositionSize(eq,1.0,per);
+                  if(sz<=0.0)
+                  { where="RM-10 a valid money-per-unit must produce a positive size"; return false; }
+                  if(MathAbs(sz*per-eq*0.01)>1e-6)
+                  { where="RM-10 size x money-per-unit must equal the money risked"; return false; }
+                  if(RM_PositionSize(eq,1.0,0.0)!=0.0)
+                  { where="RM-10 a zero money-per-unit must never be divided by"; return false; }
+               }
+            }
+         }
+      }
+   }
+   if(combos!=320)
+   { where="RM-10 the sweep must cover 5x8x4x2 = 320 geometries"; return false; }
+
+   return true;
+}
+
+//====================================================================
 // KILL ZONES (session-local windows mapped to broker server time)
 //====================================================================
 void DetectKillZones(const int total,const datetime &t[],const double &h[],const double &l[])
@@ -32321,6 +32988,33 @@ void DrawQuantumDashboard(const int total,const double &c[])
       if(g_cf_invalidation!="")
          tooltip+="\nCF invalidation: "+g_cf_invalidation;
       tooltip+="\nCF: rule-based confluence count, not a probability.";
+   }
+
+   // AUDIT-RM1 Risk Model. Advisory text, directly after the confluence summary
+   // it belongs to. Tooltip only, never the 11-row card, for the same reason: a
+   // display-only extra must not be able to push a Core row off the card.
+   if(InpEnableRiskModel && InpRMShowOnDashboard)
+   {
+      tooltip+="\nRM: "+g_rm_verdict+(g_rm_dir>0?" BUY":(g_rm_dir<0?" SELL":""))+
+               (g_rm_plan_src==""?"":" ("+g_rm_plan_src+")");
+      if(g_rm_reason!="") tooltip+="\nRM why: "+g_rm_reason;
+      if(g_rm_entry>0.0 && g_rm_sl>0.0)
+      {
+         tooltip+="\nRM plan: entry "+DoubleToString(g_rm_entry,_Digits)+
+                  " | SL "+DoubleToString(g_rm_sl,_Digits)+
+                  " ("+DoubleToString(g_rm_sl_dist_atr,2)+" ATR, behind "+g_rm_sl_src+")";
+         tooltip+="\nRM targets: TP1 "+DoubleToString(g_rm_tp1,_Digits)+
+                  " ("+DoubleToString(g_rm_rr1,2)+"R, "+g_rm_tp1_src+")"+
+                  " | TP2 "+DoubleToString(g_rm_tp2,_Digits)+
+                  " ("+DoubleToString(g_rm_rr2,2)+"R)"+
+                  " | TP3 "+DoubleToString(g_rm_tp3,_Digits)+
+                  " ("+DoubleToString(g_rm_rr3,2)+"R)";
+         tooltip+="\nRM floor: "+DoubleToString(InpTopDownMinRR,2)+"R from InpTopDownMinRR"+
+                  (InpRMUseRRFloor?"":" (disabled by InpRMUseRRFloor)");
+         tooltip+="\nRM size: "+g_rm_size_text;
+      }
+      if(g_rm_invalidation!="") tooltip+="\nRM invalidation: "+g_rm_invalidation;
+      tooltip+="\nRM: reward:risk and suggested size are advisory text - not a probability, not an order.";
    }
 
    // AUDIT-SB1 Power of 3 + Silver Bullet. These rows go into the TOOLTIP and

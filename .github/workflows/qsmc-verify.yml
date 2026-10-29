@@ -133,6 +133,15 @@ jobs:
       - name: Confluence engine (six pillars, weights sum to 100, never forces a direction)
         run: python3 tools/test_phase6_confluence.py 2>&1 | tee out/test_phase6_confluence.log
 
+      # AUDIT-RM1 Phase 7: the risk model. Proves the sizing output is TEXT ONLY
+      # (no trade API, no buffer, no drawing), that the divisor from
+      # TheoreticalRiskMoney() is refused before it is divided by, that the module
+      # reuses the existing risk helpers and inputs instead of building a second
+      # risk model, and that it never invents a direction the confluence engine
+      # refused to name.
+      - name: Risk model (advisory text only, no order, reuses the existing risk inputs)
+        run: python3 tools/test_phase7_riskmodel.py 2>&1 | tee out/test_phase7_riskmodel.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 

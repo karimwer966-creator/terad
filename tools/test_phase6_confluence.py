@@ -592,12 +592,17 @@ for lit, want in (("g_score.", 74), ("final_score", 21), ("setup_quality_score",
           "got %d" % got)
 
 # C3 exact call-count deltas. CF READS four existing helpers and adds no call to
-#    the other scoring systems at all.
+#    the other scoring systems at all. These are FILE-WIDE counts, so a later
+#    phase that also reuses one of these helpers moves the number - which is the
+#    point: the pin makes any such change deliberate and documented rather than
+#    silent. CF's own single call to PA_ZoneAt is pinned separately in B4.
 DELTA = {
     "ScoreStructure(": 6,       # 4 before + 2 (one per side)
     "ScoreLiquidity(": 5,       # 3 before + 2 (one per side)
     "ScoreSession(": 5,         # 4 before + 1
-    "PA_ZoneAt(": 4,            # 3 before + 1
+    "PA_ZoneAt(": 5,            # 3 before CF + 1 (CF) + 1 (AUDIT-RM1's risk model,
+                                # which reuses this same single zone scan instead of
+                                # building a second one of its own)
     "ScoreHTF(": 3,             # unchanged - bypassed
     "GraphConfluenceScore(": 3,     # unchanged
     "PMI_ComputeConfluence(": 3,    # unchanged
