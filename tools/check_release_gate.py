@@ -227,6 +227,84 @@ else:
     NOTES.append("G3 %d inputs parsed; %d read by nothing, every one of them listed "
                  "with a reason" % (len(_decl), len(_dead)))
 
+# --------------------------------- G3c inputs read only by dead functions
+# G3b counts ANY read - but a read inside a function that nothing calls can never
+# happen, so the switch is just as inert and the dialog just as misleading. This
+# file carries several generations of dashboard and selector code whose call sites
+# were replaced by DrawQuantumDashboard and the live setup path; the measurement
+# below is what keeps the difference from quietly growing.
+#
+# At v6.6.13: 68 unreachable free functions (1 611 body lines) and 17 inputs whose
+# only reads sit inside them (doc 11.13). Both numbers are PINNED - growth fails
+# (new dead surface), shrinkage warns (something was wired or deleted; update the
+# pin and the doc together).
+EXPECT_DEAD_FUNCS = 68
+EXPECT_DEAD_ONLY_INPUTS = 17
+ENTRY_POINTS = {"OnInit", "OnDeinit", "OnCalculate", "OnChartEvent", "OnTimer",
+                "OnTrade", "OnTradeTransaction", "OnTick", "OnBookEvent", "OnTester"}
+_line_start = [0]
+for _i, _ch in enumerate(_code):
+    if _ch == "\n":
+        _line_start.append(_i + 1)
+def _line_of(_p):
+    _lo, _hi = 0, len(_line_start) - 1
+    while _lo < _hi:
+        _mid = (_lo + _hi + 1) // 2
+        if _line_start[_mid] <= _p:
+            _lo = _mid
+        else:
+            _hi = _mid - 1
+    return _lo
+_occ = {}
+for _m in re.finditer(r"(?<![A-Za-z0-9_])([A-Za-z_]\w*)[ \t]*\(", _code):
+    _occ[_m.group(1)] = _occ.get(_m.group(1), 0) + 1
+_defpos = {}
+_depth, _pos = 0, 0
+for _m in re.finditer(r"([A-Za-z_]\w*)[ \t]*\((?:[^(){}]|\([^(){}]*\))*\)[ \t\r\n]*\{", _code):
+    _depth += _code.count("{", _pos, _m.start()) - _code.count("}", _pos, _m.start())
+    _pos = _m.start()
+    if _depth == 0:
+        _defpos.setdefault(_m.group(1), _m.end() - 1)
+_fwd = set(_m.group(1) for _m in re.finditer(
+    r"(?m)^[ \t]*[A-Za-z_][\w:<>\*& \t]*?\b([A-Za-z_]\w*)[ \t]*\([^;{}]*\)[ \t]*;", _code))
+_pairs, _stack = {}, []
+for _i, _ch in enumerate(_code):
+    if _ch == "{":
+        _stack.append(_i)
+    elif _ch == "}" and _stack:
+        _pairs[_stack.pop()] = _i
+_dead_fns = {}
+for _n, _brace in _defpos.items():
+    if _n in ENTRY_POINTS:
+        continue
+    if _occ.get(_n, 0) - 1 - (1 if _n in _fwd else 0) <= 0:
+        _dead_fns[_n] = (_line_of(_brace), _line_of(_pairs.get(_brace, _brace)))
+_dead_only = []
+for _n, _dl in _decl.items():
+    _reads = [j for j in _read_at.get(_n, []) if j != _dl]
+    if not _reads:
+        continue
+    _hits = [f for f in _dead_fns if any(_dead_fns[f][0] <= r <= _dead_fns[f][1] for r in _reads)]
+    if _hits and all(any(_dead_fns[f][0] <= r <= _dead_fns[f][1] for f in _dead_fns) for r in _reads):
+        _dead_only.append((_n, sorted(set(_hits))[0]))
+_body = sum(b - a + 1 for a, b in _dead_fns.values())
+if len(_dead_fns) > EXPECT_DEAD_FUNCS or len(_dead_only) > EXPECT_DEAD_ONLY_INPUTS:
+    fail("G3 unreachable code grew to %d free functions (pinned %d) and %d inputs read "
+         "only from inside them (pinned %d). Dead-only inputs now: %s. Dead functions "
+         "now: %s%s. This check does not judge that dead code - the pins exist so it "
+         "cannot grow unseen (doc 11.13)"
+         % (len(_dead_fns), EXPECT_DEAD_FUNCS, len(_dead_only), EXPECT_DEAD_ONLY_INPUTS,
+            ", ".join(n for n, _ in _dead_only) or "none",
+            ", ".join(sorted(_dead_fns)[:12]), "..." if len(_dead_fns) > 12 else ""))
+elif len(_dead_fns) < EXPECT_DEAD_FUNCS or len(_dead_only) < EXPECT_DEAD_ONLY_INPUTS:
+    warn("G3 unreachable code shrank: %d free functions (pinned %d), %d dead-only "
+         "inputs (pinned %d) - good, now lower the pins and update doc 11.13"
+         % (len(_dead_fns), EXPECT_DEAD_FUNCS, len(_dead_only), EXPECT_DEAD_ONLY_INPUTS))
+else:
+    NOTES.append("G3 %d unreachable free functions (%d body lines) and %d inputs read "
+                 "only from inside them - pinned, see doc 11.13"
+                 % (len(_dead_fns), _body, len(_dead_only)))
+
 # --------------------------------------------------------------- G4 no trading
 # Scoped on purpose. The QSMC LAYER (headers + the indicator + the probe) must not
 # be able to trade, reach the network, or delete files. The optional companion EA in

@@ -528,6 +528,8 @@ and did not add one.
 | Enums | 43, all appended — none renumbered | Phase 5 suite |
 | Inputs | 583 total, 67 new, all new ones default `false` where behavioural | release gate + suites |
 | Inputs that read nothing | **6 of 519** — 3 legacy, 3 reserved; each labelled with a reason (§11.12) | `check_release_gate.py` G3 |
+| Inputs whose only reader is unreachable | **17 of 519** — 10 of them default `true` (§11.13) | `check_release_gate.py` G3 (pinned) |
+| Unreachable free functions | **68** (1 539 body lines), reported not deleted (§11.13) | `check_release_gate.py` G3 (pinned) |
 
 Line-ending discipline: pure CRLF, **0 bare LF** (`*.mq5`/`*.mqh` are byte-exact
 via `.gitattributes`). Braces **3740/3740**; paren balance verified on
@@ -1421,6 +1423,113 @@ entry is stale. Both branches were proven by mutation, not asserted:
 
 The check is not tautological in either direction, and it is cheaper than the
 alternative - a comment nobody re-reads.
+
+## 11.13 AUDIT-DEAD2 — 68 functions nothing calls, and the 17 switches only they read
+
+§11.12 counted inputs that **nothing reads**. This is the next question down: an input
+that *is* read — but only from inside a function that nothing calls — is exactly as
+inert, and the properties dialog lies exactly as much. Answering it needs a call
+index, not a read index.
+
+**Method.** Comment-stripped code (same load-bearing order as §11.12), depth-0
+function definitions found with a brace-depth walk, then every name-before-paren
+counted once. A definition is unreachable when its only occurrence is itself, its
+forward declaration counted separately. Two cross-checks before believing it: none
+of the 68 appears in `MQL5/Include/QSMC/QSMC_Root.mqh` (0 hits), and none is reached
+through a `#define` (0 hits). The four terminal callbacks — `OnInit`, `OnDeinit`,
+`OnCalculate`, `OnChartEvent` — are excluded by construction: the terminal calls
+them, not the program.
+
+**Result: 68 of 1 062 free functions are unreachable — 1 539 body lines.** The
+inventory, by what they were for (all line numbers are the definition):
+
+| Class | Count | Body lines |
+|---|---|---|
+| Legacy panel renderers and their helpers | 21 | 713 |
+| Selection / scoring (`SelectEntryOB`, `SelectEntryFVG`, `GreedyFindBestTarget`, `CalculateSetupQualityScore`, `RankSetupCandidates`, `ScoreAlgo`, `FormatFinalEntryOutput`, the graph optimisers) | 13 | 424 |
+| Text / colour helpers (`GateTxt`, `NormText`, `BlendColor`, `MTF_HTFRowIndex`, `SigLog_Shift`, `L_Trim`, ...) | 19 | 173 |
+| PMI internals | 8 | 107 |
+| ZRE / RXN cores (`MarkZREEntry`, `ZRE_ScoreZone`, `RXN_LevelFor`, ...) | 4 | 40 |
+| Self-tests nothing invokes (`PMI_SelfTest`, `RXN_SelfTest`, `PMI_StructDedupeCheckInvariants`) | 3 | 82 |
+| **Total** | **68** | **1 539** |
+
+The single largest group is what the file used to draw with: `DrawMTFPanel` (L34185,
+93 lines), `DrawTopDownPanel` (L34929, 128), `DrawUnifiedEntryPanel` (L30032),
+`BuildUnifiedEntryVerdict` (L29918, 102), the five `CoreDash*` builders, the two
+`ScenarioDash*` renderers and `ZRE_DashMini/Full` + `RXN_DashMini/Full`. The live
+chart is drawn by **`DrawQuantumDashboard`** (definition **L33658**), called from
+`OnCalculate` at **L16552** and from `RedrawAllPanels` at **L29651**; the per-panel
+drawers predate it. One detail worth keeping: `DrawUnifiedEntryPanel` itself calls
+`DrawQuantumDashboard` at L30036 - a dead function can look busy. This is consistent with the
+v5.7.5 redesign in the file header (D4, MINI/COMPACT/FULL replacing the older
+screens) and with the audit decision already on record not to resurrect
+`ZRE_/RXN_Dash*`.
+
+**The 17 inputs whose every read sits inside one of those functions.** Ten of them
+default to `true`, so the operator believes they are on:
+
+| Input | Default | Only read from | Line |
+|---|---|---|---|
+| `InpAllowFVGEntryZone` | `true` | `SelectEntryFVG` (unreachable) | L18732 |
+| `InpMinEntryOBStrength` | `3` | `SelectEntryOB` (unreachable) | L18691 |
+| `InpMaxOBDistATR` | `8.0` | `SelectEntryOB` (unreachable) | L18678 |
+| `InpUseAdvancedSweepEngine` | `true` | `GetBestAdvancedSweepCandidate` | L3482 |
+| `InpUseMergeSortRanking` | `true` | `GetBestAdvancedSweepCandidate` | L3502 |
+| `InpUseCausalGraphOptimizer` | `true` | `OptimizeCausalGraphPath` | L35255 |
+| `InpUseDijkstraPathSearch` | `true` | `OptimizeCausalGraphPath` | L35258 |
+| `InpUseBellmanFordValidation` | `true` | `OptimizeCausalGraphPath` | L35261 |
+| `InpUseBeamSearch` | `true` | `OptimizeCausalGraphPath` | L35266 |
+| `InpRequireGraphAgreement` | `false` | `OptimizeCausalGraphPath` | L35269 |
+| `InpUseCausalDPOptimizer` | `true` | `CausalEvidenceDP` | L35285 |
+| `InpASCIIBar` | `true` | `BuildConfidenceBar` | L18636 |
+| `InpShowTopDownPanel` | `true` | `DrawTopDownPanel` | L34931 |
+| `InpShowPerfMeter` | `false` | `DrawTopDownPanel` | L35002 |
+| `InpPanelRightPad` | `68` | `RepositionDashboard` | L15855 |
+| `InpPanelIdleMaxHeightPct` | `15` | `LayoutPanelBadge` | L29607 |
+| `InpPMIPanelRefreshTicks` | `3` | `PMI_DrawPanelThrottled` | L13258 |
+
+Each was verified twice: by the index, and by `grep` on the raw file, which returns
+exactly two lines for most of them — the declaration and the single read inside the
+dead body. `InpAllowFVGEntryZone` is the one to look at first: it reads like a
+strategy switch, defaults to `true`, and no live code consults it.
+
+**A documentation contradiction, recorded not rewritten.** The file header at
+**L249–251** (v5.7.4, "D1. Wire-up of dead features") states that
+`BuildConfidenceBar()` and `BuildInstitutionalPatternChecklist()` "were fully
+implemented but never called; **both now render in the dashboard**". At v6.6.13 both
+have **zero call sites** (definitions L18632 and L3192). The changelog entry is a dated record of
+what v5.7.4 did and is left untouched under the G1 rule; this section is the current
+status. Which of the two readings is true — the calls were removed by a later
+redesign, or the entry was aspirational — **cannot be dated from this checkout: the
+clone is shallow (9 commits, `.git/shallow`)**, so `git log -S` returns only the
+merge. That is a measurement limit, not an inference, and nothing here claims a
+regression.
+
+**Decision: reported, not repaired.** Three routes, and all three need the operator:
+
+| Option | Effect | Cost |
+|---|---|---|
+| **A. Leave it** | nothing changes; the 17 switches stay inert silently | none, but 10 default-`true` lies stay |
+| **B. Delete the dead code** (the A8 precedent — the header already records one such purge) | −1 539 lines, behaviour-neutral *by construction*, no logic touched | a large diff, and F7 must re-run over it |
+| **C. Wire the switches back** (`SelectEntryOB`/`SelectEntryFVG` on the live path, the graph optimisers, the top-down panel) | each one changes entry selection or the chart — **strategy decisions**, not fixes | highest: it can move signals |
+| **D. Label them `RESERVED`, as §11.12 did** | comment-only, zero behaviour change, the dialog stops lying | the honest minimum if B and C wait |
+
+**The gate now pins both numbers.** `check_release_gate.py` **G3** grows a second
+half: it builds the same call index, and **fails** if unreachable functions exceed 68
+or dead-only inputs exceed 17, **warns** if either shrinks (something was wired or
+deleted — lower the pin and update this section), and stays silent otherwise. Both
+directions were proven by mutation on the real file:
+
+| Mutation | Result |
+|---|---|
+| append `void PhantomDeadHelper()` with no caller | **BLOCK** — 69 functions |
+| append that function *and* an input it alone reads | **BLOCK** — 69 functions, 18 inputs |
+| raise the pin by 2 | **WARN** "shrank ... lower the pins" |
+| delete a dead function (my two sloppy attempts sliced 23 000 lines by accident) | **BLOCK** — the gate caught the damage immediately, 79 functions |
+| restore | GO, 0 warnings, file byte-identical |
+
+The third row is the point of the pin: growth is a smell worth stopping, shrinkage is
+progress worth recording. Neither is a judgement about the code itself.
 
 ## 12. Known risks and what is NOT implemented
 
