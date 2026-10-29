@@ -552,9 +552,10 @@ comment-stripped text.
 | `tools/test_comment_integrity.py` | 19 | 0 |
 | **This document's own guard + the F7 defect guard** | **313** | **0** |
 | `tools/test_decision_journal.py` | 322 | 0 |
+| `tools/test_declutter_cap.py` | 197 | 0 |
 
-Full gate: **5 static tools PASS · 28 suites · 3 276 PASS lines · 0 failures**.
-CI: **35 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`, step 34 = `tools/test_scalping.py`, step 35 = `tools/test_decision_journal.py`).
+Full gate: **5 static tools PASS · 29 suites · 3 473 PASS lines · 0 failures**.
+CI: **36 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`, step 34 = `tools/test_scalping.py`, step 35 = `tools/test_decision_journal.py`, step 36 = `tools/test_declutter_cap.py`).
 
 ### 10.1b This document is itself under test
 
@@ -990,6 +991,79 @@ does not make the strategy profitable, and it does not detect the five setups by
 itself. That still needs the user's F7 compile and a Strategy Tester log on real
 XAUUSD M15 data. This module was never compiled here — no MetaEditor exists in the
 sandbox — so every claim above is a claim about the source text, measured.
+
+## 11.7 AUDIT-D1 — the declutter cap prunes the excess, oldest first
+
+**The defect.** Phase 1 item D was reported as *chart clutter*. Reading the code,
+the drawing side is already disciplined: `DrawTextLabel` routes through
+`QSMC_DisplayAllowsObject()` (**L42068**) and `QSMC_InVisualDistance()`, every
+family is capped at draw time (`InpMaxZonesShown`, `InpMaxStructureShown`,
+`InpMaxFVGShown`, `InpMaxStrongOB`), and `PrepareDynamicRedraw()` rebuilds the
+dynamic families each new bar. The real defect was in the object cap inside
+`SmartObjectCleanup()` (**L8052**), which contradicted *both* its own comment
+(*"drop the oldest ZONE_/STRUCT_/OB_/FVG_ decorations (never entry marks)"*) and
+its own input label (**L1285**: *"hard cap on QSMC_\* chart objects per pass"*)
+in four separate ways:
+
+| # | The promise | What the code did |
+|---|---|---|
+| a | drop **the oldest** decorations | `ObjectsDeleteAll(0,cut[c],-1,OBJ_RECTANGLE)` deleted **every** object in the family. Being **one object over the cap** could erase every demand/supply box on the chart; `excess` was computed and then ignored as a budget |
+| b | the cap is on **QSMC_\*** objects | measured with `ObjectsTotal(0,-1,-1)` — every object on the chart, including other indicators' and the operator's own drawings, so our zones were pruned to pay for somebody else's clutter |
+| c | four families share the burden | `cut[1] = PFX+"STRUCT_"` was filtered by `OBJ_RECTANGLE`, but structure marks are **OBJ_TEXT** (drawn by `DrawTextLabel` at **L28741**), so that family could never contribute a single deletion and the loop over-deleted from `OB_`/`FVG` instead |
+| d | family by family until the excess is gone | `excess-=removed`, with `removed` a whole-family count, drove the budget far negative and ended the loop after the first family |
+
+**The fix** (**L7901–L8050**, four functions above `SmartObjectCleanup`):
+
+- `QSMC_DeclutterExcess(owned,cap)` (**L7921**) — PURE. 0 at or under the cap
+  (the cap is inclusive), 0 for a non-positive cap or count, else `owned-cap`.
+- `QSMC_OldestSlot(times[],taken[])` (**L7933**) — PURE. The oldest free slot by
+  the object's **own anchor time** (no price, no history, no symbol assumption);
+  ties go to the lower index so one pass is reproducible; `-1` when none is left;
+  a shorter mask bounds the scan, so a size mismatch can never read past either
+  array.
+- `QSMC_CountOwnedObjects()` (**L7950**) — counts `PFX`-owned objects only, using
+  the same enumerate-the-chart idiom `QSMC_ApplyVisualPolicy()` already uses,
+  once per new bar.
+- `QSMC_DeleteOldestFamily(prefix,want)` (**L7966**) — deletes **at most `want`**
+  objects of one family, **oldest first**, of any type, and returns how many
+  really went. Two passes over the object list, three arrays sized once outside
+  any loop, each slot marked taken before it is deleted.
+
+The cap block (**L8061**) keeps the cap value itself untouched
+(`InpMaxChartObjects`, else 900 with Clean and 1200 without), keeps the family
+priority order, and now hands each family the *remaining* budget. If the four
+decoration families cannot cover the excess it prints that plainly instead of
+reaching for anything else: entry marks, the dashboard and every other family are
+**never pruned**.
+
+**What did NOT change.** No input was added or altered (**583** inputs, unchanged),
+the cap value and its `isNewBar` cadence are identical, `InpSmartObjectManagement`
+still gates the whole function, and `PrepareDynamicRedraw()` still clears its
+families wholesale — that is a redraw in the same pass, not a cap. Each of the four
+families has exactly one creation site (**L28721** `ZONE_` box, **L28739**
+`STRUCT_` text, **L28753** `OB_` box, **L28786** `FVG_` box), so dropping the
+`OBJ_RECTANGLE` filter lets `STRUCT_` finally contribute and cannot catch a
+bystander.
+
+**Self-test.** `QSMC_DeclutterSelfTest()` (**L8008**) runs eleven deterministic
+checks (DC-1…DC-11) over the two pure cores only — under cap, at cap, **one over
+the cap costs exactly one object**, the excess is the difference, non-positive cap,
+non-positive count, age order, a deliberate tie, a taken slot skipped, all slots
+taken, and an empty list. No chart, no object list, no terminal state. Hooked into
+the file's existing `InpMTEERunSelfTest` block (**L15711**, after the journal's).
+
+**Contract suite.** `tools/test_declutter_cap.py` (**CI step 36**) pins all of the
+above, including the negative claims that matter: no `ObjectsDeleteAll`, no
+`ObjectsTotal(0,-1,-1)` and no `OBJ_RECTANGLE` in the cap block's *code* (its
+comments still name the old API, deliberately, so the next reader knows what
+changed), and no cap path that deletes an entry mark, a trade level or the
+dashboard.
+
+**What this does NOT prove.** It proves the cap now removes the number of objects
+it says it removes, from the families it says, oldest first. It does not prove the
+chart looks better to you, and it was never compiled here — no MetaEditor exists in
+this sandbox, so **F7 remains the only compiler evidence**, now outstanding for
+RS1 + GS1 + SC1 + OBS1 + D1 together.
 
 ## 12. Known risks and what is NOT implemented
 

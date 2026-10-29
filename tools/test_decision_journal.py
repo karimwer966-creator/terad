@@ -557,7 +557,7 @@ check("L4785" in DOCX, "K the doc cites the row struct's line (L4785)")
 check("L16535" in DOCX, "K the doc cites the OnCalculate record call (L16535)")
 check(re.search(r"run: python3 tools/test_decision_journal\.py", WFX),
       "K CI runs tools/test_decision_journal.py")
-check(WFX.count("- name: ") == 35, "K the workflow has 35 named steps",
+check(WFX.count("- name: ") == 36, "K the workflow has 36 named steps",
       "got %d" % WFX.count("- name: "))
 check("AUDIT-OBS1" in WFX, "K the CI step names the audit it enforces")
 

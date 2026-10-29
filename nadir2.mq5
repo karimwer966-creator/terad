@@ -8040,7 +8040,7 @@ bool QSMC_DeclutterSelfTest(string &where)
    if(QSMC_OldestSlot(t,tk)!=3)
    { where="DC-9 a taken slot must be skipped"; return false; }
    tk[0]=true; tk[2]=true; tk[3]=true;
-   // DC-10 when every slot is taken the answer is -1, never an index.
+   // DC-10 every slot taken, DC-11 an empty list: the answer is -1, not an index.
    if(QSMC_OldestSlot(t,tk)!=-1)
    { where="DC-10 no free slot must return -1"; return false; }
    bool none[]; datetime notime[];
