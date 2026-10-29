@@ -90,12 +90,12 @@ SH_RES, SH_GATE, SH_SCALP, SH_PRI, UX1_GRP = 893, 894, 895, 896, 897
 STRUCT, ROWS, FILLED, NEXTG, LASTBAR = 4785, 4798, 4799, 4800, 4801
 NEXTIDX, STNAME, STSTATE = 6475, 6485, 6496
 REASON, SRCNAME, RECORD, JTEXT, SELFTEST = 6507, 6524, 6534, 6577, 6612
-INIT_REFUSE, INIT_ANNOUNCE, V580 = 15138, 15142, 15145
-GUARD, SCALP_HOOK, HOOK_PASS, HOOK_FAIL = 15497, 15533, 15537, 15539
-ONCALC = 15709
-OC_CF, OC_RM, OC_SCALP = 16323, 16328, 16332
-OC_DISP, OC_RES, OC_RESWHY, OBS_GUARD, OBS_CALL = 16348, 16354, 16355, 16360, 16361
-TIP_SCALP, TIP_GUARD, TIP_OBS = 33681, 33682, 33683
+INIT_REFUSE, INIT_ANNOUNCE, V580 = 15308, 15312, 15315
+GUARD, SCALP_HOOK, HOOK_PASS, HOOK_FAIL = 15667, 15703, 15707, 15709
+ONCALC = 15883
+OC_CF, OC_RM, OC_SCALP = 16497, 16502, 16506
+OC_DISP, OC_RES, OC_RESWHY, OBS_GUARD, OBS_CALL = 16522, 16528, 16529, 16534, 16535
+TIP_SCALP, TIP_GUARD, TIP_OBS = 33855, 33856, 33857
 
 MOD_A, MOD_Z = NEXTIDX, fn_end(SELFTEST)
 MOD = body(MOD_A, MOD_Z)
@@ -509,8 +509,8 @@ J_EXACT = {
     6322: '      g_sc_why="HARD VETO: no ATR for this closed bar - a scalp has no cost model - WAIT";',
     6339: '      g_sc_why="HARD VETO: outside the London/New York kill zones - WAIT";',
     6345: '      g_sc_why="HARD VETO: high-impact news blackout (Golden Rule 6) - WAIT";',
-    42250: '      why="HARD VETO: invalid candidate data (no direction or no closed bar) - WAIT";',
-    42263: '      why="HARD VETO: high-impact news blackout (Golden Rule 6) - WAIT";',
+    42424: '      why="HARD VETO: invalid candidate data (no direction or no closed bar) - WAIT";',
+    42437: '      why="HARD VETO: high-impact news blackout (Golden Rule 6) - WAIT";',
     6158: '   w[1]=InpResWeightZone; nm[1]="zone";',
     6161: "   vote[3]=g_tac_dir;",
 }
@@ -524,9 +524,9 @@ check("OBS" not in line_at(898) and "journal" not in line_at(898).lower(),
 check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "J 583 input lines: the 574 already there plus the journal's own nine",
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
-check(TEXT.count("{") == TEXT.count("}") == 3821, "J braces balance at 3821",
+check(TEXT.count("{") == TEXT.count("}") == 3842, "J braces balance at 3842",
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(TEXT.split("\n")) - 1 == 45664, "J the file is 45664 lines",
+check(len(TEXT.split("\n")) - 1 == 45838, "J the file is 45838 lines",
       "got %d" % (len(TEXT.split("\n")) - 1))
 check(RAW.replace("\r\n", "").count("\n") == 0, "J every line still ends CRLF: no bare LF was introduced")
 check(TEXT.count("#include") == 1, "J still exactly one #include", "got %d" % TEXT.count("#include"))
@@ -554,10 +554,10 @@ for phrase in ("## 11.6 AUDIT-OBS1", "InpEnableDecisionJournal", "OBS_Record", "
 check("L6534" in DOCX, "K the doc cites OBS_Record's definition line (L6534)")
 check("L889" in DOCX, "K the doc cites the journal flag's line (L889)")
 check("L4785" in DOCX, "K the doc cites the row struct's line (L4785)")
-check("L16361" in DOCX, "K the doc cites the OnCalculate record call (L16361)")
+check("L16535" in DOCX, "K the doc cites the OnCalculate record call (L16535)")
 check(re.search(r"run: python3 tools/test_decision_journal\.py", WFX),
       "K CI runs tools/test_decision_journal.py")
-check(WFX.count("- name: ") == 35, "K the workflow has 35 named steps",
+check(WFX.count("- name: ") == 36, "K the workflow has 36 named steps",
       "got %d" % WFX.count("- name: "))
 check("AUDIT-OBS1" in WFX, "K the CI step names the audit it enforces")
 

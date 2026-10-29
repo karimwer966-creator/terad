@@ -136,7 +136,7 @@ check("Written only by WeightedGateAllows()" in body(4765, 4767),
       "B the ownership comment names the single writer")
 
 # ---------------------------------------------------------- C. hard vetoes
-DEF = 42242
+DEF = 42416
 check(re.search(r"^bool WeightedGateAllows\(const SAlertCandidate &c,"
                 r"const datetime bar_time,string &why\)", line_at(DEF)),
       "C WeightedGateAllows is defined at L%d" % DEF,
@@ -149,10 +149,10 @@ check(0 < END - DEF <= 90,
       "a gate that grows into a second engine is how the chain got opaque")
 RB = body(DEF, END)
 
-V_DATA = 42248
-V_SPREAD = 42254
-V_NEWS = 42261
-FIRST_LEG = 42272
+V_DATA = 42422
+V_SPREAD = 42428
+V_NEWS = 42435
+FIRST_LEG = 42446
 check("!c.valid || c.direction==0 || c.bar_time<=0 || c.closed_index<0" in body(V_DATA, V_DATA + 6),
       "C veto 1 is invalid candidate data (L%d)" % V_DATA,
       "L%d is %r" % (V_DATA, line_at(V_DATA).strip()[:80]))
@@ -203,12 +203,12 @@ check("g_wgate_veto=false;" in body(DEF, DEF + 6) and "g_wgate_score=0;" in body
       "next candidate")
 
 # ------------------------------------------------------- D. evidence legs
-LEGS = (("c.level>=min_level", "InpWGWeightLevel", "level", 42272),
-        ("c.score>=InpWGMinEvidenceScore", "InpWGWeightEvidence", "evidence", 42274),
-        ("c.distance_atr<=maxd", "InpWGWeightProximity", "proximity", 42277),
-        ("c.alignment>0", "InpWGWeightAlignment", "alignment", 42280),
+LEGS = (("c.level>=min_level", "InpWGWeightLevel", "level", 42446),
+        ("c.score>=InpWGMinEvidenceScore", "InpWGWeightEvidence", "evidence", 42448),
+        ("c.distance_atr<=maxd", "InpWGWeightProximity", "proximity", 42451),
+        ("c.alignment>0", "InpWGWeightAlignment", "alignment", 42454),
         ("c.opposing_room_atr<0.0 || c.opposing_room_atr>=InpWGMinRoomATR",
-         "InpWGWeightRoom", "room", 42282))
+         "InpWGWeightRoom", "room", 42456))
 for cond, weight, name, ln in LEGS:
     seg = body(ln, ln + 3)
     check(cond in line_at(ln), "D the %s leg tests %r at L%d" % (name, cond[:44], ln),
@@ -226,18 +226,18 @@ check("double maxd=InpAlertMaxDistanceATR;" in RB
       and "if(!MathIsValidNumber(maxd) || maxd<0.0) maxd=2.0;" in RB,
       "D the proximity leg reuses InpAlertMaxDistanceATR with its documented "
       "fallback, not a new distance rule")
-check("g_wgate_score=got;" in line_at(42285),
+check("g_wgate_score=got;" in line_at(42459),
       "D the weighted total is published for display at L42027",
-      "L42027 is %r" % line_at(42285).strip()[:70])
-check("if(got<InpWGMinScore)" in line_at(42286),
-      "D the minimum-score decision is at L42028", "L42028 is %r" % line_at(42286).strip()[:70])
-low = body(42286, 42292)
+      "L42027 is %r" % line_at(42459).strip()[:70])
+check("if(got<InpWGMinScore)" in line_at(42460),
+      "D the minimum-score decision is at L42028", "L42028 is %r" % line_at(42460).strip()[:70])
+low = body(42460, 42466)
 check("below InpWGMinScore " in low and '"- WAIT";' in low.replace("\n", "")
       or "- WAIT" in low,
       "D a candidate below the minimum is reported as WAIT with the threshold named",
       low.strip()[:90])
 check("missed: " in low, "D the WAIT text lists what was missed")
-PUB = 42293
+PUB = 42467
 check("PUBLISH " in body(PUB, END) and "a weighted confluence count, not a probability"
       in body(PUB, END),
       "D the success text says PUBLISH and states the score is a confluence "
@@ -259,7 +259,7 @@ check(not re.search(r"\b\d{3,5}\.\d+\b", RB),
 check("TimeCurrent()" not in RB, "E no wall-clock read: the decision is bar-bound")
 
 # ---------------------------------------------------------------- F. wiring
-OI1, OI2 = 15099, 15106
+OI1, OI2 = 15269, 15276
 check("if(InpUseWeightedGates &&" in line_at(OI1)
       and "InpWGWeightAlignment+InpWGWeightRoom!=100" in line_at(OI1 + 2),
       "E OnInit checks the five-weight sum at L%d-L%d" % (OI1, OI1 + 2),
@@ -275,7 +275,7 @@ check("InpWGMinScore<0 || InpWGMinScore>100" in oi2
       and "return INIT_PARAMETERS_INCORRECT;" in oi2,
       "E an out-of-range InpWGMinScore also refuses (L%d)" % OI2, oi2.strip()[:80])
 
-GS_DECL, GS_TERN = 42326, 42340
+GS_DECL, GS_TERN = 42500, 42514
 check('string gs_why="";' in line_at(GS_DECL),
       "F the why-buffer is declared once before the candidate loop (L%d)" % GS_DECL,
       "L%d is %r" % (GS_DECL, line_at(GS_DECL).strip()[:70]))
@@ -296,7 +296,7 @@ check("AlertChannelsFor(c,ap,apush,asnd)" in sel
       "and de-duplication, not evidence", sel.strip()[:100])
 check(sel.count("InpUseWeightedGates") == 0,
       "F the hard gates are not inside the flag's scope")
-WIN = 42353
+WIN = 42527
 wb = body(WIN, WIN + 8)
 check("if(InpUseWeightedGates)" in line_at(WIN)
       and "WeightedGateAllows(best_alert,bar_time,wfinal)" in wb,
@@ -304,7 +304,7 @@ check("if(InpUseWeightedGates)" in line_at(WIN)
       "not whichever the loop tested last (L%d)" % WIN, wb.strip()[:90])
 check("no candidate reached the weighted gate - WAIT" in wb,
       "F when nothing published, the display says so instead of showing a stale reason")
-TIP = 33679
+TIP = 33853
 check('"Weighted gate: "+(g_wgate_why==""?"none":g_wgate_why)' in line_at(TIP),
       "F the tooltip carries the gate's own why-text at L%d" % TIP,
       "L%d is %r" % (TIP, line_at(TIP).strip()[:90]))
@@ -351,11 +351,11 @@ check(all(l.strip().startswith("//") for l in LINES if "OrderSend" in l),
 inputs = len(re.findall(r"(?m)^input\s", TEXT))
 check(inputs == 583, "G nadir2.mq5 has 583 input lines (548 + 10 GS1 + 16 SC1 + 9 OBS1)",
       "got %d" % inputs)
-check(TEXT.count("{") == TEXT.count("}") == 3821,
-      "G braces balance at the pinned 3821",
+check(TEXT.count("{") == TEXT.count("}") == 3842,
+      "G braces balance at the pinned 3842",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 45664,
-      "G the file is 45664 lines: insertions only, no scratch rewrite",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 45838,
+      "G the file is 45838 lines: insertions only, no scratch rewrite",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
@@ -373,12 +373,12 @@ for phrase in ("## 11.4 AUDIT-GS1", "WeightedGateAllows()", "InpUseWeightedGates
                "confluence count, not a probability",
                "tools/test_weighted_gates.py", "CI step 33", "583"):
     check(phrase in DOCX, "H the doc states %r" % phrase)
-check("L42242" in DOCX, "H the doc cites the gate's definition line (L42242)")
+check("L42416" in DOCX, "H the doc cites the gate's definition line (L42416)")
 check("L862" in DOCX, "H the doc cites the flag's declaration line (L862)")
 check(re.search(r"run: python3 tools/test_weighted_gates\.py", WFX),
       "H CI runs tools/test_weighted_gates.py")
-check(WFX.count("- name: ") == 35,
-      "H the workflow has 35 named steps (32 + this suite + scalping + the journal)",
+check(WFX.count("- name: ") == 36,
+      "H the workflow has 36 named steps (32 + this suite + scalping + journal + declutter)",
       "got %d" % WFX.count("- name: "))
 check("AUDIT-GS1" in WFX, "H the CI step names the audit it enforces")
 
