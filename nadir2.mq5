@@ -4792,7 +4792,7 @@ struct SObsJournalRow
    int      scalp_dir;       // scalping overlay verdict, same encoding
    int      scalp_score;     // scalping weighted points
    int      primary_dir;     // what was actually published as the primary
-   string   primary_src;     // CORE / RXN / ZRE / none
+   string   primary_src;     // CORE / RXN / ZRE / unset, or none when no primary
    string   why;             // the most specific reason available for that bar
   };
 SObsJournalRow g_obs_rows[];      // ring buffer, cap = InpObsJournalBars (10..500)
@@ -16357,7 +16357,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // AUDIT-OBS1: recorded LAST, so every layer has already published for this
    // closed bar. It reads their state and writes only the journal: it decides
    // nothing, draws nothing and sends nothing.
-   if(InpEnableDecisionJournal && (is_new_bar || detection_updated))
+   if(InpEnableDecisionJournal && (is_new_bar || detection_updated || prev_calculated==0))
       OBS_Record(closed,rates_total);
    RXN_Draw();
    // Directional Scenario Engine: reads the finished ZRE/RXN snapshots and Core
