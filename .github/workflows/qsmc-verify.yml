@@ -75,6 +75,9 @@ jobs:
       - name: Scalping overlay contract (AUDIT-SC1)
         run: python3 tools/test_scalping.py 2>&1 | tee out/scalping.log
 
+      - name: Decision journal contract (AUDIT-OBS1)
+        run: python3 tools/test_decision_journal.py 2>&1 | tee out/decision_journal.log
+
       - name: Arbiter decision logic vs the MQL5 self-test (1:1)
         run: python3 tools/test_arbiter.py 2>&1 | tee out/test_arbiter.log
 

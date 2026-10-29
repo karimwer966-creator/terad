@@ -551,9 +551,10 @@ comment-stripped text.
 | `tools/test_docs_freshness.py` | 294 | 0 |
 | `tools/test_comment_integrity.py` | 19 | 0 |
 | **This document's own guard + the F7 defect guard** | **313** | **0** |
+| `tools/test_decision_journal.py` | 299 | 0 |
 
-Full gate: **5 static tools PASS · 27 suites · 2 954 PASS lines · 0 failures**.
-CI: **34 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`, step 34 = `tools/test_scalping.py`).
+Full gate: **5 static tools PASS · 28 suites · 3 253 PASS lines · 0 failures**.
+CI: **35 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`, step 34 = `tools/test_scalping.py`, step 35 = `tools/test_decision_journal.py`).
 
 ### 10.1b This document is itself under test
 
@@ -902,6 +903,93 @@ scored point), the reuse claims (no `*_Update(` call inside the vote builder, on
 `PA_ZoneAt(` scan, CF's own threshold), the advisory boundary (no write to any
 verdict another layer owns) and the preset provenance read straight out of
 `QSMC_Preset.mqh`.
+
+## 11.6 AUDIT-OBS1 — the per-bar decision journal (display and audit only)
+
+**The defect this closes.** Phase 1 item F: the file could explain why the *last*
+alert was suppressed (`AlertWhyNoPopup`) and could count gate outcomes in
+aggregate (`SSignalGateAudit`), but nothing kept a per-bar transcript. On a live
+chart an operator could not ask *"what did each layer say on the 09:45 bar, and
+which one said no?"* — which is exactly the question the five missed XAUUSD M15
+setups of 2026-10-27..29 needed answered. Guessing at a missed setup and
+auditing one are different activities; this makes the second one possible.
+
+**What.** `OBS_Record()` (**L6534**) behind `InpEnableDecisionJournal = false`
+(**L889**), writing rows of `SObsJournalRow` (**L4785**) into a bounded
+**ring buffer** `g_obs_rows[]`. One row per **closed** bar, ten columns:
+
+| Column | Source it is read from | Never re-derived |
+|---|---|---|
+| `bar_time` | `g_buf_t[closed]` | the bar's own time, so a row cannot be mistaken for *now* |
+| `final_signal` / `res_score` | `g_final_signal`, `g_res_score` (AUDIT-RS1) | gated by `InpUseFinalResolver` |
+| `gate_state` / `gate_score` | `g_wgate_veto`, `g_wgate_score`, `InpWGMinScore` (AUDIT-GS1) | gated by `InpUseWeightedGates` |
+| `scalp_dir` / `scalp_score` | `g_sc_dir`, `g_sc_score` (AUDIT-SC1) | gated by `InpEnableScalping` |
+| `primary_dir` / `primary_src` | `g_alert_primary.valid/.direction/.source` | gated by `.valid` |
+| `why` | `OBS_Reason()` over the layers' own why-texts | the layers' words, not new ones |
+
+`gate_state` is an `int` (0 not run, 1 PUBLISHED, 2 BELOW-MIN, 3 HARD-VETO) named
+by `OBS_GateStateName()`, so the module adds **no new enum** and the pinned enum
+count stays at 44. A veto outranks a strong score in `OBS_GateState()` on purpose:
+the journal must never read as *95/100 but no trade* without also naming the veto.
+
+**Where it runs, and why that is the load-bearing detail.** Measured order inside
+`OnCalculate`: `CF_Update` (L16323) → `RM_Update` (L16328) → `SCALP_Update`
+(L16332) → `AlertDispatcherFinalize` (L16348) → `g_final_signal=ResolveFinalSignal`
+(L16354) → `g_final_why=rs_why` (L16355) → **`OBS_Record(closed,rates_total)`
+(L16361)**. It is recorded LAST, not next to `SCALP_Update`, which would have
+transcribed the *previous* bar's resolver verdict and reproduced the stale-citation
+defect this module exists to end. The call gate mirrors the resolver's own:
+`is_new_bar || detection_updated || prev_calculated==0`.
+
+**The reason precedence** (`OBS_Reason()`, **L6507**) is the order an operator
+asks in: a hard veto's own text → thin evidence → `resolver CONFLICT - …` →
+`scalp CONFLICT - …` → the resolver's verdict → the overlay's verdict → the
+published gate's text → and, when nothing spoke,
+`no layer produced a verdict this bar`. Silence is reported as silence.
+
+**One honesty fix, recorded because it was mine.** The first draft mapped the
+alert source as `3=CORE, 2=RXN, else ZRE`. The `else` was an assumption and it was
+wrong: the dispatcher's own field says `int source; // 1=ZRE, 2=RXN, 3=CORE legacy`
+(L4223) and `AlertCandidateInit` sets `source=0` for an unused candidate. So the
+mapping became a pure core, `OBS_SourceName()` (**L6524**): 3=CORE, 2=RXN, 1=ZRE,
+anything else `unset`. A transcript that invents a source is worse than no
+transcript.
+
+**Bounds.** `InpObsJournalBars` keeps 10–500 rows and `InpObsTooltipBars` shows at
+most that many, newest first; `OnInit` **refuses** an impossible combination with
+`INIT_PARAMETERS_INCORRECT` rather than clamping silently, because a tooltip asking
+for more rows than the buffer keeps would display rows that do not exist.
+`InpObsLogEvents` (default `false`) prints `QSMC OBS …` **only** for a bar where
+something actually decided, so it cannot become the per-bar flood the release gate
+forbids.
+
+**What it is NOT.** It decides nothing, draws no object, holds no price series,
+adds no plot buffer, authorises no entry and sends no order. It assigns only its
+own four `g_obs_*` globals and reads only state the layers already published — a
+**transcript, not a voter**, and never a fifth opinion. It is deliberately *not*
+folded into `InpEnableAllModules`, which stays pinned to the seven strategy modules.
+
+**Self-test.** `OBS_SelfTest()` (**L6612**) runs eleven deterministic checks
+(OBS-1…OBS-11) over the pure cores only — ring wrap, non-positive cap, all four
+state names plus an unknown one, not-run beating 95 points, a veto beating 95
+points, the inclusive minimum from both sides, veto text outranking a resolver
+verdict, both conflict labels, silence, and the source names. It touches no chart,
+no series and no journal state, and it is hooked into the file's existing general
+switch `InpMTEERunSelfTest` (L15537, after the scalping hook).
+
+**Contract suite.** `tools/test_decision_journal.py` (**CI step 35**) pins all of
+the above: the exact input lines, the struct's ten columns and their order, the
+five pure cores line by line, the reuse claims (no `PA_ZoneAt(`, no `IsInSession(`,
+no `ResolveFinalSignal(`, no `WeightedGateAllows(`, no ATR of its own), the record
+discipline, the advisory boundary, the OnCalculate ordering chain, the eleven
+self-test checks, and the counts (45 664 lines · **583** inputs · 3 821 braces ·
+44 enums).
+
+**What this does NOT prove.** A transcript makes a missed setup explainable; it
+does not make the strategy profitable, and it does not detect the five setups by
+itself. That still needs the user's F7 compile and a Strategy Tester log on real
+XAUUSD M15 data. This module was never compiled here — no MetaEditor exists in the
+sandbox — so every claim above is a claim about the source text, measured.
 
 ## 12. Known risks and what is NOT implemented
 

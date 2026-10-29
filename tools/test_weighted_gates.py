@@ -377,8 +377,8 @@ check("L42242" in DOCX, "H the doc cites the gate's definition line (L42242)")
 check("L862" in DOCX, "H the doc cites the flag's declaration line (L862)")
 check(re.search(r"run: python3 tools/test_weighted_gates\.py", WFX),
       "H CI runs tools/test_weighted_gates.py")
-check(WFX.count("- name: ") == 34,
-      "H the workflow has 34 named steps (32 + this suite + the scalping overlay)",
+check(WFX.count("- name: ") == 35,
+      "H the workflow has 35 named steps (32 + this suite + scalping + the journal)",
       "got %d" % WFX.count("- name: "))
 check("AUDIT-GS1" in WFX, "H the CI step names the audit it enforces")
 

@@ -447,7 +447,7 @@ check("L6310" in DOCX, "K the doc cites SCALP_Update's definition line (L6310)")
 check("L873" in DOCX, "K the doc cites the overlay flag's line (L873)")
 check(re.search(r"run: python3 tools/test_scalping\.py", WFX),
       "K CI runs tools/test_scalping.py")
-check(WFX.count("- name: ") == 34, "K the workflow has 34 named steps",
+check(WFX.count("- name: ") == 35, "K the workflow has 35 named steps",
       "got %d" % WFX.count("- name: "))
 check("AUDIT-SC1" in WFX, "K the CI step names the audit it enforces")
 
