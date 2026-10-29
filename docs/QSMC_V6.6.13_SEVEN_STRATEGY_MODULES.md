@@ -544,9 +544,36 @@ comment-stripped text.
 | `tools/test_phase6_confluence.py` | 286 | 0 |
 | `tools/test_phase7_riskmodel.py` | 292 | 0 |
 | **Seven phase suites** | **1 557** | **0** |
+| `tools/test_docs_freshness.py` | 278 | 0 |
+| **This document's own guard** | **278** | **0** |
 
-Full gate: **5 static tools PASS · 21 suites · 2 124 PASS lines · 0 failures**.
-CI: **28 steps**, `.github/workflows/qsmc-verify.yml`.
+Full gate: **5 static tools PASS · 22 suites · 2 402 PASS lines · 0 failures**.
+CI: **29 steps**, `.github/workflows/qsmc-verify.yml`.
+
+### 10.1b This document is itself under test
+
+`tools/test_docs_freshness.py` (CI step 29) exists because the 101 line
+citations above are the most fragile thing in this file: any edit to
+`nadir2.mq5` above a citation silently invalidates every citation below it, and
+nothing complains. Nine citations carried forward from earlier phase notes were
+**already stale** when this document was first written (§1 records the
+corrections), so the citations are now a contract rather than a comment.
+
+It checks, in both directions:
+
+| Part | What it pins |
+|---|---|
+| A | 87 citations resolve against source; for definitions the *computed* definition line must equal the citation, so a **wrong** citation fails too, not only a drifted source |
+| B | the §5 call order is real and ascending, plus the three claims it argues for |
+| C | the §6 tooltip guards are where stated, in the stated order |
+| D | every countable fact above is **recomputed** from source and compared to this text — 67 inputs, 538 total, 43 enums, buffers 19, plots 7, the version triple, 56 in-file self-test checks, zero trade API |
+| D2 | the §2.1 dependency is **derived**: weights must sum to exactly 100, the reachable maximum is computed as `100 − InpCFWeightCandle` = 85, this document must state that number, and CF's candle leg must really be guarded by `InpEnablePriceAction &&` |
+| E | no citation past EOF, the nine stale numbers absent, disclaimers present, all 13 sections present |
+| F | **two-way binding** — every line the test pins must also be cited here, directly or inside a range. Without F, this document and the test could disagree while both stayed green |
+
+It reads **no git state**; every assertion is a pure function of two files on
+disk. Commit hashes named in this document are therefore *not* verified, because
+CI checks out with `fetch-depth: 1` and the base commit is absent.
 
 ### 10.2 Mutation testing
 
@@ -559,6 +586,16 @@ source and confirming the suite turns red.
 | 5 | 28 | 28 |
 | 6 | 45 | 45 after hardening |
 | 7 | 43 | 43 after hardening |
+| this doc | 33 | 33 after hardening |
+
+The documentation guard's own mutation run found **three real gaps**, all closed:
+
+- `"1.50" in DOC_TEXT` was a **weak substring pin** — `InpRMNoZoneSLATR`'s 1.50
+  default satisfied it too, so deleting the 1.50-vs-1.0 disclosure passed. Now
+  derived from source and pinned to its actual sentences.
+- Parts A–C verified source against hard-coded pins, which left this document
+  free to cite a **different** line while both stayed green. Part F closes that.
+- The 85-not-100 activation claim was unpinned. Part D2 derives it.
 
 Two classes of real weakness were found this way and closed, both worth knowing
 because they apply to any future suite in this repo:
