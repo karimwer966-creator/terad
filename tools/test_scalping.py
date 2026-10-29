@@ -143,28 +143,28 @@ check(len(re.findall(r"(?m)^input .*InpEnableScalping", TEXT)) == 1,
       "A the overlay flag is declared exactly once")
 
 # --------------------------------------------------------------- B. globals
-GL = {"g_sc_dir": 4764, "g_sc_score": 4765, "g_sc_legs": 4766, "g_sc_why": 4767,
-      "g_sc_veto": 4768, "g_sc_stop": 4769, "g_sc_target": 4770, "g_sc_rr": 4771,
-      "g_sc_bar": 4772}
+GL = {"g_sc_dir": 4773, "g_sc_score": 4774, "g_sc_legs": 4775, "g_sc_why": 4776,
+      "g_sc_veto": 4777, "g_sc_stop": 4778, "g_sc_target": 4779, "g_sc_rr": 4780,
+      "g_sc_bar": 4781}
 for name, ln in sorted(GL.items(), key=lambda kv: kv[1]):
     check(re.search(r"^(int|string|bool|double)\s+%s=" % name, line_at(ln)),
           "B %s is declared at L%d" % (name, ln), line_at(ln).strip()[:70])
     check(len(re.findall(r"(?m)^(int|string|bool|double)\s+%s=" % name, TEXT)) == 1,
           "B %s has exactly one declaration" % name)
-hdr = body(4761, 4764)
+hdr = body(4770, 4773)
 check("Written only by SCALP_Update()" in hdr and "it advises" in hdr,
       "B the ownership comment names the single writer and says it only advises",
       hdr.strip()[:90])
-check("NOT a probability" in line_at(4765),
+check("NOT a probability" in line_at(4774),
       "B the score's own comment says it is a confluence count, not a probability")
-check("never evidence" in line_at(4768),
+check("never evidence" in line_at(4777),
       "B the veto flag's comment says it is only data/spread/session/news")
-check("no repaint" in line_at(4772),
+check("no repaint" in line_at(4781),
       "B g_sc_bar's comment states the anti-repaint rule")
 
 # ------------------------------------------------------------ C. pure cores
-F_RATIO, F_VETO, F_RR, F_SUM = 6187, 6194, 6202, 6209
-F_SIDE, F_DEC, F_VOTES, F_UPD, F_ST = 6216, 6236, 6248, 6281, 6379
+F_RATIO, F_VETO, F_RR, F_SUM = 6216, 6223, 6231, 6238
+F_SIDE, F_DEC, F_VOTES, F_UPD, F_ST = 6245, 6265, 6277, 6310, 6408
 for name, ln, sig in (("SCALP_SpreadRatio", F_RATIO, r"^double SCALP_SpreadRatio\("),
                       ("SCALP_SpreadVeto", F_VETO, r"^bool SCALP_SpreadVeto\("),
                       ("SCALP_RR", F_RR, r"^double SCALP_RR\("),
@@ -211,7 +211,7 @@ check("if(buy>0 && sell>0) return 2;" in decb and "if(buy==0 && sell==0) return 
       and "if(got<min_score) return 0;" in decb,
       "C the decide rule is the resolver's rule: both sides = CONFLICT(2), silence = "
       "WAIT(0), a lone side below the minimum = WAIT(0)")
-res = body(6117, fn_end(6117))
+res = body(6146, fn_end(6146))
 check("return 2;" in res and "if(buy==0 && sell==0)" in res,
       "C the resolver it mirrors really does use the same three outcomes")
 
@@ -254,7 +254,7 @@ check("SCALP_Score(" not in TEXT and "ScalpScore(" not in TEXT,
 # --------------------------------------------------------------- E. vetoes
 UPD_END = fn_end(F_UPD)
 UB = body(F_UPD, UPD_END)
-V_ATR, V_SPRD, V_SESS, V_NEWS, LEG1 = 6290, 6296, 6305, 6313, 6329
+V_ATR, V_SPRD, V_SESS, V_NEWS, LEG1 = 6319, 6325, 6334, 6342, 6358
 check(line_at(V_ATR).strip() == "if(!(atr>0.0))",
       "E veto 1 is missing ATR - no cost model, no scalp (L%d)" % V_ATR,
       body(V_ATR - 1, V_ATR + 1).strip()[:80])
@@ -292,7 +292,7 @@ check("TimeCurrent()" not in UB and "TimeLocal()" not in UB,
 check("g_sc_dir=SCALP_Decide(buy,sell,InpScalpMinScore);" in line_at(LEG1),
       "F the verdict comes from the pure decide rule at L%d" % LEG1,
       line_at(LEG1).strip()[:80])
-CONF, WAIT, RRCHK, WHY = 6332, 6339, 6354, 6367
+CONF, WAIT, RRCHK, WHY = 6361, 6368, 6383, 6396
 conf = body(CONF, CONF + 8)
 check("if(g_sc_dir==2)" in line_at(CONF) and "g_sc_score=0;" in conf
       and "disagreeing scalps mean stand aside" in conf,
@@ -344,7 +344,7 @@ check("g_sc_" in UB and UB.count("g_sc_") >= 12,
       "G the overlay writes its own state (%d g_sc_ references)" % UB.count("g_sc_"))
 
 # ---------------------------------------------------------------- H. wiring
-OI_W, OI_G, OI_P, CALL, HOOK, TIP = 14882, 14887, 14894, 16081, 15285, 33425
+OI_W, OI_G, OI_P, CALL, HOOK, TIP = 15099, 15104, 15111, 16316, 15516, 33665
 check("if(InpEnableScalping && SCALP_WeightsSum()!=100)" in line_at(OI_W),
       "H OnInit refuses a weight sum that is not 100 (L%d)" % OI_W,
       line_at(OI_W).strip()[:70])
@@ -418,13 +418,13 @@ for pat, label in ((r"(?m)^input int\s+InpRXNMinConfirmedScore\s*=\s*68;", "68")
 check("InpEnableAllModules" not in body(GRP, SESS + 1),
       "J the overlay is NOT folded into InpEnableAllModules: that switch is pinned "
       "to the seven strategy modules, and an advisory overlay is not an eighth one")
-check(len(re.findall(r"(?m)^input\s", TEXT)) == 574,
-      "J 574 input lines (558 + the 16 SC1 lines)",
+check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
+      "J 583 input lines (574 + the 9 OBS1 lines)",
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
-check(TEXT.count("{") == TEXT.count("}") == 3798, "J braces balance at 3798",
+check(TEXT.count("{") == TEXT.count("}") == 3819, "J braces balance at 3819",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 45406,
-      "J the file is 45406 lines: insertions only, no scratch rewrite",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 45648,
+      "J the file is 45648 lines: insertions only, no scratch rewrite",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""), "J no bare LF: CRLF everywhere")
 check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,
@@ -441,9 +441,9 @@ for phrase in ("## 11.5 AUDIT-SC1", "InpEnableScalping", "SCALP_", "MOM", "EDGE"
                "Silver Bullet", "Power of 3", "Wyckoff", "Confluence",
                "20 / 20 / 15 / 15 / 15 / 15 = 100", "HARD VETO",
                "confluence count, not a probability", "tools/test_scalping.py",
-               "CI step 34", "574", "QSMC_PRESET_SCALPER"):
+               "CI step 34", "583", "QSMC_PRESET_SCALPER"):
     check(phrase in DOCX, "K the doc states %r" % phrase)
-check("L6281" in DOCX, "K the doc cites SCALP_Update's definition line (L6281)")
+check("L6310" in DOCX, "K the doc cites SCALP_Update's definition line (L6310)")
 check("L873" in DOCX, "K the doc cites the overlay flag's line (L873)")
 check(re.search(r"run: python3 tools/test_scalping\.py", WFX),
       "K CI runs tools/test_scalping.py")

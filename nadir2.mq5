@@ -885,6 +885,15 @@ input double InpScalpTargetATR           = 1.20;  // advisory target distance, A
 input double InpScalpMinRR               = 1.20;  // refuse below this RR (SCALPER preset)
 input double InpScalpMaxSpreadATR        = 0.10;  // HARD VETO: spread cost above this ATR ratio
 input bool   InpScalpRequireSession      = true;  // HARD VETO: London/New York kill zones only
+input group "====== Decision Journal (AUDIT-OBS1, per-bar why-no-entry, display only) ======"
+input bool   InpEnableDecisionJournal  = false; // record one row per CLOSED bar
+input int    InpObsJournalBars         = 60;    // rows kept in the ring buffer (10..500)
+input int    InpObsTooltipBars         = 8;     // rows shown in the tooltip, newest first
+input bool   InpObsLogEvents           = false; // Print only bars where something decided
+input bool   InpObsShowResolver        = true;  // column: the resolver's verdict
+input bool   InpObsShowGate            = true;  // column: the weighted gate's outcome
+input bool   InpObsShowScalp           = true;  // column: the scalping overlay's verdict
+input bool   InpObsShowPrimary         = true;  // column: what was actually published
 input group "====== All Seven Modules At Once (AUDIT-UX1) ======"
 input bool   InpEnableAllModules        = false;  // one switch: all seven strategy modules ON plus
                                              // their tooltip output. Does NOT enable the chart-object
@@ -4770,6 +4779,26 @@ double g_sc_stop=0.0;      // advisory stop price, ATR-derived (no hard-coded po
 double g_sc_target=0.0;    // advisory target price, ATR-derived
 double g_sc_rr=0.0;        // advisory reward:risk of those two distances
 int    g_sc_bar=-1;        // the closed bar this verdict belongs to (no repaint)
+// AUDIT-OBS1: the per-bar decision journal. One row per CLOSED bar, written
+// only by OBS_Record(), read only for the tooltip and the opt-in event log.
+// gate_state: 0 not run, 1 published, 2 evidence below minimum, 3 hard veto.
+struct SObsJournalRow
+  {
+   datetime bar_time;        // the closed bar this row describes
+   int      final_signal;    // resolver verdict: 1 BUY, -1 SELL, 0 WAIT, 2 CONFLICT
+   int      res_score;       // resolver weighted points, 0-100
+   int      gate_state;      // what the weighted gate did (see the note above)
+   int      gate_score;      // weighted evidence points the gate counted
+   int      scalp_dir;       // scalping overlay verdict, same encoding
+   int      scalp_score;     // scalping weighted points
+   int      primary_dir;     // what was actually published as the primary
+   string   primary_src;     // CORE / RXN / ZRE / none
+   string   why;             // the most specific reason available for that bar
+  };
+SObsJournalRow g_obs_rows[];      // ring buffer, cap = InpObsJournalBars (10..500)
+int      g_obs_filled=0;          // rows currently held, saturates at the cap
+int      g_obs_next=0;            // next write slot
+datetime g_obs_last_bar_time=0;   // one row per closed bar, never twice
 SAlertCandidate  g_alert_primary;
 SAlertCandidate  g_alert_opposite;
 string           g_alert_context_text="";
@@ -6417,6 +6446,194 @@ bool SCALP_SelfTest(string &where)
    //       side - the minimum is inclusive, like every other floor here.
    if(SCALP_Decide(20,0,25)!=0 || SCALP_Decide(25,0,25)!=1 || SCALP_Decide(0,60,25)!=-1)
    { where="SC-10 a lone side is promoted only at or above the minimum"; return false; }
+   return true;
+  }
+
+//--------------------------------------------------------------------
+// AUDIT-OBS1: THE DECISION JOURNAL - one row per closed bar.
+//
+// Phase 1 found the observability gap: the file could say why the LAST alert
+// was suppressed (AlertWhyNoPopup) and could count gate outcomes in aggregate
+// (SSignalGateAudit), but nothing kept a per-bar record of what each decision
+// layer said and, when nothing was published, WHICH layer said no. On a live
+// chart that is the difference between auditing a missed setup and guessing.
+//
+// This is that record. It is written once per closed bar, after every layer
+// has published, and it reuses their state verbatim - the resolver verdict,
+// the weighted gate's own why-text, the scalping overlay's verdict and what
+// was actually published as the primary direction. It re-derives nothing, so
+// it cannot become a fifth opinion: it is a transcript, not a voter.
+//
+// Display and audit only. It holds no price series, creates no chart object,
+// authorises no entry and sends no order. The ring buffer is bounded by
+// InpObsJournalBars (10..500), so memory cannot grow with history, and the
+// optional log is event-driven rather than per-bar, so it cannot flood.
+//--------------------------------------------------------------------
+
+// PURE. Ring-buffer slot arithmetic, kept separate so the self-test can
+// exercise it without a chart, a series or any terminal state.
+int OBS_NextIndex(const int current,const int cap)
+  {
+   if(cap<=0) return 0;
+   int n=current+1;
+   if(n>=cap) n=0;
+   return n;
+  }
+
+// PURE. gate_state: 0 not run, 1 published, 2 evidence below minimum, 3 hard
+// veto. An unknown value is reported as not-run rather than as a blank cell.
+string OBS_GateStateName(const int state)
+  {
+   if(state==1) return "PUBLISHED";
+   if(state==2) return "BELOW-MIN";
+   if(state==3) return "HARD-VETO";
+   return "not-run";
+  }
+
+// PURE. Derives the gate column from facts the gate already published. A veto
+// outranks a strong evidence score on purpose: the journal must never read as
+// "95/100 but no trade" without also saying which veto stopped it.
+int OBS_GateState(const bool ran,const bool veto,const int score,const int min_score)
+  {
+   if(!ran) return 0;
+   if(veto) return 3;
+   if(score<min_score) return 2;
+   return 1;
+  }
+
+// PURE. The most specific reason for a bar, in the order an operator asks:
+// was it vetoed, was the evidence too thin, did a layer stand aside because of
+// a conflict, or was there simply nothing? Silence is reported as silence.
+string OBS_Reason(const int gate_state,const string gate_why,const int final_signal,
+                  const string final_why,const int scalp_dir,const string scalp_why)
+  {
+   if(gate_state==3) return gate_why;
+   if(gate_state==2) return gate_why;
+   if(final_signal==2) return "resolver CONFLICT - "+final_why;
+   if(scalp_dir==2) return "scalp CONFLICT - "+scalp_why;
+   if(final_signal!=0) return final_why;
+   if(scalp_dir!=0) return scalp_why;
+   if(gate_state==1) return gate_why;
+   return "no layer produced a verdict this bar";
+  }
+
+// One row per closed bar. Reads only state the layers already published;
+// writes only the journal. Never the forming bar, never twice for one bar.
+void OBS_Record(const int closed,const int rates_total)
+  {
+   if(closed<1 || closed>rates_total-2 || closed>=ArraySize(g_buf_t)) return;
+   datetime bt=g_buf_t[closed];
+   if(bt<=0 || bt==g_obs_last_bar_time) return;
+   int cap=(int)MathMax(10,MathMin(500,InpObsJournalBars));
+   if(ArraySize(g_obs_rows)!=cap)
+     {
+      ArrayResize(g_obs_rows,cap);
+      g_obs_filled=0; g_obs_next=0; g_obs_last_bar_time=0;
+     }
+   int gs=OBS_GateState(InpUseWeightedGates,g_wgate_veto,g_wgate_score,InpWGMinScore);
+   SObsJournalRow r;
+   r.bar_time=bt;
+   r.final_signal=(InpUseFinalResolver?g_final_signal:0);
+   r.res_score=(InpUseFinalResolver?g_res_score:0);
+   r.gate_state=gs;
+   r.gate_score=g_wgate_score;
+   r.scalp_dir=(InpEnableScalping?g_sc_dir:0);
+   r.scalp_score=(InpEnableScalping?g_sc_score:0);
+   r.primary_dir=(g_alert_primary.valid?g_alert_primary.direction:0);
+   r.primary_src=(g_alert_primary.valid?
+                  (g_alert_primary.source==3?"CORE":
+                   (g_alert_primary.source==2?"RXN":"ZRE")):"none");
+   r.why=OBS_Reason(gs,(g_wgate_why==""?"-":g_wgate_why),r.final_signal,
+                    (g_final_why==""?"-":g_final_why),r.scalp_dir,
+                    (g_sc_why==""?"-":g_sc_why));
+   g_obs_rows[g_obs_next]=r;
+   g_obs_next=OBS_NextIndex(g_obs_next,cap);
+   if(g_obs_filled<cap) g_obs_filled++;
+   g_obs_last_bar_time=bt;
+   // Opt-in and EVENT-driven: only a bar where something actually decided is
+   // printed, so this can never become the per-bar log flood the gate forbids.
+   if(InpObsLogEvents && (r.final_signal!=0 || r.gate_state==1 || r.gate_state==3 ||
+      r.scalp_dir!=0))
+      Print("QSMC OBS ",TimeToString(bt,TIME_DATE|TIME_MINUTES),
+            " published=",r.primary_dir,"(",r.primary_src,")",
+            " resolver=",r.final_signal,"/",r.res_score,
+            " gate=",OBS_GateStateName(r.gate_state),"/",r.gate_score,
+            " scalp=",r.scalp_dir,"/",r.scalp_score," | ",r.why);
+  }
+
+// The tooltip block: newest first, capped at InpObsTooltipBars, built from the
+// ring buffer only. No chart object, no series access, no per-tick allocation
+// beyond the string itself.
+string OBS_JournalText(const int max_rows)
+  {
+   if(g_obs_filled<=0) return "";
+   int want=(int)MathMax(1,MathMin(max_rows,g_obs_filled));
+   string out="Decision journal (last "+IntegerToString(want)+
+              " closed bars, newest first):\n";
+   int slot=g_obs_next-1;
+   for(int k=0;k<want;k++)
+     {
+      if(slot<0) slot=ArraySize(g_obs_rows)-1;
+      SObsJournalRow r=g_obs_rows[slot];
+      out+=TimeToString(r.bar_time,TIME_MINUTES)+" | ";
+      if(InpObsShowPrimary)
+         out+="pub:"+(r.primary_dir>0?"BUY":(r.primary_dir<0?"SELL":"-"))+
+              "("+r.primary_src+") ";
+      if(InpObsShowResolver)
+         out+="res:"+(r.final_signal==1?"BUY":(r.final_signal==-1?"SELL":
+                       (r.final_signal==2?"CONFLICT":"WAIT")))+"/"+
+              IntegerToString(r.res_score)+" ";
+      if(InpObsShowGate)
+         out+="gate:"+OBS_GateStateName(r.gate_state)+"/"+
+              IntegerToString(r.gate_score)+" ";
+      if(InpObsShowScalp)
+         out+="scalp:"+(r.scalp_dir==1?"BUY":(r.scalp_dir==-1?"SELL":
+                        (r.scalp_dir==2?"CONFLICT":"WAIT")))+"/"+
+              IntegerToString(r.scalp_score);
+      out+="\n     why: "+r.why+"\n";
+      slot--;
+     }
+   return out;
+  }
+
+// AUDIT-OBS1 self-test: the pure cores only - no chart, no series, no terminal
+// state - so a regression is caught at OnInit instead of on a live bar. Gated
+// by InpMTEERunSelfTest, the file's existing general self-test switch.
+bool OBS_SelfTest(string &where)
+  {
+   where="";
+   // OBS-1 the ring wraps at the cap and never returns a slot outside it.
+   if(OBS_NextIndex(0,10)!=1 || OBS_NextIndex(8,10)!=9 || OBS_NextIndex(9,10)!=0)
+   { where="OBS-1 the ring must wrap to slot 0 at the cap"; return false; }
+   // OBS-2 a non-positive cap cannot produce a negative or runaway slot.
+   if(OBS_NextIndex(5,0)!=0 || OBS_NextIndex(5,-3)!=0)
+   { where="OBS-2 a non-positive cap must yield slot 0"; return false; }
+   // OBS-3 every state has a name, including an unexpected value.
+   if(OBS_GateStateName(0)!="not-run" || OBS_GateStateName(1)!="PUBLISHED" ||
+      OBS_GateStateName(2)!="BELOW-MIN" || OBS_GateStateName(3)!="HARD-VETO" ||
+      OBS_GateStateName(99)!="not-run")
+   { where="OBS-3 every gate state must have a name"; return false; }
+   // OBS-4 a layer that did not run reports not-run whatever the score says.
+   if(OBS_GateState(false,false,95,60)!=0)
+   { where="OBS-4 an unused gate must not claim a verdict"; return false; }
+   // OBS-5 a veto outranks a strong score.
+   if(OBS_GateState(true,true,95,60)!=3)
+   { where="OBS-5 a hard veto outranks any evidence score"; return false; }
+   // OBS-6 the minimum is inclusive, like every other floor in this file.
+   if(OBS_GateState(true,false,59,60)!=2 || OBS_GateState(true,false,60,60)!=1)
+   { where="OBS-6 the minimum is inclusive"; return false; }
+   // OBS-7 a veto's own text is the reason, ahead of anything else that bar.
+   if(OBS_Reason(3,"HARD VETO: spread",1,"resolver BUY",0,"")!="HARD VETO: spread")
+   { where="OBS-7 the veto text is the most specific reason"; return false; }
+   // OBS-8 a resolver conflict is named as a conflict, never as a side.
+   if(StringFind(OBS_Reason(0,"-",2,"both voted",0,""),"resolver CONFLICT")<0)
+   { where="OBS-8 a resolver conflict must be named"; return false; }
+   // OBS-9 a scalping conflict is named when the resolver stood aside.
+   if(StringFind(OBS_Reason(0,"-",0,"-",2,"legs disagree"),"scalp CONFLICT")<0)
+   { where="OBS-9 a scalping conflict must be named"; return false; }
+   // OBS-10 silence is reported as silence, not as a blank cell.
+   if(OBS_Reason(0,"-",0,"-",0,"")!="no layer produced a verdict this bar")
+   { where="OBS-10 silence must be reported as silence"; return false; }
    return true;
   }
 
@@ -14895,6 +15112,20 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       Print(">>> ",QSMC_VERSION_TEXT," Scalping overlay: ON | advisory | display only | "
             "closed-bar only | no orders | weights ",IntegerToString(SCALP_WeightsSum()),"/100");
 
+   // AUDIT-OBS1: the journal's sizes are validated, not clamped silently - a
+   // tooltip asking for more rows than the buffer keeps would display rows that
+   // do not exist, which is the same lie as a stale citation.
+   if(InpEnableDecisionJournal &&
+      (InpObsJournalBars<10 || InpObsJournalBars>500 || InpObsTooltipBars<1 ||
+       InpObsTooltipBars>InpObsJournalBars))
+     {
+      Print("Invalid Quantum SMC decision journal: keep 10-500 closed bars and show no more than you keep");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpEnableDecisionJournal)
+      Print(">>> ",QSMC_VERSION_TEXT," Decision journal: ON | display and audit only | "
+            "one row per closed bar | keeps ",InpObsJournalBars," shows ",InpObsTooltipBars);
+
    // v5.8.0: quant/scaling input validation with safe clamped defaults.
    ApplyQuantInputConfig();
 
@@ -15286,6 +15517,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          Print(">>> ",QSMC_VERSION_TEXT," Scalping strategies self-test: PASS (10/10)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Scalping strategies self-test: FAIL - ",mtee_fail);
+      if(OBS_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Decision journal self-test: PASS (10/10)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Decision journal self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
@@ -16103,6 +16338,11 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       g_final_signal=ResolveFinalSignal(closed,rs_why);
       g_final_why=rs_why;
      }
+   // AUDIT-OBS1: recorded LAST, so every layer has already published for this
+   // closed bar. It reads their state and writes only the journal: it decides
+   // nothing, draws nothing and sends nothing.
+   if(InpEnableDecisionJournal && (is_new_bar || detection_updated))
+      OBS_Record(closed,rates_total);
    RXN_Draw();
    // Directional Scenario Engine: reads the finished ZRE/RXN snapshots and Core
    // lifecycle only. It publishes conditional plans; it cannot arm or authorize.
@@ -33423,6 +33663,8 @@ void DrawQuantumDashboard(const int total,const double &c[])
                    "Weighted gate: "+(g_wgate_why==""?"none":g_wgate_why)+"\n":"")+
                   (InpEnableScalping?
                    "Scalp: "+(g_sc_why==""?"none":g_sc_why)+"\n":"")+
+                  (InpEnableDecisionJournal?
+                   OBS_JournalText(InpObsTooltipBars):"")+
                   "Core state: "+core_state+" | blocker: "+CoreDashBlocker(core_state,path)+"\n"+
                   "Core chain: "+CoreDashChain(path,core_state,closed)+"\n"+
                   CoreDashBiasLine(g_buf_t[closed+1])+"\n"+
