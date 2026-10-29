@@ -742,6 +742,42 @@ invariant that the file contains no block comments.
 
 ---
 
+## 11.3 AUDIT-RS1 — the final resolver (Phase 2, commit 1)
+
+**Why.** Phase 1 read the code and found the direction conflict is real, not a
+rendering artefact: `AlertDispatcherFinalize` writes `g_alert_primary`, the
+dashboard STATUS card reads it, and `UpdateMTFExecutionEntry` derives its own
+`bull` for the label, the arrow and the hline colour — nothing in the file ever
+compares the two. The tactical state word printed `CONFIRMED` although the rule
+printed three lines above it says only the arbiter may say that.
+
+**What.** `ResolveFinalSignal()` — one function, called once from `OnCalculate`
+after `AlertDispatcherFinalize`, and only on a closed-bar or detection event. Four
+layers vote (HTF/D1 bias, zone role, reaction level, tactical entry) weighted
+**25 / 25 / 30 / 20 = 100**. `OnInit` refuses to initialise if they do not sum to
+100 and never renormalises silently. Both sides voting ⇒ CONFLICT → WAIT (the
+resolver never picks a side to look useful); the winning side below
+`InpResMinScore` (60) ⇒ WAIT; otherwise it writes `g_final_signal` /
+`g_res_score` / `g_final_why`, and that why-text always states the score is a
+confluence count, **not** a probability.
+
+**Off by default, and provably inert.** `InpUseFinalResolver = false`: with it off
+the dashboard, the tooltip and the tactical word behave exactly as before. With it
+on all three read the same `g_final_signal`, and the tactical word is demoted
+`CONFIRMED` → `INFO`, so `CONFIRMED` can only come from the resolver.
+
+**Verify.** F7, drag onto M5, set `InpUseFinalResolver = true`, then compare the
+STATUS card with the tactical label on the same bar: they must agree, or both must
+say WAIT / CONFLICT. Then set the four weights to 40/40/40/40 — `OnInit` must
+refuse with a weight-sum message rather than quietly renormalise.
+
+**Contract suite.** `tools/test_resolver.py` pins all of the above (CI step 32):
+the flag's default, the call site's position and its closed-bar gate, the
+weight-sum refusal, the CONFLICT branch, the demotion of the tactical word, the
+reuse of `PA_ZoneAt(` instead of a second zone scan, the absence of any
+`g_final_score` substring collision, and — as always — that no order API appears.
+
+
 ## 12. Known risks and what is NOT implemented
 
 **Compilation.** F7 has now been run once (§11.1): 42 errors from a single
