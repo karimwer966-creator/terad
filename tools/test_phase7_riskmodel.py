@@ -547,7 +547,7 @@ print("")
 first_stmt = upd_c[upd_c.find("{") + 1:].lstrip()
 check(first_stmt.startswith("RM_Clear();"),
       "D RM_Update clears all published state before anything else", first_stmt[:40])
-precedes(upd_c, "RM_Clear();", "if(!InpEnableRiskModel) return;",
+precedes(upd_c, "RM_Clear();", "if(!(InpEnableRiskModel||InpEnableAllModules)) return;",
          "D the clear precedes the master-switch early exit")
 precedes(upd_c, "if(closed<1 || closed>rates_total-2) return;", "g_buf_c[closed]",
          "D the forming bar is refused before the close array is read")
@@ -647,7 +647,7 @@ n_rows = len(re.findall(r"lines\[ln\]\s*=", card_seg[:card_j]))
 check(n_rows == 13, "D the card still has exactly 13 candidate rows - RM added none",
       str(n_rows))
 check("g_rm_" not in card_seg[:card_j], "D no risk value entered the card's row budget")
-tt = re.search(r"if\(InpEnableRiskModel && InpRMShowOnDashboard\)", TEXT)
+tt = re.search(r"if\(\(InpEnableRiskModel\|\|InpEnableAllModules\) && \(InpRMShowOnDashboard\|\|InpEnableAllModules\)\)", TEXT)
 check(tt is not None, "D the tooltip block is gated by BOTH risk-model switches")
 tt_seg = TEXT[tt.start():tt.start() + 3000] if tt else ""
 for frag in ('tooltip+="\\nRM: "', 'tooltip+="\\nRM why: "', 'tooltip+="\\nRM plan: entry "',

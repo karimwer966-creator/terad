@@ -426,7 +426,7 @@ check("if(closed<2)" in upd or "closed<2" in upd,
       "B9 a bar index that has no parent is refused")
 check("g_pa_pattern=" in upd and "g_pa_strength=" in upd,
       "B9 state is recomputed every pass, never latched between passes")
-check("if(!InpEnablePriceAction)" in upd,
+check("if(!(InpEnablePriceAction||InpEnableAllModules))" in upd,
       "B9 the module returns immediately while its switch is off")
 
 # Zone sources are the existing arrays, honoured with their own state vocabulary.
@@ -559,8 +559,8 @@ check('Print(">>> ",QSMC_VERSION_TEXT," Pure Price Action self-test: PASS (9/9)"
 # Dashboard: tooltip only, never the hard-capped 11-row card.
 check('tooltip+="\\nPA: "' in TEXT, "C the PA rows go to the dashboard tooltip")
 dash_at = TEXT.find('tooltip+="\\nPA: "')
-dash_seg = TEXT[max(0, dash_at - 300):dash_at + 900]
-check("if(InpEnablePriceAction && InpPAShowOnDashboard)" in dash_seg,
+dash_seg = TEXT[max(0, dash_at - 600):dash_at + 900]
+check("if((InpEnablePriceAction||InpEnableAllModules) && (InpPAShowOnDashboard||InpEnableAllModules))" in dash_seg,
       "C the PA rows need BOTH the module switch and the dashboard switch")
 check('string pa_dir=(g_pa_dir>0?"BUY":(g_pa_dir<0?"SELL":"none"));' in dash_seg,
       "C a side is printed only when a direction is actually resolved")

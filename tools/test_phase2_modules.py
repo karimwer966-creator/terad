@@ -652,7 +652,7 @@ check("if(!InpDetectJudas)" in p3upd,
 check("InpEnablePowerOf3" in p3upd and "return;" in p3upd,
       "B11 P3_Update exits immediately while its switch is off")
 sbupd = body_of("SB_Update", "SB_Update")
-check("if(!InpEnableSilverBullet) return;" in sbupd,
+check("if(!(InpEnableSilverBullet||InpEnableAllModules)) return;" in sbupd,
       "B11 SB_Update exits immediately while its switch is off")
 chain = body_of("SB_ChainComplete", "SB_ChainComplete")
 check("FindNearestCausalAncestor(" in chain,

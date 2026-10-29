@@ -548,7 +548,7 @@ check("double mtf_sell=(g_cf_has_mtf && mtf_dir<0 ? 100.0 : 0.0);" in upd_n,
       "B2 the short MTF leg is 100 only on an agreeing bias, else 0")
 
 # B3 the candle leg is ABSENT (0) when Price Action is off - no neutral credit
-check('g_cf_has_candle=(InpEnablePriceAction && g_pa_pattern!="NONE" && g_pa_pattern!="");'
+check('g_cf_has_candle=((InpEnablePriceAction||InpEnableAllModules) && g_pa_pattern!="NONE" && g_pa_pattern!="");'
       in upd_n,
       "B3 the candle leg requires Price Action to be enabled AND a real pattern")
 check("g_cf_pillar_candle=(g_cf_has_candle ? (double)g_pa_strength : 0.0);" in upd_n,
@@ -646,7 +646,7 @@ first_stmt = upd_c[upd_c.find("{") + 1:].lstrip()
 check(first_stmt.startswith("CF_Clear();"),
       "D1 CF_Update clears all published state before anything else",
       first_stmt[:40])
-precedes(upd_c, "CF_Clear();", "if(!InpEnableConfluence) return;",
+precedes(upd_c, "CF_Clear();", "if(!(InpEnableConfluence||InpEnableAllModules)) return;",
          "D1 the clear precedes the master-switch early exit")
 
 # D2 the forming bar is refused before any array is touched
@@ -735,7 +735,7 @@ check(n_rows == 13, "D8 the card still has exactly 13 candidate rows - CF added 
       str(n_rows))
 check("g_cf_" not in card_seg[:card_j],
       "D8 no confluence value was written into the card's row budget")
-tt = re.search(r"if\(InpEnableConfluence && InpCFShowOnDashboard\)", TEXT)
+tt = re.search(r"if\(\(InpEnableConfluence\|\|InpEnableAllModules\) && \(InpCFShowOnDashboard\|\|InpEnableAllModules\)\)", TEXT)
 check(tt is not None, "D8 the tooltip block is gated by BOTH confluence switches")
 tt_seg = TEXT[tt.start():tt.start() + 3000] if tt else ""
 for frag in ('tooltip+="\\nCF: "', 'tooltip+="\\nCF legs: "',
