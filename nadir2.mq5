@@ -24034,9 +24034,9 @@ bool FireQuantAlert(const string event_id,const string message)
    {
       string pm=message;
       if(StringLen(pm)>240) pm=StringSubstr(pm,0,240);
-      SendNotification(pm);
+      if(!SendNotification(pm) && InpDebugLog) Print("[QuantAlert] push refused by the terminal (no MetaQuotes ID?)");
    }
-   if(sound) PlaySound("alert.wav");
+   if(sound && !PlaySound("alert.wav") && InpDebugLog) Print("[QuantAlert] sound refused - alert.wav is not in Sounds/");
    return true;
 }
 
@@ -42622,8 +42622,8 @@ void AlertDispatcherFinalize(const int rates_total)
             " ATR | level=",selected.level," | HTF/D1=",selected.alignment,
             " | opposing room=",DoubleToString(selected.opposing_room_atr,2)," ATR");
    if(popup) Alert(message);
-   if(push) SendNotification(message);
-   if(sound) PlaySound("alert.wav");
+   if(push && !SendNotification(message) && InpAlertDispatcherLog) Print("[ALERT DISPATCH] push refused by the terminal (MetaQuotes ID not set?)");
+   if(sound && !PlaySound("alert.wav") && InpAlertDispatcherLog) Print("[ALERT DISPATCH] sound refused - alert.wav is not in Sounds/");
    AlertCooldownCommit(selected,exact);
    if(selected.source==3)
    {

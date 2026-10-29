@@ -555,7 +555,7 @@ comment-stripped text.
 | `tools/test_declutter_cap.py` | 197 | 0 |
 | `tools/test_tactical_authority.py` | 177 | 0 |
 
-Full gate: **5 static tools PASS · 29 suites · 3 515 PASS lines · 0 failures**.
+Full gate: **5 static tools PASS · 29 suites · 3 541 PASS lines · 0 failures**.
 CI: **36 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`, step 34 = `tools/test_scalping.py`, step 35 = `tools/test_decision_journal.py`, step 36 = `tools/test_declutter_cap.py`; AUDIT-A3 added no step - its Part C runs inside the existing `One authoritative scenario state` step).
 
 ### 10.1b This document is itself under test
@@ -1161,6 +1161,65 @@ line-wrapped in the source comment, so it is asserted in its two contiguous halv
 says. It does not prove the gate behaves well on live data, and it does not compile
 anything: no MetaEditor exists in this sandbox, so **F7 remains the only compiler
 evidence**, outstanding for RS1 + GS1 + SC1 + OBS1 + D1 together.
+
+## 11.9 AUDIT-E — the alert channels no longer fail silently
+
+Defect **E** was carried in Phase 1 as one word: *robustness*. It was never
+written down in detail anywhere, so it was re-derived from the code instead of
+trusted, and this section records both halves of that: what was already sound, and
+the one thing that was not.
+
+**Already sound — checked, not assumed.** The data path is hardened and stays that
+way: `CopyBuffer` results are compared against the requested count, retried a
+bounded number of times and otherwise invalidated to `EMPTY_VALUE` rather than left
+stale (**L16024–16045**, **L24083–24088**, **L44053–44070**); every indicator handle
+is tested against `INVALID_HANDLE` at init (**L15395–15400**, **L15409**,
+**L15427–15434**); the dispatcher's distance limit is sanitised
+(`MathIsValidNumber`, **L42496**); the cooldown is clamped into `0…10000`
+(**L42318**), so a negative input cannot mute a channel forever; and the
+one-directional-alert-per-closed-bar rule is deliberate and documented at
+**L24028**. Nothing in this list was changed.
+
+**The defect that was real.** Both alert paths called the terminal's channel
+functions and **threw the answer away**:
+
+| Path | Before | Consequence |
+|---|---|---|
+| quant events | `SendNotification(pm);` and `if(sound) PlaySound("alert.wav");` | a terminal with no MetaQuotes ID, or a chart whose `Sounds/` folder lacks `alert.wav`, produced *silence* — indistinguishable from "no setup" |
+| primary dispatcher | `if(push) SendNotification(message);` and `if(sound) PlaySound("alert.wav");` | the same, on the path that also consumes the bar's one-alert claim first (**L42618**), so the alert was gone for that bar with no trace |
+
+That is the same class of failure as defect F: the system knew something the
+operator needed and did not say it. `Alert()` is `void` in MQL5, so the popup has
+no answer to consume and its call is left as a plain call — wrapping it in a
+condition would not compile, and the contract suite asserts that nobody tries.
+
+**The fix.** Two zero-line-delta edits (**L24037–24039**, **L42625–42626**): the
+return value is consumed, and a refusal prints one diagnostic line. No new input —
+the diagnostics ride on switches that already existed (`InpDebugLog` for the quant
+path, `InpAlertDispatcherLog` for the dispatcher), so the file still declares
+**583** inputs. Nothing about *when* an alert fires changed; only whether a
+failure can be seen.
+
+**Why only one path clamps its push text.** The quant path accepts arbitrary
+caller strings and clamps to 240 characters (**L24036**). The dispatcher's text is
+composed by `AlertCompactLine()` from bounded parts, and that bound is now measured
+rather than assumed: the longest literals its three sources can emit are 37
+(`RXN_ExecReason`), 20 (`RXN_NeedsText`) and 12 (`AlertInvalidationText`)
+characters, over a 37-character skeleton — roughly 110 characters before a symbol
+name, well inside the clamp. If a future reason text grows into a paragraph, the
+contract fails instead of the push being silently truncated or refused on a live
+bar.
+
+**Contract.** 26 checks added to `tools/test_diag_bridge.py` (the suite that
+already owns *"why did it not alert me?"*), taking it from 104 to **130**: both
+paths consume both answers, none of the three silent forms survives, `Alert()`
+stays a plain call, no input was added, and the bounded-composition claim above is
+recomputed from the source on every run. No new CI step — that suite already runs.
+
+**What this does NOT prove.** It does not make a lost alert come back: the claim
+for that bar is still consumed, by design. It makes the loss *visible*. And it
+compiles nothing — **F7 remains the only compiler evidence**, outstanding for
+RS1 + GS1 + SC1 + OBS1 + D1.
 
 ## 12. Known risks and what is NOT implemented
 

@@ -230,6 +230,79 @@ require("no threshold in the indicator was the reason" in prof.group(1),
         "when no candidate reached a scoring gate, the line says so instead of inventing a "
         "threshold to blame")
 
+
+# ======================================================================
+# AUDIT-E - the alert channels must not fail silently
+# ======================================================================
+# A trader who hears nothing cannot tell "no setup" from "the terminal refused
+# my push" or "alert.wav is not installed". Both alert paths used to DISCARD the
+# answer the terminal returns. They now consume it, behind switches that already
+# exist - no new input, and no change to when an alert fires.
+
+require('if(push && !SendNotification(message) && InpAlertDispatcherLog)' in host,
+        "AUDIT-E the dispatcher consumes SendNotification's answer instead of discarding it")
+require('if(sound && !PlaySound("alert.wav") && InpAlertDispatcherLog)' in host,
+        "AUDIT-E the dispatcher consumes PlaySound's answer instead of discarding it")
+require('if(!SendNotification(pm) && InpDebugLog)' in host,
+        "AUDIT-E the quant alert path consumes SendNotification's answer too")
+require('if(sound && !PlaySound("alert.wav") && InpDebugLog)' in host,
+        "AUDIT-E and PlaySound's answer on that path as well")
+
+# The silent forms are gone. Both a call and the truncated-push form are checked,
+# because the second one was easy to miss: it discarded the result on the line
+# after its own clamp.
+for stale in ('if(push) SendNotification(message);', 'if(sound) PlaySound("alert.wav");',
+              '      SendNotification(pm);'):
+    require(stale not in host, f"AUDIT-E no path discards the channel result any more ({stale.strip()})")
+
+# Alert() is void in MQL5: there is no answer to consume, so the popup line stays
+# a plain call. Asserting this stops someone "fixing" it into a condition that
+# would not compile.
+require(host.count("   if(popup) Alert(message);") == 2,
+        "AUDIT-E both paths still call Alert() as a plain popup (it returns void)")
+require("!Alert(" not in host, "AUDIT-E and nothing pretends Alert() has a return value")
+
+# No new input, and the diagnostics ride on switches that already existed.
+require("input bool   InpDebugLog                = false;" in host,
+        "AUDIT-E the quant-path diagnostic uses the existing InpDebugLog switch")
+require(re.search(r"input bool   InpAlertDispatcherLog\s+= false;", host) is not None,
+        "AUDIT-E the dispatcher diagnostic uses the existing InpAlertDispatcherLog switch")
+require(len(re.findall(r"(?m)^input\s", host)) == 583,
+        "AUDIT-E and the file still declares 583 inputs (no new one was added)")
+
+
+def body_of(sig):
+    """The body of a function whose definition starts with `sig`, found by its
+    closing brace at column 0. Declarations are never matched because they end
+    with a semicolon."""
+    i = host.find(sig)
+    while i >= 0 and host[i:i + len(sig) + 40].split("\n")[0].rstrip().endswith(";"):
+        i = host.find(sig, i + 1)
+    require(i >= 0, f"AUDIT-E located {sig[:40]}")
+    end = host.find("\n}", i)
+    require(end > i, f"AUDIT-E {sig[:40]} closes")
+    return host[i:end + 2]
+
+
+def longest_literal(text):
+    lits = re.findall(r'"((?:[^"\\]|\\.)*)"', text)
+    return max((len(x) for x in lits), default=0)
+
+
+# Why the dispatcher needs no 240-char clamp while the quant path has one: its
+# message is composed only from bounded parts. That claim is measured here, not
+# asserted - if a future "needs" text grows to a paragraph, this fails instead of
+# the push being silently truncated (or refused) on a live bar.
+for fn in ("string RXN_ExecReason(", "string RXN_NeedsText(", "string AlertInvalidationText("):
+    n = longest_literal(body_of(fn))
+    require(n <= 40, f"AUDIT-E every reason {fn[:26]}... can emit stays <= 40 chars (longest {n})")
+fmt = re.search(r'return StringFormat\("(\[[^\n]*?)",', body_of("string AlertCompactLine("))
+require(fmt is not None, "AUDIT-E AlertCompactLine still composes one StringFormat")
+require(len(fmt.group(1)) <= 60,
+        f"AUDIT-E and its literal skeleton stays <= 60 chars ({len(fmt.group(1))})")
+require("if(StringLen(pm)>240) pm=StringSubstr(pm,0,240);" in host,
+        "AUDIT-E the quant path still clamps its arbitrary caller string to 240")
+
 print("-" * 74)
 print("Gate-profiler checks passed. The distance is measured, not inferred;")
 print("acting on it is a policy decision that still needs F7 and a demo run.")
