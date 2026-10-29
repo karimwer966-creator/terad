@@ -81,6 +81,76 @@ jobs:
       - name: One authoritative scenario state (tactical preview cannot contradict it)
         run: python3 tools/test_tactical_authority.py 2>&1 | tee out/test_tactical_authority.log
 
+      - name: Order block lifecycle (one age rule, two state machines, no buffer moved)
+        run: python3 tools/test_orderblock_lifecycle.py 2>&1 | tee out/test_orderblock_lifecycle.log
+
+      # Phase 2 (AUDIT-SB1). Two display-only modules were added to a file whose
+      # Core buffers an Expert Advisor reads by index, so the contracts that
+      # matter are the negative ones: no buffer moved, no existing default
+      # changed, and no execution-adjacent function can read the new state.
+      - name: Power of 3 + Silver Bullet (display only, no buffer moved, cannot authorize)
+        run: python3 tools/test_phase2_modules.py 2>&1 | tee out/test_phase2_modules.log
+
+      # Phase 3 (AUDIT-WY1). The risk here is not the new logic, it is a THIRD
+      # opinion about the same bar: DetectJudasSwing already sweeps the Asia range
+      # and DetectLiquidity already clusters equal highs/lows. These contracts
+      # check the module reconciles with Judas instead of contradicting it, reuses
+      # the existing sweep validator rather than inventing a looser one, and cannot
+      # let the bar under test widen the range it pierces.
+      - name: Wyckoff Spring/Upthrust (reconciled with Judas, no buffer moved, display only)
+        run: python3 tools/test_phase3_wyckoff.py 2>&1 | tee out/test_phase3_wyckoff.log
+
+      # AUDIT-PA1 pure price action. Proves the module reuses AnalyzeClosedCandle()
+      # instead of re-implementing it, that INSIDE_BAR is reported only where the
+      # existing chain found nothing (so no bar is reclassified), that a pattern
+      # outside every zone resolves to no direction and a score of 0, and that the
+      # single edit to existing code - the ContextualCandleScore() zone gate - is
+      # inert while InpPARequireZoneContext is false. It also PINS the pre-existing
+      # three-way candle divergence by searching for bars on which
+      # AnalyzeClosedCandle(), AnalyzeCandleIntelligence() and the MTF sniper C1
+      # gate disagree, so that divergence cannot be silently "fixed" by tightening
+      # an entry gate.
+      - name: Pure price action (never standalone, no buffer moved, display only)
+        run: python3 tools/test_phase4_priceaction.py 2>&1 | tee out/test_phase4_priceaction.log
+
+      # AUDIT-MR1 mean reversion / momentum. Proves the bands reuse the existing
+      # BufVWAP rather than adding iBands, that divergence is measured on CONFIRMED
+      # swings via the file's own IsFractalHigh()/IsFractalLow() and never on the
+      # preview variants that would repaint, that sigma is root-mean-square distance
+      # from VWAP and NOT mean-centred, that the 0.0 "indicator unavailable"
+      # sentinel cannot manufacture a divergence, and that MACD is a FILTER ONLY -
+      # exhaustively, it can zero the score but can never raise it or supply a
+      # direction. Also proves the optional iMACD handle cannot change whether the
+      # indicator loads, and never entangles the file's indicator-copy retry.
+      - name: Mean reversion / momentum (confirmed swings only, MACD veto-only, display only)
+        run: python3 tools/test_phase5_meanreversion.py 2>&1 | tee out/test_phase5_meanreversion.log
+
+      # AUDIT-CF1 Phase 6: the Confluence Engine. Proves the six weights sum to
+      # exactly 100, that absent evidence scores 0 rather than a free point, that
+      # a side is named only when EXACTLY ONE side clears the minimum, and that the
+      # engine is a separate score BESIDE the existing ones - pinned by the exact
+      # call-count delta it introduced and by unchanged g_score./final_score counts.
+      - name: Confluence engine (six pillars, weights sum to 100, never forces a direction)
+        run: python3 tools/test_phase6_confluence.py 2>&1 | tee out/test_phase6_confluence.log
+
+      # AUDIT-RM1 Phase 7: the risk model. Proves the sizing output is TEXT ONLY
+      # (no trade API, no buffer, no drawing), that the divisor from
+      # TheoreticalRiskMoney() is refused before it is divided by, that the module
+      # reuses the existing risk helpers and inputs instead of building a second
+      # risk model, and that it never invents a direction the confluence engine
+      # refused to name.
+      - name: Risk model (advisory text only, no order, reuses the existing risk inputs)
+        run: python3 tools/test_phase7_riskmodel.py 2>&1 | tee out/test_phase7_riskmodel.log
+
+      # The seven-phase audit record cites 101 line numbers in a 44 831-line file.
+      # Any edit above a citation silently invalidates every citation below it and
+      # nothing complains - nine citations carried forward from earlier phase notes
+      # were already stale by the time the doc was written. So the doc's citations
+      # are a contract, checked both directions: source lines must match the pins,
+      # and every pin must still be cited by the doc.
+      - name: Documentation freshness (doc citations + countable facts vs nadir2.mq5)
+        run: python3 tools/test_docs_freshness.py 2>&1 | tee out/docs_freshness.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 

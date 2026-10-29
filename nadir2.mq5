@@ -736,6 +736,31 @@ enum ENUM_SESSION_ID
    SESSION_NEWYORK
 };
 
+// AUDIT-SB1 POWER OF 3 phase. Its own enum, appended after ENUM_SESSION_ID so
+// no existing enumerator value anywhere in the file changes.
+//   ACCUMULATION  the Asia session range is formed and has not been swept
+//   MANIPULATION  that range was swept and the bar closed back inside it
+//   DISTRIBUTION  the move AWAY from the sweep has followed through on a
+//                 closed bar, by at least InpP3DistributionMinATR x ATR
+// A phase is a description of what has already happened on closed bars. It is
+// never an instruction, and it never authorizes anything.
+enum ENUM_P3_PHASE
+{
+   P3_PHASE_NONE=0,        // no Asia range resolved for the applicable local day
+   P3_PHASE_ACCUMULATION,
+   P3_PHASE_MANIPULATION,
+   P3_PHASE_DISTRIBUTION
+};
+
+// AUDIT-WY1 Wyckoff range event. Its OWN enum, added as a new type, so no
+// existing enumerator value anywhere in the file can shift.
+enum ENUM_WYCKOFF_EVENT
+{
+   WY_EVENT_NONE=0,      // no qualifying range, or no qualifying test bar
+   WY_EVENT_SPRING,      // wick below the range low,  close back inside -> bullish
+   WY_EVENT_UPTHRUST     // wick above the range high, close back inside -> bearish
+};
+
 // v6.0 MarketConflictEngine (master-prompt Sections 5 & 12).
 // Classifies the relationship between the current chart's structural
 // direction (the "LTF" from this engine's perspective) and the higher
@@ -768,6 +793,22 @@ input group "====== Order Blocks ======"
 input int InpMaxStrongOB = 3;
 input int InpOBTransparency = 88;
 input double InpOBMaxHeightATR = 3.0;
+//--- AUDIT-OB1 ORDER BLOCK LIFECYCLE COMPLETION. The OB engine already detects,
+//--- scores, indexes, caps, draws and mitigates order blocks (DetectOrderBlocks,
+//--- ScoreOrderBlock, SelectEntryOB, BuildOBPriceIndex/StrengthIndex,
+//--- BinarySearchNearestOB, DrawStructureAndOB, AddBreakerBlock). These four
+//--- inputs add ONLY what it was missing - an age bound - plus two opt-ins and a
+//--- display vocabulary. There is no second OB engine and no parallel registry.
+//--- Every one defaults to today's behaviour bit-for-bit: with all four left
+//--- alone, no order block is created, sized, scored, drawn or retired differently.
+//--- No version prefix is used on purpose: the release triple still reads v6.6.9
+//--- while the file already carries v6.6.10/v6.6.11/v6.6.12 markers, and picking
+//--- the next release number is a release decision (docs/QSMC_V6.6.10_TACTICAL_
+//--- AUTHORITY.md defect 4), not something a module should pre-empt.
+input bool   InpOBUseAgeExpiry       = false;  // retire an OB after InpOBMaxAgeBars closed bars (false = today: only a close through the zone retires it)
+input int    InpOBMaxAgeBars         = 200;    // closed CHART bars; <=0 disables even when the switch is on
+input bool   InpOBZoneBodyOnly       = false;  // zone = pure candle body instead of the default body+rejection-wick hybrid
+input bool   InpOBShowLifecycleLabel = false;  // append FRESH/MITIGATED/BROKEN/EXPIRED to the OB box label (display only)
 input group "====== Demand / Supply Zones ======"
 input int InpZoneLookback = 150;
 input int InpMaxZonesShown = 3;
@@ -808,6 +849,115 @@ input group "====== Session Clock / DST ======"
 input int InpBrokerUTCOffsetWinterMinutes = 120;
 input ENUM_BROKER_DST_RULE InpBrokerDSTRule = BROKER_DST_EU;
 input bool InpUseDSTSessions = true;
+input group "====== Silver Bullet / Power of 3 (AUDIT-SB1, display only) ======"
+// Every switch below defaults to OFF. With them off, nothing in this group is
+// computed, drawn, logged or appended to the dashboard, and no existing value,
+// threshold or label changes. Both modules are DISPLAY-ONLY: they publish a
+// description of closed-bar history and never feed the arbiter, the Core
+// lifecycle, the Directional Scenario Engine or any buffer.
+input bool   InpEnablePowerOf3          = false;  // derive the A/M/D phase from the Asia range DetectJudasSwing already computes
+input bool   InpP3ShowOnDashboard       = false;  // append the phase to the dashboard tooltip (needs InpEnablePowerOf3)
+input double InpP3DistributionMinATR    = 1.00;   // closed-bar move away from the manipulation extreme, in ATR
+input bool   InpEnableSilverBullet      = false;  // windowed sweep -> structure shift -> FVG -> retrace query
+input bool   InpSBShowOnDashboard       = false;  // append the Silver Bullet state to the dashboard tooltip
+input bool   InpSBShowEntryZone         = false;  // draw the FVG retrace zone the window resolved to
+// Windows are MINUTES FROM LOCAL MIDNIGHT so they are exact to the minute and
+// independent of chart timeframe. They are resolved through the SAME broker
+// clock the session engine already uses (InpBrokerUTCOffsetWinterMinutes +
+// InpBrokerDSTRule + InpUseDSTSessions), so no second time conversion is
+// introduced and a DST change cannot desynchronise the two.
+input bool   InpSBUseNYLocalTime        = true;   // true = windows are New York local; false = broker-server local
+input int    InpSBWin1Start = 180, InpSBWin1End = 240;   // window 1, 03:00-04:00
+input int    InpSBWin2Start = 600, InpSBWin2End = 660;   // window 2, 10:00-11:00
+input int    InpSBWin3Start = 840, InpSBWin3End = 900;   // window 3, 14:00-15:00
+input int    InpSBChainMaxAgeBars       = 240;    // a chain element older than this many closed bars cannot open a window setup
+input group "====== Wyckoff Spring / Upthrust (AUDIT-WY1, display only) ======"
+// Display only. This module never feeds the arbiter, the Core lifecycle, the
+// Directional Scenario Engine, the confluence scorers, or any buffer, and it
+// cannot authorize, arm or execute a trade.
+//
+// The RANGE is found by expanding left from the last closed bar while the
+// running height stays inside InpWyckoffMaxRangeATR, so it is the actual
+// consolidation rather than an arbitrary fixed window. It is deliberately NOT
+// DetectDealingRange(): that finds the swing range for premium/discount and is
+// meant to be large, while a Wyckoff range is meant to be tight. Different
+// measurement, so nothing is duplicated.
+input bool   InpEnableWyckoff           = false;  // detect Spring / Upthrust at a structural range
+input bool   InpWyckoffShowOnDashboard  = false;  // append the event to the dashboard tooltip (needs InpEnableWyckoff)
+input bool   InpWyckoffShowRange        = false;  // draw the range box the event was measured against
+input int    InpWyckoffMinRangeBars     = 16;     // a range shorter than this is noise, not accumulation
+input int    InpWyckoffMaxRangeBars     = 240;    // leftward expansion stops here
+input double InpWyckoffMaxRangeATR      = 6.00;   // max range height in ATR - above this it is a trend, not a range
+input int    InpWyckoffMinTouches       = 2;      // required tests of EACH boundary
+input double InpWyckoffTouchTolATR      = 0.25;   // how close to a boundary still counts as touching it
+input bool   InpWyckoffRequireVolume    = true;   // require the existing displacement-or-volume sweep confirmation
+input int    InpWyckoffMaxAgeBars       = 96;     // an event older than this many closed bars is stale
+input group "====== Pure Price Action (AUDIT-PA1, display only) ======"
+// The unified pattern function ALREADY EXISTS: AnalyzeClosedCandle() returns one
+// pattern label and one 0-100 strength for nine patterns, and a "Pin Bar" is its
+// HAMMER / SHOOTING_STAR geometry. This module does not reimplement any of that.
+// It adds the one pattern from the brief that was missing (Inside Bar, which
+// lived only in PMI's g_pmi_pa.inside_bar) and, above all, it enforces the rule
+// the brief asks for and the existing scorer does not: a candle pattern is
+// CONFIRMATION ONLY inside a valid zone, never standalone.
+input bool   InpEnablePriceAction        = false;  // unify patterns and require a zone for confirmation
+input bool   InpPAShowOnDashboard        = false;  // append the price-action verdict to the dashboard tooltip
+// OPT-IN, DEFAULT OFF. ContextualCandleScore() currently awards candle.score*0.45
+// with NO zone requirement, then adds the zone as a BONUS (+12 zone_ok, +8 inside).
+// So a candle outside every zone still contributes. Turning this on makes the zone
+// a hard requirement and such a candle scores 0. While it is off - the default -
+// ContextualCandleScore() is bit-identical to what it was before this change.
+input bool   InpPARequireZoneContext     = false;  // make the zone a prerequisite, not a bonus
+input bool   InpPAIncludeInsideBar       = true;   // add INSIDE_BAR to the unified pattern set
+input int    InpPAInsideBarStrength      = 45;     // an inside bar carries no direction of its own
+input double InpPAZoneToleranceATR       = 0.15;   // how close to a zone still counts as inside it
+input bool   InpPAIncludePOC             = true;   // count the active volume-profile POC as a zone
+input group "====== Mean Reversion / Momentum (AUDIT-MR1, display only) ======"
+// THREE legs, and what each one is allowed to do. The BANDS (VWAP +/- k sigma,
+// reusing the existing BufVWAP rather than adding iBands) say price is stretched.
+// RSI DIVERGENCE says the stretch is exhausting, and is measured on CONFIRMED
+// swings only - IsFractalHigh()/IsFractalLow(), which require InpSwingFractalN
+// fully closed bars to the right, so a swing can never un-confirm itself. MACD is
+// an optional momentum FILTER ONLY: it can veto a fade, and it can never add a
+// direction or a point of its own. Missing evidence scores 0, never a free point.
+input bool   InpEnableMeanReversion     = false;  // master switch; while off the module costs nothing
+input bool   InpMRShowOnDashboard       = false;  // append the mean-reversion verdict to the dashboard tooltip
+input int    InpMRStdDevPeriod          = 20;     // closed bars used for the sigma of (close - VWAP)
+input double InpMRBandSigma             = 2.00;   // band width in sigma; a close beyond it is an overextension
+input int    InpMRDivLookback           = 200;    // closed bars searched for the two confirmed swings
+input double InpMRDivMinRSIDelta        = 2.00;   // minimum RSI gap that counts as divergence, not noise
+input double InpMRRSIOverbought         = 70.0;   // RSI at or above this makes a stretched-up bar exhausted
+input double InpMRRSIOversold           = 30.0;   // RSI at or below this makes a stretched-down bar exhausted
+// OPTIONAL momentum filter. The iMACD handle is created ONLY when this is true,
+// so with the default off nothing in OnInit changes at all. If the handle cannot
+// be created the leg reports "unavailable" and scores 0 - an optional display-only
+// filter must never be able to stop the indicator from loading.
+input bool   InpMRUseMACD               = false;  // use MACD as a veto on fading against momentum
+input int    InpMRFastEMA               = 12;     // MACD fast EMA (standard 12)
+input int    InpMRSlowEMA               = 26;     // MACD slow EMA (standard 26)
+input int    InpMRSignalSMA             = 9;      // MACD signal SMA (standard 9)
+input double InpMRMacdDeadZoneATR       = 0.05;   // histogram must clear this fraction of ATR to count as momentum
+input group "====== Confluence Engine (AUDIT-CF1, display only) ======"
+input bool   InpEnableConfluence        = false;  // master switch for the ONE unified score; while off it costs nothing
+input bool   InpCFShowOnDashboard       = false;  // show the confluence block in the dashboard tooltip
+input int    InpCFWeightStructure       = 20;     // weight: structure (MSS/BOS/CHoCH alignment), 0-100
+input int    InpCFWeightLiquidity       = 20;     // weight: liquidity (swept pool alignment), 0-100
+input int    InpCFWeightZone            = 20;     // weight: zone (price inside a live OB/FVG/SR/POC), 0-100
+input int    InpCFWeightSession         = 10;     // weight: session (kill zone / London / NY / Asia), 0-100
+input int    InpCFWeightCandle          = 15;     // weight: candle (unified pattern strength, zone required), 0-100
+input int    InpCFWeightMTF             = 15;     // weight: MTF bias (higher-timeframe closed structure), 0-100
+input int    InpCFMinDisplayScore       = 60;     // minimum score to name a side; below it the engine stands aside
+input bool   InpCFVetoOnConflict        = true;   // NO TRADE when a source that HAS evidence contradicts the side
+input bool   InpCFRequireActiveStrategy = false;  // additionally require one strategy module (P3/SB/WY/PA/MR) to agree
+input group "====== Risk Model (AUDIT-RM1, display only, advisory text) ======"
+input bool   InpEnableRiskModel         = false;  // master switch for the advisory Entry/SL/TP/R:R readout
+input bool   InpRMShowOnDashboard       = false;  // show the risk readout in the dashboard tooltip
+input double InpRMSLBufferATR           = 0.30;   // ATR buffer beyond the zone or pool the stop sits behind
+input double InpRMSLMaxATR              = 2.00;   // hard cap on stop distance in ATR; beyond it the plan is rejected
+input double InpRMNoZoneSLATR           = 1.50;   // stop distance in ATR when no zone and no pool sits behind entry
+input bool   InpRMUseRRFloor            = true;   // reject when TP1 R:R is below the file's hard floor InpTopDownMinRR
+input bool   InpRMPreferTopDownPlan     = true;   // adopt the TopDown chain's own entry/SL/TP1 when it agrees
+input int    InpRMMaxPoolScan           = 40;     // how many recent liquidity pools to scan for the stop and targets
 input group "====== Premium / Discount & OTE ======"
 input bool InpShowPremiumDiscount = true;
 input bool InpPDLinesOnly = false;          // draw range boundaries / EQ as Fibonacci-style lines
@@ -1768,6 +1918,166 @@ STopDownState g_td;
 long g_perf_td_us=0;    // TOP-DOWN engine: EMA of evaluation time (microseconds)
 long g_perf_calc_us=0;  // OnCalculate body: EMA of tick processing time (microseconds)
 int g_judas = 0, g_judas_bar = 0;
+//--- AUDIT-SB1 POWER OF 3. DetectJudasSwing() ALREADY computes the Asia session
+//--- range and ALREADY detects a sweep of it with a close back inside - that is
+//--- the Accumulation and the Manipulation leg. It simply threw the range away
+//--- when it returned, because nothing needed it until now. These four retain
+//--- what it computed, so the phase can be named WITHOUT a second, parallel
+//--- session engine and without recomputing one bar of it.
+double   g_asia_range_high=0.0;      // published by DetectJudasSwing, not recomputed
+double   g_asia_range_low=0.0;
+int      g_asia_range_day_key=-1;    // DateKey() of the applicable Tokyo-local day
+bool     g_asia_range_valid=false;
+ENUM_P3_PHASE g_p3_phase=P3_PHASE_NONE;
+int      g_p3_dir=0;                 // +1 distribution up, -1 down, 0 not resolved
+string   g_p3_reason="";
+int      g_p3_score=0;               // 0-100 rule-based confluence count, NOT a probability
+string   g_p3_invalidation="";
+//--- AUDIT-SB1 SILVER BULLET. A time-windowed QUERY over the causal graph that
+//--- already exists (CE_LIQ_SWEEP -> CE_BOS/CE_CHOCH/CE_MSS -> CE_FVG, linked by
+//--- parent_primary/parent_secondary and walked by FindNearestCausalAncestor).
+//--- It adds no detection of its own: every element it names was already
+//--- published on a closed bar by an existing engine.
+bool     g_sb_active=false;          // a window resolved a complete chain
+int      g_sb_window=-1;             // 0..2 = which window is open, -1 = none
+int      g_sb_dir=0;                 // +1 long, -1 short, 0 unresolved
+int      g_sb_fvg=-1;                // index into g_causal_events of the CE_FVG element
+double   g_sb_entry_high=0.0;
+double   g_sb_entry_low=0.0;
+string   g_sb_reason="";
+int      g_sb_score=0;               // 0-100 rule-based confluence count, NOT a probability
+string   g_sb_invalidation="";
+
+//--- AUDIT-WY1 WYCKOFF SPRING / UPTHRUST (display only). The range geometry is
+//--- new because nothing in the file measured a TIGHT consolidation before; the
+//--- sweep confirmation is NOT new - it reuses SweepHasDisplacementOrVolume(),
+//--- which already tests displacement or relative volume on existing data, so no
+//--- new volume source is introduced. Reconciled against g_judas rather than
+//--- allowed to contradict it: see WY_Update().
+double   g_wy_range_high=0.0;
+double   g_wy_range_low=0.0;
+int      g_wy_range_start=-1;        // first bar of the range window
+int      g_wy_range_end=-1;          // last bar of the range window (closed-1)
+bool     g_wy_range_valid=false;
+int      g_wy_touches_high=0;
+int      g_wy_touches_low=0;
+int      g_wy_event=WY_EVENT_NONE;
+int      g_wy_dir=0;                 // +1 spring, -1 upthrust, 0 unresolved
+int      g_wy_bar=-1;                // the closed bar the event fired on
+double   g_wy_extreme=0.0;           // the wick that pierced the boundary
+bool     g_wy_active=false;
+bool     g_wy_volume_ok=false;
+bool     g_wy_conflict=false;        // disagrees with the Judas verdict on the same bar
+int      g_wy_score=0;               // 0-100 rule-based confluence count, NOT a probability
+string   g_wy_reason="";
+string   g_wy_invalidation="";
+
+//--- AUDIT-PA1 PURE PRICE ACTION (display only). One pattern, one strength, and
+//--- a verdict that is empty unless price is inside a valid zone. The zone scan
+//--- reads the arrays the existing detectors already publish (g_order_blocks,
+//--- g_fvgs, g_zones, g_mvp) and honours their own state vocabulary, so no second
+//--- zone system and no second opinion about whether a zone is still alive.
+string   g_pa_pattern="NONE";        // unified label from the existing 9 + INSIDE_BAR
+int      g_pa_strength=0;            // 0-100
+int      g_pa_pattern_dir=0;         // direction the pattern itself carries (0 = none)
+bool     g_pa_inside_bar=false;
+bool     g_pa_in_zone=false;
+string   g_pa_zone_name="";          // OB / FVG / SR / POC
+double   g_pa_zone_top=0.0;
+double   g_pa_zone_bottom=0.0;
+int      g_pa_zone_dir=0;
+int      g_pa_dir=0;                 // resolved direction, 0 when there is no zone
+bool     g_pa_confirms=false;
+int      g_pa_score=0;               // 0-100 rule-based confluence count, NOT a probability
+string   g_pa_reason="";
+string   g_pa_invalidation="";
+//--- AUDIT-MR1 Mean Reversion / Momentum. Display-only published state. --------
+//--- h_macd is declared here rather than added to the existing handle line so
+//--- that line, and the INIT_FAILED test built on it, are not touched.
+int      h_macd=INVALID_HANDLE;      // created only when InpMRUseMACD is true
+bool     g_mr_macd_ready=false;
+double   g_mr_macd_main[];           // plain arrays, NOT indicator buffers
+double   g_mr_macd_sig[];
+double   g_mr_vwap=0.0;
+double   g_mr_sigma=0.0;
+double   g_mr_upper=0.0;
+double   g_mr_lower=0.0;
+double   g_mr_stretch=0.0;           // (close - vwap) / sigma, in sigma units
+int      g_mr_ext_dir=0;             // +1 stretched up, -1 down, 0 inside the bands
+int      g_mr_div_dir=0;             // +1 bullish divergence, -1 bearish, 0 none
+int      g_mr_swing_hi_new=-1, g_mr_swing_hi_old=-1;
+int      g_mr_swing_lo_new=-1, g_mr_swing_lo_old=-1;
+double   g_mr_rsi_new=0.0, g_mr_rsi_old=0.0;
+bool     g_mr_rsi_extreme=false;
+int      g_mr_macd_dir=0;            // +1 momentum up, -1 down, 0 unavailable/flat
+bool     g_mr_macd_conflict=false;   // momentum still pushes in the stretched direction
+int      g_mr_dir=0;
+bool     g_mr_confirms=false;
+int      g_mr_score=0;
+string   g_mr_reason="";
+string   g_mr_invalidation="";
+//--- AUDIT-CF1 Confluence Engine. Display-only published state. ---------------
+// SIX pillars, weights summing to 100, and absent evidence always scoring 0.
+// This is a SEPARATE score that sits BESIDE the existing ones. It never reads
+// g_score (that struct is refreshed only when CalculateAITradeSetup() runs, so
+// it is stale by design on most bars) and it never writes to ScoreStructure(),
+// ScoreLiquidity(), ScoreSession(), ScoreHTF(), GraphConfluenceScore(),
+// PMI_ComputeConfluence() or ComputeEntryQuality().
+#define CF_SESSION_NO_EVIDENCE 30.0   // ScoreSession()'s documented floor = "no session matched"
+double   g_cf_pillar_structure=0.0;   // 0-100 evidence value for each leg, before weighting
+double   g_cf_pillar_liquidity=0.0;
+double   g_cf_pillar_zone=0.0;
+double   g_cf_pillar_session=0.0;
+double   g_cf_pillar_candle=0.0;
+double   g_cf_pillar_mtf=0.0;
+bool     g_cf_has_structure=false;    // false => the leg was ABSENT and scored 0, never a free point
+bool     g_cf_has_liquidity=false;
+bool     g_cf_has_zone=false;
+bool     g_cf_has_session=false;
+bool     g_cf_has_candle=false;
+bool     g_cf_has_mtf=false;
+int      g_cf_buy_score=0;            // weighted long-side score, 0-100
+int      g_cf_sell_score=0;           // weighted short-side score, 0-100
+int      g_cf_dir=0;                  // resolved direction; 0 whenever the engine stands aside
+int      g_cf_score=0;                // the ONE unified score, 0-100, NOT a probability
+bool     g_cf_no_trade=false;         // a conflict, a shortfall or bad weights forced a stand-aside
+string   g_cf_reason="";              // carries "NO TRADE: <reason>" when g_cf_no_trade is true
+string   g_cf_invalidation="";        // what would cancel the current reading
+string   g_cf_best_strategy="";       // highest-scoring ACTIVE strategy module on this bar
+int      g_cf_best_strategy_score=0;
+int      g_cf_best_strategy_dir=0;
+int      g_cf_contradictions=0;       // sources that HAD evidence and disagreed with the side
+int      g_cf_weight_sum=0;           // the six configured weights; must equal exactly 100
+bool     g_cf_weights_valid=false;
+//--- AUDIT-RM1 Risk Model. Display-only advisory published state. -------------
+// Entry / SL / TP1-3 / R:R for the side the Confluence Engine named, plus a
+// suggested size AS TEXT ONLY. Nothing here is an order, a buffer, or a drawing,
+// and no value here may be parsed back into an execution call.
+#define RM_RR_EPSILON 1e-9              // same tolerance the TopDown R:R gate uses
+string   g_rm_verdict="WAIT";           // OK / REJECT_RR / REJECT_SL / WAIT
+int      g_rm_dir=0;                    // the side this plan belongs to, 0 when none
+string   g_rm_plan_src="";              // TOPDOWN (adopted) or DERIVED (computed here)
+double   g_rm_entry=0.0;                // the last closed bar's close: the next bar's open
+double   g_rm_sl=0.0;
+double   g_rm_sl_dist=0.0;
+double   g_rm_sl_dist_atr=0.0;          // stop distance expressed in ATR, symbol-agnostic
+double   g_rm_tp1=0.0;
+double   g_rm_tp2=0.0;
+double   g_rm_tp3=0.0;
+double   g_rm_rr1=0.0;                  // reward:risk, NOT a probability
+double   g_rm_rr2=0.0;
+double   g_rm_rr3=0.0;
+string   g_rm_sl_src="";                // what the stop is sitting behind
+string   g_rm_tp1_src="";               // what the first target is
+bool     g_rm_rejected=false;
+string   g_rm_reason="";                // carries "NO PLAN: <reason>" when rejected
+string   g_rm_invalidation="";
+double   g_rm_risk_pct=0.0;             // the clamped percentage actually used
+double   g_rm_risk_money=0.0;           // equity x pct, in account currency
+double   g_rm_money_per_lot=0.0;        // from the existing TheoreticalRiskMoney()
+double   g_rm_size_units=0.0;           // 0.0 means it could not be computed
+bool     g_rm_size_available=false;
+string   g_rm_size_text="";             // TEXT ONLY - the entire output of the sizing step
 datetime g_htf_cache_time = 0;
 datetime g_d1_cache_time = 0;
 bool g_memo_hit = false;
@@ -5116,6 +5426,13 @@ int KnapsackOptimizeSignals(SSignalFactor &factors[],const int max_weight);
 int DynamicProgrammingConfidence(SSignalFactor &factors[]);
 double ScoreStructure(const int total,const bool is_buy);
 double ScoreLiquidity(const bool is_buy,const int anchor_bar=-1);
+// AUDIT-OB1: the ONE place the order-block age rule and the display vocabulary
+// live, so the incremental closed-bar path and ReplayClosedBarStates() cannot
+// disagree - the design contract above that function requires it to apply
+// "exactly the same rules the incremental branch applies per closed bar".
+bool OBIsExpired(const int ob_index,const int as_of_closed);
+void OBMarkExpired(const int ob_index,const int as_of_closed);
+string OBStateLabel(const int ob_index);
 double ScoreOrderBlock(const int ob_index,const double price,const double atr,const int anchor_bar=-1);
 double ScoreFVG(const bool is_buy,const double price,const int anchor_bar=-1);
 double ScoreSession();
@@ -5320,6 +5637,125 @@ datetime ServerToUTC(const datetime server_time);
 datetime SessionLocalTime(const datetime server_time,const ENUM_SESSION_ID session_id);
 int DateKey(const datetime t);
 bool HourInWindow(const int hour,const int start_hour,const int end_hour);
+// AUDIT-SB1: declared here, defined in the Power of 3 / Silver Bullet section
+// next to the session clock they read. The *_Decide and *_Score functions are
+// PURE - no global, no series and no terminal call - so they are exercisable
+// offline by tools/test_phase2_modules.py and in-terminal by SBP3_SelfTest(),
+// the same arrangement QSMC_BuildGeometry() and TacticalAuthorityDecide() use
+// so the transcriptions cannot diverge.
+string P3_PhaseName(const int phase);
+ENUM_P3_PHASE P3_Decide(const bool range_valid,const int judas,
+                        const double distribution_atr,const double min_distribution_atr,
+                        const bool invalidated,string &reason,string &invalidation);
+int P3_Score(const bool range_valid,const int judas,const bool distribution,
+             const bool invalidated);
+bool SB_MinuteInWindow(const int minute,const int start,const int end);
+int SB_WindowAtMinute(const int minute_of_day);
+int SB_Score(const bool in_window,const bool has_sweep,const bool has_shift,
+             const bool has_fvg,const bool has_retrace);
+void P3_Update(const int closed);
+void SB_Update(const int closed);
+void SBP3_Clear();
+bool SBP3_SelfTest(string &where);
+datetime SB_LocalTime(const datetime server_time);
+int SB_MinuteOfDay(const datetime server_time);
+int SB_DayKey(const datetime server_time);
+string SB_WindowName(const int win);
+bool SB_InWindow(const datetime server_time,const datetime ref_time,const int win);
+bool SB_ChainComplete(const int fvg_index,int &shift_index,int &sweep_index);
+void SB_DrawEntryZone(const int closed);
+// AUDIT-WY1 Wyckoff. The first four are PURE - no global, no series and no
+// terminal call - so they are exercisable offline by tools/test_phase3_wyckoff.py
+// and in-terminal by WY_SelfTest(), the same arrangement the AUDIT-SB1 cores use.
+string WY_EventName(const int event);
+bool WY_RangeValid(const int bars_in_range,const int min_bars,const double height_atr,
+                   const double max_height_atr,const int touches_high,const int touches_low,
+                   const int min_touches);
+ENUM_WYCKOFF_EVENT WY_Detect(const bool range_valid,const bool pierced_low,
+                             const bool closed_above_low,const bool pierced_high,
+                             const bool closed_below_high,string &reason,string &invalidation);
+int WY_Score(const bool range_valid,const bool touches_ok,const bool event_ok,
+             const bool volume_ok,const bool conflicted);
+void WY_Update(const int closed);
+void WY_DrawRange(const int closed);
+void WY_Clear();
+bool WY_SelfTest(string &where);
+bool WY_BuildRange(const int end_bar,const double atr,const int max_bars,const double max_height_atr,
+                   const double touch_tol,int &start_bar,double &hi,double &lo,
+                   int &touches_high,int &touches_low);
+// AUDIT-PA1 Pure Price Action. The first five are PURE - no global, no series and
+// no terminal call - so they are exercisable offline by
+// tools/test_phase4_priceaction.py and in-terminal by PA_SelfTest(), the same
+// arrangement the AUDIT-SB1 and AUDIT-WY1 cores use so transcriptions cannot drift.
+bool PA_InsideBarGeometry(const double h,const double l,const double prev_h,const double prev_l);
+string PA_UnifyPattern(const string candle_pattern,const bool inside_bar,
+                       const bool include_inside_bar);
+int PA_UnifyStrength(const string candle_pattern,const int candle_score,
+                     const bool is_inside_bar,const int inside_bar_strength);
+int PA_PatternDirection(const string pattern);
+bool PA_IsConflict(const int pattern_dir,const int zone_dir);
+int PA_ResolveDirection(const bool in_zone,const int pattern_dir,const int zone_dir);
+int PA_Score(const bool in_zone,const int pattern_strength,const bool direction_agrees);
+bool PA_ZoneAt(const double price,const int closed,const double atr,
+               string &name,double &top,double &bottom,int &dir);
+void PA_Update(const int closed);
+void PA_Clear();
+bool PA_SelfTest(string &where);
+//--- AUDIT-MR1 Mean Reversion / Momentum (display only, no buffer, no authority)
+double MR_StdDevAroundVWAP(const int closed,const int period);
+int    MR_BandSide(const double price,const double vwap,const double sigma,const double k);
+double MR_Stretch(const double price,const double vwap,const double sigma);
+int    MR_FindConfirmedSwingPair(const bool want_high,const int closed,const int lookback,
+                                 const int n,const int total,int &bar_new,int &bar_old);
+int    MR_DivergenceDir(const double price_old,const double rsi_old,
+                        const double price_new,const double rsi_new,
+                        const bool is_high,const double min_delta);
+int    MR_MacdDirection(const double main,const double signal,const double dead_zone);
+bool   MR_MacdConflicts(const int ext_dir,const int macd_dir);
+int    MR_ResolveDirection(const bool extended,const int ext_dir,const int div_dir,
+                           const bool rsi_extreme,const bool macd_conflict);
+int    MR_Score(const bool extended,const bool div_agrees,const bool rsi_extreme,
+                const bool macd_conflict);
+bool   MR_RefreshMACD(const int rates_total,const bool full);
+void   MR_Update(const int closed,const int rates_total,const bool full);
+void   MR_Clear();
+bool   MR_SelfTest(string &where);
+//--- AUDIT-CF1 Confluence Engine (display only, no buffer, no authority) ------
+double CF_Pillar(const double evidence,const int weight);
+double CF_Aggregate(const double structure,const double liquidity,const double zone,
+                    const double session,const double candle,const double mtf,
+                    const int w_structure,const int w_liquidity,const int w_zone,
+                    const int w_session,const int w_candle,const int w_mtf);
+int    CF_PickSide(const int buy_score,const int sell_score,const int min_display);
+bool   CF_IsAmbiguous(const int buy_score,const int sell_score,const int min_display);
+bool   CF_Contradicts(const int side,const int source_dir);
+int    CF_CountContradictions(const int side,const int mtf_dir,const int zone_dir,
+                              const int candle_dir,const int strategy_dir);
+string CF_StandAsideReason(const int side,const int buy_score,const int sell_score,
+                           const int min_display,const int contradictions,
+                           const bool weights_valid,const int weight_sum,
+                           const bool strategy_ok,const bool veto);
+void   CF_Update(const int closed,const int rates_total);
+void   CF_Clear();
+bool   CF_SelfTest(string &where);
+//--- AUDIT-RM1 Risk Model (display only, advisory text, no order, no buffer) --
+double RM_ClampRiskPct(const double pct);
+double RM_RewardRisk(const double entry,const double sl,const double tp);
+double RM_StopBehind(const bool is_buy,const double level,const double atr,const double buffer_atr);
+bool   RM_StopDistanceOK(const double sl_dist,const double atr,const double max_atr);
+double RM_FallbackTP(const double entry,const double sl_dist,const bool is_buy,const double multiple);
+bool   RM_TPsOrdered(const bool is_buy,const double entry,
+                     const double tp1,const double tp2,const double tp3);
+double RM_PositionSize(const double equity,const double risk_pct,const double money_per_lot);
+string RM_Verdict(const double rr1,const double floor_rr,const bool use_floor);
+string RM_SizeText(const bool available,const double units,const double risk_money,
+                   const double pct,const string currency);
+int    RM_PoolsAhead(const bool is_buy,const double price,const int max_scan,
+                     double &p1,double &p2,double &p3);
+double RM_NearestPoolBehind(const bool is_buy,const double price,const int max_scan);
+void   RM_Update(const int closed,const int rates_total);
+void   RM_Clear();
+bool   RM_SelfTest(string &where);
 bool IsInSession(const datetime server_time,const ENUM_SESSION_ID session_id);
 bool IsInKillZone(const datetime server_time,const ENUM_SESSION_ID session_id);
 int ChartEventBarAtTime(const datetime &chart_time[],const int total,const datetime event_time);
@@ -6878,6 +7314,10 @@ void PrepareDynamicRedraw()
    ObjectsDeleteAll(0,PFX+"ZRE_");   // v6.3.0: projections are redrawn by ZRE_Update
    ObjectsDeleteAll(0,PFX+"RXN_");   // v6.5.0: reaction labels are redrawn by RXN_Update
    ObjectsDeleteAll(0,PFX+"SNIPER_");// v6.5.2: sniper zones are redrawn by MTF_SniperZone_Draw
+   ObjectsDeleteAll(0,PFX+"SBP3_"); // AUDIT-SB1: the Silver Bullet entry zone is
+                                   // redrawn by SB_DrawEntryZone from the dashboard
+   ObjectsDeleteAll(0,PFX+"WY_");   // AUDIT-WY1: the Wyckoff range box is redrawn
+                                   // by WY_DrawRange from the dashboard
    ObjectsDeleteAll(0,PFX+"ZN_");
    ObjectsDeleteAll(0,PFX+"STR_");
    // v6.1.3 (L5b): the live objects are named STRUCT_/ZONE_/PD_ - the two
@@ -10320,6 +10760,7 @@ void PMI_BuildLocation(const int closed,const double atr)
    for(int i=0;i<ArraySize(g_order_blocks);i++)
    {
       if(g_order_blocks[i].state=="MITIGATED") continue;
+      if(g_order_blocks[i].state=="EXPIRED") continue;   // AUDIT-OB1: sticky
       double mid=(g_order_blocks[i].top+g_order_blocks[i].bottom)*0.5;
       double d=MathAbs(mid-price)/atr;
       if(best<=0.0 || d<best) best=d;
@@ -14092,6 +14533,21 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       Print("Failed to create indicator handles");
       return INIT_FAILED;
    }
+   // AUDIT-MR1 optional MACD handle. Created ONLY when its switch is on, so with
+   // the default off this block does nothing at all and the handle-validity test
+   // above is untouched - an optional display-only filter must not be able to
+   // change whether the indicator loads. A failure here degrades the momentum leg
+   // to "unavailable", it does not fail init.
+   if(InpMRUseMACD)
+   {
+      h_macd=iMACD(_Symbol,PERIOD_CURRENT,InpMRFastEMA,InpMRSlowEMA,InpMRSignalSMA,PRICE_CLOSE);
+      if(h_macd==INVALID_HANDLE)
+      {
+         g_mr_macd_ready=false;
+         Print("[AUDIT-MR1] iMACD handle unavailable - the optional momentum filter stays off");
+      }
+      else g_mr_macd_ready=true;
+   }
    for(int i=0;i<5;i++) if(h_ema_mtf[i]==INVALID_HANDLE) Print("MTF handle ",i," failed");
 
    // v6.5.2 MTF_SniperZone_Engine: create iATR(14) and iRSI(14) handles across all 7 timeframes
@@ -14337,6 +14793,12 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    ZRE_Clear();
    RXN_Clear();
    ScenarioClear();
+   SBP3_Clear();
+   WY_Clear();
+   PA_Clear();
+   MR_Clear();
+   CF_Clear();
+   RM_Clear();
    if(InpMTEERunSelfTest)
    {
       string mtee_fail="";
@@ -14348,6 +14810,30 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          Print(">>> ",QSMC_VERSION_TEXT," MTEE synthetic self-test: PASS (7/7)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," MTEE synthetic self-test: FAIL — ",mtee_fail);
+      if(SBP3_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Power-of-3 / Silver-Bullet self-test: PASS (9/9)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Power-of-3 / Silver-Bullet self-test: FAIL - ",mtee_fail);
+      if(WY_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Wyckoff Spring/Upthrust self-test: PASS (9/9)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Wyckoff Spring/Upthrust self-test: FAIL - ",mtee_fail);
+      if(PA_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Pure Price Action self-test: PASS (9/9)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Pure Price Action self-test: FAIL - ",mtee_fail);
+      if(MR_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Mean-reversion / momentum self-test: PASS (9/9)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Mean-reversion / momentum self-test: FAIL - ",mtee_fail);
+      if(CF_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Confluence Engine self-test: PASS (10/10)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Confluence Engine self-test: FAIL - ",mtee_fail);
+      if(RM_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Risk model self-test: PASS (10/10)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Risk model self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
@@ -14410,6 +14896,7 @@ void OnDeinit(const int reason)
 QSMC_RootDestroy();   // v6.6.0: the arbitration root (RAII + leak report)
 IndicatorRelease(h_ema_fast); IndicatorRelease(h_ema_slow);
    IndicatorRelease(h_atr); IndicatorRelease(h_adx); IndicatorRelease(h_rsi);
+   if(h_macd!=INVALID_HANDLE) { IndicatorRelease(h_macd); h_macd=INVALID_HANDLE; }  // AUDIT-MR1
    ZRE_DeleteObjects();   // v6.3.0: every PFX+"ZRE_" object
    RXN_DeleteObjects();   // v6.5.0: every PFX+"RXN_" object
    ScenarioDeleteObjects(); // v6.5.0 DSE: every PFX+"SCN_" conditional-plan object
@@ -14735,6 +15222,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       for(int i=0;i<ArraySize(g_order_blocks);i++)
       {
          if(g_order_blocks[i].state=="MITIGATED") continue;
+         if(g_order_blocks[i].state=="EXPIRED") continue;   // AUDIT-OB1: sticky
          bool bull=g_order_blocks[i].bullish;
          bool overlap=(g_buf_l[closed]<=g_order_blocks[i].top &&
                        g_buf_h[closed]>=g_order_blocks[i].bottom);
@@ -14759,6 +15247,13 @@ int OnCalculate(const int rates_total, const int prev_calculated,
             g_order_blocks[i].state="MITIGATED";
             g_order_blocks[i].closed_state="MITIGATED";
          }
+         // AUDIT-OB1 AGE BOUND, checked LAST within this closed bar so that a
+         // block which both breaks and ages out on the same bar resolves to
+         // MITIGATED - a price fact outranks a time fact. ReplayClosedBarStates()
+         // applies the identical rule in the identical position, which is what the
+         // design contract above that function demands: the same rules, nothing new.
+         if(g_order_blocks[i].state!="MITIGATED" && OBIsExpired(i,closed))
+            OBMarkExpired(i,closed);
       }
 
       for(int i=0;i<ArraySize(g_zones);i++)
@@ -14849,6 +15344,29 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       if(InpUseGraphTheory && !InpInstitutionalSequence) BuildMarketGraph();
       detection_updated=true;
       g_needs_full_rebuild=false;
+   }
+
+   // AUDIT-SB1 Power of 3 + Silver Bullet. Called ONCE per pass, here, because
+   // this is the first point at which both branches have converged AND the state
+   // they read is final: EnforceArrayLimits() has already compacted and
+   // left-shifted the masters, and BuildCausalEventGraph() has already published
+   // this pass's CE_FVG / CE_LIQ_SWEEP / CE_BOS-CE_CHOCH-CE_MSS elements, so the
+   // indices SB_Update keeps are indices into the array that will actually be
+   // read. Calling either module earlier would read a shifted or incomplete graph.
+   //
+   // Both read closed bars only, so their published state is a pure function of
+   // detection output and cannot change between closed bars: gating on
+   // detection_updated keeps the per-tick cost at zero while remaining exactly as
+   // up to date as the data it describes. Neither feeds the arbiter, the Core
+   // lifecycle, the DSE, or any buffer - both are display only.
+   if(detection_updated)
+   {
+      P3_Update(closed);
+      SB_Update(closed);
+      // AUDIT-WY1 reads only closed bars, the per-bar ATR and g_judas, all of
+      // which are final here. It re-derives its event from scratch every pass, so
+      // a full rebuild reproduces what the incremental passes published.
+      WY_Update(closed);
    }
 
    // Complete a pending same-bar replay comparison before any decision can
@@ -15075,6 +15593,34 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    PMI_UpdateAll(rates_total,is_new_bar || detection_updated);
    // v6.2.0 Master Volume Profile: closed-bar, observational, no entry authority.
    MVP_Update(rates_total, is_new_bar || prev_calculated==0, is_new_bar || prev_calculated==0);
+   // AUDIT-PA1 Pure Price Action: closed-bar, observational, no entry authority.
+   // It runs HERE and not at the detection convergence point above, for the same
+   // reason the next block states for ZRE_Update: PA_ZoneAt() reads the active
+   // profile's POC as one of its zone sources, so calling it before MVP_Update
+   // would test price against a stale or absent POC. Its other inputs are already
+   // final by this point - g_order_blocks / g_fvgs / g_zones from the detection
+   // pass, and g_atr_buf / g_atr written earlier in this same pass. Once per closed
+   // bar, never per tick, and skipped entirely while its switch is off.
+   if(is_new_bar || detection_updated) PA_Update(closed);
+   // AUDIT-MR1 Mean Reversion / Momentum: closed-bar, observational, no entry
+   // authority. It sits beside PA_Update because every input it reads is already
+   // final here: BufVWAP from FillEMAAndVWAP above, g_rsi_buf and g_atr_buf from
+   // the indicator copy above, and the mirrored g_buf_* series. It does not read
+   // the volume profile, so unlike PA_Update it has no ordering constraint against
+   // MVP_Update; it is placed after it only to keep the observational modules
+   // together. Once per closed bar, never per tick, skipped entirely while off.
+   if(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);
+   // AUDIT-CF1 Confluence Engine: closed-bar, observational, no entry authority.
+   // It runs LAST of the module updates because its legs read state the others
+   // publish: PA_Update() for the unified pattern and MR_Update() for the
+   // mean-reversion verdict, alongside P3/SB/WY above. Scoring the same bar they
+   // scored is what makes the summary a summary rather than a stale echo.
+   if(is_new_bar || detection_updated) CF_Update(closed,rates_total);
+   // AUDIT-RM1 Risk Model: display-only advisory. It runs AFTER CF_Update
+   // because it attaches a plan to the side the confluence engine named, and
+   // AFTER TopDown_Update() above so the chain's own entry/SL/TP1 can be
+   // adopted instead of re-derived. No buffer, no drawing, no order.
+   if(is_new_bar || detection_updated) RM_Update(closed,rates_total);
    // v6.3.0 Zone Reaction Engine: closed-bar, observational, no entry authority.
    // Runs after MVP_Update so the active profile levels are current.
    ZRE_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);
@@ -16873,10 +17419,90 @@ double ScoreLiquidity(const bool is_buy,const int anchor_bar)
    }
    return best;
 }
+//====================================================================
+// AUDIT-OB1  ORDER BLOCK AGE BOUND + DISPLAY VOCABULARY
+//
+// THE GAP THIS CLOSES. SOrderBlock.age has been written since the engine was
+// built (DetectOrderBlocks sets ob.age=closed-ob_bar) and has never been read
+// by anything - a dead field. An order block therefore stayed eligible forever,
+// and the ONLY thing that could ever retire it was a candle body closing through
+// the zone. A block from 900 bars back was still scored, still selectable as an
+// entry OB and still drawn, exactly like one formed last bar.
+//
+// This adds the time bound the rest of the file already has for itself: the zone
+// engine expires on InpZREExpireBars, the Core blacklist on InpBlacklistExpiryBars,
+// the retest window on InpRetestTimeoutBars. Order blocks were the one registry
+// with no horizon.
+//
+// CAUSALITY / NO REPAINT. Measured in CLOSED CHART BARS from ob.bar, which is
+// itself a fully closed origin bar (DetectOrderBlocks refuses st.bar>=closed).
+// as_of_closed is always an already-closed bar, so the verdict for a given
+// (ob.bar, as_of_closed) pair can never change afterwards, and no forming bar and
+// no future bar is read. The bound is EXCLUSIVE - age == limit is still live -
+// matching the InpRetestTimeoutBars convention used elsewhere in this file.
+// Symbol-agnostic: bars, not price, so nothing here is XAUUSD-specific.
+//
+// PRECEDENCE. A close through the zone (MITIGATED) is a fact about PRICE and
+// always outranks a fact about TIME. Both state machines therefore test MITIGATED
+// first and only then ask OBIsExpired(). Keeping that order identical in both
+// paths is what makes a full rebuild reproduce the incremental history exactly.
+//====================================================================
+bool OBIsExpired(const int ob_index,const int as_of_closed)
+{
+   if(!InpOBUseAgeExpiry || InpOBMaxAgeBars<=0) return false;
+   if(ob_index<0 || ob_index>=ArraySize(g_order_blocks)) return false;
+   if(as_of_closed<0) return false;
+   return ((as_of_closed-g_order_blocks[ob_index].bar)>InpOBMaxAgeBars);
+}
+
+// Retire an aging block and journal it through the same channel DetectOrderBlocks
+// already uses, in the same shape the other lifecycle transitions are logged:
+// identity, level, direction, score, reason and what invalidated it. EXPIRED is
+// sticky - every eligibility guard that skips MITIGATED now skips EXPIRED too, so
+// a retired block cannot be scored, selected, drawn or used as a continuation zone.
+void OBMarkExpired(const int ob_index,const int as_of_closed)
+{
+   if(ob_index<0 || ob_index>=ArraySize(g_order_blocks)) return;
+   int age=as_of_closed-g_order_blocks[ob_index].bar;
+   g_order_blocks[ob_index].age=age;   // the dead field, now maintained honestly
+   g_order_blocks[ob_index].state="EXPIRED";
+   g_order_blocks[ob_index].closed_state="EXPIRED";
+   if(InpLogLifecycleTransitions)
+      LogLifecycle(StringFormat("OB %s @ %s %s EXPIRED age=%d limit=%d score=0 reason=closed-bar age beyond InpOBMaxAgeBars invalidation=age",
+                                g_order_blocks[ob_index].id,
+                                DoubleToString(OBMid(ob_index),_Digits),
+                                (g_order_blocks[ob_index].bullish?"BUY":"SELL"),
+                                age,InpOBMaxAgeBars));
+}
+
+// DISPLAY VOCABULARY ONLY - no decision anywhere may read this. The engine's own
+// state strings are ACTIVE / TOUCHED / MITIGATED and they are deliberately NOT
+// renamed, because five eligibility guards and two state machines depend on those
+// exact values. They also mean something slightly different from the usual trader
+// vocabulary: the engine's MITIGATED is set when a candle BODY CLOSES THROUGH the
+// zone (what a trader calls a broken block, and it spawns a Breaker Block), while
+// its TOUCHED is the first mitigation. This maps internal -> trader wording for
+// labels and tooltips, and nothing else.
+string OBStateLabel(const int ob_index)
+{
+   if(ob_index<0 || ob_index>=ArraySize(g_order_blocks)) return "UNKNOWN";
+   string s=g_order_blocks[ob_index].state;
+   string cs=g_order_blocks[ob_index].closed_state;
+   if(s=="EXPIRED"   || cs=="EXPIRED")   return "EXPIRED";
+   if(s=="MITIGATED" || cs=="MITIGATED") return "BROKEN";
+   if(s=="TOUCHED"   || cs=="TOUCHED")   return "MITIGATED";
+   if(s=="ACTIVE")                       return "FRESH";
+   return (s=="" ? "UNKNOWN" : s);
+}
+
 double ScoreOrderBlock(const int ob_index,const double price,const double atr,const int anchor_bar)
 {
    if(ob_index<0 || ob_index>=ArraySize(g_order_blocks)) return 0.0;
    if(g_order_blocks[ob_index].closed_state=="MITIGATED" || g_order_blocks[ob_index].state=="MITIGATED") return 0.0;
+   // AUDIT-OB1: an aged-out block scores nothing, exactly like a broken one. With
+   // InpOBUseAgeExpiry=false no block is ever EXPIRED, so this line is a no-op and
+   // the score returned is byte-identical to before.
+   if(g_order_blocks[ob_index].closed_state=="EXPIRED" || g_order_blocks[ob_index].state=="EXPIRED") return 0.0;
    if(anchor_bar > 0 && g_order_blocks[ob_index].origin_struct_bar != anchor_bar) return 20.0;
    double s=(g_order_blocks[ob_index].strength>=5)?100.0:(g_order_blocks[ob_index].strength>=4)?85.0:65.0;
    if(g_order_blocks[ob_index].closed_state=="TOUCHED" || g_order_blocks[ob_index].state=="TOUCHED") s*=(InpRelaxedMode?0.92:0.85);
@@ -16970,6 +17596,16 @@ int ContextualCandleScore(const SCandleIntel &candle,const bool is_buy,const dou
    double zone_mid=(zone_top+zone_bottom)*0.5;
    bool candle_in_zone=(price<=zone_top+MathMax(_Point,atr*0.15) &&
                         price>=zone_bottom-MathMax(_Point,atr*0.15));
+   // AUDIT-PA1 OPT-IN HARD GATE, DEFAULT OFF. The two lines above award
+   // candle.score*0.45 BEFORE any zone is considered and then add the zone as a
+   // BONUS (+12 zone_ok, +8 candle_in_zone), so a candle outside every zone still
+   // contributes - a MORNING_STAR of 88 scores about 40 standalone. The brief for
+   // this module is "confirmation only inside a valid zone, never standalone", so
+   // this gate exists to deliver it. It is OFF by default: while
+   // InpPARequireZoneContext is false the statement below is skipped and every
+   // line of this function is bit-identical to what it was before this change,
+   // so no existing score, weight or historical value moves.
+   if(InpPARequireZoneContext && !zone_ok && !candle_in_zone) return 0;
    if(zone_ok) score+=12.0;
    if(candle_in_zone) score+=8.0;
    if(sweep_ok) score+=10.0;
@@ -17155,6 +17791,7 @@ int SelectEntryOB(const double price,const bool is_buy,const double atr,const in
       SOrderBlock ob=g_order_blocks[i];
       if(ob.bullish!=is_buy) continue;
       if(ob.state=="MITIGATED" || ob.closed_state=="MITIGATED") continue;
+      if(ob.state=="EXPIRED" || ob.closed_state=="EXPIRED") continue;   // AUDIT-OB1
       if(ob.strength<InpMinEntryOBStrength) continue;
 
       if(InpInstitutionalSequence)
@@ -17374,6 +18011,7 @@ double NearestOpposingBarrier(const double from,const bool is_buy,string &type_o
    {
       SOrderBlock ob=g_order_blocks[i];
       if(ob.bullish==is_buy || ob.state=="MITIGATED" || ob.closed_state=="MITIGATED") continue;
+      if(ob.state=="EXPIRED" || ob.closed_state=="EXPIRED") continue;   // AUDIT-OB1
       int cev=FindCausalEventBySource(CE_ORDER_BLOCK,i);
       if(InpInstitutionalSequence && (cev<0 || g_causal_events[cev].invalidated || !g_causal_events[cev].confirmed)) continue;
       if(model_boundary>0)
@@ -17461,6 +18099,7 @@ double FindInstitutionalTarget(const double from,const double entry,const double
    {
       SOrderBlock ob=g_order_blocks[i];
       if(ob.bullish==is_buy || ob.state=="MITIGATED" || ob.closed_state=="MITIGATED") continue;
+      if(ob.state=="EXPIRED" || ob.closed_state=="EXPIRED") continue;   // AUDIT-OB1
       int cev=FindCausalEventBySource(CE_ORDER_BLOCK,i);
       if(InpInstitutionalSequence && (cev<0 || g_causal_events[cev].invalidated || !g_causal_events[cev].confirmed)) continue;
       if(model_boundary>0)
@@ -21236,6 +21875,7 @@ void ReplayClosedBarStates(const int total)
    for(int i=0;i<ArraySize(g_order_blocks);i++)
    {
       if(g_order_blocks[i].state=="MITIGATED") continue;
+      if(g_order_blocks[i].state=="EXPIRED") continue;   // AUDIT-OB1: sticky
       int from=g_order_blocks[i].bar+1;
       if(g_order_blocks[i].origin_struct_bar>=0)
          from=MathMax(from,g_order_blocks[i].origin_struct_bar+1);
@@ -21265,6 +21905,15 @@ void ReplayClosedBarStates(const int total)
             g_order_blocks[i].mitigated=true;
             g_order_blocks[i].state="MITIGATED";
             g_order_blocks[i].closed_state="MITIGATED";
+         }
+         // AUDIT-OB1: the SAME age rule the incremental branch applies, evaluated
+         // against the bar being replayed rather than the newest closed bar, and in
+         // the same position after the break tests, so a full rebuild reproduces the
+         // incremental history bar for bar. The break ends the walk either way.
+         if(g_order_blocks[i].state!="MITIGATED" && OBIsExpired(i,b))
+         {
+            OBMarkExpired(i,b);
+            break;
          }
       }
    }
@@ -22170,6 +22819,7 @@ void UpdateAnalyticalScalePlan(const int total)
          if(g_order_blocks[i].source_displacement_bar<=confirmed_bar) continue;
          if(g_order_blocks[i].source_displacement_bar>cont1_bar) continue;
          if(g_order_blocks[i].state=="MITIGATED") continue;
+         if(g_order_blocks[i].state=="EXPIRED") continue;   // AUDIT-OB1: sticky
          cont_zone_bar=g_order_blocks[i].bar;
          cont_zone_top=g_order_blocks[i].top;
          cont_zone_bottom=g_order_blocks[i].bottom;
@@ -22268,6 +22918,7 @@ void UpdateAnalyticalScalePlan(const int total)
          if(g_order_blocks[i].source_displacement_bar<=cont1_bar) continue;
          if(g_order_blocks[i].source_displacement_bar>cont2_bar) continue;
          if(g_order_blocks[i].state=="MITIGATED") continue;
+         if(g_order_blocks[i].state=="EXPIRED") continue;   // AUDIT-OB1: sticky
          z2_top=g_order_blocks[i].top; z2_bottom=g_order_blocks[i].bottom;
          have_z2=true; break;
       }
@@ -23048,7 +23699,25 @@ void DetectOrderBlocks(const int total,const double &o[],const double &h[],const
       if(ob_bar<0) continue;
 
       double ob_top,ob_bottom;
-      if(st.bullish){ob_top=MathMax(o[ob_bar],c[ob_bar]); ob_bottom=l[ob_bar];}
+      // AUDIT-OB1 OPT-IN GEOMETRY. The DEFAULT below is unchanged and is a hybrid:
+      // the body edge on the close side plus the wick on the rejection side (a
+      // bullish block runs from the body top down to the candle low), trimmed to the
+      // pure body further down only when it is taller than InpOBMaxHeightATR x ATR.
+      // The flag adds the pure-body variant some traders prefer. A doji body thinner
+      // than one point is rejected rather than published as a zero-height zone.
+      // NOTE ON IDENTITY: GenerateOBId() hashes top and bottom (unlike GenerateFVGId,
+      // which deliberately excludes geometry), so the two geometries are two distinct
+      // identities. That is safe only because g_order_blocks is emptied on OnInit and
+      // again on every full rebuild, so flipping this input can never leave both
+      // variants of one candle alive at the same time. Changing it re-derives the
+      // whole registry from scratch on the next pass.
+      if(InpOBZoneBodyOnly)
+      {
+         ob_top=MathMax(o[ob_bar],c[ob_bar]);
+         ob_bottom=MathMin(o[ob_bar],c[ob_bar]);
+         if(ob_top-ob_bottom<_Point) continue;
+      }
+      else if(st.bullish){ob_top=MathMax(o[ob_bar],c[ob_bar]); ob_bottom=l[ob_bar];}
       else{ob_top=h[ob_bar]; ob_bottom=MathMin(o[ob_bar],c[ob_bar]);}
       double atr=(ob_bar<ArraySize(g_atr_buf) && g_atr_buf[ob_bar]>0.0) ? g_atr_buf[ob_bar] : g_atr;
       double height=ob_top-ob_bottom;
@@ -23734,6 +24403,11 @@ void ComputeHTFBias()
 void DetectJudasSwing(const int total,const datetime &t[],const double &h[],const double &l[],const double &c[])
 {
    g_judas=0; g_judas_bar=-1;
+   // AUDIT-SB1: reset the retained Asia range with the verdict it belongs to, so
+   // every early return below leaves the two consistent. Nothing here changes
+   // what DetectJudasSwing decides; it only stops discarding what it computed.
+   g_asia_range_valid=false; g_asia_range_high=0.0; g_asia_range_low=0.0;
+   g_asia_range_day_key=-1;
    int closed=total-2;
    if(closed<20) return;
 
@@ -23764,6 +24438,12 @@ void DetectJudasSwing(const int total,const datetime &t[],const double &h[],cons
       if(ld.hour>=InpAsianEnd && scan_from<0) scan_from=b;
    }
    if(asia_high<=-DBL_MAX/2 || asia_low>=DBL_MAX/2 || scan_from<0) return;
+   // AUDIT-SB1 PUBLISH THE ACCUMULATION LEG. These two values were already in
+   // hand and were previously dropped when the function returned. Power of 3
+   // reads them instead of recomputing a second Asia range, which is what keeps
+   // the two from ever disagreeing about the same session.
+   g_asia_range_high=asia_high; g_asia_range_low=asia_low;
+   g_asia_range_day_key=target_key; g_asia_range_valid=true;
 
    // v5.7.3 FIX (A6): the candidate window is exclusively bars whose local
    // hour is >= InpAsianEnd on the target local day. Pre-Asia hours of the
@@ -23785,6 +24465,3145 @@ void DetectJudasSwing(const int total,const datetime &t[],const double &h[],cons
    }
    g_judas=judas;
    g_judas_bar=judas_bar;
+}
+
+//====================================================================
+// AUDIT-SB1  POWER OF 3  +  SILVER BULLET   (DISPLAY ONLY)
+//
+// WHAT THESE TWO MODULES ARE. Both are READERS of state the file already
+// publishes on closed bars. Neither detects anything new, and neither can
+// authorize, arm, score into, or execute a trade:
+//
+//   POWER OF 3     DetectJudasSwing() already computes the Asia session range
+//                  (ACCUMULATION) and already detects a sweep of that range
+//                  with a close back inside it (MANIPULATION) - it published
+//                  g_judas and dropped the range. This names the phase and adds
+//                  the one leg that was missing: DISTRIBUTION, the closed-bar
+//                  move away from the manipulation extreme.
+//
+//   SILVER BULLET  The required sequence - liquidity sweep, then a structure
+//                  shift, then a fair value gap, then entry on the gap's
+//                  retrace - is already in the causal graph as CE_LIQ_SWEEP ->
+//                  CE_BOS/CE_CHOCH/CE_MSS -> CE_FVG, linked by parent_primary /
+//                  parent_secondary and walked by FindNearestCausalAncestor().
+//                  This adds only the TIME WINDOW and requires the whole chain
+//                  to be inside it.
+//
+// CAUSALITY. Everything is read from CLOSED bars. The Asia range comes from bars
+// whose Tokyo-local hour is inside the session window; the manipulation extreme
+// is g_buf_l/g_buf_h at g_judas_bar, a closed bar; distribution and invalidation
+// compare the last CLOSED close against it; the Silver Bullet chain is filtered
+// on availability_time / availability_bar, which the graph defines as its
+// authoritative closed decision bar. No forming bar and no future bar is read,
+// and a phase already published for a closed bar cannot change afterwards.
+//
+// NO REPAINT BY CONSTRUCTION: both adapters are called once per OnCalculate pass
+// and overwrite their own published state from scratch, so there is no latched
+// value that could survive the bar which invalidated it.
+//
+// SCORES ARE RULE-BASED CONFLUENCE COUNTS, NOT PROBABILITIES. Missing evidence
+// scores 0 - a leg is never awarded for free. No number produced here is a
+// likelihood of success and none is presented as one.
+//
+// COMPLEXITY, stated because this runs per OnCalculate pass: P3_Update is O(1).
+// SB_Update makes one pass over g_causal_events (bounded by
+// InpMaxCausalEventsKeep) and calls the ancestry BFS only for elements that are
+// a CE_FVG AND already inside the window AND inside the age bound, so the BFS
+// runs a handful of times at most. Both are skipped entirely while their enable
+// switch is false, which is the default - so the shipped cost is zero.
+//====================================================================
+
+string P3_PhaseName(const int phase)
+{
+   if(phase==(int)P3_PHASE_DISTRIBUTION)  return "DISTRIBUTION";
+   if(phase==(int)P3_PHASE_MANIPULATION)  return "MANIPULATION";
+   if(phase==(int)P3_PHASE_ACCUMULATION)  return "ACCUMULATION";
+   if(phase==(int)P3_PHASE_NONE)          return "NONE";
+   return "UNKNOWN";
+}
+
+// The PURE phase order. No global, no series and no terminal call is read in
+// here, which is what makes it exercisable by SBP3_SelfTest() with local values
+// only, and transcribable 1:1 by tools/test_phase2_modules.py.
+//
+// `judas` is the direction DetectJudasSwing already published: +1 when the Asia
+// LOWS were swept and that bar closed back inside (so distribution is expected
+// UP), -1 when the Asia HIGHS were swept (distribution expected DOWN), 0 when
+// the range has not been swept. `distribution_atr` is the SIGNED closed-bar move
+// away from the manipulation extreme in ATR units - negative when price went the
+// wrong way, so it cannot confirm by accident.
+ENUM_P3_PHASE P3_Decide(const bool range_valid,const int judas,
+                        const double distribution_atr,const double min_distribution_atr,
+                        const bool invalidated,string &reason,string &invalidation)
+{
+   reason=""; invalidation="";
+
+   //--- (1) No range, no phase. Every other phase is defined relative to it.
+   if(!range_valid)
+   {
+      reason="no Asia session range resolved for the applicable local day";
+      return P3_PHASE_NONE;
+   }
+
+   //--- (2) An invalidated manipulation ENDS the sequence instead of leaving a
+   //---     stale phase on the card. A label that survived its own invalidation
+   //---     is exactly the contradiction the tactical-authority gate exists to
+   //---     prevent, so it is refused here on the same principle.
+   if(invalidated)
+   {
+      reason="the manipulation was invalidated - a closed bar returned through the sweep extreme";
+      invalidation="closed bar back through the manipulation extreme; the sequence is over";
+      return P3_PHASE_NONE;
+   }
+
+   //--- (3) The range exists and has not been swept: accumulation.
+   if(judas==0)
+   {
+      reason="the Asia range is formed and has not been swept";
+      return P3_PHASE_ACCUMULATION;
+   }
+
+   //--- (4) Distribution needs a positive threshold AND a move that actually
+   //---     reached it. A threshold of 0 or less confirms nothing, so no leg is
+   //---     ever awarded for free.
+   if(min_distribution_atr>0.0 && distribution_atr>=min_distribution_atr)
+   {
+      reason="distribution is following through away from the sweep";
+      invalidation="a closed bar back through the manipulation extreme";
+      return P3_PHASE_DISTRIBUTION;
+   }
+
+   //--- (5) Swept and closed back inside, but no qualifying follow-through yet.
+   reason="the Asia range was swept and closed back inside; waiting for distribution";
+   invalidation="a closed bar back through the manipulation extreme";
+   return P3_PHASE_MANIPULATION;
+}
+
+// PURE confluence count, 0-100. Each leg is worth what it is worth and a missing
+// leg is worth nothing: range 25, manipulation 35, distribution 40. An
+// invalidated sequence scores 0 rather than keeping credit it no longer has.
+int P3_Score(const bool range_valid,const int judas,const bool distribution,
+             const bool invalidated)
+{
+   if(invalidated) return 0;
+   int s=0;
+   if(range_valid) s+=25;
+   if(judas!=0) s+=35;
+   if(distribution) s+=40;
+   return (s>100?100:s);
+}
+
+// The adapter. It gathers the PUBLISHED closed-bar facts and nothing else, then
+// hands them to the pure order above - the same split as QSMC_BuildGeometry /
+// TacticalAuthorityDecide, so the decision rule is testable without a chart.
+void P3_Update(const int closed)
+{
+   g_p3_phase=P3_PHASE_NONE; g_p3_dir=0; g_p3_score=0;
+   g_p3_reason=""; g_p3_invalidation="";
+   if(!InpEnablePowerOf3) return;
+   if(closed<0 || closed>=ArraySize(g_buf_c)) return;
+   // The Asia range and its sweep are published by DetectJudasSwing, so Power of
+   // 3 depends on that EXISTING switch. Report the dependency rather than a phase
+   // derived from a range that was never computed.
+   if(!InpDetectJudas)
+   {
+      g_p3_reason="requires InpDetectJudas: the Asia range and its sweep come from it";
+      return;
+   }
+
+   // The ATR of the CLOSED bar, from the per-bar history when it is available -
+   // the same fallback idiom the rest of the file uses.
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ? g_atr_buf[closed] : g_atr;
+
+   double dist_atr=0.0;
+   bool invalidated=false;
+   if(g_judas!=0 && g_judas_bar>=0 && g_judas_bar<ArraySize(g_buf_l) &&
+      g_judas_bar<ArraySize(g_buf_h))
+   {
+      // The manipulation extreme is the wick that took the range out: the low of
+      // the sweep bar when the lows were swept, the high when the highs were.
+      double extreme=(g_judas>0 ? g_buf_l[g_judas_bar] : g_buf_h[g_judas_bar]);
+      // Signed, so a move the wrong way is negative and cannot confirm.
+      double move=(g_judas>0 ? g_buf_c[closed]-extreme : extreme-g_buf_c[closed]);
+      if(atr>0.0) dist_atr=move/atr;
+      // Structural invalidation: a CLOSED bar back through that extreme.
+      invalidated=(g_judas>0 ? g_buf_c[closed]<extreme : g_buf_c[closed]>extreme);
+   }
+
+   string reason="",invalidation="";
+   ENUM_P3_PHASE ph=P3_Decide(g_asia_range_valid,g_judas,dist_atr,
+                              InpP3DistributionMinATR,invalidated,reason,invalidation);
+   g_p3_phase=ph;
+   // A direction exists only once the range has actually been swept; during
+   // accumulation there is nothing yet to lean on. MANIPULATION is published as
+   // prospective, which is why the card labels it as such.
+   g_p3_dir=((ph==P3_PHASE_MANIPULATION || ph==P3_PHASE_DISTRIBUTION) ? g_judas : 0);
+   g_p3_score=P3_Score(g_asia_range_valid,g_judas,ph==P3_PHASE_DISTRIBUTION,invalidated);
+   g_p3_invalidation=invalidation;
+   // Name the ACTUAL range so the reason quotes a level rather than implying one.
+   if(g_asia_range_valid && reason!="")
+      g_p3_reason=reason+" (Asia "+DoubleToString(g_asia_range_low,_Digits)+
+                   "-"+DoubleToString(g_asia_range_high,_Digits)+")";
+   else
+      g_p3_reason=reason;
+
+   if(InpLogLifecycleTransitions && ph!=P3_PHASE_NONE)
+      LogLifecycle(StringFormat("P3 %s dir=%+d score=%d %s",P3_PhaseName((int)ph),
+                                g_p3_dir,g_p3_score,g_p3_reason));
+}
+
+// The Silver Bullet clock. It deliberately does NOT invent a second time
+// conversion: raw server time IS broker-local time, and the New-York-local
+// variant is produced by the session clock that already exists, so broker offset
+// and DST are resolved exactly once, by the same code the sessions use. That is
+// what keeps the window and the kill zones from ever disagreeing about what time
+// it is.
+datetime SB_LocalTime(const datetime server_time)
+{
+   if(InpSBUseNYLocalTime) return SessionLocalTime(server_time,SESSION_NEWYORK);
+   return server_time;
+}
+
+// Minutes from local midnight, so a window is exact to the minute and is
+// independent of the chart timeframe.
+int SB_MinuteOfDay(const datetime server_time)
+{
+   MqlDateTime dt;
+   TimeToStruct(SB_LocalTime(server_time),dt);
+   return dt.hour*60+dt.min;
+}
+
+int SB_DayKey(const datetime server_time)
+{
+   return DateKey(SB_LocalTime(server_time));
+}
+
+// PURE window primitive. A window is [start, end) in minutes from local
+// midnight: the end minute is EXCLUSIVE, so consecutive windows never both claim
+// the same minute. start==end is an empty window and matches nothing rather than
+// matching everything. start>end is an overnight window and wraps.
+bool SB_MinuteInWindow(const int minute,const int start,const int end)
+{
+   if(minute<0 || minute>1439) return false;
+   if(start==end) return false;
+   if(start<end)  return (minute>=start && minute<end);
+   return (minute>=start || minute<end);
+}
+
+// Which configured window, if any, contains this local minute. Reads only inputs,
+// which are immutable, so it stays deterministic and transcribable.
+int SB_WindowAtMinute(const int minute_of_day)
+{
+   if(SB_MinuteInWindow(minute_of_day,InpSBWin1Start,InpSBWin1End)) return 0;
+   if(SB_MinuteInWindow(minute_of_day,InpSBWin2Start,InpSBWin2End)) return 1;
+   if(SB_MinuteInWindow(minute_of_day,InpSBWin3Start,InpSBWin3End)) return 2;
+   return -1;
+}
+
+// Is this event's availability inside the SAME window instance as the reference
+// closed bar? The day key is compared as well as the minute, because a leg from
+// an earlier day at the same minute of day is not part of this window. An
+// overnight window legitimately straddles midnight, so and only so the previous
+// local day is also admitted.
+bool SB_InWindow(const datetime server_time,const datetime ref_time,const int win)
+{
+   if(server_time<=0 || win<0 || win>2) return false;
+   int s=0,e=0;
+   if(win==0)     { s=InpSBWin1Start; e=InpSBWin1End; }
+   else if(win==1){ s=InpSBWin2Start; e=InpSBWin2End; }
+   else           { s=InpSBWin3Start; e=InpSBWin3End; }
+   if(!SB_MinuteInWindow(SB_MinuteOfDay(server_time),s,e)) return false;
+   int dk=SB_DayKey(server_time);
+   if(dk==SB_DayKey(ref_time)) return true;
+   // SessionLocalTime is a pure additive shift, so subtracting one day from the
+   // server time yields exactly the previous local calendar day.
+   if(s>e && dk==SB_DayKey(ref_time-86400)) return true;
+   return false;
+}
+
+// Resolve the sweep -> structure shift -> FVG ancestry for one candidate gap.
+// This walks ONLY the links the causal graph already published; it infers no
+// connection of its own and adds no parallel chain logic.
+bool SB_ChainComplete(const int fvg_index,int &shift_index,int &sweep_index)
+{
+   shift_index=-1; sweep_index=-1;
+   int n=ArraySize(g_causal_events);
+   if(fvg_index<0 || fvg_index>=n) return false;
+   // The single CE_FVG publication site sets confirmed=true and
+   // invalidated=filled_at_structure, so an unconfirmed or already-filled gap is
+   // not a Silver Bullet gap.
+   if(!g_causal_events[fvg_index].confirmed) return false;
+   // The structure shift the gap is attributed to. The file uses three names for
+   // a confirmed break, so all three are accepted - whichever the graph linked.
+   shift_index=FindNearestCausalAncestor(fvg_index,CE_MSS);
+   if(shift_index<0) shift_index=FindNearestCausalAncestor(fvg_index,CE_BOS);
+   if(shift_index<0) shift_index=FindNearestCausalAncestor(fvg_index,CE_CHOCH);
+   if(shift_index<0) return false;
+   // And the liquidity sweep that preceded that shift.
+   sweep_index=FindNearestCausalAncestor(shift_index,CE_LIQ_SWEEP);
+   return (sweep_index>=0);
+}
+
+// PURE confluence count, 0-100. Five legs at 20 each: window, sweep, shift, gap,
+// retrace. A leg that is absent scores 0 - there is no partial credit and no leg
+// is ever awarded for free.
+int SB_Score(const bool in_window,const bool has_sweep,const bool has_shift,
+             const bool has_fvg,const bool has_retrace)
+{
+   int s=0;
+   if(in_window)   s+=20;
+   if(has_sweep)   s+=20;
+   if(has_shift)   s+=20;
+   if(has_fvg)     s+=20;
+   if(has_retrace) s+=20;
+   return (s>100?100:s);
+}
+
+string SB_WindowName(const int win)
+{
+   int s=0,e=0;
+   if(win==0)     { s=InpSBWin1Start; e=InpSBWin1End; }
+   else if(win==1){ s=InpSBWin2Start; e=InpSBWin2End; }
+   else if(win==2){ s=InpSBWin3Start; e=InpSBWin3End; }
+   else return "none";
+   return StringFormat("SB%d %02d:%02d-%02d:%02d",win+1,s/60,s%60,e/60,e%60);
+}
+
+// The adapter. It resolves the window from the closed bar's own time, then asks
+// the EXISTING causal graph whether the whole required sequence is inside it.
+void SB_Update(const int closed)
+{
+   g_sb_active=false; g_sb_window=-1; g_sb_dir=0; g_sb_fvg=-1;
+   g_sb_entry_high=0.0; g_sb_entry_low=0.0;
+   g_sb_reason=""; g_sb_score=0; g_sb_invalidation="";
+   if(!InpEnableSilverBullet) return;
+   if(closed<0 || closed>=ArraySize(g_buf_t) || closed>=ArraySize(g_buf_c) ||
+      closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return;
+
+   const datetime ref_time=g_buf_t[closed];
+   int win=SB_WindowAtMinute(SB_MinuteOfDay(ref_time));
+   if(win<0)
+   {
+      g_sb_reason="stand aside: outside every configured Silver Bullet window";
+      return;
+   }
+   g_sb_window=win;
+
+   // ONE pass over the graph. It records which legs the window contains, so a
+   // stand-aside can name the missing leg instead of just saying "no setup", and
+   // it selects the newest CE_FVG whose ancestry is complete. The BFS is called
+   // only for a CE_FVG that is already in-window and in-age, so it runs a
+   // handful of times at most.
+   int n=ArraySize(g_causal_events);
+   bool have_sweep=false,have_shift=false,have_fvg=false;
+   int best=-1,best_shift=-1,best_sweep=-1;
+   datetime best_avail=0;
+   for(int i=0;i<n;i++)
+   {
+      if(g_causal_events[i].invalidated) continue;
+      datetime av=g_causal_events[i].availability_time;
+      if(av<=0) continue;
+      if(!SB_InWindow(av,ref_time,win)) continue;
+      int age=closed-g_causal_events[i].availability_bar;
+      if(age<0) continue;                                  // not yet available
+      if(InpSBChainMaxAgeBars>0 && age>InpSBChainMaxAgeBars) continue;
+      ENUM_CAUSAL_EVENT_TYPE ty=g_causal_events[i].type;
+      if(ty==CE_LIQ_SWEEP)                    { have_sweep=true; continue; }
+      if(ty==CE_BOS||ty==CE_CHOCH||ty==CE_MSS){ have_shift=true; continue; }
+      if(ty!=CE_FVG) continue;
+      have_fvg=true;
+      int sh=-1,sw=-1;
+      if(!SB_ChainComplete(i,sh,sw)) continue;
+      if(best>=0 && av<=best_avail) continue;              // newest chain wins
+      best=i; best_avail=av; best_shift=sh; best_sweep=sw;
+   }
+
+   if(best<0)
+   {
+      // Nothing is armed and nothing is authorized. The partial score still
+      // reports how much of the sequence formed, with the missing leg named, so
+      // the stand-aside is actionable rather than opaque.
+      string missing="";
+      if(!have_sweep)      missing="no liquidity sweep available inside the window";
+      else if(!have_shift) missing="no structure shift (BOS/CHoCH/MSS) available inside the window";
+      else if(!have_fvg)   missing="no fair value gap available inside the window";
+      else                 missing="the sweep-shift-FVG legs are present but not causally linked";
+      g_sb_reason="stand aside: "+missing;
+      g_sb_score=SB_Score(true,have_sweep,have_shift,have_fvg,false);
+      return;
+   }
+
+   g_sb_fvg=best;
+   g_sb_dir=(g_causal_events[best].bullish ? 1 : -1);
+   g_sb_entry_high=g_causal_events[best].top;
+   g_sb_entry_low=g_causal_events[best].bottom;
+
+   // Entry is on the gap's RETRACE, using the same convention
+   // ReevaluateFVGStateIncremental() already applies to an SFVG: price has come
+   // back into the zone, and has not closed through the far side of it. The
+   // graph's own `invalidated` only records a gap that was already filled when
+   // the structure formed, so a later fill is detected here from closed bars.
+   bool retrace=false,through=false;
+   if(g_sb_dir>0)
+   {
+      retrace=(g_buf_l[closed]<=g_sb_entry_high && g_buf_c[closed]>g_sb_entry_low);
+      through=(g_buf_c[closed]<=g_sb_entry_low);
+   }
+   else
+   {
+      retrace=(g_buf_h[closed]>=g_sb_entry_low && g_buf_c[closed]<g_sb_entry_high);
+      through=(g_buf_c[closed]>=g_sb_entry_high);
+   }
+
+   g_sb_invalidation="a closed bar through the far side of the FVG";
+   if(through)
+   {
+      g_sb_active=false;
+      g_sb_score=SB_Score(true,true,true,true,false);
+      g_sb_reason="stand aside: the Silver Bullet gap was closed through, the sequence is over";
+   }
+   else
+   {
+      g_sb_active=retrace;
+      g_sb_score=SB_Score(true,true,true,true,retrace);
+      if(retrace)
+         g_sb_reason="sweep -> shift -> FVG all inside the window and price has retraced into the gap";
+      else
+         g_sb_reason="sweep -> shift -> FVG all inside the window, waiting for the retrace into the gap";
+   }
+   g_sb_reason=g_sb_reason+" ("+SB_WindowName(win)+" "+
+               DoubleToString(g_sb_entry_low,_Digits)+"-"+
+               DoubleToString(g_sb_entry_high,_Digits)+")";
+
+   if(InpLogLifecycleTransitions)
+      LogLifecycle(StringFormat("SB win=%d dir=%+d active=%s score=%d fvg=%s %s",
+                                win,g_sb_dir,(g_sb_active?"true":"false"),g_sb_score,
+                                (best>=0?g_causal_events[best].id:"-"),g_sb_reason));
+}
+
+// Optional display of the Silver Bullet entry zone. It reuses DrawZoneBox(), so
+// the existing display gate, visual-band test and prefix cleanup all apply
+// unchanged, and it owns exactly ONE object - the object count cannot grow with
+// history. It is drawn from DrawQuantumDashboard(), which runs AFTER
+// PrepareDynamicRedraw() has swept the dynamic prefixes, so the zone is never
+// deleted after being drawn in the same pass.
+void SB_DrawEntryZone(const int closed)
+{
+   const string name=PFX+"SBP3_ENTRY";
+   if(!InpEnableSilverBullet || !InpSBShowEntryZone || !g_sb_active ||
+      g_sb_fvg<0 || !(g_sb_entry_high>g_sb_entry_low) ||
+      closed<6 || closed>=ArraySize(g_buf_t))
+   {
+      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
+      return;
+   }
+   datetime t1=g_buf_t[MathMax(0,closed-6)];
+   datetime t2=g_buf_t[closed];
+   color col=(g_sb_dir>0?clrDarkSeaGreen:clrTomato);
+   // The label states what this is: a conditional zone, not an authorized entry.
+   // Both modules are display only and cannot arm or authorize a trade.
+   DrawZoneBox(name,t1,g_sb_entry_high,t2,g_sb_entry_low,col,
+               "SILVER BULLET "+(g_sb_dir>0?"BUY":"SELL")+
+               " - CONDITIONAL - NOT AN ENTRY");
+}
+
+// Reset BOTH modules to their inert state.
+ Called when a new symbol/day context
+// arrives so a stale phase or window can never be displayed against fresh bars.
+void SBP3_Clear()
+{
+   g_p3_phase=P3_PHASE_NONE; g_p3_dir=0; g_p3_score=0;
+   g_p3_reason=""; g_p3_invalidation="";
+   g_sb_active=false; g_sb_window=-1; g_sb_dir=0; g_sb_fvg=-1;
+   g_sb_entry_high=0.0; g_sb_entry_low=0.0;
+   g_sb_reason=""; g_sb_score=0; g_sb_invalidation="";
+}
+
+// AUDIT-SB1 self-test. It exercises the PURE cores of both modules with local
+// values only - no chart, no series, no terminal state - so a logic regression is
+// caught at OnInit instead of on a live bar. The window checks are derived from
+// the CURRENT input values rather than from hardcoded minutes, so they stay
+// correct whatever windows the user configures. Gated by InpMTEERunSelfTest, the
+// file's existing general self-test switch.
+bool SBP3_SelfTest(string &where)
+{
+   where="";
+   string r="",iv="";
+
+   // SBP3-1 The phase order: no range -> no phase; an unswept range is
+   //        ACCUMULATION; a sweep without follow-through is MANIPULATION; a
+   //        sweep with a qualifying follow-through is DISTRIBUTION, on both sides.
+   if(P3_Decide(false,1,5.0,1.0,false,r,iv)!=P3_PHASE_NONE || r=="")
+   { where="SBP3-1 no Asia range must mean no phase, and must say so"; return false; }
+   if(P3_Decide(true,0,0.0,1.0,false,r,iv)!=P3_PHASE_ACCUMULATION)
+   { where="SBP3-1 an unswept range is ACCUMULATION"; return false; }
+   if(P3_Decide(true,1,0.5,1.0,false,r,iv)!=P3_PHASE_MANIPULATION)
+   { where="SBP3-1 a sweep below the distribution threshold is MANIPULATION"; return false; }
+   if(P3_Decide(true,1,1.5,1.0,false,r,iv)!=P3_PHASE_DISTRIBUTION || iv=="")
+   { where="SBP3-1 a qualifying follow-through up is DISTRIBUTION with an invalidation"; return false; }
+   if(P3_Decide(true,-1,2.0,1.0,false,r,iv)!=P3_PHASE_DISTRIBUTION)
+   { where="SBP3-1 the bearish side must reach DISTRIBUTION the same way"; return false; }
+
+   // SBP3-2 An invalidated manipulation ENDS the sequence. It must outrank a
+   //        distribution that would otherwise have confirmed, and it must carry
+   //        the invalidation - a phase that survived its own invalidation is the
+   //        exact contradiction this file refuses elsewhere.
+   if(P3_Decide(true,1,5.0,1.0,true,r,iv)!=P3_PHASE_NONE || iv=="")
+   { where="SBP3-2 an invalidated manipulation must end the sequence, outranking distribution"; return false; }
+
+   // SBP3-3 Distribution is never a free point. A non-positive threshold must
+   //        NOT confirm, and a move in the wrong direction (signed, so negative)
+   //        must not confirm either. The threshold itself is inclusive.
+   if(P3_Decide(true,1,5.0,0.0,false,r,iv)==P3_PHASE_DISTRIBUTION)
+   { where="SBP3-3 a zero distribution threshold must not confirm distribution"; return false; }
+   if(P3_Decide(true,1,5.0,-1.0,false,r,iv)==P3_PHASE_DISTRIBUTION)
+   { where="SBP3-3 a negative distribution threshold must not confirm distribution"; return false; }
+   if(P3_Decide(true,1,-3.0,1.0,false,r,iv)==P3_PHASE_DISTRIBUTION)
+   { where="SBP3-3 a move away from the expected side must not confirm distribution"; return false; }
+   if(P3_Decide(true,1,1.0,1.0,false,r,iv)!=P3_PHASE_DISTRIBUTION)
+   { where="SBP3-3 the distribution threshold is inclusive (move == min confirms)"; return false; }
+
+   // SBP3-4 Score arithmetic: range 25, manipulation 35, distribution 40. No
+   //        evidence scores 0, the full sequence scores exactly 100, and an
+   //        invalidated sequence gives the credit back.
+   if(P3_Score(false,0,false,false)!=0)
+   { where="SBP3-4 no evidence must score 0"; return false; }
+   if(P3_Score(true,0,false,false)!=25)
+   { where="SBP3-4 the range leg is worth 25"; return false; }
+   if(P3_Score(true,1,false,false)!=60)
+   { where="SBP3-4 range + manipulation is worth 60"; return false; }
+   if(P3_Score(true,-1,true,false)!=100)
+   { where="SBP3-4 the full sequence is worth exactly 100"; return false; }
+   if(P3_Score(true,1,true,true)!=0)
+   { where="SBP3-4 an invalidated sequence must score 0, not keep its credit"; return false; }
+
+   // SBP3-5 The window primitive is [start, end): start inclusive, end EXCLUSIVE
+   //        so consecutive windows never both claim a minute; start==end is an
+   //        empty window that matches nothing rather than everything; start>end
+   //        wraps overnight; out-of-range minutes match nothing.
+   if(!SB_MinuteInWindow(180,180,240) || !SB_MinuteInWindow(239,180,240))
+   { where="SBP3-5 the window start is inclusive"; return false; }
+   if(SB_MinuteInWindow(240,180,240) || SB_MinuteInWindow(179,180,240))
+   { where="SBP3-5 the window end is exclusive and the outside is outside"; return false; }
+   if(SB_MinuteInWindow(60,60,60) || SB_MinuteInWindow(59,60,60))
+   { where="SBP3-5 an empty window (start == end) must match nothing"; return false; }
+   if(!SB_MinuteInWindow(1380,1380,120) || !SB_MinuteInWindow(60,1380,120) ||
+      !SB_MinuteInWindow(119,1380,120))
+   { where="SBP3-5 an overnight window must wrap past midnight"; return false; }
+   if(SB_MinuteInWindow(120,1380,120) || SB_MinuteInWindow(700,1380,120))
+   { where="SBP3-5 an overnight window must still exclude the hours between"; return false; }
+   if(SB_MinuteInWindow(-1,0,1440) || SB_MinuteInWindow(1440,0,1440))
+   { where="SBP3-5 a minute outside 0..1439 must match nothing"; return false; }
+
+   // SBP3-6 SB_WindowAtMinute must return the FIRST configured window that claims
+   //        the minute, and -1 when none does - exhaustively, over every minute of
+   //        the day, against the CURRENT inputs rather than hardcoded windows.
+   for(int m=0;m<1440;m++)
+   {
+      int expect=-1;
+      if(SB_MinuteInWindow(m,InpSBWin1Start,InpSBWin1End))      expect=0;
+      else if(SB_MinuteInWindow(m,InpSBWin2Start,InpSBWin2End)) expect=1;
+      else if(SB_MinuteInWindow(m,InpSBWin3Start,InpSBWin3End)) expect=2;
+      if(SB_WindowAtMinute(m)!=expect)
+      { where="SBP3-6 window precedence drifted at minute "+IntegerToString(m); return false; }
+   }
+
+   // SBP3-7 Score arithmetic: five legs at 20 each. No evidence scores 0, the
+   //        full chain scores exactly 100, and a missing retrace costs its 20
+   //        rather than being rounded up.
+   if(SB_Score(false,false,false,false,false)!=0)
+   { where="SBP3-7 no evidence must score 0"; return false; }
+   if(SB_Score(true,false,false,false,false)!=20)
+   { where="SBP3-7 the window leg alone is worth 20"; return false; }
+   if(SB_Score(true,true,true,true,false)!=80)
+   { where="SBP3-7 a chain without its retrace is worth 80, not 100"; return false; }
+   if(SB_Score(true,true,true,true,true)!=100)
+   { where="SBP3-7 the full Silver Bullet chain is worth exactly 100"; return false; }
+
+   // SBP3-8 The phase vocabulary is complete and distinct, so a card can never
+   //        print a blank or a duplicate label for a real phase.
+   if(P3_PhaseName((int)P3_PHASE_NONE)!="NONE" ||
+      P3_PhaseName((int)P3_PHASE_ACCUMULATION)!="ACCUMULATION" ||
+      P3_PhaseName((int)P3_PHASE_MANIPULATION)!="MANIPULATION" ||
+      P3_PhaseName((int)P3_PHASE_DISTRIBUTION)!="DISTRIBUTION")
+   { where="SBP3-8 the Power of 3 phase names drifted"; return false; }
+   if(P3_PhaseName(999)!="UNKNOWN")
+   { where="SBP3-8 an out-of-range phase must be labelled UNKNOWN, not guessed"; return false; }
+
+   // SBP3-9 The ancestry resolver must refuse an out-of-range index instead of
+   //        reading past the graph, and must leave both outputs unset when it does.
+   {
+      int sh=7,sw=7;
+      if(SB_ChainComplete(-1,sh,sw) || sh!=-1 || sw!=-1)
+      { where="SBP3-9 a negative graph index must be refused and must reset its outputs"; return false; }
+      sh=7; sw=7;
+      if(SB_ChainComplete(ArraySize(g_causal_events),sh,sw) || sh!=-1 || sw!=-1)
+      { where="SBP3-9 an index past the graph must be refused and must reset its outputs"; return false; }
+   }
+   return true;
+}
+
+
+
+//====================================================================
+// AUDIT-WY1  WYCKOFF SPRING / UPTHRUST   (DISPLAY ONLY)
+//
+// WHAT IS NEW AND WHAT IS REUSED. Only the RANGE GEOMETRY is new, because
+// nothing in this file measured a TIGHT consolidation before: DetectDealingRange()
+// finds the swing range for premium/discount and is meant to be large, and the
+// EQH/EQL pools in g_liquidity[] cluster equal fractal levels but keep no touch
+// count, so neither can answer "at least two tests of each side".
+//
+// Everything else is reused, deliberately:
+//   - the sweep confirmation is SweepHasDisplacementOrVolume(), which already
+//     tests displacement (body >= 0.40 ATR or range >= 0.75 ATR) OR relative
+//     volume (>= 1.6x the 20-bar average) on the tick volume already in
+//     g_buf_tv. No new volume source is introduced, and no second opinion about
+//     what makes a sweep credible.
+//   - the minimum wick beyond a boundary is the SAME threshold that function
+//     already enforces (0.15 ATR, with a 3-pip floor), so a Spring here and a
+//     credible sweep there can never disagree about the same wick.
+//   - the touch tolerance follows DetectLiquidity()'s idiom: an ATR multiple with
+//     a PipSize() floor, so it is symbol- and timeframe-agnostic.
+//   - closed bars use the file's own convention (closed = total - 2).
+//
+// RECONCILED WITH JUDAS, NOT DUPLICATED. DetectJudasSwing() sweeps the ASIA
+// SESSION range once per local day; this sweeps a STRUCTURAL range in any
+// session. They are different ranges, so both can legitimately fire on the same
+// bar. When they agree, the reason says so. When they point opposite ways the
+// module sets g_wy_conflict and scores 0 rather than showing one confident
+// direction - two sources disagreeing about the same bar is a reason to stand
+// aside, not partial evidence for either side.
+//
+// CAUSALITY. The range window always ends at closed-1 and the test bar is
+// closed, so the bar being tested is by construction outside the range it
+// pierces - a Spring can never widen its own range. Every input is a closed bar.
+//
+// NO REPAINT, AND REPLAY-DETERMINISTIC. Nothing is latched between passes: each
+// pass RE-DERIVES the most recent qualifying event by scanning back over closed
+// bars. A full rebuild therefore reproduces exactly what the incremental passes
+// published, which is what makes a timeframe switch a valid no-repaint test. An
+// event already invalidated by a later closed bar is reported as invalidated
+// rather than being shown as live, and an older event is never resurrected to
+// replace it.
+//
+// SCORES ARE RULE-BASED CONFLUENCE COUNTS, NOT PROBABILITIES. Missing evidence
+// scores 0 and no leg is ever awarded for free.
+//
+// COMPLEXITY, stated because this runs once per newly closed bar: the scan is
+// bounded by InpWyckoffMaxAgeBars candidate bars, and for each one the leftward
+// expansion stops as soon as the running height exceeds InpWyckoffMaxRangeATR -
+// which in a trending market is only a few bars - and in any case never runs past
+// InpWyckoffMaxRangeBars. It is skipped entirely while InpEnableWyckoff is false,
+// which is the default, so the shipped cost is zero.
+//====================================================================
+
+string WY_EventName(const int event)
+{
+   if(event==(int)WY_EVENT_SPRING)   return "SPRING";
+   if(event==(int)WY_EVENT_UPTHRUST) return "UPTHRUST";
+   if(event==(int)WY_EVENT_NONE)     return "NONE";
+   return "UNKNOWN";
+}
+
+// The PURE range test. `height_atr` is the range height divided by ATR, and the
+// caller passes a negative value when ATR is unavailable - an unmeasured range is
+// not a valid range, and a non-positive cap would accept anything including a
+// trend, so neither is given the benefit of the doubt.
+bool WY_RangeValid(const int bars_in_range,const int min_bars,const double height_atr,
+                   const double max_height_atr,const int touches_high,const int touches_low,
+                   const int min_touches)
+{
+   // A range needs at least three bars to have two sides and something between them.
+   if(bars_in_range<3) return false;
+   if(min_bars>0 && bars_in_range<min_bars) return false;
+   if(max_height_atr<=0.0) return false;
+   if(!(height_atr>0.0)) return false;
+   if(height_atr>=max_height_atr) return false;
+   if(min_touches>0)
+   {
+      if(touches_high<min_touches) return false;
+      if(touches_low<min_touches) return false;
+   }
+   return true;
+}
+
+// The PURE event test. The four booleans are already resolved by the caller from
+// closed bars, so this decides nothing about price and cannot read a series.
+ENUM_WYCKOFF_EVENT WY_Detect(const bool range_valid,const bool pierced_low,
+                             const bool closed_above_low,const bool pierced_high,
+                             const bool closed_below_high,string &reason,string &invalidation)
+{
+   reason=""; invalidation="";
+   if(!range_valid)
+   {
+      reason="no qualifying Wyckoff range on the closed bars";
+      return WY_EVENT_NONE;
+   }
+   bool spring  =(pierced_low  && closed_above_low);
+   bool upthrust=(pierced_high && closed_below_high);
+
+   // A bar that pierced BOTH boundaries and still closed inside says nothing about
+   // which side won. Naming one would be a guess, so this refuses - the same
+   // principle that makes a conflicting source produce NO TRADE rather than a
+   // forced direction.
+   if(spring && upthrust)
+   {
+      reason="both boundaries were pierced on the same bar and it closed inside - no side";
+      return WY_EVENT_NONE;
+   }
+   if(spring)
+   {
+      reason="the range low was pierced and the bar closed back inside the range";
+      invalidation="a closed bar below the spring's wick low";
+      return WY_EVENT_SPRING;
+   }
+   if(upthrust)
+   {
+      reason="the range high was pierced and the bar closed back inside the range";
+      invalidation="a closed bar above the upthrust's wick high";
+      return WY_EVENT_UPTHRUST;
+   }
+   // Pierced but CLOSED OUTSIDE is a break of the range, not a Spring or an
+   // Upthrust. Calling it one would be the single most expensive mistake this
+   // module could make, so it gets its own explicit answer.
+   if(pierced_low)
+   {
+      reason="the range low was pierced but the bar closed BELOW it - a break, not a spring";
+      return WY_EVENT_NONE;
+   }
+   if(pierced_high)
+   {
+      reason="the range high was pierced but the bar closed ABOVE it - a break, not an upthrust";
+      return WY_EVENT_NONE;
+   }
+   reason="the range held - no boundary was pierced and closed back inside";
+   return WY_EVENT_NONE;
+}
+
+// PURE confluence count, 0-100: range 25, two touches per side 20, the event
+// itself 30, volume/displacement confirmation 25. A conflicted event scores 0.
+int WY_Score(const bool range_valid,const bool touches_ok,const bool event_ok,
+             const bool volume_ok,const bool conflicted)
+{
+   if(conflicted) return 0;
+   int s=0;
+   if(range_valid) s+=25;
+   if(touches_ok)  s+=20;
+   if(event_ok)    s+=30;
+   if(volume_ok)   s+=25;
+   return (s>100?100:s);
+}
+
+// Expand left from `end_bar` while the running height stays inside the ATR cap,
+// then count how many bars tested each boundary. This is the only genuinely new
+// geometry in the module. Reads series, so it is an adapter helper, not a pure one.
+bool WY_BuildRange(const int end_bar,const double atr,const int max_bars,const double max_height_atr,
+                   const double touch_tol,int &start_bar,double &hi,double &lo,
+                   int &touches_high,int &touches_low)
+{
+   start_bar=-1; hi=0.0; lo=0.0; touches_high=0; touches_low=0;
+   int n_h=ArraySize(g_buf_h), n_l=ArraySize(g_buf_l);
+   if(end_bar<0 || end_bar>=n_h || end_bar>=n_l) return false;
+   if(atr<=0.0 || max_height_atr<=0.0 || max_bars<3) return false;
+
+   hi=g_buf_h[end_bar]; lo=g_buf_l[end_bar];
+   int s=end_bar;
+   int floor_bar=MathMax(0,end_bar-(max_bars-1));
+   for(int b=end_bar-1;b>=floor_bar;b--)
+   {
+      double n_hi=MathMax(hi,g_buf_h[b]);
+      double n_lo=MathMin(lo,g_buf_l[b]);
+      // Stop BEFORE accepting a bar that would blow the height cap, so the
+      // published range is always inside it.
+      if((n_hi-n_lo)/atr>=max_height_atr) break;
+      hi=n_hi; lo=n_lo; s=b;
+   }
+   int bars=end_bar-s+1;
+   if(bars<3) return false;
+
+   // A touch is a wick that came within tolerance of the boundary. Tolerance is an
+   // ATR multiple with a PipSize floor, following DetectLiquidity()'s idiom.
+   double tol=(touch_tol>0.0 ? MathMax(atr*touch_tol,2.0*PipSize()) : MathMax(atr*0.25,2.0*PipSize()));
+   for(int b=s;b<=end_bar;b++)
+   {
+      if(g_buf_h[b]>=hi-tol) touches_high++;
+      if(g_buf_l[b]<=lo+tol) touches_low++;
+   }
+   start_bar=s;
+   return true;
+}
+
+// The adapter. It re-derives everything from closed bars on every pass.
+void WY_Update(const int closed)
+{
+   g_wy_range_valid=false; g_wy_range_start=-1; g_wy_range_end=-1;
+   g_wy_range_high=0.0; g_wy_range_low=0.0;
+   g_wy_touches_high=0; g_wy_touches_low=0;
+   g_wy_event=WY_EVENT_NONE; g_wy_dir=0; g_wy_bar=-1; g_wy_extreme=0.0;
+   g_wy_active=false; g_wy_volume_ok=false; g_wy_conflict=false;
+   g_wy_score=0; g_wy_reason=""; g_wy_invalidation="";
+   if(!InpEnableWyckoff) return;
+   if(closed<3) return;
+   int n_c=ArraySize(g_buf_c), n_h=ArraySize(g_buf_h), n_l=ArraySize(g_buf_l);
+   if(closed>=n_c || closed>=n_h || closed>=n_l) return;
+
+   // The file's ATR idiom: per-bar history when available, scalar fallback otherwise.
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ? g_atr_buf[closed] : g_atr;
+   if(atr<=0.0)
+   {
+      g_wy_reason="stand aside: ATR is not available yet, so the range cannot be measured";
+      return;
+   }
+
+   int max_bars=MathMax(3,InpWyckoffMaxRangeBars);
+   int lookback=(InpWyckoffMaxAgeBars>0 ? InpWyckoffMaxAgeBars : 0);
+   // The minimum wick beyond a boundary is the SAME threshold
+   // SweepHasDisplacementOrVolume() already enforces, so this module cannot invent
+   // a second, looser idea of what counts as a pierce.
+   double wick_tol=MathMax(atr*0.15,3.0*PipSize());
+
+   int first_bar=MathMax(3,closed-lookback);
+   for(int b=closed;b>=first_bar;b--)
+   {
+      int s=-1,th=0,tl=0;
+      double hi=0.0,lo=0.0;
+      bool have=WY_BuildRange(b-1,atr,max_bars,InpWyckoffMaxRangeATR,
+                              InpWyckoffTouchTolATR,s,hi,lo,th,tl);
+
+      // The CURRENT range is published even when no event fires, so the box on the
+      // chart and the tooltip always describe the live closed bars.
+      if(b==closed)
+      {
+         g_wy_range_start=s; g_wy_range_end=b-1;
+         g_wy_range_high=hi; g_wy_range_low=lo;
+         g_wy_touches_high=th; g_wy_touches_low=tl;
+         int bars=(have? (b-1)-s+1 : 0);
+         g_wy_range_valid=(have && WY_RangeValid(bars,InpWyckoffMinRangeBars,
+                            (hi-lo)/atr,InpWyckoffMaxRangeATR,th,tl,InpWyckoffMinTouches));
+      }
+      if(!have) continue;
+
+      int bars=(b-1)-s+1;
+      bool range_ok=WY_RangeValid(bars,InpWyckoffMinRangeBars,(hi-lo)/atr,
+                                  InpWyckoffMaxRangeATR,th,tl,InpWyckoffMinTouches);
+      bool pierced_low  =(g_buf_l[b]<lo-wick_tol);
+      bool pierced_high =(g_buf_h[b]>hi+wick_tol);
+      bool closed_above_low =(g_buf_c[b]>lo);
+      bool closed_below_high=(g_buf_c[b]<hi);
+
+      string reason="",invalidation="";
+      ENUM_WYCKOFF_EVENT ev=WY_Detect(range_ok,pierced_low,closed_above_low,
+                                      pierced_high,closed_below_high,reason,invalidation);
+      if(ev==WY_EVENT_NONE) continue;
+
+      int dir=(ev==WY_EVENT_SPRING ? 1 : -1);
+      bool is_high=(ev==WY_EVENT_UPTHRUST);
+      double level=(is_high?hi:lo);
+      // Confirmation reuses the existing sweep validator rather than a new one.
+      bool vol_ok=true;
+      if(InpWyckoffRequireVolume)
+         vol_ok=SweepHasDisplacementOrVolume(b,is_high,level,atr,
+                                             g_buf_h,g_buf_l,g_buf_o,g_buf_c,g_buf_tv);
+      if(InpWyckoffRequireVolume && !vol_ok) continue;
+
+      // RECONCILE WITH JUDAS. Same bar, opposite verdicts: report the conflict and
+      // score 0 instead of showing a direction that another module contradicts.
+      bool judas_same_bar=(InpDetectJudas && g_judas!=0 && g_judas_bar==b);
+      bool conflict=(judas_same_bar && g_judas!=dir);
+
+      double extreme=(ev==WY_EVENT_SPRING ? g_buf_l[b] : g_buf_h[b]);
+      // An event already invalidated by a LATER closed bar is reported as
+      // invalidated, not shown as live - and no older event is resurrected to
+      // replace it, because the most recent one is the one that matters.
+      bool dead=false;
+      for(int k=b+1;k<=closed;k++)
+      {
+         if(ev==WY_EVENT_SPRING   && g_buf_c[k]<extreme){ dead=true; break; }
+         if(ev==WY_EVENT_UPTHRUST && g_buf_c[k]>extreme){ dead=true; break; }
+      }
+
+      bool touches_ok=(th>=MathMax(1,InpWyckoffMinTouches) &&
+                       tl>=MathMax(1,InpWyckoffMinTouches));
+      g_wy_event=(int)ev; g_wy_bar=b; g_wy_extreme=extreme;
+      g_wy_dir=(dead||conflict ? 0 : dir);
+      g_wy_active=(!dead && !conflict);
+      g_wy_volume_ok=vol_ok;
+      g_wy_conflict=conflict;
+      g_wy_score=WY_Score(range_ok,touches_ok,true,vol_ok,conflict);
+      g_wy_invalidation=(dead?"already invalidated":invalidation);
+      g_wy_reason=reason+
+         " (range "+DoubleToString(lo,_Digits)+"-"+DoubleToString(hi,_Digits)+
+         ", "+IntegerToString(bars)+" bars, touches "+IntegerToString(th)+
+         "/"+IntegerToString(tl)+")";
+      if(dead)
+         g_wy_reason="INVALIDATED - "+g_wy_reason+
+                     "; a later closed bar went through the wick extreme";
+      else if(conflict)
+         g_wy_reason="CONFLICT - "+g_wy_reason+
+                     "; the Judas sweep of the Asia range points the other way on the same bar, so stand aside";
+      else if(judas_same_bar)
+         g_wy_reason=g_wy_reason+
+                     "; agrees with the Judas sweep of the Asia range on the same bar";
+      else if(!vol_ok)
+         g_wy_reason=g_wy_reason+"; no displacement or volume confirmation";
+
+      if(InpLogLifecycleTransitions && g_wy_active)
+         LogLifecycle(StringFormat("WYCKOFF %s dir=%+d bar=%d score=%d %s",
+                                   WY_EventName((int)ev),dir,b,g_wy_score,g_wy_reason));
+      break;
+   }
+}
+
+// Optional display of the range the event was measured against. Reuses
+// DrawZoneBox(), so the existing display gate, visual-band test and prefix
+// cleanup all apply unchanged, and it owns exactly ONE object.
+void WY_DrawRange(const int closed)
+{
+   const string name=PFX+"WY_RANGE";
+   if(!InpEnableWyckoff || !InpWyckoffShowRange || !g_wy_range_valid ||
+      !(g_wy_range_high>g_wy_range_low) || g_wy_range_start<0 ||
+      g_wy_range_end<0 || g_wy_range_end>=ArraySize(g_buf_t) ||
+      g_wy_range_start>=ArraySize(g_buf_t))
+   {
+      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
+      return;
+   }
+   datetime t1=g_buf_t[g_wy_range_start];
+   datetime t2=g_buf_t[MathMin(g_wy_range_end,closed)];
+   color col=(g_wy_active?(g_wy_dir>0?clrDarkSeaGreen:clrTomato):clrGray);
+   DrawZoneBox(name,t1,g_wy_range_high,t2,g_wy_range_low,col,
+               "WYCKOFF RANGE "+IntegerToString(g_wy_range_end-g_wy_range_start+1)+
+               " BARS - CONTEXT, NOT AN ENTRY");
+}
+
+// Reset to the inert state, beside the other module resets.
+void WY_Clear()
+{
+   g_wy_range_valid=false; g_wy_range_start=-1; g_wy_range_end=-1;
+   g_wy_range_high=0.0; g_wy_range_low=0.0;
+   g_wy_touches_high=0; g_wy_touches_low=0;
+   g_wy_event=WY_EVENT_NONE; g_wy_dir=0; g_wy_bar=-1; g_wy_extreme=0.0;
+   g_wy_active=false; g_wy_volume_ok=false; g_wy_conflict=false;
+   g_wy_score=0; g_wy_reason=""; g_wy_invalidation="";
+}
+
+
+// AUDIT-WY1 self-test. It exercises the PURE cores with local values only - no
+// chart, no series, no terminal state - so a logic regression is caught at OnInit
+// instead of on a live bar. Gated by InpMTEERunSelfTest, the file's existing
+// general self-test switch.
+bool WY_SelfTest(string &where)
+{
+   where="";
+   string r="",iv="";
+
+   // WY-1 A valid range: enough bars, height inside the cap, and at least the
+   //      required number of tests of EACH side.
+   if(!WY_RangeValid(20,16,4.0,6.0,3,3,2))
+   { where="WY-1 a 20-bar range of 4 ATR with 3 touches per side must be valid"; return false; }
+   if(WY_RangeValid(10,16,4.0,6.0,3,3,2))
+   { where="WY-1 a range shorter than InpWyckoffMinRangeBars must be rejected"; return false; }
+   if(WY_RangeValid(20,16,7.0,6.0,3,3,2))
+   { where="WY-1 a range taller than the cap is a trend, not a range"; return false; }
+   if(WY_RangeValid(20,16,4.0,6.0,1,3,2))
+   { where="WY-1 one touch of the upper boundary is not two"; return false; }
+   if(WY_RangeValid(20,16,4.0,6.0,3,1,2))
+   { where="WY-1 one touch of the lower boundary is not two"; return false; }
+   if(WY_RangeValid(20,16,6.0,6.0,3,3,2))
+   { where="WY-1 the height cap is exclusive (height == cap is too tall)"; return false; }
+
+   // WY-2 Nothing is given the benefit of the doubt. An unmeasured height, a
+   //      non-positive cap and a degenerate bar count all refuse, because each of
+   //      them would otherwise validate a range that was never really measured.
+   if(WY_RangeValid(20,16,-1.0,6.0,3,3,2))
+   { where="WY-2 an unmeasured height (ATR unavailable) must not validate"; return false; }
+   if(WY_RangeValid(20,16,0.0,6.0,3,3,2))
+   { where="WY-2 a zero height is degenerate and must not validate"; return false; }
+   if(WY_RangeValid(20,16,4.0,0.0,3,3,2))
+   { where="WY-2 a zero height cap would accept a trend and must be refused"; return false; }
+   if(WY_RangeValid(20,16,4.0,-1.0,3,3,2))
+   { where="WY-2 a negative height cap must be refused"; return false; }
+   if(WY_RangeValid(2,0,4.0,6.0,3,3,0))
+   { where="WY-2 fewer than three bars cannot have two sides"; return false; }
+
+   // WY-3 A Spring: the low is pierced and the bar closes back inside.
+   if(WY_Detect(true,true,true,false,false,r,iv)!=WY_EVENT_SPRING || iv=="")
+   { where="WY-3 a pierced low with a close back inside is a SPRING, with an invalidation"; return false; }
+
+   // WY-4 An Upthrust: the high is pierced and the bar closes back inside.
+   if(WY_Detect(true,false,false,true,true,r,iv)!=WY_EVENT_UPTHRUST || iv=="")
+   { where="WY-4 a pierced high with a close back inside is an UPTHRUST, with an invalidation"; return false; }
+
+   // WY-5 Both boundaries pierced and closed inside: refuses to name a side.
+   //      Guessing here would publish a direction the same bar contradicts.
+   if(WY_Detect(true,true,true,true,true,r,iv)!=WY_EVENT_NONE ||
+      StringFind(r,"both boundaries")<0)
+   { where="WY-5 a bar that pierced both sides and closed inside must refuse to pick one"; return false; }
+
+   // WY-6 Pierced but CLOSED OUTSIDE is a break, not a Spring/Upthrust, and must
+   //      say so rather than reporting that the range held.
+   if(WY_Detect(true,true,false,false,false,r,iv)!=WY_EVENT_NONE ||
+      StringFind(r,"break, not a spring")<0)
+   { where="WY-6 a close below the pierced low is a BREAK and must be named as one"; return false; }
+   if(WY_Detect(true,false,false,true,false,r,iv)!=WY_EVENT_NONE ||
+      StringFind(r,"break, not an upthrust")<0)
+   { where="WY-6 a close above the pierced high is a BREAK and must be named as one"; return false; }
+
+   // WY-7 No range, no event - however dramatic the bar was.
+   if(WY_Detect(false,true,true,true,true,r,iv)!=WY_EVENT_NONE || r=="")
+   { where="WY-7 without a valid range there is no Spring and no Upthrust"; return false; }
+   if(WY_Detect(true,false,true,false,true,r,iv)!=WY_EVENT_NONE ||
+      StringFind(r,"the range held")<0)
+   { where="WY-7 an unpierced range reports that it held"; return false; }
+
+   // WY-8 Score arithmetic: range 25, touches 20, event 30, confirmation 25. No
+   //      evidence scores 0, the full event scores exactly 100, and a CONFLICT
+   //      scores 0 - two sources disagreeing is a stand-aside, not partial credit.
+   if(WY_Score(false,false,false,false,false)!=0)
+   { where="WY-8 no evidence must score 0"; return false; }
+   if(WY_Score(true,false,false,false,false)!=25)
+   { where="WY-8 the range leg is worth 25"; return false; }
+   if(WY_Score(true,true,true,false,false)!=75)
+   { where="WY-8 an event without confirmation is worth 75, not 100"; return false; }
+   if(WY_Score(true,true,true,true,false)!=100)
+   { where="WY-8 the fully confirmed event is worth exactly 100"; return false; }
+   if(WY_Score(true,true,true,true,true)!=0)
+   { where="WY-8 a conflicted event must score 0, not keep its evidence"; return false; }
+
+   // WY-9 The event vocabulary is complete and distinct, so a card can never print
+   //      a blank or a duplicate label for a real event.
+   if(WY_EventName((int)WY_EVENT_NONE)!="NONE" ||
+      WY_EventName((int)WY_EVENT_SPRING)!="SPRING" ||
+      WY_EventName((int)WY_EVENT_UPTHRUST)!="UPTHRUST")
+   { where="WY-9 the Wyckoff event names drifted"; return false; }
+   if(WY_EventName(999)!="UNKNOWN")
+   { where="WY-9 an out-of-range event must be labelled UNKNOWN, not guessed"; return false; }
+   return true;
+}
+
+
+//====================================================================
+// AUDIT-PA1  PURE PRICE ACTION   (DISPLAY ONLY)
+//
+// WHAT ALREADY EXISTED, AND IS THEREFORE NOT REWRITTEN HERE.
+// AnalyzeClosedCandle() (defined far above) IS the unified pattern function the
+// brief asks for: one call, one pattern label, one 0-100 strength, covering nine
+// patterns - BULLISH/BEARISH_ENGULFING, MORNING/EVENING_STAR, HAMMER,
+// SHOOTING_STAR, PIERCING, DARK_CLOUD, DOJI and the two displacement candles.
+// A "Pin Bar" is not a separate pattern in this file and does not need to be: it
+// IS the HAMMER / SHOOTING_STAR geometry. CandleConfirmsDirection() already
+// enforces agreement between a pattern and a side.
+//
+// So this module reimplements none of that. It adds exactly two things:
+//
+//   1. INSIDE BAR - the one pattern from the brief that AnalyzeClosedCandle()
+//      does not detect. It existed only as g_pmi_pa.inside_bar inside PMI, so the
+//      unified answer was incomplete. It is added WITHOUT reordering the existing
+//      chain: INSIDE_BAR is reported only when AnalyzeClosedCandle() found
+//      nothing, so no bar that is classified today can be reclassified. In
+//      particular a small-bodied inside bar stays a DOJI, exactly as before.
+//
+//   2. THE ZONE RULE - "confirmation only inside a valid zone, never standalone".
+//      This is the part the file did NOT enforce. ContextualCandleScore() awards
+//      candle.score*0.45 with no zone requirement at all and then adds the zone as
+//      a BONUS (+12 zone_ok, +8 candle_in_zone), so a MORNING_STAR outside every
+//      zone still contributes about 40 points. PA_ResolveDirection() returns 0
+//      direction and PA_Score() returns 0 whenever there is no zone. The existing
+//      scorer is left alone except for one opt-in, default-OFF gate - see
+//      InpPARequireZoneContext - so nothing changes until an operator asks for it.
+//
+// ZONE SOURCES ARE THE EXISTING ONES, WITH THEIR OWN STATE VOCABULARY. The scan
+// reads g_order_blocks, g_fvgs, g_zones and the active g_mvp profile, and honours
+// the states those detectors already maintain: an order block that is MITIGATED or
+// EXPIRED is not a zone, an FVG that is FILLED is not a zone, an S/R zone that is
+// MITIGATED is not a zone. No parallel zone system, and no second opinion about
+// whether a zone is still alive. The POC validity test is the one the volume
+// profile already applies to itself.
+//
+// DIRECTION, AND WHY AN INSIDE BAR HAS NONE. A pattern that carries its own
+// direction (engulfing, star, hammer, shooting star, piercing, dark cloud,
+// displacement) keeps it. A pattern that does not - INSIDE_BAR and DOJI are both
+// compression, not reversal - takes the ZONE's direction instead, which is the
+// only honest reading: an inside bar inside a bullish order block is bullish
+// because of where it is, not because of what it is. When a directional pattern
+// CONTRADICTS the zone it sits in, the answer is 0 and the reason says CONFLICT,
+// rather than one of the two being quietly preferred.
+//
+// CAUSALITY. Everything is read from the closed bar and the one before it, via the
+// file's own closed-bar convention and its mirrored g_buf_* series. No forming bar
+// and no future bar is read, and nothing is latched between passes: PA_Update()
+// recomputes from scratch, so a full rebuild reproduces what the incremental
+// passes published.
+//
+// SCORES ARE RULE-BASED CONFLUENCE COUNTS, NOT PROBABILITIES. Missing evidence
+// scores 0 and no leg is ever awarded for free.
+//
+// COMPLEXITY: one AnalyzeClosedCandle() call (O(1)) plus one pass over each zone
+// array, all of which the file already caps (InpMaxStrongOB, InpMaxLiquidityKeep
+// and friends). Skipped entirely while InpEnablePriceAction is false, which is the
+// default, so the shipped cost is zero.
+//
+// KNOWN PRE-EXISTING DIVERGENCE, DELIBERATELY NOT CHANGED HERE. The MTF sniper's
+// C1 gate re-implements engulfing and a "pin bar" from scratch with looser
+// thresholds (lower_wick >= 0.50 * range) than AnalyzeClosedCandle() applies
+// (lower >= body*2.0 with close_location >= 0.62). They disagree: C1 accepts a bar
+// with a large upper wick and no rejection quality as a pin bar. Unifying them
+// would TIGHTEN an existing entry gate and change historical behavior, so it is
+// reported and pinned by tools/test_phase4_priceaction.py instead of being fixed.
+//====================================================================
+
+// PURE. Strict inequality, matching the test PMI already applies at
+// g_pmi_pa.inside_bar, so the two cannot disagree about the same two bars.
+bool PA_InsideBarGeometry(const double h,const double l,const double prev_h,const double prev_l)
+{
+   if(!(prev_h>0.0) || !(prev_l>0.0)) return false;   // an unknown parent bar is not an inside bar
+   if(!(h>0.0) || !(l>0.0)) return false;
+   return (h<prev_h && l>prev_l);
+}
+
+// PURE. The unified label. The existing chain is never reordered and never
+// overridden: a pattern AnalyzeClosedCandle() already named is returned as it is,
+// and INSIDE_BAR fills only the gap where it found nothing.
+string PA_UnifyPattern(const string candle_pattern,const bool inside_bar,
+                       const bool include_inside_bar)
+{
+   if(candle_pattern!="NONE" && candle_pattern!="") return candle_pattern;
+   if(include_inside_bar && inside_bar) return "INSIDE_BAR";
+   return "NONE";
+}
+
+// PURE. The strength that goes with the unified label. An inside bar carries no
+// reversal claim, so it is worth less than any named reversal pattern and its
+// value is an input rather than a number buried in the logic.
+int PA_UnifyStrength(const string candle_pattern,const int candle_score,
+                     const bool is_inside_bar,const int inside_bar_strength)
+{
+   if(is_inside_bar)
+   {
+      int s=inside_bar_strength;
+      if(s<0) s=0;
+      if(s>100) s=100;
+      return s;
+   }
+   if(candle_score<0) return 0;
+   if(candle_score>100) return 100;
+   return candle_score;
+}
+
+// PURE. Which patterns carry a direction of their own, and which do not. DOJI and
+// INSIDE_BAR are compression: they say price is coiling, not which way it breaks.
+int PA_PatternDirection(const string pattern)
+{
+   if(pattern=="BULLISH_ENGULFING" || pattern=="MORNING_STAR" || pattern=="HAMMER" ||
+      pattern=="PIERCING" || pattern=="BULLISH_DISPLACEMENT_CANDLE") return 1;
+   if(pattern=="BEARISH_ENGULFING" || pattern=="EVENING_STAR" || pattern=="SHOOTING_STAR" ||
+      pattern=="DARK_CLOUD" || pattern=="BEARISH_DISPLACEMENT_CANDLE") return -1;
+   return 0;
+}
+
+// PURE. A directional pattern inside a zone that points the other way is a
+// contradiction, and contradictions are surfaced rather than resolved by
+// preferring one source silently.
+bool PA_IsConflict(const int pattern_dir,const int zone_dir)
+{
+   return (pattern_dir!=0 && zone_dir!=0 && pattern_dir!=zone_dir);
+}
+
+// PURE, and this is the rule the brief actually asks for. No zone means no
+// direction: a candle pattern on its own is NOT confirmation, however strong it
+// looks. An undirectional pattern inside a zone takes the zone's direction.
+int PA_ResolveDirection(const bool in_zone,const int pattern_dir,const int zone_dir)
+{
+   if(!in_zone) return 0;
+   if(PA_IsConflict(pattern_dir,zone_dir)) return 0;
+   if(pattern_dir!=0) return pattern_dir;
+   return zone_dir;
+}
+
+// PURE confluence count, 0-100. Being inside a valid zone is worth 25 on its own,
+// the pattern contributes up to 45 scaled from its own strength, and a resolved
+// direction that the zone agrees with is worth 30. Outside a zone the answer is 0
+// - there is no partial credit for a standalone candle.
+int PA_Score(const bool in_zone,const int pattern_strength,const bool direction_agrees)
+{
+   if(!in_zone) return 0;
+   int s=25;
+   int strength=pattern_strength;
+   if(strength<0) strength=0;
+   if(strength>100) strength=100;
+   s+=(int)MathRound((double)strength*0.45);
+   if(direction_agrees) s+=30;
+   return (s>100?100:s);
+}
+
+// The zone scan. Returns the highest-priority LIVE zone containing `price`,
+// reading only what the existing detectors already published. Priority is
+// OB > FVG > S/R > POC: the causal zones first, the statistical level last.
+bool PA_ZoneAt(const double price,const int closed,const double atr,
+               string &name,double &top,double &bottom,int &dir)
+{
+   name=""; top=0.0; bottom=0.0; dir=0;
+   if(!(price>0.0) || closed<0) return false;
+   // The same tolerance idiom ContextualCandleScore() already uses for
+   // candle_in_zone, so "inside a zone" means the same thing in both places.
+   double tol=MathMax(_Point,(atr>0.0 ? atr*InpPAZoneToleranceATR : 0.0));
+
+   int i=0;
+   //--- order blocks: honour the state machine, including the EXPIRED state that
+   //--- AUDIT-OB1 added. A mitigated or expired block is not a zone to confirm at.
+   for(i=0;i<ArraySize(g_order_blocks);i++)
+   {
+      if(g_order_blocks[i].mitigated) continue;
+      if(g_order_blocks[i].state=="MITIGATED" || g_order_blocks[i].state=="EXPIRED") continue;
+      if(!(g_order_blocks[i].top>g_order_blocks[i].bottom)) continue;
+      if(price<=g_order_blocks[i].top+tol && price>=g_order_blocks[i].bottom-tol)
+      {
+         name="OB"; top=g_order_blocks[i].top; bottom=g_order_blocks[i].bottom;
+         dir=(g_order_blocks[i].bullish?1:-1);
+         return true;
+      }
+   }
+   //--- fair value gaps: a FILLED gap is history, not a zone.
+   for(i=0;i<ArraySize(g_fvgs);i++)
+   {
+      if(g_fvgs[i].filled) continue;
+      if(g_fvgs[i].state=="FILLED") continue;
+      if(!(g_fvgs[i].top>g_fvgs[i].bottom)) continue;
+      if(price<=g_fvgs[i].top+tol && price>=g_fvgs[i].bottom-tol)
+      {
+         name="FVG"; top=g_fvgs[i].top; bottom=g_fvgs[i].bottom;
+         dir=(g_fvgs[i].bullish?1:-1);
+         return true;
+      }
+   }
+   //--- support / resistance zones.
+   for(i=0;i<ArraySize(g_zones);i++)
+   {
+      if(g_zones[i].state=="MITIGATED") continue;
+      if(!(g_zones[i].top>g_zones[i].bottom)) continue;
+      if(price<=g_zones[i].top+tol && price>=g_zones[i].bottom-tol)
+      {
+         name="SR"; top=g_zones[i].top; bottom=g_zones[i].bottom;
+         dir=(g_zones[i].bullish?1:-1);
+         return true;
+      }
+   }
+   //--- the active volume-profile POC. A level, not a box, and it carries no
+   //--- direction of its own - which is exactly why a pattern is still needed.
+   //--- The validity test is the one the volume profile already applies to itself.
+   if(InpPAIncludePOC && InpUseMasterVolumeProfile &&
+      g_mvp_active>=0 && g_mvp_active<g_mvp_count && g_mvp[g_mvp_active].valid &&
+      g_mvp[g_mvp_active].bar_end>=0 && g_mvp[g_mvp_active].bar_end<=closed &&
+      g_mvp[g_mvp_active].poc>0.0)
+   {
+      if(MathAbs(price-g_mvp[g_mvp_active].poc)<=tol)
+      {
+         name="POC"; top=g_mvp[g_mvp_active].poc; bottom=g_mvp[g_mvp_active].poc;
+         dir=0;
+         return true;
+      }
+   }
+   return false;
+}
+
+// The adapter. It asks the EXISTING unified function for the pattern, adds the one
+// pattern that was missing, finds the zone from the arrays that already exist, and
+// then applies the rule that a pattern without a zone is not confirmation.
+void PA_Update(const int closed)
+{
+   g_pa_pattern="NONE"; g_pa_strength=0; g_pa_pattern_dir=0; g_pa_inside_bar=false;
+   g_pa_in_zone=false; g_pa_zone_name=""; g_pa_zone_top=0.0; g_pa_zone_bottom=0.0;
+   g_pa_zone_dir=0; g_pa_dir=0; g_pa_confirms=false; g_pa_score=0;
+   g_pa_reason=""; g_pa_invalidation="";
+   if(!InpEnablePriceAction) return;
+   if(closed<2 || closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_h) ||
+      closed>=ArraySize(g_buf_l) || closed>=ArraySize(g_buf_o)) return;
+
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ? g_atr_buf[closed] : g_atr;
+
+   // The existing unified function, unchanged and un-reimplemented.
+   SCandleIntel candle=AnalyzeClosedCandle(closed,g_buf_o,g_buf_h,g_buf_l,g_buf_c,atr);
+   bool inside=PA_InsideBarGeometry(g_buf_h[closed],g_buf_l[closed],
+                                    g_buf_h[closed-1],g_buf_l[closed-1]);
+   g_pa_inside_bar=inside;
+
+   g_pa_pattern=PA_UnifyPattern(candle.pattern,inside,InpPAIncludeInsideBar);
+   bool became_inside=(g_pa_pattern=="INSIDE_BAR");
+   g_pa_strength=PA_UnifyStrength(candle.pattern,candle.score,became_inside,
+                                  InpPAInsideBarStrength);
+   g_pa_pattern_dir=PA_PatternDirection(g_pa_pattern);
+
+   // The zone is tested at the CLOSED bar's close, which is the price that has to
+   // still be inside the zone for the pattern to mean anything.
+   g_pa_in_zone=PA_ZoneAt(g_buf_c[closed],closed,atr,g_pa_zone_name,
+                          g_pa_zone_top,g_pa_zone_bottom,g_pa_zone_dir);
+
+   bool conflict=PA_IsConflict(g_pa_pattern_dir,g_pa_zone_dir);
+   g_pa_dir=PA_ResolveDirection(g_pa_in_zone,g_pa_pattern_dir,g_pa_zone_dir);
+   bool agrees=(g_pa_dir!=0 && g_pa_dir==g_pa_zone_dir);
+   g_pa_confirms=(g_pa_dir!=0 && g_pa_strength>0);
+   g_pa_score=PA_Score(g_pa_in_zone,g_pa_strength,agrees);
+
+   if(!g_pa_in_zone)
+   {
+      // The whole point of the module: a standalone candle is not confirmation,
+      // and the reason says so instead of leaving a score of 0 unexplained.
+      g_pa_reason="stand aside: "+g_pa_pattern+" is not inside any valid zone"+
+                  " - a candle pattern on its own is not confirmation";
+      g_pa_invalidation="price is outside every live OB / FVG / S-R / POC";
+   }
+   else if(conflict)
+   {
+      g_pa_reason="CONFLICT - "+g_pa_pattern+" points against the "+g_pa_zone_name+
+                  " zone it sits in, so neither is preferred";
+      g_pa_invalidation="the pattern and the zone disagree about direction";
+   }
+   else if(g_pa_dir==0)
+   {
+      g_pa_reason=g_pa_pattern+" inside "+g_pa_zone_name+
+                  " carries no direction and the zone gives none";
+      g_pa_invalidation="no side is resolved";
+   }
+   else
+   {
+      g_pa_reason=g_pa_pattern+" inside "+g_pa_zone_name+
+                  " confirms "+(g_pa_dir>0?"the buy side":"the sell side");
+      g_pa_invalidation="a closed bar out of the zone, or against the pattern";
+   }
+   if(g_pa_in_zone)
+      g_pa_reason=g_pa_reason+" ("+g_pa_zone_name+" "+
+                  DoubleToString(g_pa_zone_bottom,_Digits)+"-"+
+                  DoubleToString(g_pa_zone_top,_Digits)+")";
+
+   if(InpLogLifecycleTransitions && g_pa_confirms)
+      LogLifecycle(StringFormat("PA %s strength=%d dir=%+d zone=%s score=%d %s",
+                                g_pa_pattern,g_pa_strength,g_pa_dir,g_pa_zone_name,
+                                g_pa_score,g_pa_reason));
+}
+
+// Reset to the inert state, beside the other module resets.
+void PA_Clear()
+{
+   g_pa_pattern="NONE"; g_pa_strength=0; g_pa_pattern_dir=0; g_pa_inside_bar=false;
+   g_pa_in_zone=false; g_pa_zone_name=""; g_pa_zone_top=0.0; g_pa_zone_bottom=0.0;
+   g_pa_zone_dir=0; g_pa_dir=0; g_pa_confirms=false; g_pa_score=0;
+   g_pa_reason=""; g_pa_invalidation="";
+}
+
+
+// AUDIT-PA1 self-test. It exercises the PURE cores with local values only - no
+// chart, no series, no terminal state - so a logic regression is caught at OnInit
+// instead of on a live bar. Gated by InpMTEERunSelfTest, the file's existing
+// general self-test switch.
+bool PA_SelfTest(string &where)
+{
+   where="";
+
+   // PA-1 Inside-bar geometry. Strict inequality, matching the test PMI already
+   //      applies, so an equal high or an equal low is NOT an inside bar.
+   if(!PA_InsideBarGeometry(101.0,99.0,102.0,98.0))
+   { where="PA-1 a bar strictly contained by its parent is an inside bar"; return false; }
+   if(PA_InsideBarGeometry(102.0,99.0,102.0,98.0))
+   { where="PA-1 an equal high is not an inside bar (the bound is strict)"; return false; }
+   if(PA_InsideBarGeometry(101.0,98.0,102.0,98.0))
+   { where="PA-1 an equal low is not an inside bar (the bound is strict)"; return false; }
+   if(PA_InsideBarGeometry(103.0,97.0,102.0,98.0))
+   { where="PA-1 an engulfing bar is not an inside bar"; return false; }
+   if(PA_InsideBarGeometry(101.0,99.0,0.0,0.0))
+   { where="PA-1 an unknown parent bar must not be guessed as an inside bar"; return false; }
+
+   // PA-2 Unification NEVER reclassifies. This is the property that keeps the
+   //      existing AnalyzeClosedCandle() output intact: a pattern it already named
+   //      is returned unchanged even when the bar is also an inside bar, and
+   //      INSIDE_BAR fills only the gap where it found nothing. Without this, a
+   //      small-bodied inside bar that is a DOJI today would silently become
+   //      INSIDE_BAR and change its score.
+   if(PA_UnifyPattern("DOJI",true,true)!="DOJI")
+   { where="PA-2 a DOJI that is also an inside bar must stay a DOJI"; return false; }
+   if(PA_UnifyPattern("HAMMER",true,true)!="HAMMER")
+   { where="PA-2 a named pattern is never overridden by INSIDE_BAR"; return false; }
+   if(PA_UnifyPattern("NONE",true,true)!="INSIDE_BAR")
+   { where="PA-2 INSIDE_BAR fills the gap where nothing else matched"; return false; }
+   if(PA_UnifyPattern("NONE",false,true)!="NONE")
+   { where="PA-2 a bar that is not an inside bar stays NONE"; return false; }
+   if(PA_UnifyPattern("NONE",true,false)!="NONE")
+   { where="PA-2 the inside-bar leg is switchable and off means off"; return false; }
+   if(PA_UnifyPattern("",true,true)!="INSIDE_BAR")
+   { where="PA-2 an empty pattern label is treated as no pattern"; return false; }
+
+   // PA-3 Strength mapping and clamping. An inside bar takes the configured value,
+   //      every other pattern keeps the strength AnalyzeClosedCandle() assigned.
+   if(PA_UnifyStrength("NONE",0,true,45)!=45)
+   { where="PA-3 an inside bar takes its configured strength"; return false; }
+   if(PA_UnifyStrength("MORNING_STAR",88,false,45)!=88)
+   { where="PA-3 a named pattern keeps its own strength"; return false; }
+   if(PA_UnifyStrength("NONE",0,true,999)!=100)
+   { where="PA-3 an out-of-range inside-bar strength is clamped to 100"; return false; }
+   if(PA_UnifyStrength("NONE",0,true,-5)!=0)
+   { where="PA-3 a negative inside-bar strength is clamped to 0"; return false; }
+   if(PA_UnifyStrength("X",150,false,45)!=100 || PA_UnifyStrength("X",-3,false,45)!=0)
+   { where="PA-3 an out-of-range candle score is clamped both ways"; return false; }
+
+   // PA-4 Direction vocabulary. Compression patterns carry NO direction of their
+   //      own - that is what makes the zone necessary rather than decorative.
+   if(PA_PatternDirection("BULLISH_ENGULFING")!=1 || PA_PatternDirection("MORNING_STAR")!=1 ||
+      PA_PatternDirection("HAMMER")!=1 || PA_PatternDirection("PIERCING")!=1 ||
+      PA_PatternDirection("BULLISH_DISPLACEMENT_CANDLE")!=1)
+   { where="PA-4 every bullish pattern must resolve to +1"; return false; }
+   if(PA_PatternDirection("BEARISH_ENGULFING")!=-1 || PA_PatternDirection("EVENING_STAR")!=-1 ||
+      PA_PatternDirection("SHOOTING_STAR")!=-1 || PA_PatternDirection("DARK_CLOUD")!=-1 ||
+      PA_PatternDirection("BEARISH_DISPLACEMENT_CANDLE")!=-1)
+   { where="PA-4 every bearish pattern must resolve to -1"; return false; }
+   if(PA_PatternDirection("DOJI")!=0 || PA_PatternDirection("INSIDE_BAR")!=0 ||
+      PA_PatternDirection("NONE")!=0 || PA_PatternDirection("SOMETHING_NEW")!=0)
+   { where="PA-4 compression and unknown patterns must carry no direction"; return false; }
+
+   // PA-5 THE RULE THE BRIEF ASKS FOR: never standalone. Without a zone there is
+   //      no direction, however strong or however clearly directional the pattern.
+   if(PA_ResolveDirection(false,1,1)!=0 || PA_ResolveDirection(false,-1,-1)!=0)
+   { where="PA-5 a directional pattern outside any zone must resolve to no direction"; return false; }
+   if(PA_ResolveDirection(false,1,0)!=0 || PA_ResolveDirection(false,0,1)!=0)
+   { where="PA-5 no combination escapes the zone requirement"; return false; }
+
+   // PA-6 Inside a zone, an undirectional pattern takes the ZONE's direction - an
+   //      inside bar in a bullish order block is bullish because of where it is.
+   if(PA_ResolveDirection(true,0,1)!=1 || PA_ResolveDirection(true,0,-1)!=-1)
+   { where="PA-6 an undirectional pattern inside a zone takes the zone's side"; return false; }
+   if(PA_ResolveDirection(true,1,1)!=1 || PA_ResolveDirection(true,-1,-1)!=-1)
+   { where="PA-6 an agreeing pattern keeps its own direction"; return false; }
+
+   // PA-7 A pattern that contradicts the zone it sits in resolves to nothing, and
+   //      is flagged - neither source is silently preferred over the other.
+   if(PA_ResolveDirection(true,1,-1)!=0 || PA_ResolveDirection(true,-1,1)!=0)
+   { where="PA-7 a pattern contradicting its zone must resolve to no direction"; return false; }
+   if(!PA_IsConflict(1,-1) || !PA_IsConflict(-1,1))
+   { where="PA-7 opposite pattern and zone directions are a conflict"; return false; }
+   if(PA_IsConflict(0,1) || PA_IsConflict(1,0) || PA_IsConflict(1,1) || PA_IsConflict(0,0))
+   { where="PA-7 an undirectional pattern or an undirectional zone is not a conflict"; return false; }
+
+   // PA-8 Score arithmetic. Outside a zone the score is 0 - there is no partial
+   //      credit for a standalone candle, which is precisely the behavior
+   //      ContextualCandleScore() does not have today.
+   if(PA_Score(false,88,true)!=0 || PA_Score(false,100,true)!=0)
+   { where="PA-8 a candle outside any zone scores 0, not a fraction of its strength"; return false; }
+   if(PA_Score(true,0,false)!=25)
+   { where="PA-8 being inside a valid zone is worth 25 on its own"; return false; }
+   if(PA_Score(true,100,false)!=70)
+   { where="PA-8 a maximum-strength pattern adds 45, giving 70 without agreement"; return false; }
+   if(PA_Score(true,100,true)!=100)
+   { where="PA-8 zone + maximum pattern + agreement is exactly 100"; return false; }
+   if(PA_Score(true,45,true)!=75)
+   { where="PA-8 an inside bar of strength 45 with agreement scores 75"; return false; }
+
+   // PA-9 The score cannot be pushed out of range by a bad strength input.
+   if(PA_Score(true,9999,true)!=100 || PA_Score(true,-9999,true)!=55)
+   { where="PA-9 an out-of-range pattern strength must be clamped, not propagated"; return false; }
+   if(PA_Score(true,88,true)>100 || PA_Score(true,88,true)<0)
+   { where="PA-9 the score must stay inside 0..100"; return false; }
+   return true;
+}
+
+
+//====================================================================
+// AUDIT-MR1  MEAN REVERSION / MOMENTUM   (DISPLAY ONLY)
+//
+// WHAT ALREADY EXISTED, AND IS THEREFORE NOT REWRITTEN HERE.
+//   * The VWAP. BufVWAP[] is buffer 2, INDICATOR_DATA, filled per bar by
+//     FillEMAAndVWAP() earlier in the same pass. The bands are built from it, so
+//     iBands is not added and no second VWAP is computed.
+//   * Per-bar RSI. g_rsi_buf[] is already copied from h_rsi (iRSI, InpRSIPeriod)
+//     for every bar, so no RSI handle is created here.
+//   * Per-bar ATR. g_atr_buf[] with the g_atr scalar fallback, the file's idiom.
+//   * CONFIRMED SWINGS. IsFractalHigh()/IsFractalLow() already encode this file's
+//     definition of a confirmed swing, and their own opening guard - which refuses
+//     any bar whose i+n has not yet fallen inside the closed bars - is what makes
+//     them non-repainting: a swing needs InpSwingFractalN fully
+//     closed bars to its right, so once confirmed it can never un-confirm. This
+//     module is their FIRST consumer - until now only the PREVIEW variants
+//     (IsPreviewFractalHigh/Low) were called, and only for drawing.
+//
+// THREE LEGS, AND STRICTLY WHAT EACH ONE MAY DO.
+//   1. BANDS - VWAP +/- k*sigma. They say price is STRETCHED. That is context, not
+//      a direction: a stretched market can stay stretched.
+//   2. RSI DIVERGENCE - says the stretch is EXHAUSTING. Measured on confirmed
+//      swings only, on the two most recent of them, and only ever in the direction
+//      price is stretched. Regular divergence only; hidden divergence is NOT
+//      implemented, because it is a trend-continuation reading and would make this
+//      module argue with itself.
+//   3. MACD - an optional momentum FILTER ONLY, and "only" is enforced structurally:
+//      MR_Score() takes a conflict flag and can therefore only VETO. There is no
+//      code path by which MACD adds a point or a direction. If it is switched off,
+//      or its handle could not be created, or the copy came back short, the leg is
+//      reported unavailable and contributes nothing - missing evidence is 0, never
+//      a free point.
+//
+// WHY A STRETCH ALONE IS NOT A SIGNAL. MR_ResolveDirection() returns 0 unless there
+// is exhaustion evidence: a divergence that agrees with the fade, or RSI in the
+// extreme region on the stretched side. Touching a 2-sigma band in a strong trend is
+// ordinary, and printing a fade direction for it is how mean-reversion modules earn
+// their bad reputation. The score reflects the same idea - 35 for the stretch, 45 for
+// an agreeing divergence, 20 for an RSI extreme - so a bare stretch can never reach a
+// score that looks like a setup.
+//
+// SIGMA IS ROOT-MEAN-SQUARE DISTANCE FROM VWAP, NOT MEAN-CENTRED. The deviations
+// (close - VWAP) are squared and averaged WITHOUT subtracting their own mean, because
+// VWAP is already the anchor. Mean-centring would report a near-zero sigma during a
+// persistent trend - exactly when price sits steadily above VWAP - and then every
+// ordinary bar would look like a 10-sigma extreme.
+//
+// CAUSALITY. Everything is read from closed bars through the file's own mirrored
+// g_buf_* series and its per-bar indicator arrays, indexed with closed=rates_total-2.
+// No forming bar and no future bar is read. Nothing is latched: MR_Update() resets all
+// published state at the top of every pass and recomputes, so a full rebuild
+// reproduces exactly what the incremental passes published.
+//
+// 0.0 IS "UNAVAILABLE", NOT A READING. The file documents this for its own indicator
+// copies ("incomplete inputs are unavailable (0.0), never read as stale values"). An
+// RSI of exactly 0.0 is therefore treated as missing evidence everywhere here, which
+// also means a divergence can never be manufactured from a bar the terminal had not
+// served yet.
+//
+// MACD IS COPIED OUTSIDE THE FILE'S RETRY MECHANISM, DELIBERATELY. The ATR/ADX/RSI
+// copies above short-copy into a bounded RETRY that returns prev_calculated before
+// committing the bar identity. An optional display-only filter must not be able to
+// stall that, so MR_RefreshMACD() never returns prev_calculated, never touches
+// g_ind_copy_retries and never blocks a bar: on a short copy it marks the bars it
+// could not fill with the same 0.0 sentinel and reports itself unavailable.
+//
+// SCORES ARE RULE-BASED CONFLUENCE COUNTS, NOT PROBABILITIES.
+//
+// NOTHING IS DRAWN. The bands are reported numerically on the dashboard tooltip
+// rather than drawn as lines, so the module creates no chart objects, needs no
+// entry in the PrepareDynamicRedraw() prefix sweep, and cannot be swept or
+// double-drawn by it.
+//
+// COMPLEXITY: one O(InpMRStdDevPeriod) pass for sigma plus one bounded backward scan
+// for swings, once per closed bar. Skipped entirely while InpEnableMeanReversion is
+// false, which is the default, so the shipped cost is zero.
+//====================================================================
+
+// Root-mean-square distance of the close from VWAP over `period` closed bars ending
+// at `closed`. Returns 0.0 - meaning "no band can be drawn" - unless every sample in
+// the window is present and clean. A partial window would produce a confident-looking
+// sigma from incomplete evidence, which is worse than none.
+double MR_StdDevAroundVWAP(const int closed,const int period)
+{
+   if(period<2) return 0.0;
+   if(closed<period-1) return 0.0;
+   if(closed>=ArraySize(g_buf_c) || closed>=ArraySize(BufVWAP)) return 0.0;
+   int first=closed-period+1;
+   if(first<0) return 0.0;
+   double acc=0.0;
+   for(int i=first;i<=closed;i++)
+   {
+      double v=BufVWAP[i];
+      if(v==EMPTY_VALUE || !(v>0.0)) return 0.0;
+      if(!(g_buf_c[i]>0.0)) return 0.0;
+      double dev=g_buf_c[i]-v;
+      acc+=dev*dev;
+   }
+   return MathSqrt(acc/(double)period);
+}
+
+// PURE. Which side of the bands the price is on. Strict inequality: a close exactly
+// ON the band is not an overextension.
+int MR_BandSide(const double price,const double vwap,const double sigma,const double k)
+{
+   if(!(price>0.0) || !(vwap>0.0) || !(sigma>0.0) || !(k>0.0)) return 0;
+   if(price>vwap+k*sigma) return 1;
+   if(price<vwap-k*sigma) return -1;
+   return 0;
+}
+
+// PURE. How far from VWAP the price is, in sigma units. Signed, so it can be reported
+// and compared without recomputation.
+double MR_Stretch(const double price,const double vwap,const double sigma)
+{
+   if(!(price>0.0) || !(vwap>0.0) || !(sigma>0.0)) return 0.0;
+   return (price-vwap)/sigma;
+}
+
+// The two most recent CONFIRMED swings of one kind, newest first. Confirmation is
+// delegated entirely to IsFractalHigh()/IsFractalLow(), whose own bound check refuses
+// any bar that does not yet have n fully closed bars to its right - so this scan
+// cannot return a swing that a later bar could invalidate. Returns 0, 1 or 2.
+int MR_FindConfirmedSwingPair(const bool want_high,const int closed,const int lookback,
+                              const int n,const int total,int &bar_new,int &bar_old)
+{
+   bar_new=-1; bar_old=-1;
+   if(lookback<1 || n<1 || closed<0 || total<3) return 0;
+   if(closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return 0;
+   int found=0;
+   int first=MathMax(0,closed-lookback+1);
+   for(int i=closed;i>=first;i--)
+   {
+      bool ok=(want_high ? IsFractalHigh(g_buf_h,i,n,total)
+                         : IsFractalLow(g_buf_l,i,n,total));
+      if(!ok) continue;
+      if(found==0) { bar_new=i; found=1; }
+      else { bar_old=i; found=2; break; }
+   }
+   return found;
+}
+
+// PURE. Regular RSI divergence between an older and a newer swing of the same kind.
+//   bearish (-1): price makes a HIGHER high while RSI makes a LOWER high
+//   bullish (+1): price makes a LOWER  low  while RSI makes a HIGHER low
+// A minimum RSI gap is required so that a 0.01 difference is not reported as
+// divergence. An RSI of 0.0 is this file's "unavailable" sentinel, never a reading,
+// so a bar the terminal had not served cannot manufacture a divergence.
+int MR_DivergenceDir(const double price_old,const double rsi_old,
+                     const double price_new,const double rsi_new,
+                     const bool is_high,const double min_delta)
+{
+   if(!(price_old>0.0) || !(price_new>0.0)) return 0;
+   if(!(rsi_old>0.0) || !(rsi_new>0.0)) return 0;
+   double delta=rsi_new-rsi_old;
+   double need=(min_delta>0.0 ? min_delta : 0.0);
+   if(is_high)
+   {
+      if(price_new>price_old && delta<=-need) return -1;
+      return 0;
+   }
+   if(price_new<price_old && delta>=need) return 1;
+   return 0;
+}
+
+// PURE. Momentum direction from the MACD histogram, with an ATR-scaled dead zone so a
+// hair-thin histogram cannot veto anything. The dead zone is what keeps this
+// symbol-agnostic: the histogram is in price units and means different things on
+// XAUUSD and on EURUSD.
+int MR_MacdDirection(const double main,const double signal,const double dead_zone)
+{
+   double hist=main-signal;
+   double dz=(dead_zone>0.0 ? dead_zone : 0.0);
+   if(hist>dz) return 1;
+   if(hist<-dz) return -1;
+   return 0;
+}
+
+// PURE. Momentum conflicts with a fade when it still pushes in the direction price is
+// stretched. An unavailable MACD (0) never conflicts: a filter that did not run must
+// not be able to veto, only to abstain.
+bool MR_MacdConflicts(const int ext_dir,const int macd_dir)
+{
+   return (ext_dir!=0 && macd_dir!=0 && macd_dir==ext_dir);
+}
+
+// PURE. A stretch is not a direction. Something has to say it is exhausting, and
+// nothing may be contradicting it.
+int MR_ResolveDirection(const bool extended,const int ext_dir,const int div_dir,
+                        const bool rsi_extreme,const bool macd_conflict)
+{
+   if(!extended || ext_dir==0) return 0;
+   if(macd_conflict) return 0;
+   int fade=-ext_dir;
+   if(div_dir!=0 && div_dir!=fade) return 0;   // divergence points the other way
+   if(div_dir==0 && !rsi_extreme) return 0;    // a stretch with no exhaustion evidence
+   return fade;
+}
+
+// PURE confluence count, 0-100. MACD appears here ONLY as a veto: it can zero the
+// score, and there is no branch in which it raises it, which is what "optional
+// momentum filter only" has to mean in code rather than in a comment.
+int MR_Score(const bool extended,const bool div_agrees,const bool rsi_extreme,
+             const bool macd_conflict)
+{
+   if(!extended) return 0;
+   if(macd_conflict) return 0;
+   int s=35;
+   if(div_agrees) s+=45;
+   if(rsi_extreme) s+=20;
+   return (s>100?100:s);
+}
+
+// Copy the optional MACD legs into plain arrays. Deliberately independent of the
+// file's bounded indicator-copy retry: this is an optional display-only filter, so a
+// short copy marks the unfilled bars unavailable with the file's own 0.0 sentinel and
+// returns false. It never returns prev_calculated and never blocks a bar.
+bool MR_RefreshMACD(const int rates_total,const bool full)
+{
+   if(!InpMRUseMACD || h_macd==INVALID_HANDLE) { g_mr_macd_ready=false; return false; }
+   if(rates_total<1) { g_mr_macd_ready=false; return false; }
+   int need=(full ? rates_total : MathMin(3,rates_total));
+   if(need<1) { g_mr_macd_ready=false; return false; }
+   if(ArraySize(g_mr_macd_main)<rates_total)
+   {
+      if(ArrayResize(g_mr_macd_main,rates_total,64)<0) { g_mr_macd_ready=false; return false; }
+      if(ArrayResize(g_mr_macd_sig,rates_total,64)<0)  { g_mr_macd_ready=false; return false; }
+   }
+   double tm[],ts[];
+   int nm=CopyBuffer(h_macd,0,0,need,tm);
+   int ns=CopyBuffer(h_macd,1,0,need,ts);
+   bool ok=(nm==need && ns==need && ArraySize(tm)>=need && ArraySize(ts)>=need &&
+            ArraySize(g_mr_macd_main)>=rates_total && ArraySize(g_mr_macd_sig)>=rates_total);
+   int from=rates_total-need;
+   if(from<0) from=0;
+   if(!ok)
+   {
+      for(int k=from;k<rates_total;k++)
+      {
+         if(k<ArraySize(g_mr_macd_main)) g_mr_macd_main[k]=0.0;
+         if(k<ArraySize(g_mr_macd_sig))  g_mr_macd_sig[k]=0.0;
+      }
+      g_mr_macd_ready=false;
+      return false;
+   }
+   // Same index mapping the file already uses for ATR/ADX/RSI: the temporary array is
+   // chronological, so src 0 is the oldest bar of the copied range.
+   for(int k=from;k<rates_total;k++)
+   {
+      int src=k-from;
+      if(k<ArraySize(g_mr_macd_main)) g_mr_macd_main[k]=tm[src];
+      if(k<ArraySize(g_mr_macd_sig))  g_mr_macd_sig[k]=ts[src];
+   }
+   g_mr_macd_ready=true;
+   return true;
+}
+
+// The one pass. Resets everything first, so nothing is carried over from a previous
+// bar and a full rebuild cannot disagree with the incremental passes.
+void MR_Update(const int closed,const int rates_total,const bool full)
+{
+   g_mr_vwap=0.0; g_mr_sigma=0.0; g_mr_upper=0.0; g_mr_lower=0.0; g_mr_stretch=0.0;
+   g_mr_ext_dir=0; g_mr_div_dir=0;
+   g_mr_swing_hi_new=-1; g_mr_swing_hi_old=-1; g_mr_swing_lo_new=-1; g_mr_swing_lo_old=-1;
+   g_mr_rsi_new=0.0; g_mr_rsi_old=0.0; g_mr_rsi_extreme=false;
+   g_mr_macd_dir=0; g_mr_macd_conflict=false;
+   g_mr_dir=0; g_mr_confirms=false; g_mr_score=0;
+   g_mr_reason=""; g_mr_invalidation="";
+   if(!InpEnableMeanReversion) return;
+   if(closed<2 || rates_total<3) return;
+   if(closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return;
+   if(closed>=ArraySize(BufVWAP) || closed>=ArraySize(g_rsi_buf)) return;
+
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ? g_atr_buf[closed] : g_atr;
+
+   //--- leg 1: the bands, from the VWAP the file already publishes.
+   int period=(InpMRStdDevPeriod<2 ? 2 : InpMRStdDevPeriod);
+   g_mr_vwap=BufVWAP[closed];
+   if(g_mr_vwap==EMPTY_VALUE || !(g_mr_vwap>0.0))
+   {
+      g_mr_reason="stand aside: no VWAP value on this closed bar, so no band exists";
+      g_mr_invalidation="a valid VWAP";
+      return;
+   }
+   g_mr_sigma=MR_StdDevAroundVWAP(closed,period);
+   if(!(g_mr_sigma>0.0))
+   {
+      g_mr_reason="stand aside: sigma over the last "+IntegerToString(period)+
+                  " closed bars is unavailable, so no band exists";
+      g_mr_invalidation=IntegerToString(period)+" clean closed bars of close-vs-VWAP";
+      return;
+   }
+   g_mr_upper=g_mr_vwap+InpMRBandSigma*g_mr_sigma;
+   g_mr_lower=g_mr_vwap-InpMRBandSigma*g_mr_sigma;
+   g_mr_stretch=MR_Stretch(g_buf_c[closed],g_mr_vwap,g_mr_sigma);
+   g_mr_ext_dir=MR_BandSide(g_buf_c[closed],g_mr_vwap,g_mr_sigma,InpMRBandSigma);
+
+   //--- leg 2: RSI divergence on CONFIRMED swings only, and only on the side price is
+   //--- stretched. Both sides are still scanned, because a bullish divergence on the
+   //--- lows and a bearish one on the highs at the same time is a contradiction that
+   //--- has to be reported rather than quietly resolved by picking one.
+   int n=FractalRightBars(InpSwingFractalN);
+   int look=(InpMRDivLookback<2 ? 2 : InpMRDivLookback);
+   int got_hi=MR_FindConfirmedSwingPair(true,closed,look,n,rates_total,
+                                        g_mr_swing_hi_new,g_mr_swing_hi_old);
+   int got_lo=MR_FindConfirmedSwingPair(false,closed,look,n,rates_total,
+                                        g_mr_swing_lo_new,g_mr_swing_lo_old);
+   bool div_bear=false, div_bull=false;
+   if(got_hi>=2)
+      div_bear=(MR_DivergenceDir(g_buf_h[g_mr_swing_hi_old],g_rsi_buf[g_mr_swing_hi_old],
+                                 g_buf_h[g_mr_swing_hi_new],g_rsi_buf[g_mr_swing_hi_new],
+                                 true,InpMRDivMinRSIDelta)<0);
+   if(got_lo>=2)
+      div_bull=(MR_DivergenceDir(g_buf_l[g_mr_swing_lo_old],g_rsi_buf[g_mr_swing_lo_old],
+                                 g_buf_l[g_mr_swing_lo_new],g_rsi_buf[g_mr_swing_lo_new],
+                                 false,InpMRDivMinRSIDelta)>0);
+   bool div_both=(div_bull && div_bear);
+   if(!div_both) g_mr_div_dir=(div_bull ? 1 : (div_bear ? -1 : 0));
+   if(g_mr_ext_dir>0 && got_hi>=2)
+   {
+      g_mr_rsi_new=g_rsi_buf[g_mr_swing_hi_new];
+      g_mr_rsi_old=g_rsi_buf[g_mr_swing_hi_old];
+   }
+   else if(g_mr_ext_dir<0 && got_lo>=2)
+   {
+      g_mr_rsi_new=g_rsi_buf[g_mr_swing_lo_new];
+      g_mr_rsi_old=g_rsi_buf[g_mr_swing_lo_old];
+   }
+
+   //--- RSI extreme counts only on the stretched side. An oversold RSI while price is
+   //--- stretched ABOVE the upper band is not evidence for a short fade.
+   double rsi_now=g_rsi_buf[closed];
+   g_mr_rsi_extreme=(rsi_now>0.0 &&
+                     ((g_mr_ext_dir>0 && rsi_now>=InpMRRSIOverbought) ||
+                      (g_mr_ext_dir<0 && rsi_now<=InpMRRSIOversold)));
+
+   //--- leg 3: the optional momentum filter. Available or abstaining; never guessed.
+   bool macd_ran=false;
+   if(InpMRUseMACD)
+   {
+      macd_ran=MR_RefreshMACD(rates_total,full);
+      if(macd_ran && closed<ArraySize(g_mr_macd_main) && closed<ArraySize(g_mr_macd_sig))
+         g_mr_macd_dir=MR_MacdDirection(g_mr_macd_main[closed],g_mr_macd_sig[closed],
+                                        (atr>0.0 ? atr*InpMRMacdDeadZoneATR : 0.0));
+   }
+
+   bool extended=(g_mr_ext_dir!=0);
+   bool div_agrees=(extended && g_mr_div_dir!=0 && g_mr_div_dir==-g_mr_ext_dir);
+   g_mr_macd_conflict=MR_MacdConflicts(g_mr_ext_dir,g_mr_macd_dir);
+   g_mr_dir=MR_ResolveDirection(extended,g_mr_ext_dir,g_mr_div_dir,
+                                g_mr_rsi_extreme,g_mr_macd_conflict);
+   g_mr_confirms=(g_mr_dir!=0);
+   g_mr_score=MR_Score(extended,div_agrees,g_mr_rsi_extreme,g_mr_macd_conflict);
+
+   //--- Four mutually exclusive reason branches. A side is named only where a
+   //--- direction was actually resolved, so this can never print SELL next to a
+   //--- stand-aside or CONFIRMED next to a suppressed verdict.
+   string k_txt=DoubleToString(InpMRBandSigma,2);
+   string stretch_txt=DoubleToString(MathAbs(g_mr_stretch),2);
+   if(!extended)
+   {
+      g_mr_reason="no overextension: the close is inside the VWAP +/-"+k_txt+
+                  " sigma bands ("+stretch_txt+" sigma from VWAP)";
+      g_mr_invalidation="a closed bar beyond the "+k_txt+" sigma band";
+   }
+   else if(div_both)
+   {
+      g_mr_reason="CONFLICT - a bullish divergence on the confirmed lows and a bearish "+
+                  "one on the confirmed highs are both live, so neither is used";
+      g_mr_invalidation="one of the two divergences to be broken by a newer confirmed swing";
+   }
+   else if(g_mr_macd_conflict)
+   {
+      g_mr_reason="CONFLICT - price is stretched "+stretch_txt+" sigma "+
+                  (g_mr_ext_dir>0?"above":"below")+" VWAP but MACD momentum still pushes "+
+                  "that way, so fading it would fight momentum";
+      g_mr_invalidation="the MACD histogram turning against the stretch";
+   }
+   else if(g_mr_div_dir!=0 && !div_agrees)
+   {
+      g_mr_reason="CONFLICT - the live divergence points "+
+                  (g_mr_div_dir>0?"bullish":"bearish")+" while the stretch points "+
+                  (g_mr_ext_dir>0?"up":"down")+", so they disagree";
+      g_mr_invalidation="a newer confirmed swing resolving the disagreement";
+   }
+   else if(g_mr_dir==0)
+   {
+      g_mr_reason="stand aside: price is stretched "+stretch_txt+" sigma "+
+                  (g_mr_ext_dir>0?"above":"below")+" VWAP but nothing says it is "+
+                  "exhausting - no agreeing divergence on a confirmed swing and RSI "+
+                  "is not extreme on that side";
+      g_mr_invalidation="a confirming divergence, or RSI beyond "+
+                        (g_mr_ext_dir>0?DoubleToString(InpMRRSIOverbought,1)
+                                       :DoubleToString(InpMRRSIOversold,1));
+   }
+   else
+   {
+      g_mr_reason=(g_mr_dir>0?"BUY":"SELL")+" context: stretched "+stretch_txt+
+                  " sigma "+(g_mr_ext_dir>0?"above":"below")+" VWAP"+
+                  (div_agrees?" with an agreeing RSI divergence on a confirmed swing":"")+
+                  (g_mr_rsi_extreme?" and RSI extreme":"")+
+                  " - a mean-reversion reading, not an entry";
+      g_mr_invalidation="a closed bar back inside the bands";
+   }
+   if(InpMRUseMACD && !macd_ran && extended)
+      g_mr_reason=g_mr_reason+" [MACD unavailable - the momentum filter did not run]";
+
+   if(InpLogLifecycleTransitions && g_mr_confirms)
+      LogLifecycle(StringFormat("MR dir=%+d score=%d stretch=%.2f k=%.2f div=%d rsi_ext=%s macd=%s",
+                                g_mr_dir,g_mr_score,g_mr_stretch,InpMRBandSigma,g_mr_div_dir,
+                                (g_mr_rsi_extreme?"yes":"no"),
+                                (g_mr_macd_conflict?"conflict":(macd_ran?"ok":"n/a"))));
+}
+
+// Reset to inert, so a disabled or freshly initialised module publishes nothing.
+void MR_Clear()
+{
+   g_mr_vwap=0.0; g_mr_sigma=0.0; g_mr_upper=0.0; g_mr_lower=0.0; g_mr_stretch=0.0;
+   g_mr_ext_dir=0; g_mr_div_dir=0;
+   g_mr_swing_hi_new=-1; g_mr_swing_hi_old=-1; g_mr_swing_lo_new=-1; g_mr_swing_lo_old=-1;
+   g_mr_rsi_new=0.0; g_mr_rsi_old=0.0; g_mr_rsi_extreme=false;
+   g_mr_macd_dir=0; g_mr_macd_conflict=false; g_mr_macd_ready=false;
+   g_mr_dir=0; g_mr_confirms=false; g_mr_score=0;
+   g_mr_reason=""; g_mr_invalidation="";
+}
+
+// AUDIT-MR1 self-test. It exercises the PURE cores with local values only - no
+// chart, no series, no terminal state - so a logic regression is caught at OnInit
+// instead of on a live bar. Gated by InpMTEERunSelfTest, the file's existing
+// general self-test switch. MR_StdDevAroundVWAP() and MR_FindConfirmedSwingPair()
+// read the mirrored bar arrays and are therefore covered only for the guards that
+// return before any array access; their arithmetic and their scan are pinned by
+// tools/test_phase5_meanreversion.py instead.
+bool MR_SelfTest(string &where)
+{
+   where="";
+
+   // MR-1 The sigma guards that must refuse BEFORE touching any array. A window that
+   //      cannot be filled completely reports "no band", never a partial estimate.
+   if(MR_StdDevAroundVWAP(0,2)!=0.0)
+   { where="MR-1 a window with no closed bars behind it has no sigma"; return false; }
+   if(MR_StdDevAroundVWAP(5,1)!=0.0)
+   { where="MR-1 a one-bar window cannot produce a standard deviation"; return false; }
+   if(MR_StdDevAroundVWAP(5,0)!=0.0 || MR_StdDevAroundVWAP(-1,20)!=0.0)
+   { where="MR-1 a degenerate period or bar index must return no sigma"; return false; }
+   if(MR_StdDevAroundVWAP(3,20)!=0.0)
+   { where="MR-1 a window longer than the history has no sigma"; return false; }
+
+   // MR-2 Band side. Strict inequality, so a close exactly ON the band is not an
+   //      overextension, and no band at all means no side.
+   if(MR_BandSide(105.0,100.0,2.0,2.0)!=1)
+   { where="MR-2 a close beyond VWAP+2 sigma is stretched up"; return false; }
+   if(MR_BandSide(95.0,100.0,2.0,2.0)!=-1)
+   { where="MR-2 a close beyond VWAP-2 sigma is stretched down"; return false; }
+   if(MR_BandSide(104.0,100.0,2.0,2.0)!=0)
+   { where="MR-2 a close exactly ON the upper band is not an overextension"; return false; }
+   if(MR_BandSide(96.0,100.0,2.0,2.0)!=0)
+   { where="MR-2 a close exactly ON the lower band is not an overextension"; return false; }
+   if(MR_BandSide(101.0,100.0,2.0,2.0)!=0)
+   { where="MR-2 a close inside the bands is not stretched"; return false; }
+   if(MR_BandSide(105.0,100.0,0.0,2.0)!=0 || MR_BandSide(105.0,0.0,2.0,2.0)!=0 ||
+      MR_BandSide(105.0,100.0,2.0,0.0)!=0 || MR_BandSide(0.0,100.0,2.0,2.0)!=0)
+   { where="MR-2 a missing sigma, VWAP, width or price means no band and no side"; return false; }
+   if(MR_BandSide(102.5,100.0,1.0,2.0)!=1 || MR_BandSide(102.5,100.0,1.0,3.0)!=0)
+   { where="MR-2 a wider k must move the band out, not leave it where it was"; return false; }
+
+   // MR-3 Stretch is signed and expressed in sigma units.
+   if(MathAbs(MR_Stretch(104.0,100.0,2.0)-2.0)>1e-9)
+   { where="MR-3 a close 4 above VWAP with sigma 2 is a stretch of +2.00"; return false; }
+   if(MathAbs(MR_Stretch(96.0,100.0,2.0)+2.0)>1e-9)
+   { where="MR-3 the stretch below VWAP is negative"; return false; }
+   if(MR_Stretch(104.0,100.0,0.0)!=0.0)
+   { where="MR-3 with no sigma there is no stretch to report"; return false; }
+
+   // MR-4 Regular divergence, both directions, on an older and a newer swing.
+   if(MR_DivergenceDir(100.0,75.0,102.0,68.0,true,2.0)!=-1)
+   { where="MR-4 a higher high with a lower RSI high is bearish divergence"; return false; }
+   if(MR_DivergenceDir(100.0,25.0,98.0,33.0,false,2.0)!=1)
+   { where="MR-4 a lower low with a higher RSI low is bullish divergence"; return false; }
+   if(MR_DivergenceDir(100.0,75.0,102.0,80.0,true,2.0)!=0)
+   { where="MR-4 a higher high with a higher RSI high is not divergence"; return false; }
+   if(MR_DivergenceDir(100.0,75.0,98.0,68.0,true,2.0)!=0)
+   { where="MR-4 a LOWER high in price cannot be a bearish divergence"; return false; }
+   if(MR_DivergenceDir(100.0,25.0,102.0,33.0,false,2.0)!=0)
+   { where="MR-4 a HIGHER low in price cannot be a bullish divergence"; return false; }
+   if(MR_DivergenceDir(100.0,75.0,102.0,74.5,true,2.0)!=0)
+   { where="MR-4 an RSI gap below the minimum is noise, not divergence"; return false; }
+   if(MR_DivergenceDir(100.0,75.0,102.0,73.0,true,2.0)!=-1)
+   { where="MR-4 an RSI gap exactly at the minimum does count"; return false; }
+   // 0.0 is this file's "indicator unavailable" sentinel, never a reading.
+   if(MR_DivergenceDir(100.0,0.0,102.0,68.0,true,2.0)!=0 ||
+      MR_DivergenceDir(100.0,75.0,102.0,0.0,true,2.0)!=0)
+   { where="MR-4 an unavailable RSI must not manufacture a divergence"; return false; }
+   if(MR_DivergenceDir(0.0,75.0,102.0,68.0,true,2.0)!=0)
+   { where="MR-4 an unavailable price must not manufacture a divergence"; return false; }
+
+   // MR-5 MACD momentum with an ATR-scaled dead zone, and the conflict test.
+   if(MR_MacdDirection(1.00,0.50,0.10)!=1)
+   { where="MR-5 a histogram above the dead zone is momentum up"; return false; }
+   if(MR_MacdDirection(0.50,1.00,0.10)!=-1)
+   { where="MR-5 a histogram below the dead zone is momentum down"; return false; }
+   if(MR_MacdDirection(1.00,0.95,0.10)!=0)
+   { where="MR-5 a hair-thin histogram inside the dead zone is not momentum"; return false; }
+   if(MR_MacdDirection(1.00,1.00,0.10)!=0)
+   { where="MR-5 a flat histogram is not momentum"; return false; }
+   if(MR_MacdDirection(1.00,0.95,0.0)!=1)
+   { where="MR-5 a zero dead zone falls back to the plain sign"; return false; }
+   if(!MR_MacdConflicts(1,1) || !MR_MacdConflicts(-1,-1))
+   { where="MR-5 momentum pushing in the stretched direction conflicts with a fade"; return false; }
+   if(MR_MacdConflicts(1,-1) || MR_MacdConflicts(-1,1))
+   { where="MR-5 momentum against the stretch does NOT conflict - it supports the fade"; return false; }
+   if(MR_MacdConflicts(1,0) || MR_MacdConflicts(0,1) || MR_MacdConflicts(0,0))
+   { where="MR-5 a filter that did not run abstains, it never vetoes"; return false; }
+
+   // MR-6 A stretch is not a direction. Something has to say it is exhausting.
+   if(MR_ResolveDirection(false,0,0,false,false)!=0 ||
+      MR_ResolveDirection(false,1,1,true,false)!=0)
+   { where="MR-6 with no overextension there is nothing to fade"; return false; }
+   if(MR_ResolveDirection(true,1,0,false,false)!=0)
+   { where="MR-6 a stretch with no exhaustion evidence resolves to nothing"; return false; }
+   if(MR_ResolveDirection(true,1,-1,false,false)!=-1)
+   { where="MR-6 stretched up with bearish divergence fades DOWN"; return false; }
+   if(MR_ResolveDirection(true,-1,1,false,false)!=1)
+   { where="MR-6 stretched down with bullish divergence fades UP"; return false; }
+   if(MR_ResolveDirection(true,1,0,true,false)!=-1)
+   { where="MR-6 an RSI extreme is exhaustion evidence on its own"; return false; }
+   if(MR_ResolveDirection(true,1,-1,false,true)!=0)
+   { where="MR-6 momentum still pushing up vetoes the short fade"; return false; }
+   if(MR_ResolveDirection(true,-1,1,false,true)!=0)
+   { where="MR-6 momentum still pushing down vetoes the long fade"; return false; }
+   if(MR_ResolveDirection(true,1,1,false,false)!=0)
+   { where="MR-6 a divergence pointing WITH the stretch contradicts the fade"; return false; }
+   if(MR_ResolveDirection(true,-1,-1,false,false)!=0)
+   { where="MR-6 the same contradiction on the low side resolves to nothing"; return false; }
+
+   // MR-7 Score arithmetic. Missing evidence is 0, never a free point.
+   if(MR_Score(false,true,true,false)!=0)
+   { where="MR-7 with no overextension nothing scores, however good the evidence"; return false; }
+   if(MR_Score(true,false,false,false)!=35)
+   { where="MR-7 the stretch alone is worth 35 and can never look like a setup"; return false; }
+   if(MR_Score(true,true,false,false)!=80)
+   { where="MR-7 an agreeing divergence is worth 45 more"; return false; }
+   if(MR_Score(true,false,true,false)!=55)
+   { where="MR-7 an RSI extreme is worth 20 more"; return false; }
+   if(MR_Score(true,true,true,false)!=100)
+   { where="MR-7 the full set of evidence is exactly 100, with MACD contributing nothing"; return false; }
+
+   // MR-8 THE "FILTER ONLY" CONTRACT: MACD can veto, and there is no combination in
+   //      which it raises the score. Checked exhaustively, not asserted in prose.
+   for(int ci=0;ci<2;ci++)
+   {
+      for(int da=0;da<2;da++)
+      {
+         for(int re=0;re<2;re++)
+         {
+            bool c=(ci==1), d=(da==1), r=(re==1);
+            int vetoed=MR_Score(true,d,r,c);
+            int plain=MR_Score(true,d,r,false);
+            if(vetoed>plain)
+            { where="MR-8 MACD must never raise the score"; return false; }
+            if(c && vetoed!=0)
+            { where="MR-8 a MACD conflict must zero the score, not merely reduce it"; return false; }
+            if(vetoed<0 || vetoed>100 || plain<0 || plain>100)
+            { where="MR-8 the score must stay inside 0..100"; return false; }
+         }
+      }
+   }
+   if(MR_Score(true,true,true,true)!=0)
+   { where="MR-8 even perfect evidence scores 0 when momentum vetoes the fade"; return false; }
+
+   // MR-9 Consistency: the verdict and the score can never contradict each other, so
+   //      the dashboard cannot print a direction next to a suppressed or zero verdict.
+   for(int e=-1;e<=1;e++)
+   {
+      for(int d=-1;d<=1;d++)
+      {
+         for(int re=0;re<2;re++)
+         {
+            for(int ci=0;ci<2;ci++)
+            {
+               bool ext=(e!=0), rsi=(re==1), conf=(ci==1);
+               int dir=MR_ResolveDirection(ext,e,d,rsi,conf);
+               int sc=MR_Score(ext,(ext && d!=0 && d==-e),rsi,conf);
+               if(conf && (dir!=0 || sc!=0))
+               { where="MR-9 a vetoed bar must show neither a direction nor a score"; return false; }
+               if(dir!=0 && sc<=0)
+               { where="MR-9 a resolved direction must carry a non-zero score"; return false; }
+               if(dir!=0 && !ext)
+               { where="MR-9 no direction without an overextension"; return false; }
+               if(dir!=0 && e!=0 && dir==e)
+               { where="MR-9 a mean-reversion direction is always OPPOSITE the stretch"; return false; }
+               if(dir!=0 && d!=0 && d!=dir)
+               { where="MR-9 a live divergence must agree with the direction printed"; return false; }
+            }
+         }
+      }
+   }
+   return true;
+}
+
+//====================================================================
+// AUDIT-CF1 CONFLUENCE ENGINE (display only, no entry authority)
+//====================================================================
+// WHAT THIS MODULE IS
+//   ONE unified score built from six pillars - Structure, Liquidity, Zone,
+//   Session, Candle and MTF bias - with weights that sum to exactly 100, a
+//   minimum display score, "missing evidence scores 0, never a free point", and
+//   NO TRADE with a reason instead of a forced direction when sources conflict.
+//   It sits BESIDE the existing scoring. It replaces nothing.
+//
+// WHY IT READS MODULE STATE AND NOT g_score
+//   g_score (SScoreBreakdown) is written in exactly one place, the tail of
+//   CalculateAITradeSetup(), and that function is called from exactly one site in
+//   OnCalculate, behind a conditional guard. On every bar where the guard is
+//   false, g_score still holds an OLDER bar's evidence, and nothing in the file
+//   ever resets it. A per-bar reader that took its legs from g_score would
+//   therefore publish stale evidence as current. This engine calls the pillar
+//   scorers itself, once per side, on the closed bar. The state those scorers
+//   read IS refreshed every detection pass: BuildCausalEventGraph() (which also
+//   resets g_selected_structure_event to -1) and ComputeHTFBias() both run in the
+//   incremental AND the full-rebuild branch above, before this module is reached.
+//
+// WHAT IT DELIBERATELY DOES NOT DO
+//   It does not modify ScoreStructure(), ScoreLiquidity(), ScoreSession(),
+//   ScoreHTF(), GraphConfluenceScore(), PMI_ComputeConfluence() or
+//   ComputeEntryQuality(), and it never writes final_score or
+//   setup_quality_score. Two of those scorers award credit for ABSENT evidence,
+//   and this engine neutralises that locally instead of editing them:
+//     ScoreSession() returns 30.0 when no session matched at all;
+//     ScoreHTF()     returns 50.0 when InpUseHTFBias is false AND when
+//                    g_htf_bias is 0 - that is, for no evidence whatsoever.
+//   Both contradict "missing evidence scores 0", but both also feed the existing
+//   weighted score, so changing them would silently reprice every setup in the
+//   file. Instead the session floor is detected and zeroed here, and the MTF leg
+//   reads g_htf_bias directly rather than going through ScoreHTF().
+//
+// EXISTING WEIGHT SUM - OBSERVED AND REPORTED, NOT "FIXED"
+//   The two existing final_score branches weight their pillars to 1.1000, not
+//   1.0000 (the default branch uses nine coefficients beginning .18/.12/.14 and
+//   the institutional-sequence branch uses nine beginning .22/.14/.16). That is a
+//   real observation about existing arithmetic and it is out of scope for a
+//   display-only module to change it. This engine's own six weights sum to
+//   exactly 100 by construction, are published in g_cf_weight_sum, and are
+//   validated: if an operator edits them so they no longer sum to 100 the engine
+//   refuses to name a side and says so, rather than renormalising quietly.
+//
+// ZONE LEG - REUSE, NOT A SECOND SCAN
+//   The zone leg calls PA_ZoneAt(), the single zone scan AUDIT-PA1 added
+//   (priority OB > FVG > SR > POC). It is read-only and writes nothing but its
+//   out-parameters, so calling it here cannot disturb PA's own published state.
+//   Consequence, stated plainly: this leg inherits InpPAZoneToleranceATR and
+//   InpPAIncludePOC, but NOT InpEnablePriceAction, so the zone leg still works
+//   with Price Action switched off. A POC is a level and returns dir 0, so it can
+//   confirm presence without ever being counted as a contradiction.
+//
+// NON-REPAINTING
+//   Every leg reads closed-bar state. The forming bar is refused explicitly. The
+//   module draws nothing, owns no chart objects, allocates no buffers, sends no
+//   orders and latches no verdict: CF_Update() clears all published state before
+//   its early exits, so switching the module off cannot leave a stale score on
+//   the dashboard.
+//====================================================================
+
+// PURE, and the only place in this module where evidence becomes points.
+// Absent evidence must never buy a single point, so anything that is not a
+// positive finite number returns 0 here. Both arguments are clamped: an
+// out-of-range evidence value cannot inflate a leg and a misconfigured weight
+// cannot manufacture points above its own value.
+double CF_Pillar(const double evidence,const int weight)
+{
+   if(!(evidence>0.0)) return 0.0;                 // catches 0.0, negatives and NaN
+   double ev=(evidence>100.0 ? 100.0 : evidence);
+   int w=(weight<0 ? 0 : (weight>100 ? 100 : weight));
+   return ev*(double)w/100.0;
+}
+
+// PURE. The weighted sum of all six legs, clamped to 0-100. Routing every leg
+// through CF_Pillar() is what makes "missing evidence scores 0" structural
+// rather than a convention each caller has to remember.
+double CF_Aggregate(const double structure,const double liquidity,const double zone,
+                    const double session,const double candle,const double mtf,
+                    const int w_structure,const int w_liquidity,const int w_zone,
+                    const int w_session,const int w_candle,const int w_mtf)
+{
+   double sum=CF_Pillar(structure,w_structure)
+             +CF_Pillar(liquidity,w_liquidity)
+             +CF_Pillar(zone,w_zone)
+             +CF_Pillar(session,w_session)
+             +CF_Pillar(candle,w_candle)
+             +CF_Pillar(mtf,w_mtf);
+   if(!(sum>0.0)) return 0.0;
+   return (sum>100.0 ? 100.0 : sum);
+}
+
+// PURE. Names a side only when exactly one side clears the minimum. Neither side
+// clearing is a shortfall; BOTH sides clearing is a conflict. Refusing in both
+// cases is the whole point of the function - the engine never picks the larger
+// of two acceptable answers and calls it a decision.
+int CF_PickSide(const int buy_score,const int sell_score,const int min_display)
+{
+   int need=(min_display<0 ? 0 : (min_display>100 ? 100 : min_display));
+   bool buy_ok=(buy_score>=need);
+   bool sell_ok=(sell_score>=need);
+   if(!buy_ok && !sell_ok) return 0;               // shortfall: stand aside
+   if(buy_ok && sell_ok)   return 0;               // ambiguous: stand aside
+   return (buy_ok ? 1 : -1);
+}
+
+// PURE. Reported separately from the pick so the dashboard can distinguish
+// "not good enough" from "good enough in both directions at once".
+bool CF_IsAmbiguous(const int buy_score,const int sell_score,const int min_display)
+{
+   int need=(min_display<0 ? 0 : (min_display>100 ? 100 : min_display));
+   return (buy_score>=need && sell_score>=need);
+}
+
+// PURE. A source carrying no direction is ABSENT, not disagreeing. Getting this
+// wrong would let a silent higher timeframe veto a perfectly good setup.
+bool CF_Contradicts(const int side,const int source_dir)
+{
+   if(side==0 || source_dir==0) return false;
+   return (source_dir!=side);
+}
+
+// PURE. How many sources had evidence and pointed the other way.
+int CF_CountContradictions(const int side,const int mtf_dir,const int zone_dir,
+                           const int candle_dir,const int strategy_dir)
+{
+   int n=0;
+   if(CF_Contradicts(side,mtf_dir))      n++;
+   if(CF_Contradicts(side,zone_dir))     n++;
+   if(CF_Contradicts(side,candle_dir))   n++;
+   if(CF_Contradicts(side,strategy_dir)) n++;
+   return n;
+}
+
+// PURE (it only formats). The stand-aside sentence, in priority order: a
+// configuration error outranks everything, then ambiguity, then contradiction,
+// then an unmet strategy requirement, then a plain shortfall. Returns "" only
+// for a clean side that clears the minimum.
+string CF_StandAsideReason(const int side,const int buy_score,const int sell_score,
+                           const int min_display,const int contradictions,
+                           const bool weights_valid,const int weight_sum,
+                           const bool strategy_ok,const bool veto)
+{
+   int need=(min_display<0 ? 0 : (min_display>100 ? 100 : min_display));
+   if(!weights_valid)
+      return "NO TRADE: confluence weights sum to "+IntegerToString(weight_sum)+
+             ", they must sum to exactly 100";
+   if(side==0 && buy_score>=need && sell_score>=need)
+      return "NO TRADE: both sides score above the minimum ("+
+             IntegerToString(buy_score)+" buy vs "+IntegerToString(sell_score)+
+             " sell), the evidence is ambiguous";
+   if(veto && contradictions>0)
+      return "NO TRADE: "+IntegerToString(contradictions)+
+             " source(s) with evidence contradict the leading side";
+   if(!strategy_ok)
+      return "NO TRADE: no active strategy module agrees with this reading";
+   if(side==0)
+      return "NO TRADE: best side scores "+
+             IntegerToString(buy_score>=sell_score ? buy_score : sell_score)+
+             ", below the minimum display score of "+IntegerToString(need);
+   return "";
+}
+
+// The per-bar driver. Reads closed-bar state only, latches nothing, draws nothing.
+void CF_Update(const int closed,const int rates_total)
+{
+   // Clear FIRST, then early-exit - the same contract PA_Update() and MR_Update()
+   // use, so a disabled or blocked engine can never leave a previous bar's
+   // verdict on the dashboard.
+   CF_Clear();
+   if(!InpEnableConfluence) return;
+   if(rates_total<3) return;
+   if(closed<1 || closed>rates_total-2) return;    // never touch the forming bar
+   if(closed>=ArraySize(g_buf_c)) return;
+
+   int wsum=InpCFWeightStructure+InpCFWeightLiquidity+InpCFWeightZone+
+            InpCFWeightSession+InpCFWeightCandle+InpCFWeightMTF;
+   g_cf_weight_sum=wsum;
+   g_cf_weights_valid=(wsum==100);
+
+   int need=(InpCFMinDisplayScore<0 ? 0 :
+             (InpCFMinDisplayScore>100 ? 100 : InpCFMinDisplayScore));
+
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0) ? g_atr_buf[closed] : g_atr;
+   double price=g_buf_c[closed];
+
+   //--- SESSION. ScoreSession() floors at 30.0 when no session matched at all.
+   //--- That floor is real credit inside the existing weighted score, so it is
+   //--- detected and zeroed HERE rather than by editing the scorer.
+   double sess_raw=ScoreSession();
+   g_cf_has_session=(sess_raw>CF_SESSION_NO_EVIDENCE+0.001);
+   g_cf_pillar_session=(g_cf_has_session ? sess_raw : 0.0);
+
+   //--- MTF BIAS. Read directly, because ScoreHTF() hands back 50.0 both when
+   //--- the bias is disabled and when no higher-timeframe structure exists.
+   g_cf_has_mtf=(InpUseHTFBias && g_htf_bias!=0);
+   int mtf_dir=(g_cf_has_mtf ? g_htf_bias : 0);
+
+   //--- ZONE. Reuse the one scan AUDIT-PA1 added; do not build a second one.
+   string zname=""; double ztop=0.0; double zbot=0.0; int zdir=0;
+   g_cf_has_zone=PA_ZoneAt(price,closed,atr,zname,ztop,zbot,zdir);
+   g_cf_pillar_zone=(g_cf_has_zone ? 100.0 : 0.0);
+
+   //--- CANDLE. Reuse the unified pattern AUDIT-PA1 published. With Price Action
+   //--- switched off the leg is ABSENT and scores 0 - it does not collect a
+   //--- neutral half-credit for evidence nobody looked at.
+   g_cf_has_candle=(InpEnablePriceAction && g_pa_pattern!="NONE" && g_pa_pattern!="");
+   g_cf_pillar_candle=(g_cf_has_candle ? (double)g_pa_strength : 0.0);
+   int candle_dir=(g_cf_has_candle ? g_pa_pattern_dir : 0);
+
+   //--- BEST ACTIVE STRATEGY. Fixed scan order with strictly-greater replacement,
+   //--- so a tie resolves deterministically in favour of the first module named
+   //--- and a module scoring 0 can never become "best". Each module is already
+   //--- gated by its own switch, so a disabled one publishes dir 0 and drops out.
+   string best_name=""; int best_score=0; int best_dir=0;
+   if(g_p3_dir!=0 && g_p3_score>best_score)
+   { best_name="POWER_OF_3";     best_score=g_p3_score; best_dir=g_p3_dir; }
+   if(g_sb_active && g_sb_dir!=0 && g_sb_score>best_score)
+   { best_name="SILVER_BULLET";  best_score=g_sb_score; best_dir=g_sb_dir; }
+   if(g_wy_active && g_wy_dir!=0 && g_wy_score>best_score)
+   { best_name="WYCKOFF";        best_score=g_wy_score; best_dir=g_wy_dir; }
+   if(g_pa_dir!=0 && g_pa_score>best_score)
+   { best_name="PRICE_ACTION";   best_score=g_pa_score; best_dir=g_pa_dir; }
+   if(g_mr_dir!=0 && g_mr_score>best_score)
+   { best_name="MEAN_REVERSION"; best_score=g_mr_score; best_dir=g_mr_dir; }
+   g_cf_best_strategy=best_name;
+   g_cf_best_strategy_score=best_score;
+   g_cf_best_strategy_dir=best_dir;
+
+   //--- STRUCTURE and LIQUIDITY, scored for BOTH sides. Both scorers already
+   //--- return 0 for absent or opposing evidence, so no local floor is needed.
+   double st_buy =ScoreStructure(rates_total,true);
+   double st_sell=ScoreStructure(rates_total,false);
+   double lq_buy =ScoreLiquidity(true,-1);
+   double lq_sell=ScoreLiquidity(false,-1);
+   double mtf_buy =(g_cf_has_mtf && mtf_dir>0 ? 100.0 : 0.0);
+   double mtf_sell=(g_cf_has_mtf && mtf_dir<0 ? 100.0 : 0.0);
+   g_cf_has_structure=(st_buy>0.0 || st_sell>0.0);
+   g_cf_has_liquidity=(lq_buy>0.0 || lq_sell>0.0);
+
+   double agg_buy=CF_Aggregate(st_buy,lq_buy,g_cf_pillar_zone,g_cf_pillar_session,
+                               g_cf_pillar_candle,mtf_buy,
+                               InpCFWeightStructure,InpCFWeightLiquidity,InpCFWeightZone,
+                               InpCFWeightSession,InpCFWeightCandle,InpCFWeightMTF);
+   double agg_sell=CF_Aggregate(st_sell,lq_sell,g_cf_pillar_zone,g_cf_pillar_session,
+                                g_cf_pillar_candle,mtf_sell,
+                                InpCFWeightStructure,InpCFWeightLiquidity,InpCFWeightZone,
+                                InpCFWeightSession,InpCFWeightCandle,InpCFWeightMTF);
+   g_cf_buy_score =(int)MathRound(agg_buy);
+   g_cf_sell_score=(int)MathRound(agg_sell);
+   if(g_cf_buy_score<0)   g_cf_buy_score=0;
+   if(g_cf_buy_score>100) g_cf_buy_score=100;
+   if(g_cf_sell_score<0)   g_cf_sell_score=0;
+   if(g_cf_sell_score>100) g_cf_sell_score=100;
+
+   //--- Publish the legs of the side being REPORTED. When the engine stands aside
+   //--- this is still the stronger side, so the dashboard can show exactly which
+   //--- legs were missing instead of only saying "no".
+   int shown=(g_cf_buy_score>=g_cf_sell_score ? 1 : -1);
+   g_cf_pillar_structure=(shown>0 ? st_buy  : st_sell);
+   g_cf_pillar_liquidity=(shown>0 ? lq_buy  : lq_sell);
+   g_cf_pillar_mtf      =(shown>0 ? mtf_buy : mtf_sell);
+
+   int side=CF_PickSide(g_cf_buy_score,g_cf_sell_score,need);
+   g_cf_contradictions=CF_CountContradictions(shown,mtf_dir,zdir,candle_dir,best_dir);
+
+   bool strategy_ok=(!InpCFRequireActiveStrategy || best_name!="");
+   if(InpCFRequireActiveStrategy && side!=0 && best_dir!=0 && best_dir!=side)
+      strategy_ok=false;                           // an opposing strategy is not agreement
+   bool veto=(InpCFVetoOnConflict && g_cf_contradictions>0);
+
+   string why=CF_StandAsideReason(side,g_cf_buy_score,g_cf_sell_score,need,
+                                  g_cf_contradictions,g_cf_weights_valid,wsum,
+                                  strategy_ok,veto);
+   if(why!="")
+   {
+      g_cf_no_trade=true;
+      g_cf_dir=0;
+      g_cf_score=0;
+      g_cf_reason=why;
+   }
+   else
+   {
+      g_cf_no_trade=false;
+      g_cf_dir=side;
+      g_cf_score=(side>0 ? g_cf_buy_score : g_cf_sell_score);
+      g_cf_reason=(side>0 ? "BUY" : "SELL")+" confluence "+
+                  IntegerToString(g_cf_score)+" of 100";
+   }
+
+   //--- Invalidation: the cheapest thing that would cancel this reading.
+   if(g_cf_has_zone)
+      g_cf_invalidation="a body close outside the "+zname+" zone";
+   else if(g_cf_has_structure)
+      g_cf_invalidation="a confirmed structure break in the opposite direction";
+   else if(g_cf_has_liquidity)
+      g_cf_invalidation="the swept liquidity level being reclaimed";
+   else
+      g_cf_invalidation="";
+
+   //--- Log only when there is something to say: a named side, or a real
+   //--- contradiction. Same gate and same one-argument LogLifecycle() as PA/MR.
+   if(InpLogLifecycleTransitions && (g_cf_dir!=0 || g_cf_contradictions>0))
+   {
+      if(g_cf_no_trade)
+         LogLifecycle(StringFormat("CF %s",g_cf_reason));
+      else
+         LogLifecycle(StringFormat("CF dir=%+d score=%d buy=%d sell=%d best=%s conflicts=%d",
+                                   g_cf_dir,g_cf_score,g_cf_buy_score,g_cf_sell_score,
+                                   g_cf_best_strategy,g_cf_contradictions));
+   }
+}
+
+// Resets every published value. Called from OnInit and from the head of
+// CF_Update, so nothing in this module can survive a bar it did not earn.
+void CF_Clear()
+{
+   g_cf_pillar_structure=0.0; g_cf_pillar_liquidity=0.0; g_cf_pillar_zone=0.0;
+   g_cf_pillar_session=0.0;   g_cf_pillar_candle=0.0;    g_cf_pillar_mtf=0.0;
+   g_cf_has_structure=false;  g_cf_has_liquidity=false;  g_cf_has_zone=false;
+   g_cf_has_session=false;    g_cf_has_candle=false;     g_cf_has_mtf=false;
+   g_cf_buy_score=0;   g_cf_sell_score=0;
+   g_cf_dir=0;         g_cf_score=0;      g_cf_no_trade=false;
+   g_cf_reason="";     g_cf_invalidation="";
+   g_cf_best_strategy=""; g_cf_best_strategy_score=0; g_cf_best_strategy_dir=0;
+   g_cf_contradictions=0; g_cf_weight_sum=0; g_cf_weights_valid=false;
+}
+
+// AUDIT-CF1 synthetic self-test. Exercises the PURE cores only - it never reads
+// chart history, so it produces the same result on every symbol and timeframe.
+bool CF_SelfTest(string &where)
+{
+   where="";
+
+   // CF-1 Absent evidence scores nothing. This is the rule the whole module is
+   //      built around, so it is the first thing checked.
+   if(CF_Pillar(0.0,20)!=0.0)
+   { where="CF-1 absent evidence must score zero, never a free point"; return false; }
+   if(CF_Pillar(-50.0,20)!=0.0)
+   { where="CF-1 negative evidence must score zero"; return false; }
+   if(CF_Pillar(0.0,100)!=0.0)
+   { where="CF-1 zero evidence at full weight is still zero"; return false; }
+
+   // CF-2 A leg scores exactly its weight at full evidence, and half its weight
+   //      at half evidence. The mapping is linear and nothing else.
+   if(MathAbs(CF_Pillar(100.0,20)-20.0)>1e-9)
+   { where="CF-2 full evidence at weight 20 must score exactly 20"; return false; }
+   if(MathAbs(CF_Pillar(50.0,20)-10.0)>1e-9)
+   { where="CF-2 half evidence must score half the weight"; return false; }
+   if(MathAbs(CF_Pillar(100.0,0)-0.0)>1e-9)
+   { where="CF-2 a zero weight must silence a leg completely"; return false; }
+
+   // CF-3 Clamping. Neither an out-of-range evidence value nor a misconfigured
+   //      weight may inflate the score.
+   double over=100.0+40.0;
+   if(MathAbs(CF_Pillar(over,20)-20.0)>1e-9)
+   { where="CF-3 evidence above 100 is clamped and cannot inflate a leg"; return false; }
+   if(MathAbs(CF_Pillar(50.0,500)-50.0)>1e-9)
+   { where="CF-3 a weight above 100 is clamped and cannot manufacture points"; return false; }
+   if(MathAbs(CF_Pillar(50.0,-30)-0.0)>1e-9)
+   { where="CF-3 a negative weight scores nothing"; return false; }
+
+   // CF-4 The six DEFAULT weights sum to exactly 100, verified through the real
+   //      aggregator rather than by re-adding the numbers here.
+   if(MathAbs(CF_Aggregate(100.0,100.0,100.0,100.0,100.0,100.0,20,20,20,10,15,15)-100.0)>1e-9)
+   { where="CF-4 the six default weights must sum to exactly 100"; return false; }
+   if(MathAbs(CF_Aggregate(0.0,0.0,0.0,0.0,0.0,0.0,20,20,20,10,15,15)-0.0)>1e-9)
+   { where="CF-4 no evidence at all must aggregate to zero"; return false; }
+   if(CF_Aggregate(100.0,100.0,100.0,100.0,100.0,100.0,100,100,100,100,100,100)>100.0+1e-9)
+   { where="CF-4 the aggregate is capped at 100 even with absurd weights"; return false; }
+
+   // CF-5 Losing one leg costs exactly that leg's weight - so an absent leg is
+   //      visible in the number, not averaged away by the legs still present.
+   double six_legs=CF_Aggregate(100.0,100.0,100.0,100.0,100.0,100.0,20,20,20,10,15,15);
+   double five_legs=CF_Aggregate(100.0,100.0,100.0,100.0,100.0,0.0,20,20,20,10,15,15);
+   if(MathAbs(six_legs-five_legs-15.0)>1e-9)
+   { where="CF-5 losing the MTF leg must cost exactly its weight of 15"; return false; }
+   if(five_legs>=six_legs)
+   { where="CF-5 an absent leg must make the score strictly worse"; return false; }
+
+   // CF-6 Side selection never forces a direction.
+   if(CF_PickSide(80,20,60)!=1)
+   { where="CF-6 only the long side clearing the minimum must name the long side"; return false; }
+   if(CF_PickSide(20,80,60)!=-1)
+   { where="CF-6 only the short side clearing the minimum must name the short side"; return false; }
+   if(CF_PickSide(20,30,60)!=0)
+   { where="CF-6 neither side clearing the minimum is a stand-aside, not a forced pick"; return false; }
+   if(CF_PickSide(80,80,60)!=0)
+   { where="CF-6 both sides clearing the minimum is ambiguous, not a tie to break"; return false; }
+   if(CF_PickSide(0,0,0)!=0)
+   { where="CF-6 zero evidence against a zero minimum must still stand aside"; return false; }
+   if(CF_PickSide(60,0,60)!=1)
+   { where="CF-6 the minimum is inclusive: a side exactly at it is named"; return false; }
+   if(CF_PickSide(90,10,200)!=0)
+   { where="CF-6 a minimum above 100 can never be cleared"; return false; }
+
+   // CF-7 Ambiguity is detected independently of the pick, so the dashboard can
+   //      tell "not good enough" apart from "good enough both ways at once".
+   if(!CF_IsAmbiguous(70,70,60))
+   { where="CF-7 two sides above the minimum must be reported ambiguous"; return false; }
+   if(CF_IsAmbiguous(70,10,60))
+   { where="CF-7 one side above and one below is not ambiguous"; return false; }
+   if(CF_IsAmbiguous(10,10,60))
+   { where="CF-7 two sides below the minimum is a shortfall, not ambiguity"; return false; }
+
+   // CF-8 A source with no direction is ABSENT, not disagreeing. Counting a
+   //      silent source as a contradiction would veto good setups.
+   if(CF_Contradicts(1,0))
+   { where="CF-8 a silent source must not be counted as a contradiction"; return false; }
+   if(CF_Contradicts(0,-1))
+   { where="CF-8 with no side chosen nothing can contradict it"; return false; }
+   if(!CF_Contradicts(1,-1))
+   { where="CF-8 an opposing source must be counted as a contradiction"; return false; }
+   if(CF_Contradicts(1,1))
+   { where="CF-8 an agreeing source is not a contradiction"; return false; }
+   if(CF_CountContradictions(1,1,1,1,1)!=0)
+   { where="CF-8 four agreeing sources are zero contradictions"; return false; }
+   if(CF_CountContradictions(1,-1,0,0,0)!=1)
+   { where="CF-8 exactly one opposing source is one contradiction"; return false; }
+   if(CF_CountContradictions(1,-1,-1,-1,-1)!=4)
+   { where="CF-8 four opposing sources are four contradictions"; return false; }
+   if(CF_CountContradictions(0,-1,-1,-1,-1)!=0)
+   { where="CF-8 with no side chosen nothing at all can contradict"; return false; }
+
+   // CF-9 The stand-aside sentence, including its priority order and the fact
+   //      that a clean side above the minimum is NOT a stand-aside.
+   if(StringFind(CF_StandAsideReason(1,80,10,60,0,false,110,true,false),
+                 "NO TRADE: confluence weights")!=0)
+   { where="CF-9 weights that do not sum to 100 must veto a strong side, and say so"; return false; }
+   if(StringFind(CF_StandAsideReason(0,80,80,60,0,true,100,true,false),
+                 "NO TRADE: both sides")!=0)
+   { where="CF-9 two sides above the minimum must be reported as ambiguous"; return false; }
+   if(StringFind(CF_StandAsideReason(1,80,10,60,2,true,100,true,true),
+                 "NO TRADE: 2 source")!=0)
+   { where="CF-9 contradictions must be reported with their count"; return false; }
+   if(StringFind(CF_StandAsideReason(1,80,10,60,0,true,100,false,false),
+                 "NO TRADE: no active strategy")!=0)
+   { where="CF-9 an unmet strategy requirement must be reported"; return false; }
+   if(StringFind(CF_StandAsideReason(0,40,20,60,0,true,100,true,false),
+                 "NO TRADE: best side scores 40")!=0)
+   { where="CF-9 a shortfall must be reported with the leading score"; return false; }
+   if(CF_StandAsideReason(1,80,10,60,0,true,100,true,false)!="")
+   { where="CF-9 a clean uncontradicted side above the minimum must NOT be a stand-aside"; return false; }
+   if(CF_StandAsideReason(1,80,10,60,2,true,100,true,false)!="")
+   { where="CF-9 with the veto disabled contradictions must not force a stand-aside"; return false; }
+   if(StringFind(CF_StandAsideReason(1,80,10,60,0,false,90,true,false),
+                 "NO TRADE: confluence weights sum to 90")!=0)
+   { where="CF-9 a weight error outranks every other reason and quotes the real sum"; return false; }
+
+   // CF-10 Exhaustive sweep: all 64 present/absent patterns across the six legs,
+   //       on both sides. The two invariants that matter are that nothing scores
+   //       without evidence and that the score never leaves 0-100.
+   int combos=0;
+   for(int m=0;m<64;m++)
+   {
+      double s =((m&1 )!=0 ? 100.0 : 0.0);
+      double l =((m&2 )!=0 ? 100.0 : 0.0);
+      double z =((m&4 )!=0 ? 100.0 : 0.0);
+      double se=((m&8 )!=0 ? 100.0 : 0.0);
+      double c =((m&16)!=0 ? 100.0 : 0.0);
+      double mt=((m&32)!=0 ? 100.0 : 0.0);
+      int present=((m&1)!=0?1:0)+((m&2)!=0?1:0)+((m&4)!=0?1:0)+
+                  ((m&8)!=0?1:0)+((m&16)!=0?1:0)+((m&32)!=0?1:0);
+      // Monotonicity: adding evidence to a leg must never LOWER the total.
+      if(CF_Aggregate(s,l,z,se,c,100.0,20,20,20,10,15,15)+1e-9 <
+         CF_Aggregate(s,l,z,se,c,mt  ,20,20,20,10,15,15))
+      { where="CF-10 adding evidence to a leg must never lower the total"; return false; }
+      for(int side=-1;side<=1;side+=2)
+      {
+         int sc=(int)MathRound(CF_Aggregate(s,l,z,se,c,mt,20,20,20,10,15,15));
+         combos++;
+         if(present==0 && sc!=0)
+         { where="CF-10 six absent legs must score zero, never a free point"; return false; }
+         if(present==6 && sc!=100)
+         { where="CF-10 six present legs at full evidence must score exactly 100"; return false; }
+         if(sc<0 || sc>100)
+         { where="CF-10 the unified score must always stay inside 0-100"; return false; }
+         if(present>0 && sc<=0)
+         { where="CF-10 at least one present leg must produce a non-zero score"; return false; }
+         // This pattern is the ONLY side with evidence, so the picker must agree
+         // with the minimum: named when it clears it, refused when it does not.
+         int picked=CF_PickSide((side>0?sc:0),(side>0?0:sc),60);
+         if(sc>=60 && picked!=side)
+         { where="CF-10 a lone side clearing the minimum must be the side named"; return false; }
+         if(sc<60 && picked!=0)
+         { where="CF-10 a lone side below the minimum must never be named"; return false; }
+      }
+   }
+   if(combos!=128)
+   { where="CF-10 the sweep must cover all 64 evidence patterns on both sides"; return false; }
+
+   return true;
+}
+
+//====================================================================
+// AUDIT-RM1 RISK MODEL (display only - advisory TEXT, never an order)
+//====================================================================
+// WHAT THIS MODULE IS
+//   For the side the Confluence Engine named, it publishes Entry, Stop Loss,
+//   TP1/TP2/TP3, the R:R of each target, a rejection when TP1's R:R is below the
+//   file's hard floor, and a suggested position size AS TEXT ONLY. It draws
+//   nothing, allocates no buffer, and contains no trade API. The word "units" is
+//   used instead of "lots" in the published text on purpose: this is an advisory
+//   number for a human to read, not an instruction to anything.
+//
+// WHAT ALREADY EXISTED, AND WHAT THIS MODULE THEREFORE DOES NOT REBUILD
+//   A complete trade-management model is already in this file. Rather than build
+//   a second one beside it, this module reuses it:
+//
+//   * MTF_SniperComputeTradeManagement() already derives entry, a stop behind the
+//     Sniper Zone by SNIPER_SL_BUFFER_ATR (0.30) x ATR OR the most recent opposing
+//     swing whichever is farther, a hard stop cap of SNIPER_SL_HARD_MAX_H1_ATR
+//     (2.00) x H1 ATR that SKIPs the trade, TP1/TP2/TP3 from the nearest opposing
+//     zone / HTF zone / D1-W1 liquidity with a 1R/2R/3R fallback, break-even,
+//     trailing, and rec_lot_size from equity x risk%.
+//   * The TopDown chain already builds opposing-liquidity targets (H1 VAH/VAL/POC,
+//     H1 dealing extreme, PDH, PDL), computes rr, and REJECTS below
+//     InpTopDownMinRR with the message "R:R %.2f below required %.2f".
+//   * TheoreticalRiskMoney(entry,sl,volume) already converts a stop distance into
+//     money via the symbol's tick size and tick value, and returns 0.0 when the
+//     instrument data is unavailable.
+//   * STopDownState's own header comment says its published tuple exists so that a
+//     downstream planner can "reconcile ITS zone with the chain's zone instead of
+//     re-deriving (and possibly contradicting) it". This module is that downstream
+//     planner, and it takes the invitation: when the chain has computed a plan and
+//     its direction agrees with the confluence verdict, that plan is adopted
+//     VERBATIM and labelled TOPDOWN. Only when there is no agreeing plan does this
+//     module derive one itself, labelled DERIVED. Two risk plans for one bar that
+//     disagree would be worse than either alone.
+//
+// INPUTS THAT DO NOT EXIST, AND WERE NOT INVENTED
+//   The brief for this phase named InpMinRR (2.0) and InpRiskPercent (1%). Neither
+//   exists in this file. What exists is InpTopDownMinRR = 2.0, documented as
+//   "hard R:R floor (policy: never below 1:2)", and InpSniperMaxRiskPct = 1.50,
+//   documented as "Advisory equity risk % per trade (1.0-2.0%)". Both are reused
+//   here rather than duplicated, because adding a second R:R floor and a second
+//   risk percentage would put two knobs in the same file that can disagree with
+//   each other. Consequence, stated plainly: the risk percentage this module
+//   reports defaults to 1.50, NOT the 1.0 the brief mentioned, and it is clamped
+//   to 1.0-2.0 by the same MathMax/MathMin the Sniper model uses. Changing that
+//   default would change the Sniper model too, which is out of scope.
+//
+// CAUSALITY
+//   Entry is the last CLOSED bar's close - the price the next bar opens at, and
+//   the only entry price knowable without a future candle. Every scan is bounded
+//   and reads only closed-bar state. The forming bar is refused explicitly.
+//   Nothing is latched: RM_Update() clears all published state before its early
+//   exits, so switching the module off cannot leave a stale plan on the dashboard.
+//====================================================================
+
+// PURE. The same clamp MTF_SniperComputeTradeManagement() applies to
+// InpSniperMaxRiskPct, reproduced here so this module cannot report a risk
+// percentage the rest of the file would refuse.
+double RM_ClampRiskPct(const double pct)
+{
+   if(!(pct>0.0)) return 1.0;
+   return MathMax(1.0,MathMin(2.0,pct));
+}
+
+// PURE. Reward divided by risk. Returns 0.0 for any degenerate triple, so a
+// zero-distance stop can never produce an infinite or meaningless R:R.
+double RM_RewardRisk(const double entry,const double sl,const double tp)
+{
+   if(!(entry>0.0) || !(sl>0.0) || !(tp>0.0)) return 0.0;
+   double risk=MathAbs(entry-sl);
+   if(!(risk>0.0)) return 0.0;
+   double reward=MathAbs(tp-entry);
+   if(!(reward>0.0)) return 0.0;
+   return reward/risk;
+}
+
+// PURE. The stop goes BEYOND the level it is protecting, by an ATR buffer, so
+// that a wick through the level is not automatically a stopped-out trade.
+double RM_StopBehind(const bool is_buy,const double level,const double atr,const double buffer_atr)
+{
+   if(!(level>0.0)) return 0.0;
+   double buf=(atr>0.0 && buffer_atr>0.0 ? atr*buffer_atr : 0.0);
+   return (is_buy ? level-buf : level+buf);
+}
+
+// PURE. The hard stop cap. A stop this wide means the entry is simply in the
+// wrong place, which is the doctrine the Sniper model already applies as
+// SKIP_SL_MAX - so it is a REJECTION here, never a widened stop.
+bool RM_StopDistanceOK(const double sl_dist,const double atr,const double max_atr)
+{
+   if(!(sl_dist>0.0)) return false;
+   if(!(atr>0.0)) return false;
+   if(!(max_atr>0.0)) return false;
+   return (sl_dist<=atr*max_atr+RM_RR_EPSILON);
+}
+
+// PURE. The 1R/2R/3R fallback the Sniper model uses when no opposing zone or
+// pool is available to target instead.
+double RM_FallbackTP(const double entry,const double sl_dist,const bool is_buy,const double multiple)
+{
+   if(!(entry>0.0) || !(sl_dist>0.0) || !(multiple>0.0)) return 0.0;
+   return (is_buy ? entry+sl_dist*multiple : entry-sl_dist*multiple);
+}
+
+// PURE. Targets must sit in increasing distance from entry, or the published
+// R:R sequence would be misleading - a TP3 nearer than TP1 implies TP1 was
+// already the better exit.
+bool RM_TPsOrdered(const bool is_buy,const double entry,
+                   const double tp1,const double tp2,const double tp3)
+{
+   if(!(entry>0.0)) return false;
+   if(!(tp1>0.0) || !(tp2>0.0) || !(tp3>0.0)) return false;
+   // Every target must lie on the PROFIT side of entry, and at a distance that
+   // never decreases. Testing the side and not just the distance is what stops a
+   // target behind entry - which would be a second stop, not a target - from
+   // passing as an ordered plan.
+   if(is_buy) return (tp1>entry && tp2>=tp1 && tp3>=tp2);
+   return (tp1<entry && tp2<=tp1 && tp3<=tp2);
+}
+
+// PURE. Suggested size in units. Returns 0.0 whenever it cannot be computed, so
+// the caller can say "unavailable" instead of printing a fabricated number.
+// Note the divisor: TheoreticalRiskMoney() returns 0.0 when the symbol's tick
+// value is not reported, and dividing by that would be a division by zero.
+double RM_PositionSize(const double equity,const double risk_pct,const double money_per_lot)
+{
+   if(!(equity>0.0)) return 0.0;
+   if(!(money_per_lot>0.0)) return 0.0;
+   double pct=RM_ClampRiskPct(risk_pct);
+   double size=(equity*(pct/100.0))/money_per_lot;
+   if(!(size>0.0)) return 0.0;
+   return size;
+}
+
+// PURE. The R:R gate. With no measurable reward, or with TP1's R:R below the
+// floor, the answer is a rejection - never a quieter target and never a pass.
+string RM_Verdict(const double rr1,const double floor_rr,const bool use_floor)
+{
+   if(!(rr1>0.0)) return "REJECT_RR";
+   if(use_floor && rr1+RM_RR_EPSILON<floor_rr) return "REJECT_RR";
+   return "OK";
+}
+
+// PURE (formats only). TEXT ONLY: this string is the entire output of the sizing
+// step, and it says so. Nothing downstream may parse it into an order.
+string RM_SizeText(const bool available,const double units,const double risk_money,
+                   const double pct,const string currency)
+{
+   if(!available)
+      return "unavailable (tick value or equity not reported) - advisory only, no order";
+   return "about "+DoubleToString(units,2)+" units at "+DoubleToString(pct,2)+
+          "% risk ("+DoubleToString(risk_money,2)+" "+currency+
+          ") - advisory text only, no order";
+}
+
+// Bounded scan of the pools the file already detected, on the PROFIT side of
+// entry. Returns how many distinct targets it found (0-3), nearest first.
+int RM_PoolsAhead(const bool is_buy,const double price,const int max_scan,
+                  double &p1,double &p2,double &p3)
+{
+   p1=0.0; p2=0.0; p3=0.0;
+   if(!(price>0.0)) return 0;
+   int n=ArraySize(g_liquidity);
+   if(n<1) return 0;
+   int scan=(max_scan>0 ? (int)MathMin((double)max_scan,(double)n) : n);
+   if(scan<1) return 0;
+   int found=0;
+   for(int k=n-scan;k<n;k++)
+   {
+      if(k<0) continue;
+      double lv=g_liquidity[k].price;
+      if(!(lv>0.0)) continue;
+      // A target must lie AHEAD of entry in the profit direction.
+      if(is_buy ? (lv<=price) : (lv>=price)) continue;
+      if(lv==p1 || lv==p2 || lv==p3) continue;      // distinct levels only
+      double d1=(p1>0.0?MathAbs(p1-price):-1.0);
+      double d2=(p2>0.0?MathAbs(p2-price):-1.0);
+      double d3=(p3>0.0?MathAbs(p3-price):-1.0);
+      double d=MathAbs(lv-price);
+      if(found==0){ p1=lv; found=1; continue; }
+      if(found==1)
+      {
+         if(d<d1){ p2=p1; p1=lv; } else { p2=lv; }
+         found=2; continue;
+      }
+      if(found==2)
+      {
+         if(d<d1){ p3=p2; p2=p1; p1=lv; }
+         else if(d<d2){ p3=p2; p2=lv; }
+         else { p3=lv; }
+         found=3; continue;
+      }
+      if(d<d3)
+      {
+         if(d<d1){ p3=p2; p2=p1; p1=lv; }
+         else if(d<d2){ p3=p2; p2=lv; }
+         else { p3=lv; }
+      }
+   }
+   return found;
+}
+
+// Bounded scan for the nearest pool on the RISK side of entry - what a stop
+// should sit behind when price is not inside a zone.
+double RM_NearestPoolBehind(const bool is_buy,const double price,const int max_scan)
+{
+   if(!(price>0.0)) return 0.0;
+   int n=ArraySize(g_liquidity);
+   if(n<1) return 0.0;
+   int scan=(max_scan>0 ? (int)MathMin((double)max_scan,(double)n) : n);
+   if(scan<1) return 0.0;
+   double best=0.0;
+   double best_d=0.0;
+   for(int k=n-scan;k<n;k++)
+   {
+      if(k<0) continue;
+      double lv=g_liquidity[k].price;
+      if(!(lv>0.0)) continue;
+      if(is_buy ? (lv>=price) : (lv<=price)) continue;   // risk side only
+      double d=MathAbs(price-lv);
+      if(best<=0.0 || d<best_d){ best=lv; best_d=d; }
+   }
+   return best;
+}
+
+// The per-bar driver. Advisory only: it publishes a plan for a human to read.
+void RM_Update(const int closed,const int rates_total)
+{
+   RM_Clear();
+   if(!InpEnableRiskModel) return;
+   if(rates_total<3) return;
+   if(closed<1 || closed>rates_total-2) return;    // never touch the forming bar
+   if(closed>=ArraySize(g_buf_c)) return;
+
+   // The readout is an advisory ATTACHED to the Phase 6 verdict. With no named
+   // side there is nothing to size, and inventing a direction here would be
+   // exactly the forced direction CF_PickSide() refuses to produce.
+   if(g_cf_dir==0)
+   {
+      g_rm_verdict="WAIT";
+      g_rm_reason=(g_cf_reason=="" ? "no confluence verdict to attach a plan to" : g_cf_reason);
+      return;
+   }
+   bool is_buy=(g_cf_dir>0);
+   g_rm_dir=g_cf_dir;
+
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0) ? g_atr_buf[closed] : g_atr;
+   double price=g_buf_c[closed];
+   if(!(atr>0.0) || !(price>0.0))
+   {
+      g_rm_verdict="WAIT";
+      g_rm_reason="ATR or close unavailable on this bar";
+      return;
+   }
+
+   double sl_dist=0.0;
+
+   //---- 1. ENTRY / STOP / TP1: adopt the TopDown chain's plan when it agrees. --
+   if(InpRMPreferTopDownPlan && g_td.computed && g_td.dir==g_cf_dir &&
+      g_td.entry>0.0 && g_td.sl>0.0 && g_td.tp1>0.0)
+   {
+      g_rm_plan_src="TOPDOWN";
+      g_rm_entry=g_td.entry;
+      g_rm_sl=g_td.sl;
+      g_rm_tp1=g_td.tp1;
+      g_rm_rr1=(g_td.rr>0.0 ? g_td.rr : RM_RewardRisk(g_rm_entry,g_rm_sl,g_rm_tp1));
+      g_rm_sl_src="TopDown chain";
+      g_rm_tp1_src=(g_td.tp_src=="" ? "TopDown target" : g_td.tp_src);
+   }
+   else
+   {
+      g_rm_plan_src="DERIVED";
+      // Entry is the last closed bar's close: the price the next bar opens at,
+      // and the only entry knowable without a future candle.
+      g_rm_entry=price;
+
+      // Stop: behind the zone price is standing in, else behind the nearest pool
+      // on the risk side, else a plain ATR distance. PA_ZoneAt() is the file's one
+      // zone scan and is read-only, so calling it here cannot disturb Phase 4.
+      string zname=""; double ztop=0.0; double zbot=0.0; int zdir=0;
+      bool in_zone=PA_ZoneAt(price,closed,atr,zname,ztop,zbot,zdir);
+      double pool=RM_NearestPoolBehind(is_buy,price,InpRMMaxPoolScan);
+      if(in_zone)
+      {
+         g_rm_sl=RM_StopBehind(is_buy,(is_buy?zbot:ztop),atr,InpRMSLBufferATR);
+         g_rm_sl_src=zname+" zone";
+      }
+      else if(pool>0.0)
+      {
+         g_rm_sl=RM_StopBehind(is_buy,pool,atr,InpRMSLBufferATR);
+         g_rm_sl_src="liquidity pool";
+      }
+      else
+      {
+         g_rm_sl=(is_buy ? price-InpRMNoZoneSLATR*atr : price+InpRMNoZoneSLATR*atr);
+         g_rm_sl_src="ATR fallback (no zone, no pool behind entry)";
+      }
+      if(!(g_rm_sl>0.0))
+      {
+         g_rm_verdict="WAIT";
+         g_rm_reason="no usable stop level could be derived";
+         return;
+      }
+      g_rm_tp1=0.0;                 // filled in step 2, with TP2 and TP3
+      g_rm_tp1_src="";
+   }
+
+   //---- 2. Hard stop cap. A rejection, never a widened stop. ------------------
+   sl_dist=MathAbs(g_rm_entry-g_rm_sl);
+   if(!(sl_dist>0.0))
+   {
+      g_rm_verdict="REJECT_SL";
+      g_rm_rejected=true;
+      g_rm_reason="NO PLAN: stop distance is zero";
+      return;
+   }
+   g_rm_sl_dist=sl_dist;
+   g_rm_sl_dist_atr=sl_dist/atr;
+   if(!RM_StopDistanceOK(sl_dist,atr,InpRMSLMaxATR))
+   {
+      g_rm_verdict="REJECT_SL";
+      g_rm_rejected=true;
+      g_rm_reason="NO PLAN: stop is "+DoubleToString(g_rm_sl_dist_atr,2)+
+                  " ATR away, beyond the "+DoubleToString(InpRMSLMaxATR,2)+
+                  " ATR cap - the entry is in the wrong place";
+      return;
+   }
+
+   //---- 3. TP1/TP2/TP3: the next opposing liquidity, else 1R/2R/3R. ----------
+   if(g_rm_plan_src=="TOPDOWN")
+   {
+      // The chain publishes TP1 only, so TP2/TP3 extend from it.
+      g_rm_tp2=RM_FallbackTP(g_rm_entry,sl_dist,is_buy,2.0);
+      g_rm_tp3=RM_FallbackTP(g_rm_entry,sl_dist,is_buy,3.0);
+      g_rm_tp1_src=(g_rm_tp1_src==""?"TopDown target":g_rm_tp1_src);
+   }
+   else
+   {
+      double p1=0.0; double p2=0.0; double p3=0.0;
+      int np=RM_PoolsAhead(is_buy,g_rm_entry,InpRMMaxPoolScan,p1,p2,p3);
+      g_rm_tp1=(np>=1 ? p1 : RM_FallbackTP(g_rm_entry,sl_dist,is_buy,1.0));
+      g_rm_tp2=(np>=2 ? p2 : RM_FallbackTP(g_rm_entry,sl_dist,is_buy,2.0));
+      g_rm_tp3=(np>=3 ? p3 : RM_FallbackTP(g_rm_entry,sl_dist,is_buy,3.0));
+      g_rm_tp1_src=(np>=1 ? "next opposing liquidity" : "1R fallback");
+   }
+
+   // Enforce increasing distance. Mixing a pool target with an R-multiple
+   // fallback can otherwise put a later target nearer than an earlier one.
+   double d1=MathAbs(g_rm_tp1-g_rm_entry);
+   double d2=MathMax(MathAbs(g_rm_tp2-g_rm_entry),d1);
+   double d3=MathMax(MathAbs(g_rm_tp3-g_rm_entry),d2);
+   g_rm_tp1=(is_buy ? g_rm_entry+d1 : g_rm_entry-d1);
+   g_rm_tp2=(is_buy ? g_rm_entry+d2 : g_rm_entry-d2);
+   g_rm_tp3=(is_buy ? g_rm_entry+d3 : g_rm_entry-d3);
+
+   // Final consistency guard. The enforcement above should make this
+   // unreachable; if it ever fires, the honest output is WAIT rather than a plan
+   // whose targets do not describe what they claim to.
+   if(!RM_TPsOrdered(is_buy,g_rm_entry,g_rm_tp1,g_rm_tp2,g_rm_tp3))
+   {
+      g_rm_verdict="WAIT";
+      g_rm_reason="NO PLAN: the derived targets are not in a usable order";
+      return;
+   }
+
+   g_rm_rr1=RM_RewardRisk(g_rm_entry,g_rm_sl,g_rm_tp1);
+   g_rm_rr2=RM_RewardRisk(g_rm_entry,g_rm_sl,g_rm_tp2);
+   g_rm_rr3=RM_RewardRisk(g_rm_entry,g_rm_sl,g_rm_tp3);
+
+   //---- 4. The R:R floor, reusing the file's existing hard policy input. -----
+   string v=RM_Verdict(g_rm_rr1,InpTopDownMinRR,InpRMUseRRFloor);
+   if(v!="OK")
+   {
+      g_rm_verdict="REJECT_RR";
+      g_rm_rejected=true;
+      g_rm_reason="NO PLAN: R:R "+DoubleToString(g_rm_rr1,2)+" below the required "+
+                  DoubleToString(InpTopDownMinRR,2)+" ("+g_rm_tp1_src+")";
+   }
+   else
+   {
+      g_rm_verdict="OK";
+      g_rm_rejected=false;
+      g_rm_reason=(is_buy?"BUY":"SELL")+" plan R:R "+DoubleToString(g_rm_rr1,2)+
+                  "/"+DoubleToString(g_rm_rr2,2)+"/"+DoubleToString(g_rm_rr3,2)+
+                  " from "+g_rm_plan_src;
+   }
+
+   //---- 5. Suggested size, AS TEXT ONLY. Never an order. --------------------
+   double equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   double pct=RM_ClampRiskPct(InpSniperMaxRiskPct);
+   double per_lot=TheoreticalRiskMoney(g_rm_entry,g_rm_sl,1.0);
+   g_rm_risk_pct=pct;
+   g_rm_money_per_lot=per_lot;
+   g_rm_risk_money=(equity>0.0 ? equity*(pct/100.0) : 0.0);
+   g_rm_size_units=RM_PositionSize(equity,pct,per_lot);
+   g_rm_size_available=(g_rm_size_units>0.0);
+   g_rm_size_text=RM_SizeText(g_rm_size_available,g_rm_size_units,g_rm_risk_money,
+                              pct,AccountInfoString(ACCOUNT_CURRENCY));
+
+   //---- Invalidation: the one price that cancels this plan. ------------------
+   g_rm_invalidation="a body close beyond the stop at "+DoubleToString(g_rm_sl,_Digits);
+
+   if(InpLogLifecycleTransitions && (g_rm_verdict=="OK" || g_rm_rejected))
+      LogLifecycle(StringFormat("RM %s dir=%+d rr1=%.2f plan=%s size=%s",
+                                g_rm_verdict,g_rm_dir,g_rm_rr1,g_rm_plan_src,
+                                (g_rm_size_available?"quoted":"unavailable")));
+}
+
+// Resets every published value.
+void RM_Clear()
+{
+   g_rm_verdict="WAIT";
+   g_rm_dir=0;
+   g_rm_plan_src="";
+   g_rm_entry=0.0; g_rm_sl=0.0; g_rm_sl_dist=0.0; g_rm_sl_dist_atr=0.0;
+   g_rm_tp1=0.0; g_rm_tp2=0.0; g_rm_tp3=0.0;
+   g_rm_rr1=0.0; g_rm_rr2=0.0; g_rm_rr3=0.0;
+   g_rm_sl_src=""; g_rm_tp1_src="";
+   g_rm_rejected=false; g_rm_reason=""; g_rm_invalidation="";
+   g_rm_risk_pct=0.0; g_rm_risk_money=0.0; g_rm_money_per_lot=0.0;
+   g_rm_size_units=0.0; g_rm_size_available=false; g_rm_size_text="";
+}
+
+// AUDIT-RM1 synthetic self-test. Exercises the PURE cores only - it reads no
+// chart history and no account data, so it is identical on every symbol.
+bool RM_SelfTest(string &where)
+{
+   where="";
+
+   // RM-1 The risk-percentage clamp must match the one the Sniper model applies
+   //      to the very same input, or this module could quote a percentage the
+   //      rest of the file would refuse.
+   if(MathAbs(RM_ClampRiskPct(1.50)-1.50)>1e-9)
+   { where="RM-1 a percentage inside 1.0-2.0 passes through unchanged"; return false; }
+   if(MathAbs(RM_ClampRiskPct(0.25)-1.0)>1e-9)
+   { where="RM-1 a percentage below 1.0 is raised to 1.0"; return false; }
+   if(MathAbs(RM_ClampRiskPct(9.0)-2.0)>1e-9)
+   { where="RM-1 a percentage above 2.0 is cut to 2.0"; return false; }
+   if(MathAbs(RM_ClampRiskPct(0.0)-1.0)>1e-9 || MathAbs(RM_ClampRiskPct(-3.0)-1.0)>1e-9)
+   { where="RM-1 a zero or negative percentage falls back to 1.0"; return false; }
+
+   // RM-2 Reward over risk, and 0.0 for every degenerate triple. A zero-distance
+   //      stop must never yield an infinite or meaningless ratio.
+   if(MathAbs(RM_RewardRisk(100.0,98.0,104.0)-2.0)>1e-9)
+   { where="RM-2 a 4-point reward on a 2-point risk is 2.0"; return false; }
+   if(MathAbs(RM_RewardRisk(100.0,102.0,96.0)-2.0)>1e-9)
+   { where="RM-2 the short side measures the same way"; return false; }
+   if(RM_RewardRisk(100.0,100.0,104.0)!=0.0)
+   { where="RM-2 a zero-distance stop has no measurable R:R"; return false; }
+   if(RM_RewardRisk(100.0,98.0,100.0)!=0.0)
+   { where="RM-2 a target at entry has no reward"; return false; }
+   if(RM_RewardRisk(0.0,98.0,104.0)!=0.0 || RM_RewardRisk(100.0,0.0,104.0)!=0.0 ||
+      RM_RewardRisk(100.0,98.0,0.0)!=0.0)
+   { where="RM-2 a missing entry, stop or target has no R:R"; return false; }
+
+   // RM-3 The stop sits BEYOND the level it protects, by the ATR buffer.
+   if(MathAbs(RM_StopBehind(true,100.0,10.0,0.30)-97.0)>1e-9)
+   { where="RM-3 a long stop goes below the level by 0.30 ATR"; return false; }
+   if(MathAbs(RM_StopBehind(false,100.0,10.0,0.30)-103.0)>1e-9)
+   { where="RM-3 a short stop goes above the level by 0.30 ATR"; return false; }
+   if(MathAbs(RM_StopBehind(true,100.0,0.0,0.30)-100.0)>1e-9)
+   { where="RM-3 with no ATR the buffer is zero and the stop sits ON the level"; return false; }
+   if(RM_StopBehind(true,0.0,10.0,0.30)!=0.0)
+   { where="RM-3 a missing level cannot produce a stop"; return false; }
+   if(RM_StopBehind(true,100.0,10.0,0.30)>=100.0)
+   { where="RM-3 a long stop must be strictly below the level it protects"; return false; }
+   if(RM_StopBehind(false,100.0,10.0,0.30)<=100.0)
+   { where="RM-3 a short stop must be strictly above the level it protects"; return false; }
+
+   // RM-4 The hard cap is inclusive at the limit and refuses degenerate inputs.
+   if(!RM_StopDistanceOK(20.0,10.0,2.00))
+   { where="RM-4 a stop exactly at the cap is still acceptable"; return false; }
+   if(RM_StopDistanceOK(20.1,10.0,2.00))
+   { where="RM-4 a stop beyond the cap must be rejected, not widened"; return false; }
+   if(RM_StopDistanceOK(0.0,10.0,2.00) || RM_StopDistanceOK(10.0,0.0,2.00) ||
+      RM_StopDistanceOK(10.0,10.0,0.0))
+   { where="RM-4 a missing distance, ATR or cap cannot be judged acceptable"; return false; }
+
+   // RM-5 The 1R/2R/3R fallback, on both sides.
+   if(MathAbs(RM_FallbackTP(100.0,2.0,true,1.0)-102.0)>1e-9 ||
+      MathAbs(RM_FallbackTP(100.0,2.0,true,2.0)-104.0)>1e-9 ||
+      MathAbs(RM_FallbackTP(100.0,2.0,true,3.0)-106.0)>1e-9)
+   { where="RM-5 the long fallbacks are entry plus 1R, 2R and 3R"; return false; }
+   if(MathAbs(RM_FallbackTP(100.0,2.0,false,1.0)-98.0)>1e-9 ||
+      MathAbs(RM_FallbackTP(100.0,2.0,false,3.0)-94.0)>1e-9)
+   { where="RM-5 the short fallbacks are entry minus 1R, 2R and 3R"; return false; }
+   if(RM_FallbackTP(100.0,0.0,true,1.0)!=0.0 || RM_FallbackTP(100.0,2.0,true,0.0)!=0.0)
+   { where="RM-5 a zero risk distance or zero multiple cannot produce a target"; return false; }
+
+   // RM-6 Targets must sit in increasing distance from entry.
+   if(!RM_TPsOrdered(true,100.0,102.0,104.0,106.0))
+   { where="RM-6 increasing long targets are ordered"; return false; }
+   if(!RM_TPsOrdered(false,100.0,98.0,96.0,94.0))
+   { where="RM-6 decreasing short prices are still increasing distances"; return false; }
+   if(RM_TPsOrdered(true,100.0,106.0,104.0,102.0))
+   { where="RM-6 a TP3 nearer than TP1 is not ordered"; return false; }
+   if(RM_TPsOrdered(true,100.0,102.0,102.0,106.0))
+   { where="RM-6 two targets at the same distance are still considered ordered"; return false; }
+   if(RM_TPsOrdered(true,100.0,100.0,104.0,106.0))
+   { where="RM-6 a target at entry is not a usable first target"; return false; }
+   if(RM_TPsOrdered(true,100.0,102.0,0.0,106.0))
+   { where="RM-6 a missing target is not ordered"; return false; }
+
+   // RM-7 Position size. The divisor is what matters: TheoreticalRiskMoney()
+   //      returns 0.0 when tick data is unavailable, and that must never be
+   //      divided by.
+   if(MathAbs(RM_PositionSize(10000.0,1.0,100.0)-1.0)>1e-9)
+   { where="RM-7 risking 1% of 10000 at 100 per unit is exactly 1 unit"; return false; }
+   if(MathAbs(RM_PositionSize(10000.0,2.0,100.0)-2.0)>1e-9)
+   { where="RM-7 doubling the risk percentage doubles the size"; return false; }
+   if(RM_PositionSize(10000.0,1.0,0.0)!=0.0)
+   { where="RM-7 a zero money-per-unit must return 0, never a division by zero"; return false; }
+   if(RM_PositionSize(0.0,1.0,100.0)!=0.0 || RM_PositionSize(-5.0,1.0,100.0)!=0.0)
+   { where="RM-7 no equity means no size"; return false; }
+   if(RM_PositionSize(10000.0,50.0,100.0)>2.0+1e-9)
+   { where="RM-7 an absurd percentage is clamped before it can inflate the size"; return false; }
+
+   // RM-8 The R:R gate. The floor is inclusive and no reward means no plan.
+   if(RM_Verdict(2.0,2.0,true)!="OK")
+   { where="RM-8 an R:R exactly at the floor passes"; return false; }
+   if(RM_Verdict(1.99,2.0,true)!="REJECT_RR")
+   { where="RM-8 an R:R just below the floor is rejected"; return false; }
+   if(RM_Verdict(0.0,2.0,true)!="REJECT_RR" || RM_Verdict(-1.0,2.0,true)!="REJECT_RR")
+   { where="RM-8 no measurable reward is rejected"; return false; }
+   if(RM_Verdict(0.5,2.0,false)!="OK")
+   { where="RM-8 with the floor disabled a low R:R is reported, not rejected"; return false; }
+   if(RM_Verdict(0.0,2.0,false)!="REJECT_RR")
+   { where="RM-8 disabling the floor still cannot pass a zero reward"; return false; }
+
+   // RM-9 The sizing output is TEXT and must always say it is not an order.
+   string t_ok=RM_SizeText(true,1.25,125.0,1.25,"USD");
+   string t_no=RM_SizeText(false,0.0,0.0,1.00,"USD");
+   if(StringFind(t_ok,"no order")<0)
+   { where="RM-9 an available size must still state that no order is placed"; return false; }
+   if(StringFind(t_no,"no order")<0 || StringFind(t_no,"unavailable")<0)
+   { where="RM-9 an unavailable size must say so and state that no order is placed"; return false; }
+   if(StringFind(t_ok,"1.25")<0)
+   { where="RM-9 the quoted size must appear in the text"; return false; }
+   if(StringFind(t_no,"0.00 units")>=0)
+   { where="RM-9 an unavailable size must not quote a fabricated number"; return false; }
+
+   // RM-10 Exhaustive: the invariants that must hold for ANY geometry. The
+   //       round-trip is the important one - size x money-per-unit must equal the
+   //       money the operator asked to risk, which is what makes the number
+   //       arithmetically meaningful rather than merely plausible.
+   int combos=0;
+   for(int e=80;e<=120;e+=10)
+   {
+      for(int sd=1;sd<=8;sd++)
+      {
+         for(int m1=1;m1<=4;m1++)
+         {
+            for(int side=0;side<2;side++)
+            {
+               bool is_buy=(side==0);
+               double entry=(double)e;
+               double sl=(is_buy ? entry-(double)sd : entry+(double)sd);
+               double tp1=RM_FallbackTP(entry,(double)sd,is_buy,(double)m1);
+               double tp2=RM_FallbackTP(entry,(double)sd,is_buy,(double)(m1+1));
+               double tp3=RM_FallbackTP(entry,(double)sd,is_buy,(double)(m1+2));
+               combos++;
+               if(!RM_TPsOrdered(is_buy,entry,tp1,tp2,tp3))
+               { where="RM-10 R-multiple targets must always be ordered"; return false; }
+               double r1=RM_RewardRisk(entry,sl,tp1);
+               double r2=RM_RewardRisk(entry,sl,tp2);
+               double r3=RM_RewardRisk(entry,sl,tp3);
+               if(!(r2>=r1 && r3>=r2))
+               { where="RM-10 the R:R sequence must never decrease"; return false; }
+               if(MathAbs(r1-(double)m1)>1e-9)
+               { where="RM-10 an mR target must measure exactly m of reward per risk"; return false; }
+               if(RM_Verdict(r1,2.0,true)=="OK" && r1+1e-9<2.0)
+               { where="RM-10 the gate must never pass an R:R below the floor"; return false; }
+               if(RM_Verdict(r1,2.0,true)!="OK" && r1>=2.0)
+               { where="RM-10 the gate must never reject an R:R at or above the floor"; return false; }
+               // Round-trip the sizing arithmetic on a SYNTHETIC money-per-unit.
+               // The real TheoreticalRiskMoney() depends on the symbol's tick size
+               // and tick value, so calling it here would make this self-test's
+               // result depend on the environment it runs in.
+               double eq=10000.0;
+               for(int q=1;q<=3;q++)
+               {
+                  double per=(double)sd*2.5*(double)q;
+                  double sz=RM_PositionSize(eq,1.0,per);
+                  if(sz<=0.0)
+                  { where="RM-10 a valid money-per-unit must produce a positive size"; return false; }
+                  if(MathAbs(sz*per-eq*0.01)>1e-6)
+                  { where="RM-10 size x money-per-unit must equal the money risked"; return false; }
+                  if(RM_PositionSize(eq,1.0,0.0)!=0.0)
+                  { where="RM-10 a zero money-per-unit must never be divided by"; return false; }
+               }
+            }
+         }
+      }
+   }
+   if(combos!=320)
+   { where="RM-10 the sweep must cover 5x8x4x2 = 320 geometries"; return false; }
+
+   return true;
 }
 
 //====================================================================
@@ -24034,10 +27853,17 @@ void DrawStructureAndOB()
       int i=g_ob_strength_idx[k];
       SOrderBlock ob=g_order_blocks[i];
       if(ob.state=="MITIGATED" || ob.closed_state=="MITIGATED") continue;
+      if(ob.state=="EXPIRED" || ob.closed_state=="EXPIRED") continue;   // AUDIT-OB1
       string name=PFX+"OB_"+ob.id;
       color col=ob.bullish?InpColorOB:InpColorOB_Bear;
       string label=(ob.bullish?"Bull OB ":"Bear OB ")+QSMC_ClipChars(ob.id,18)+
                    " S"+IntegerToString(ob.strength);
+      // AUDIT-OB1: opt-in lifecycle vocabulary on the box label. Off by default, so
+      // the label string is byte-identical to before unless the flag is set. `i` is
+      // the registry index (ob is a copy), and OBStateLabel is display-only: it maps
+      // ACTIVE/TOUCHED/MITIGATED onto FRESH/MITIGATED/BROKEN for reading, and never
+      // feeds a decision.
+      if(InpOBShowLifecycleLabel) label+=" "+OBStateLabel(i);
       DrawUniqueSMCZoneBox(name,ob.time1,ob.top,ob.time2,ob.bottom,col,label,InpOBTransparency);
       ob_shown++;
    }
@@ -29131,7 +32957,163 @@ void DrawQuantumDashboard(const int total,const double &c[])
       if(g_rxn_zone_ev[i].valid && g_rxn_zone_ev[i].level>=(int)RXN_LEVEL_REACTION)
       { tooltip+="\nRXN: "+g_rxn_zone_ev[i].path_text+" | "+g_rxn_zone_ev[i].score_detail; break; }
 
+   // AUDIT-CF1 Confluence Engine. This is the SUMMARY block, so it goes first,
+   // ahead of the per-module detail below it. Same rule as every other
+   // display-only module: tooltip only, never the 11-row card. The card's budget
+   // is fixed and pinned by test_dashboard_clarity.py, and a display-only extra
+   // must not be able to push a Core row off it.
+   if(InpEnableConfluence && InpCFShowOnDashboard)
+   {
+      string cf_legs_a="structure "+DoubleToString(g_cf_pillar_structure,0)+(g_cf_has_structure?"":" (absent)")+
+                       " | liquidity "+DoubleToString(g_cf_pillar_liquidity,0)+(g_cf_has_liquidity?"":" (absent)")+
+                       " | zone "+DoubleToString(g_cf_pillar_zone,0)+(g_cf_has_zone?"":" (absent)");
+      string cf_legs_b="session "+DoubleToString(g_cf_pillar_session,0)+(g_cf_has_session?"":" (absent)")+
+                       " | candle "+DoubleToString(g_cf_pillar_candle,0)+(g_cf_has_candle?"":" (absent)")+
+                       " | MTF "+DoubleToString(g_cf_pillar_mtf,0)+(g_cf_has_mtf?"":" (absent)");
+      string cf_best=(g_cf_best_strategy==""?"none":
+                      g_cf_best_strategy+" score "+IntegerToString(g_cf_best_strategy_score)+
+                      " dir "+(g_cf_best_strategy_dir>0?"BUY":"SELL"));
+      string cf_head=(g_cf_no_trade?g_cf_reason:
+                      ((g_cf_dir>0?"BUY":(g_cf_dir<0?"SELL":"none"))+" score "+
+                       IntegerToString(g_cf_score)+" of 100"));
+      tooltip+="\nCF: "+cf_head+" | weights "+IntegerToString(g_cf_weight_sum)+"/100";
+      tooltip+="\nCF legs: "+cf_legs_a;
+      tooltip+="\nCF legs: "+cf_legs_b;
+      tooltip+="\nCF sides: buy "+IntegerToString(g_cf_buy_score)+
+               " vs sell "+IntegerToString(g_cf_sell_score)+
+               " (min display "+IntegerToString(InpCFMinDisplayScore)+")";
+      tooltip+="\nCF best strategy: "+cf_best;
+      if(g_cf_contradictions>0)
+         tooltip+="\nCF contradictions: "+IntegerToString(g_cf_contradictions);
+      if(g_cf_invalidation!="")
+         tooltip+="\nCF invalidation: "+g_cf_invalidation;
+      tooltip+="\nCF: rule-based confluence count, not a probability.";
+   }
+
+   // AUDIT-RM1 Risk Model. Advisory text, directly after the confluence summary
+   // it belongs to. Tooltip only, never the 11-row card, for the same reason: a
+   // display-only extra must not be able to push a Core row off the card.
+   if(InpEnableRiskModel && InpRMShowOnDashboard)
+   {
+      tooltip+="\nRM: "+g_rm_verdict+(g_rm_dir>0?" BUY":(g_rm_dir<0?" SELL":""))+
+               (g_rm_plan_src==""?"":" ("+g_rm_plan_src+")");
+      if(g_rm_reason!="") tooltip+="\nRM why: "+g_rm_reason;
+      if(g_rm_entry>0.0 && g_rm_sl>0.0)
+      {
+         tooltip+="\nRM plan: entry "+DoubleToString(g_rm_entry,_Digits)+
+                  " | SL "+DoubleToString(g_rm_sl,_Digits)+
+                  " ("+DoubleToString(g_rm_sl_dist_atr,2)+" ATR, behind "+g_rm_sl_src+")";
+         tooltip+="\nRM targets: TP1 "+DoubleToString(g_rm_tp1,_Digits)+
+                  " ("+DoubleToString(g_rm_rr1,2)+"R, "+g_rm_tp1_src+")"+
+                  " | TP2 "+DoubleToString(g_rm_tp2,_Digits)+
+                  " ("+DoubleToString(g_rm_rr2,2)+"R)"+
+                  " | TP3 "+DoubleToString(g_rm_tp3,_Digits)+
+                  " ("+DoubleToString(g_rm_rr3,2)+"R)";
+         tooltip+="\nRM floor: "+DoubleToString(InpTopDownMinRR,2)+"R from InpTopDownMinRR"+
+                  (InpRMUseRRFloor?"":" (disabled by InpRMUseRRFloor)");
+         tooltip+="\nRM size: "+g_rm_size_text;
+      }
+      if(g_rm_invalidation!="") tooltip+="\nRM invalidation: "+g_rm_invalidation;
+      tooltip+="\nRM: reward:risk and suggested size are advisory text - not a probability, not an order.";
+   }
+
+   // AUDIT-SB1 Power of 3 + Silver Bullet. These rows go into the TOOLTIP and
+   // never into the 11-row card: the card's budget is fixed and pinned by
+   // test_dashboard_clarity.py, and a display-only extra must not be able to push
+   // a Core row off the card. This is the same merge the DSE section uses.
+   if(InpEnablePowerOf3 && InpP3ShowOnDashboard)
+   {
+      string p3_dir="";
+      if(g_p3_phase==P3_PHASE_DISTRIBUTION && g_p3_dir!=0)
+         p3_dir=(g_p3_dir>0?" (distribution UP)":" (distribution DOWN)");
+      else if(g_p3_phase==P3_PHASE_MANIPULATION && g_p3_dir!=0)
+         p3_dir=(g_p3_dir>0?" (prospective UP)":" (prospective DOWN)");
+      tooltip+="\nP3: "+P3_PhaseName((int)g_p3_phase)+p3_dir+
+               " | score "+IntegerToString(g_p3_score)+"/100 (confluence, not a win rate)";
+      if(g_p3_reason!="") tooltip+="\nP3 why: "+g_p3_reason;
+      if(g_p3_invalidation!="") tooltip+="\nP3 invalidation: "+g_p3_invalidation;
+   }
+   if(InpEnableSilverBullet && InpSBShowOnDashboard)
+   {
+      // No direction is printed unless the setup is ACTIVE, so the card can never
+      // show a direction next to a stand-aside.
+      string sb_dir=(g_sb_active?(g_sb_dir>0?"BUY":(g_sb_dir<0?"SELL":"none")):"stand aside");
+      tooltip+="\nSB: "+(g_sb_active?"ACTIVE":"not active")+" | dir "+sb_dir+
+               " | "+(g_sb_window>=0?SB_WindowName(g_sb_window):"outside every window")+
+               " | score "+IntegerToString(g_sb_score)+"/100 (confluence, not a win rate)";
+      if(g_sb_reason!="") tooltip+="\nSB why: "+g_sb_reason;
+      if(g_sb_active && g_sb_invalidation!="") tooltip+="\nSB invalidation: "+g_sb_invalidation;
+   }
+   // The optional entry zone is drawn here, after PrepareDynamicRedraw() has
+   // already swept the SBP3_ prefix earlier in this same pass.
+   SB_DrawEntryZone(closed);
+
+   // AUDIT-WY1 Wyckoff Spring / Upthrust. Tooltip, never the 11-row card, for the
+   // same reason as the two above.
+   if(InpEnableWyckoff && InpWyckoffShowOnDashboard)
+   {
+      // A direction is printed only while the event is ACTIVE, so an invalidated or
+      // conflicted event can never show a side next to a stand-aside.
+      string wy_dir=(g_wy_active?(g_wy_dir>0?"BUY":(g_wy_dir<0?"SELL":"none")):"stand aside");
+      tooltip+="\nWY: "+WY_EventName(g_wy_event)+(g_wy_active?"":" (not active)")+
+               " | dir "+wy_dir+
+               " | score "+IntegerToString(g_wy_score)+"/100 (confluence, not a win rate)";
+      if(g_wy_range_valid)
+         tooltip+="\nWY range: "+DoubleToString(g_wy_range_low,_Digits)+"-"+
+                  DoubleToString(g_wy_range_high,_Digits)+" ("+
+                  IntegerToString(g_wy_range_end-g_wy_range_start+1)+" bars, touches "+
+                  IntegerToString(g_wy_touches_high)+"/"+IntegerToString(g_wy_touches_low)+")";
+      if(g_wy_reason!="") tooltip+="\nWY why: "+g_wy_reason;
+      if(g_wy_active && g_wy_invalidation!="") tooltip+="\nWY invalidation: "+g_wy_invalidation;
+   }
+   WY_DrawRange(closed);
+
+   // AUDIT-PA1 Pure Price Action. Tooltip, never the 11-row card, for the same
+   // reason as the modules above.
+   if(InpEnablePriceAction && InpPAShowOnDashboard)
+   {
+      // A direction is printed only when one is actually resolved, so a standalone
+      // or conflicted pattern can never show a side next to a stand-aside.
+      string pa_dir=(g_pa_dir>0?"BUY":(g_pa_dir<0?"SELL":"none"));
+      tooltip+="\nPA: "+g_pa_pattern+" strength "+IntegerToString(g_pa_strength)+
+               "/100 | dir "+pa_dir+" | "+(g_pa_confirms?"CONFIRMS":"not confirmation")+
+               " | score "+IntegerToString(g_pa_score)+"/100 (confluence, not a win rate)";
+      if(g_pa_in_zone)
+         tooltip+="\nPA zone: "+g_pa_zone_name+" "+
+                  DoubleToString(g_pa_zone_bottom,_Digits)+"-"+
+                  DoubleToString(g_pa_zone_top,_Digits);
+      if(g_pa_reason!="") tooltip+="\nPA why: "+g_pa_reason;
+      if(g_pa_invalidation!="") tooltip+="\nPA invalidation: "+g_pa_invalidation;
+   }
+
+   // AUDIT-MR1 Mean Reversion / Momentum. Tooltip, never the 11-row card, for the
+   // same reason as the modules above.
+   if(InpEnableMeanReversion && InpMRShowOnDashboard)
+   {
+      // A side is printed only when one is actually resolved, so a bare stretch or
+      // a vetoed fade can never show a direction next to a stand-aside.
+      string mr_dir=(g_mr_dir>0?"BUY":(g_mr_dir<0?"SELL":"none"));
+      tooltip+="\nMR: stretch "+DoubleToString(g_mr_stretch,2)+" sigma | dir "+mr_dir+
+               " | score "+IntegerToString(g_mr_score)+"/100 (confluence, not a win rate)";
+      if(g_mr_sigma>0.0)
+         tooltip+="\nMR bands: VWAP "+DoubleToString(g_mr_vwap,_Digits)+
+                  "  upper "+DoubleToString(g_mr_upper,_Digits)+
+                  "  lower "+DoubleToString(g_mr_lower,_Digits);
+      if(g_mr_div_dir!=0)
+         tooltip+="\nMR divergence: "+(g_mr_div_dir>0?"BULLISH":"BEARISH")+
+                  " on confirmed swings (RSI "+DoubleToString(g_mr_rsi_old,1)+" -> "+
+                  DoubleToString(g_mr_rsi_new,1)+")";
+      if(InpMRUseMACD)
+         tooltip+="\nMR momentum: "+
+                  (g_mr_macd_ready?(g_mr_macd_dir>0?"up":(g_mr_macd_dir<0?"down":"flat"))
+                                   :"unavailable")+
+                  (g_mr_macd_conflict?" - VETOES the fade":"");
+      if(g_mr_reason!="") tooltip+="\nMR why: "+g_mr_reason;
+      if(g_mr_invalidation!="") tooltip+="\nMR invalidation: "+g_mr_invalidation;
+   }
+
    int chart_w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+
    int chart_h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    if(chart_w<=0) chart_w=800;
    if(chart_h<=0) chart_h=600;
