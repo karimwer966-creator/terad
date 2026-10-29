@@ -849,6 +849,15 @@ input group "====== Session Clock / DST ======"
 input int InpBrokerUTCOffsetWinterMinutes = 120;
 input ENUM_BROKER_DST_RULE InpBrokerDSTRule = BROKER_DST_EU;
 input bool InpUseDSTSessions = true;
+input group "====== All Seven Modules At Once (AUDIT-UX1) ======"
+input bool   InpEnableAllModules        = false;  // one switch: all seven strategy modules ON plus
+                                             // their tooltip output. Does NOT enable the chart-object
+                                             // opt-ins (SB entry zone, WY range box, OB label): boxes on
+                                             // the chart are clutter, and clutter was the complaint.
+input bool   InpRedrawTradeBoxOnNewBarOnly= false;  // stop the per-tick object churn of the trade box and
+                                             // its five SL/TP levels. Their values are closed-bar state,
+                                             // so nothing visible is lost; a confirmation that lands
+                                             // mid-bar without a detection update waits for the next bar.
 input group "====== Silver Bullet / Power of 3 (AUDIT-SB1, display only) ======"
 // Every switch below defaults to OFF. With them off, nothing in this group is
 // computed, drawn, logged or appended to the dashboard, and no existing value,
@@ -15573,8 +15582,10 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       if(ObjectFind(0,epname)>=0) ObjectDelete(0,epname);
    }
 
-   if(InpShowTradeBox && g_trade_setup.valid) DrawTradeBox();
-   if(InpDrawTradeLevels && g_trade_setup.valid && InpShowSLTP) DrawTradeLevels(rates_total,g_buf_t);
+   if(InpShowTradeBox && g_trade_setup.valid &&
+      (!InpRedrawTradeBoxOnNewBarOnly || (is_new_bar || detection_updated || prev_calculated==0))) DrawTradeBox();
+   if(InpDrawTradeLevels && g_trade_setup.valid && InpShowSLTP &&
+      (!InpRedrawTradeBoxOnNewBarOnly || (is_new_bar || detection_updated || prev_calculated==0))) DrawTradeLevels(rates_total,g_buf_t);
    // v6.4.1 SIGNAL VISIBILITY: entry marks / preview / chase verdict. Display
    // only - it reads the published closed-bar state, never mutates a setup.
    DrawEntrySignalVisuals(rates_total,is_new_bar || prev_calculated==0);
@@ -24600,7 +24611,7 @@ void P3_Update(const int closed)
 {
    g_p3_phase=P3_PHASE_NONE; g_p3_dir=0; g_p3_score=0;
    g_p3_reason=""; g_p3_invalidation="";
-   if(!InpEnablePowerOf3) return;
+   if(!(InpEnablePowerOf3||InpEnableAllModules)) return;
    if(closed<0 || closed>=ArraySize(g_buf_c)) return;
    // The Asia range and its sweep are published by DetectJudasSwing, so Power of
    // 3 depends on that EXISTING switch. Report the dependency rather than a phase
@@ -24777,7 +24788,7 @@ void SB_Update(const int closed)
    g_sb_active=false; g_sb_window=-1; g_sb_dir=0; g_sb_fvg=-1;
    g_sb_entry_high=0.0; g_sb_entry_low=0.0;
    g_sb_reason=""; g_sb_score=0; g_sb_invalidation="";
-   if(!InpEnableSilverBullet) return;
+   if(!(InpEnableSilverBullet||InpEnableAllModules)) return;
    if(closed<0 || closed>=ArraySize(g_buf_t) || closed>=ArraySize(g_buf_c) ||
       closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return;
 
@@ -24891,7 +24902,7 @@ void SB_Update(const int closed)
 void SB_DrawEntryZone(const int closed)
 {
    const string name=PFX+"SBP3_ENTRY";
-   if(!InpEnableSilverBullet || !InpSBShowEntryZone || !g_sb_active ||
+   if(!(InpEnableSilverBullet||InpEnableAllModules) || !InpSBShowEntryZone || !g_sb_active ||
       g_sb_fvg<0 || !(g_sb_entry_high>g_sb_entry_low) ||
       closed<6 || closed>=ArraySize(g_buf_t))
    {
@@ -25244,7 +25255,7 @@ void WY_Update(const int closed)
    g_wy_event=WY_EVENT_NONE; g_wy_dir=0; g_wy_bar=-1; g_wy_extreme=0.0;
    g_wy_active=false; g_wy_volume_ok=false; g_wy_conflict=false;
    g_wy_score=0; g_wy_reason=""; g_wy_invalidation="";
-   if(!InpEnableWyckoff) return;
+   if(!(InpEnableWyckoff||InpEnableAllModules)) return;
    if(closed<3) return;
    int n_c=ArraySize(g_buf_c), n_h=ArraySize(g_buf_h), n_l=ArraySize(g_buf_l);
    if(closed>=n_c || closed>=n_h || closed>=n_l) return;
@@ -25363,7 +25374,7 @@ void WY_Update(const int closed)
 void WY_DrawRange(const int closed)
 {
    const string name=PFX+"WY_RANGE";
-   if(!InpEnableWyckoff || !InpWyckoffShowRange || !g_wy_range_valid ||
+   if(!(InpEnableWyckoff||InpEnableAllModules) || !InpWyckoffShowRange || !g_wy_range_valid ||
       !(g_wy_range_high>g_wy_range_low) || g_wy_range_start<0 ||
       g_wy_range_end<0 || g_wy_range_end>=ArraySize(g_buf_t) ||
       g_wy_range_start>=ArraySize(g_buf_t))
@@ -25718,7 +25729,7 @@ void PA_Update(const int closed)
    g_pa_in_zone=false; g_pa_zone_name=""; g_pa_zone_top=0.0; g_pa_zone_bottom=0.0;
    g_pa_zone_dir=0; g_pa_dir=0; g_pa_confirms=false; g_pa_score=0;
    g_pa_reason=""; g_pa_invalidation="";
-   if(!InpEnablePriceAction) return;
+   if(!(InpEnablePriceAction||InpEnableAllModules)) return;
    if(closed<2 || closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_h) ||
       closed>=ArraySize(g_buf_l) || closed>=ArraySize(g_buf_o)) return;
 
@@ -26176,7 +26187,7 @@ void MR_Update(const int closed,const int rates_total,const bool full)
    g_mr_macd_dir=0; g_mr_macd_conflict=false;
    g_mr_dir=0; g_mr_confirms=false; g_mr_score=0;
    g_mr_reason=""; g_mr_invalidation="";
-   if(!InpEnableMeanReversion) return;
+   if(!(InpEnableMeanReversion||InpEnableAllModules)) return;
    if(closed<2 || rates_total<3) return;
    if(closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return;
    if(closed>=ArraySize(BufVWAP) || closed>=ArraySize(g_rsi_buf)) return;
@@ -26681,7 +26692,7 @@ void CF_Update(const int closed,const int rates_total)
    // use, so a disabled or blocked engine can never leave a previous bar's
    // verdict on the dashboard.
    CF_Clear();
-   if(!InpEnableConfluence) return;
+   if(!(InpEnableConfluence||InpEnableAllModules)) return;
    if(rates_total<3) return;
    if(closed<1 || closed>rates_total-2) return;    // never touch the forming bar
    if(closed>=ArraySize(g_buf_c)) return;
@@ -26717,7 +26728,7 @@ void CF_Update(const int closed,const int rates_total)
    //--- CANDLE. Reuse the unified pattern AUDIT-PA1 published. With Price Action
    //--- switched off the leg is ABSENT and scores 0 - it does not collect a
    //--- neutral half-credit for evidence nobody looked at.
-   g_cf_has_candle=(InpEnablePriceAction && g_pa_pattern!="NONE" && g_pa_pattern!="");
+   g_cf_has_candle=((InpEnablePriceAction||InpEnableAllModules) && g_pa_pattern!="NONE" && g_pa_pattern!="");
    g_cf_pillar_candle=(g_cf_has_candle ? (double)g_pa_strength : 0.0);
    int candle_dir=(g_cf_has_candle ? g_pa_pattern_dir : 0);
 
@@ -27235,7 +27246,7 @@ double RM_NearestPoolBehind(const bool is_buy,const double price,const int max_s
 void RM_Update(const int closed,const int rates_total)
 {
    RM_Clear();
-   if(!InpEnableRiskModel) return;
+   if(!(InpEnableRiskModel||InpEnableAllModules)) return;
    if(rates_total<3) return;
    if(closed<1 || closed>rates_total-2) return;    // never touch the forming bar
    if(closed>=ArraySize(g_buf_c)) return;
@@ -32962,7 +32973,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    // display-only module: tooltip only, never the 11-row card. The card's budget
    // is fixed and pinned by test_dashboard_clarity.py, and a display-only extra
    // must not be able to push a Core row off it.
-   if(InpEnableConfluence && InpCFShowOnDashboard)
+   if((InpEnableConfluence||InpEnableAllModules) && (InpCFShowOnDashboard||InpEnableAllModules))
    {
       string cf_legs_a="structure "+DoubleToString(g_cf_pillar_structure,0)+(g_cf_has_structure?"":" (absent)")+
                        " | liquidity "+DoubleToString(g_cf_pillar_liquidity,0)+(g_cf_has_liquidity?"":" (absent)")+
@@ -32993,7 +33004,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    // AUDIT-RM1 Risk Model. Advisory text, directly after the confluence summary
    // it belongs to. Tooltip only, never the 11-row card, for the same reason: a
    // display-only extra must not be able to push a Core row off the card.
-   if(InpEnableRiskModel && InpRMShowOnDashboard)
+   if((InpEnableRiskModel||InpEnableAllModules) && (InpRMShowOnDashboard||InpEnableAllModules))
    {
       tooltip+="\nRM: "+g_rm_verdict+(g_rm_dir>0?" BUY":(g_rm_dir<0?" SELL":""))+
                (g_rm_plan_src==""?"":" ("+g_rm_plan_src+")");
@@ -33021,7 +33032,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    // never into the 11-row card: the card's budget is fixed and pinned by
    // test_dashboard_clarity.py, and a display-only extra must not be able to push
    // a Core row off the card. This is the same merge the DSE section uses.
-   if(InpEnablePowerOf3 && InpP3ShowOnDashboard)
+   if((InpEnablePowerOf3||InpEnableAllModules) && (InpP3ShowOnDashboard||InpEnableAllModules))
    {
       string p3_dir="";
       if(g_p3_phase==P3_PHASE_DISTRIBUTION && g_p3_dir!=0)
@@ -33033,7 +33044,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
       if(g_p3_reason!="") tooltip+="\nP3 why: "+g_p3_reason;
       if(g_p3_invalidation!="") tooltip+="\nP3 invalidation: "+g_p3_invalidation;
    }
-   if(InpEnableSilverBullet && InpSBShowOnDashboard)
+   if((InpEnableSilverBullet||InpEnableAllModules) && (InpSBShowOnDashboard||InpEnableAllModules))
    {
       // No direction is printed unless the setup is ACTIVE, so the card can never
       // show a direction next to a stand-aside.
@@ -33050,7 +33061,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
 
    // AUDIT-WY1 Wyckoff Spring / Upthrust. Tooltip, never the 11-row card, for the
    // same reason as the two above.
-   if(InpEnableWyckoff && InpWyckoffShowOnDashboard)
+   if((InpEnableWyckoff||InpEnableAllModules) && (InpWyckoffShowOnDashboard||InpEnableAllModules))
    {
       // A direction is printed only while the event is ACTIVE, so an invalidated or
       // conflicted event can never show a side next to a stand-aside.
@@ -33070,7 +33081,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
 
    // AUDIT-PA1 Pure Price Action. Tooltip, never the 11-row card, for the same
    // reason as the modules above.
-   if(InpEnablePriceAction && InpPAShowOnDashboard)
+   if((InpEnablePriceAction||InpEnableAllModules) && (InpPAShowOnDashboard||InpEnableAllModules))
    {
       // A direction is printed only when one is actually resolved, so a standalone
       // or conflicted pattern can never show a side next to a stand-aside.
@@ -33088,7 +33099,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
 
    // AUDIT-MR1 Mean Reversion / Momentum. Tooltip, never the 11-row card, for the
    // same reason as the modules above.
-   if(InpEnableMeanReversion && InpMRShowOnDashboard)
+   if((InpEnableMeanReversion||InpEnableAllModules) && (InpMRShowOnDashboard||InpEnableAllModules))
    {
       // A side is printed only when one is actually resolved, so a bare stretch or
       // a vetoed fade can never show a direction next to a stand-aside.
