@@ -551,9 +551,9 @@ comment-stripped text.
 | `tools/test_docs_freshness.py` | 294 | 0 |
 | `tools/test_comment_integrity.py` | 19 | 0 |
 | **This document's own guard + the F7 defect guard** | **313** | **0** |
-| `tools/test_decision_journal.py` | 299 | 0 |
+| `tools/test_decision_journal.py` | 322 | 0 |
 
-Full gate: **5 static tools PASS · 28 suites · 3 253 PASS lines · 0 failures**.
+Full gate: **5 static tools PASS · 28 suites · 3 276 PASS lines · 0 failures**.
 CI: **35 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`, step 34 = `tools/test_scalping.py`, step 35 = `tools/test_decision_journal.py`).
 
 ### 10.1b This document is itself under test

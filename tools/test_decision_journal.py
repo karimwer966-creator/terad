@@ -407,6 +407,46 @@ check(OBS_CALL > OC_SCALP, "H and after the scalping overlay")
 check(OBS_CALL - OC_RESWHY < 12,
       "H the record is still adjacent to the resolver block, not buried further down OnCalculate",
       "gap is %d lines" % (OBS_CALL - OC_RESWHY))
+
+# The chain above compares pinned constants, which cannot themselves go stale in
+# the right direction: if the calls moved, those constants would still be ordered.
+# So the order is re-derived by SEARCHING OnCalculate, and the search results are
+# also required to equal the constants - a moved call fails both ways, and the
+# reason printed is the ordering, which is the property that actually matters.
+PATTERNS = (("confluence", r"CF_Update\(closed"),
+            ("risk model", r"RM_Update\(closed"),
+            ("scalping overlay", r"SCALP_Update\(closed"),
+            ("alert dispatcher", r"AlertDispatcherFinalize\("),
+            ("resolver verdict", r"g_final_signal=ResolveFinalSignal\("),
+            ("resolver why-text", r"^      g_final_why=rs_why;$"),
+            ("journal record", r"OBS_Record\(closed,rates_total\);"))
+OC_END = fn_end(ONCALC)
+check(OC_END > OBS_CALL, "H OnCalculate still encloses the record call",
+      "OnCalculate closes at L%d" % OC_END)
+FOUND = {}
+for nm, pat in PATTERNS:
+    hits = [n for n in range(ONCALC, OC_END + 1) if re.search(pat, LINES[n - 1])]
+    check(len(hits) == 1, "H OnCalculate contains exactly one %s call" % nm,
+          "found %s" % hits[:4])
+    FOUND[nm] = hits[0] if len(hits) == 1 else None
+PINNED = {"confluence": OC_CF, "risk model": OC_RM, "scalping overlay": OC_SCALP,
+          "alert dispatcher": OC_DISP, "resolver verdict": OC_RES,
+          "resolver why-text": OC_RESWHY, "journal record": OBS_CALL}
+for nm, want in PINNED.items():
+    check(FOUND.get(nm) == want, "H the %s call is where this suite says it is (L%d)" % (nm, want),
+          "found at L%s" % FOUND.get(nm))
+names = [nm for nm, _ in PATTERNS]
+for a, b in zip(names, names[1:]):
+    if FOUND.get(a) and FOUND.get(b):
+        check(FOUND[a] < FOUND[b],
+              "H MEASURED ORDER: the %s (L%d) runs before the %s (L%d)"
+              % (a, FOUND[a], b, FOUND[b]))
+if FOUND.get("journal record") and FOUND.get("resolver why-text"):
+    check(FOUND["journal record"] > FOUND["resolver why-text"],
+          "H MEASURED, not pinned: the journal is written after the resolver publishes, "
+          "so no row can carry the previous bar's verdict")
+    check(FOUND["journal record"] > FOUND["alert dispatcher"],
+          "H MEASURED: and after the dispatcher, so the published column is this bar's")
 check(line_at(OBS_CALL) == "      OBS_Record(closed,rates_total);",
       "H the call passes the same closed index and total every other layer gets")
 check(line_at(OBS_GUARD) ==
