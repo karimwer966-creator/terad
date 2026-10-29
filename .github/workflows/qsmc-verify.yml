@@ -68,6 +68,13 @@ jobs:
       - name: Weighted evidence gates contract (AUDIT-GS1)
         run: python3 tools/test_weighted_gates.py 2>&1 | tee out/weighted_gates.log
 
+      # Six scalping strategies for M1-M5, advisory and display only, default
+      # off. They reuse the modules' published state and the SCALPER preset
+      # numbers instead of re-deriving them, and they inherit the GS1 ordering:
+      # data, spread cost, session and news are vetoes, tested before any weight.
+      - name: Scalping overlay contract (AUDIT-SC1)
+        run: python3 tools/test_scalping.py 2>&1 | tee out/scalping.log
+
       - name: Arbiter decision logic vs the MQL5 self-test (1:1)
         run: python3 tools/test_arbiter.py 2>&1 | tee out/test_arbiter.log
 
