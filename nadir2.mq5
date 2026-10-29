@@ -6517,6 +6517,18 @@ string OBS_Reason(const int gate_state,const string gate_why,const int final_sig
    return "no layer produced a verdict this bar";
   }
 
+// PURE. The dispatcher's own encoding, documented at the struct field itself
+// ("int source; // 1=ZRE, 2=RXN, 3=CORE legacy"). An unexpected value is named
+// as unset rather than quietly relabelled as one of the three: a transcript that
+// invents a source is worse than no transcript at all.
+string OBS_SourceName(const int source)
+  {
+   if(source==3) return "CORE";
+   if(source==2) return "RXN";
+   if(source==1) return "ZRE";
+   return "unset";
+  }
+
 // One row per closed bar. Reads only state the layers already published;
 // writes only the journal. Never the forming bar, never twice for one bar.
 void OBS_Record(const int closed,const int rates_total)
@@ -6540,9 +6552,7 @@ void OBS_Record(const int closed,const int rates_total)
    r.scalp_dir=(InpEnableScalping?g_sc_dir:0);
    r.scalp_score=(InpEnableScalping?g_sc_score:0);
    r.primary_dir=(g_alert_primary.valid?g_alert_primary.direction:0);
-   r.primary_src=(g_alert_primary.valid?
-                  (g_alert_primary.source==3?"CORE":
-                   (g_alert_primary.source==2?"RXN":"ZRE")):"none");
+   r.primary_src=(g_alert_primary.valid?OBS_SourceName(g_alert_primary.source):"none");
    r.why=OBS_Reason(gs,(g_wgate_why==""?"-":g_wgate_why),r.final_signal,
                     (g_final_why==""?"-":g_final_why),r.scalp_dir,
                     (g_sc_why==""?"-":g_sc_why));
@@ -6634,6 +6644,12 @@ bool OBS_SelfTest(string &where)
    // OBS-10 silence is reported as silence, not as a blank cell.
    if(OBS_Reason(0,"-",0,"-",0,"")!="no layer produced a verdict this bar")
    { where="OBS-10 silence must be reported as silence"; return false; }
+   // OBS-11 the alert source is named by the dispatcher's own encoding, and an
+   // unexpected value is reported as unset rather than relabelled as a source.
+   if(OBS_SourceName(3)!="CORE" || OBS_SourceName(2)!="RXN" ||
+      OBS_SourceName(1)!="ZRE" || OBS_SourceName(0)!="unset" ||
+      OBS_SourceName(9)!="unset")
+   { where="OBS-11 an unknown alert source must not be relabelled"; return false; }
    return true;
   }
 
@@ -15518,7 +15534,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       else
          Print(">>> ",QSMC_VERSION_TEXT," Scalping strategies self-test: FAIL - ",mtee_fail);
       if(OBS_SelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Decision journal self-test: PASS (10/10)");
+         Print(">>> ",QSMC_VERSION_TEXT," Decision journal self-test: PASS (11/11)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Decision journal self-test: FAIL - ",mtee_fail);
    }
