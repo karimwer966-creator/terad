@@ -142,6 +142,15 @@ jobs:
       - name: Risk model (advisory text only, no order, reuses the existing risk inputs)
         run: python3 tools/test_phase7_riskmodel.py 2>&1 | tee out/test_phase7_riskmodel.log
 
+      # The seven-phase audit record cites 101 line numbers in a 44 831-line file.
+      # Any edit above a citation silently invalidates every citation below it and
+      # nothing complains - nine citations carried forward from earlier phase notes
+      # were already stale by the time the doc was written. So the doc's citations
+      # are a contract, checked both directions: source lines must match the pins,
+      # and every pin must still be cited by the doc.
+      - name: Documentation freshness (doc citations + countable facts vs nadir2.mq5)
+        run: python3 tools/test_docs_freshness.py 2>&1 | tee out/docs_freshness.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 
