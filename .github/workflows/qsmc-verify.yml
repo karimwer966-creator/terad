@@ -39,6 +39,14 @@ jobs:
       - name: Mechanical pass + MQL5 dialect rules D1-D16
         run: python3 tools/static_check.py 2>&1 | tee out/static_check.log
 
+      # F7 on the merged build reported 42 errors whose root cause was ONE missing
+      # '//' on a comment continuation line: the compiler read the prose as code,
+      # then mis-parsed the whole SBP3_Clear() body as global-scope declarations.
+      # Braces and parens stayed balanced, so every existing check passed - a
+      # comment marker is neither. This step owns that gap, lexically.
+      - name: Comment integrity (a lost // is a compile error, not a style issue)
+        run: python3 tools/test_comment_integrity.py 2>&1 | tee out/comment_integrity.log
+
       - name: Arbiter decision logic vs the MQL5 self-test (1:1)
         run: python3 tools/test_arbiter.py 2>&1 | tee out/test_arbiter.log
 

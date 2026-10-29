@@ -1,8 +1,12 @@
 # QSMC v6.6.13 — seven strategy modules, operator guide & audit record
 
 Status: **seven phases landed, all display-only, all OFF by default, zero new
-buffers, zero deletions of working code, and nothing compiled.** There is no
-MetaEditor in this environment, so **F7 remains the final judgement** (§11).
+buffers, zero deletions of working code.**
+
+**F7 has now been run** — see §11.1. The first compile reported **42 errors, 0
+warnings**, all traceable to a **single missing `//`** on one comment line, and
+that is fixed. No MetaEditor exists in this environment, so every statement here
+about compilation is a report of *your* F7 output, never a claim of my own.
 
 Branch: `arena/643314e5-terad`, forked from `main` @ `e3c0b5b`. Pull request **#15**.
 
@@ -544,11 +548,12 @@ comment-stripped text.
 | `tools/test_phase6_confluence.py` | 286 | 0 |
 | `tools/test_phase7_riskmodel.py` | 292 | 0 |
 | **Seven phase suites** | **1 557** | **0** |
-| `tools/test_docs_freshness.py` | 278 | 0 |
-| **This document's own guard** | **278** | **0** |
+| `tools/test_docs_freshness.py` | 294 | 0 |
+| `tools/test_comment_integrity.py` | 19 | 0 |
+| **This document's own guard + the F7 defect guard** | **313** | **0** |
 
-Full gate: **5 static tools PASS · 22 suites · 2 402 PASS lines · 0 failures**.
-CI: **29 steps**, `.github/workflows/qsmc-verify.yml`.
+Full gate: **5 static tools PASS · 23 suites · 2 437 PASS lines · 0 failures**.
+CI: **30 steps**, `.github/workflows/qsmc-verify.yml`.
 
 ### 10.1b This document is itself under test
 
@@ -586,7 +591,8 @@ source and confirming the suite turns red.
 | 5 | 28 | 28 |
 | 6 | 45 | 45 after hardening |
 | 7 | 43 | 43 after hardening |
-| this doc | 33 | 33 after hardening |
+| this doc | 43 | 43 after hardening (33 original + 10 added with §11.1) |
+| comment integrity | 8 | 8 (incl. re-introducing the original 42-error defect) |
 
 The documentation guard's own mutation run found **three real gaps**, all closed:
 
@@ -655,9 +661,95 @@ Run in MetaEditor on `nadir2.mq5`:
 
 ---
 
+## 11.1 What F7 actually found (first compile of the merged build)
+
+The first compile of the merged seven-phase build reported **42 errors, 0
+warnings**. Every one of them came from **one missing comment marker**.
+
+```
+24911  // Reset BOTH modules to their inert state.
+24912   Called when a new symbol/day context        <-- the "//" was gone
+24913  // arrives so a stale phase or window can never be displayed against fresh bars.
+```
+
+The compiler read line 24912 as code — `'Called' - unexpected token, probably
+type is missing?` at 24912:2, `'when' - semicolon expected` at 24912:9 — then
+mis-parsed the entire `SBP3_Clear()` body as a run of **global-scope
+declarations**. That produced 40 further errors: `variable already defined` for
+`g_p3_dir`, `g_p3_score`, `g_p3_reason`, `g_p3_invalidation`, `g_sb_active`,
+`g_sb_window`, `g_sb_dir`, `g_sb_fvg`, `g_sb_entry_high`, `g_sb_entry_low`,
+`g_sb_reason`, `g_sb_score` and `g_sb_invalidation` — each pointing back at its
+real declaration near L1932–1949 — and finally `expressions are not allowed on a
+global scope` on the closing brace at 24921.
+
+**One missing `//` became 42 errors.** Fixed by restoring the marker; the
+three-line comment is now intact and pinned by a test (§11.2).
+
+### Why all 22 existing suites passed anyway
+
+This is worth recording precisely, because it is the honest limit of offline
+verification:
+
+- **Braces stayed 3740/3740 and parens stayed balanced.** A comment marker is
+  neither, so every balance check was still true.
+- **`strip_comments`-based checks were actively blind to it.** With no `//` there
+  is nothing to strip, so the prose simply became part of the "code" those checks
+  counted — and it counted fine.
+- **`mql5_rules.py` covers StringFormat arity, duplicate globals, the version
+  triple, pointers to structs, `->`, and unbraced declarations.** None of those is
+  a comment.
+- The suites assert structure, ordering, reuse, defaults and absence of trade
+  API — **all of which were still true**. The file was structurally perfect and
+  lexically broken.
+
+### Scope of the search for more of these
+
+After the fix, the whole 44 831-line file was rescanned lexically — tracking
+comment, string and character-literal state character by character — for any
+other line the compiler would have to parse as code but which is really English
+prose. Result: **zero**. Also verified: **0 duplicate function definitions**, all
+**73** module functions of the seven phases defined or declared where they are
+called, `/*` and `*/` balanced at **0/0** (this file uses no block comments at
+all, which is what makes a lost marker fatal rather than silently swallowing a
+region), and the lexical scanner terminates in `code` state — so no unterminated
+comment or string.
+
+**What this does not prove.** MQL5 may have stopped reporting at the first
+broken construct. The 42 errors were one cascade, so clearing it is *expected* to
+clear the build — but only a second F7 can confirm that. Type errors, arity
+slips, undeclared identifiers and shadowing remain invisible here.
+
+## 11.2 The gap is now owned by a test
+
+`tools/test_comment_integrity.py` (**19 checks**, CI step **30**) exists because
+this defect class had no owner. It decides what is comment and what is code by
+tracking lexical state character by character, then asserts:
+
+| Part | What it pins |
+|---|---|
+| A | no line outside a comment or string is English prose — detected by requiring **two English function words** in a punctuation-free code view, which is what separates the defect from the file's 100+ legal punctuation-free headers (`enum ENUM_X`, `struct SX`, `input group "..."`) |
+| B | the **comment-neighbour rule**: no punctuation-free line sits between two `//` comments — the exact shape of the real defect |
+| C | lexical state terminates cleanly; `/*` and `*/` balance; pure CRLF; **no block comments at all** |
+| D | no function defined twice; all 73 module functions resolved |
+| E | the historical defect pinned directly — the three-line comment above `SBP3_Clear()` must be intact |
+
+**Mutation-tested 8/8**, including re-introducing the original defect (which trips
+A, B and E — 4 checks). Two bugs in the suite itself were found and fixed while
+building it: rule B false-positived on every `input group "..."` banner, and one
+check was a **tautology** (`len(x)==0 or FINAL_STATE=="code"`, where the second
+half was already asserted above, so it could never fail) — replaced with the real
+invariant that the file contains no block comments.
+
+---
+
 ## 12. Known risks and what is NOT implemented
 
-**Compilation.** Unverified. This is the single largest outstanding risk.
+**Compilation.** F7 has now been run once (§11.1): 42 errors from a single
+missing `//`, fixed, and the file rescanned lexically with zero further prose
+lines found. **A second F7 is still required to confirm the build is clean** —
+MQL5 may have stopped reporting at the first broken construct, and type errors,
+arity slips and undeclared identifiers remain invisible offline. This is still
+the single largest outstanding risk.
 
 **Risk percentage is 1.50, not 1.0** (§3.7). Deliberate, and the most
 consequential deviation from the brief.

@@ -82,6 +82,12 @@ NLINE = len(LINES)
 with io.open(DOC, encoding="utf-8", newline="") as fh:
     DOC_TEXT = fh.read()
 
+# Prose wraps, so a literal substring pin breaks on a line break inside the
+# phrase ("**42 errors, 0\nwarnings**"). All phrase checks run against this
+# whitespace-normalised view; citation extraction still uses DOC_TEXT because a
+# cited range never spans a line.
+DOC_FLAT = re.sub(r"\s+", " ", DOC_TEXT)
+
 
 def line_at(n):
     """1-based source line, or a sentinel that can never match."""
@@ -379,32 +385,32 @@ check(len(found) == 4, "D Phase 1 declares its 4 opt-ins inside the existing OB 
 NEW_TOTAL = grouped + len(found)
 check(NEW_TOTAL == 67, "D the seven phases add 67 new inputs in total",
       "recount gives %d (%d grouped + %d OB)" % (NEW_TOTAL, grouped, len(found)))
-check("67 new inputs" in DOC_TEXT or "**67 new inputs**" in DOC_TEXT,
+check("67 new inputs" in DOC_FLAT or "**67 new inputs**" in DOC_FLAT,
       "D the doc states 67 new inputs", "phrase absent from the doc")
 
 ALL_INPUTS = len(re.findall(r"(?m)^input\s", RAW))
 check(ALL_INPUTS == 538, "D nadir2.mq5 declares 538 `input` lines in total",
       "actual %d" % ALL_INPUTS)
-check("538 total" in DOC_TEXT, "D the doc states 538 total inputs",
+check("538 total" in DOC_FLAT, "D the doc states 538 total inputs",
       "phrase absent from the doc")
 
 ENUMS = len(re.findall(r"(?m)^enum\s+\w+", RAW))
 check(ENUMS == 43, "D the file has 43 top-level enums (all new ones appended)",
       "actual %d" % ENUMS)
-check("Enums | 43" in DOC_TEXT or "43, all appended" in DOC_TEXT,
+check("Enums | 43" in DOC_FLAT or "43, all appended" in DOC_FLAT,
       "D the doc states 43 enums", "phrase absent from the doc")
 
 check("#property indicator_buffers 19" in RAW and
       "#property indicator_plots   7" in RAW,
       "D indicator_buffers is still 19 and indicator_plots still 7 - zero new buffers")
-check("indicator_buffers` 19" in DOC_TEXT or "indicator_buffers 19" in DOC_TEXT,
+check("indicator_buffers` 19" in DOC_FLAT or "indicator_buffers 19" in DOC_FLAT,
       "D the doc states buffers 19 / plots 7")
 
 check(re.search(r'QSMC_VERSION_TEXT\s+"v6\.6\.9"', RAW) is not None,
       "D QSMC_VERSION_TEXT is still v6.6.9")
 check(re.search(r'#property version\s+"6\.69"', RAW) is not None,
       "D #property version is still \"6.69\"")
-check("v6.6.9" in DOC_TEXT and '"6.69"' in DOC_TEXT,
+check("v6.6.9" in DOC_FLAT and '"6.69"' in DOC_FLAT,
       "D the doc reports the unchanged version triple v6.6.9 / \"6.69\"")
 
 # six module self-tests, 9+9+9+9+10+10 = 56 in-file checks
@@ -418,7 +424,7 @@ check(MODULE_ST == [9, 9, 9, 9, 10, 10],
       "D their counts are 9/9, 9/9, 9/9, 9/9, 10/10, 10/10", str(MODULE_ST))
 check(sum(MODULE_ST) == 56, "D the six self-tests total 56 in-file checks",
       "actual %d" % sum(MODULE_ST))
-check("56 in-file checks" in DOC_TEXT, "D the doc states 56 in-file checks",
+check("56 in-file checks" in DOC_FLAT, "D the doc states 56 in-file checks",
       "phrase absent from the doc")
 
 # zero trade API in the indicator, after stripping comments and strings
@@ -449,14 +455,14 @@ CODE = strip_comments(RAW)
 for api in ("OrderSend", "OrderSendAsync", "PositionOpen", "CTrade"):
     check(len(re.findall(r"\b%s\b" % api, CODE)) == 0,
           "D zero `%s` in the indicator's code (comments/strings stripped)" % api)
-check("Trade API in the indicator: zero" in DOC_TEXT or
-      "trade API in the indicator" in DOC_TEXT.lower(),
+check("Trade API in the indicator: zero" in DOC_FLAT or
+      "trade API in the indicator" in DOC_FLAT.lower(),
       "D the doc states the indicator contains no trade API")
 
 BR_OPEN, BR_CLOSE = RAW.count("{"), RAW.count("}")
 check(BR_OPEN == BR_CLOSE, "D braces balance (%d/%d)" % (BR_OPEN, BR_CLOSE),
       "%d vs %d" % (BR_OPEN, BR_CLOSE))
-check("3740/3740" in DOC_TEXT, "D the doc reports braces 3740/3740",
+check("3740/3740" in DOC_FLAT, "D the doc reports braces 3740/3740",
       "actual %d/%d" % (BR_OPEN, BR_CLOSE))
 check(RAW.count("\n") - RAW.count("\r\n") == 0,
       "D nadir2.mq5 is pure CRLF with zero bare LF")
@@ -475,22 +481,75 @@ check(len(cited_all) >= 90,
 
 STALE = ["L5407", "L19219", "L42066", "L33096", "L33107", "L23318",
          "43548", "43670", "13818", "20800", "20835"]
-still = [s for s in STALE if s in DOC_TEXT]
+still = [s for s in STALE if s in DOC_FLAT]
 check(len(still) == 0,
       "E none of the nine known-stale citations remain in the doc", str(still))
 
-check("region)" not in DOC_TEXT,
-      "E no hedged `L#### region` citation survives - every citation is exact")
+# Pin the citation shape, not the bare word: legitimate prose such as
+# "silently swallowing a region)" must not trip this.
+_hedged = re.findall(r"\bL?\d{3,5}\s+region\)", DOC_TEXT)
+check(len(_hedged) == 0,
+      "E no hedged `L#### region` citation survives - every citation is exact",
+      str(_hedged[:6]))
 
-for phrase in ("nothing compiled", "F7 remains the final judgement",
-               "**Compilation.** Unverified.", "do not** prove the code compiles"):
-    check(phrase in DOC_TEXT,
+# F7 has now been run once and found a real defect, so the honest disclaimer is
+# no longer "nothing compiled" but "your F7 output is reported, never claimed as
+# mine, and a second F7 is still required". Pin that stronger wording - and pin
+# that the doc never asserts a clean build.
+for phrase in ("F7 has now been run",
+               "never a claim of my own",
+               "A second F7 is still required to confirm the build is clean",
+               "do not** prove the code compiles",
+               "remain invisible here"):
+    check(phrase in DOC_FLAT,
           "E the doc still disclaims compilation: %r" % phrase)
-check("no backtest result is claimed" in DOC_TEXT.lower() or
-      "NOT constitute a backtest" in DOC_TEXT,
+for forbidden in ("compiles cleanly", "compilation succeeded", "0 errors, 0 warnings "
+                  "after the fix", "build is verified"):
+    check(forbidden not in DOC_FLAT,
+          "E the doc never claims a clean build: %r" % forbidden)
+# Pin the F7 result INSIDE its own section. A whole-document substring check is
+# satisfied by the status line alone, so deleting the number from section 11.1
+# passed unnoticed (mutation N1) - the same weak-pin class as the earlier "1.50".
+def section(head, nxt):
+    a = DOC_FLAT.find(head)
+    if a < 0:
+        return ""
+    b = DOC_FLAT.find(nxt, a + len(head))
+    return DOC_FLAT[a:b if b > 0 else len(DOC_FLAT)]
+
+
+S111 = section("## 11.1 What F7 actually found", "## 11.2 ")
+check(len(S111) > 500, "E section 11.1 exists and carries the F7 report",
+      "%d chars" % len(S111))
+check("42 errors, 0 warnings" in S111,
+      "E section 11.1 itself reports the real F7 result (42 errors, 0 warnings)")
+check("24912" in S111, "E section 11.1 names the exact line that broke (24912)")
+# Pin the quoted broken line itself, not just its number: the number appears
+# several times in the section, so a mutation to one occurrence survived (N9).
+check("Called when a new symbol/day context" in S111,
+      "E section 11.1 quotes the exact prose the compiler was fed")
+check(S111.count("24912") >= 3,
+      "E section 11.1 cites line 24912 in the code block, the error list and the "
+      "cascade description (%d times)" % S111.count("24912"),
+      "only %d" % S111.count("24912"))
+check("SBP3_Clear" in S111, "E section 11.1 names the function whose body mis-parsed")
+S112 = section("## 11.2 The gap is now owned by a test", "## 12. ")
+check(len(S112) > 300, "E section 11.2 exists and documents the new guard",
+      "%d chars" % len(S112))
+check("test_comment_integrity.py" in S112,
+      "E section 11.2 names tools/test_comment_integrity.py")
+check("Mutation-tested 8/8" in S112,
+      "E section 11.2 states the guard's mutation result (8/8) - an unstated "
+      "mutation count is an unverified claim (mutation N12)")
+check("19 checks" in S112, "E section 11.2 states the guard's check count (19)")
+check("one missing `//` became 42 errors" in DOC_FLAT.lower() or
+      "One missing `//` became 42 errors" in DOC_FLAT,
+      "E the doc records that a single missing comment marker caused all 42")
+check("no backtest result is claimed" in DOC_FLAT.lower() or
+      "NOT constitute a backtest" in DOC_FLAT,
       "E the doc still disclaims any backtest result")
 
-check("arena/643314e5-terad" in DOC_TEXT and "**#15**" in DOC_TEXT,
+check("arena/643314e5-terad" in DOC_FLAT and "**#15**" in DOC_FLAT,
       "E the doc names its branch and pull request")
 # Derive the real risk percentage from source rather than hard-coding "1.50":
 # a bare substring check is satisfied by InpRMNoZoneSLATR's 1.50 default too, so
@@ -500,20 +559,20 @@ _risk = _risk_m.group(1) if _risk_m else None
 check(_risk == "1.50",
       "E source still declares InpSniperMaxRiskPct = 1.50 at L1797", str(_risk))
 check("the risk percentage the module reports defaults to %s, not 1.0" % _risk
-      in DOC_TEXT,
+      in DOC_FLAT,
       "E the doc states the risk %% the module REPORTS defaults to %s, not 1.0" % _risk)
-check(("the reported risk percentage is **%s, not 1.0**" % _risk) in DOC_TEXT,
+check(("the reported risk percentage is **%s, not 1.0**" % _risk) in DOC_FLAT,
       "E the conflict section repeats that deviation (%s, not 1.0)" % _risk)
-check(("InpSniperMaxRiskPct` (**L1797**)" in DOC_TEXT and
-       ("| **`%s`** |" % _risk) in DOC_TEXT),
+check(("InpSniperMaxRiskPct` (**L1797**)" in DOC_FLAT and
+       ("| **`%s`** |" % _risk) in DOC_FLAT),
       "E the reuse table cites InpSniperMaxRiskPct at L1797 with default %s" % _risk)
-check("InpMinRR" in DOC_TEXT and "do not exist" in DOC_TEXT,
+check("InpMinRR" in DOC_FLAT and "do not exist" in DOC_FLAT,
       "E the doc still records that the brief's named inputs do not exist")
-check("+3 983 / −1" in DOC_TEXT or "+3983/−1" in DOC_TEXT,
+check("+3 983 / −1" in DOC_FLAT or "+3983/−1" in DOC_FLAT,
       "E the doc reports the verified PR figure +3983/-1 for nadir2.mq5")
-check("4 155" in DOC_TEXT and "173" in DOC_TEXT and "realign" in DOC_TEXT,
+check("4 155" in DOC_FLAT and "173" in DOC_FLAT and "realign" in DOC_FLAT,
       "E the doc explains the misleading cumulative diffstat rather than quoting it")
-check("exactly 1 real line lost" in DOC_TEXT,
+check("exactly 1 real line lost" in DOC_FLAT,
       "E the doc states the PR-wide multiset result")
 
 # the doc must not silently lose a section
@@ -525,7 +584,7 @@ for head in ("## 1. What was added", "## 2. Activation guide",
              "## 9. Invariants guaranteed", "## 10. Verification evidence",
              "## 11. F7 checklist", "## 12. Known risks",
              "## 13. Open decisions"):
-    check(head in DOC_TEXT, "E the doc still has section %r" % head)
+    check(head in DOC_FLAT, "E the doc still has section %r" % head)
 
 
 # =========================== D2. the activation-guide dependency, derived
@@ -549,7 +608,7 @@ check(_max_no_candle == 85,
 check(_w.get("InpCFWeightCandle") == 15,
       "D2 the candle leg weighs 15, and is the leg guarded by InpEnablePriceAction",
       str(_w.get("InpCFWeightCandle")))
-check("score the engine can reach is **%d**, not 100" % _max_no_candle in DOC_TEXT,
+check("score the engine can reach is **%d**, not 100" % _max_no_candle in DOC_FLAT,
       "D2 the doc states the reachable maximum is %d, not 100" % _max_no_candle)
 # the guard itself: CF's candle leg must really be gated by InpEnablePriceAction
 _candle_guard = re.search(
