@@ -951,6 +951,146 @@ for api in ("OrderSend", "OrderSendAsync", "CTrade", "PositionOpen", "PositionMo
 check(TEXT.count("#include <QSMC/QSMC_Root.mqh>") == 1,
       "B11 the arbitration root is still included exactly once")
 
+
+# ======================================================================
+# Part C - AUDIT-A3: the boundary the verdict does and does not cross
+# ======================================================================
+#
+# Phase 1 carried A3 forward as a suspicion: that this gate might not really be
+# PER-SIDE, so a verdict about one direction could authorise or block the other.
+# Part A (a transcription of the decision logic) and Part B (the wiring, including
+# the mirrored halves at B9) already answer that: it is per-side. What neither
+# part covered is where the verdict GOES - which is the part that decides whether
+# the gate protects a decision or only a label. Read for that, the answer is:
+#
+#   * BLOCKED / STALE stop everything: the direction is cleared, nothing is drawn
+#     and the arbiter is never fed (B2, B3).
+#   * CONTEXT is deliberately still fed, because the arbiter refuses a hint with no
+#     location on its own - the code says so at L32086-L32093, and C1/C2 below pin
+#     that the include really does.
+#   * The resolver's tactical leg is the ONE reader that cannot tell OK from
+#     CONTEXT. That is an open decision for the operator, not a defect, and C5 pins
+#     the current state so that changing it is a visible act.
+#
+# No source line was changed by this audit.
+
+ROOTH = ROOT / "MQL5" / "Include" / "QSMC" / "QSMC_Root.mqh"
+INCH = io.open(str(ROOTH), "r", encoding="utf-8", newline="").read()
+TL = TEXT.replace("\r\n", "\n").split("\n")
+
+
+def tline(n):
+    return TL[n - 1]
+
+
+def def_body(sig):
+    """The DEFINITION of `sig`, not its forward declaration: declarations in this
+    file are grouped above the code they declare, and region() would happily return
+    those two lines. The body is taken to the first closing brace at column 0."""
+    hits = [n for n in range(1, len(TL) + 1)
+            if TL[n - 1].startswith(sig) and not TL[n - 1].rstrip().endswith(";")]
+    if not hits:
+        check(False, "C locate the definition of %r" % sig[:44], "no definition found")
+        return ""
+    s = hits[-1]
+    e = s
+    while e < len(TL) and TL[e - 1] != "}":
+        e += 1
+    return "\n".join(TL[s - 1:e])
+
+
+# C1 - the fact that crosses into the arbiter carries NO authority field, and the
+# code states why: the arbiter's own explained refusal is the explanation.
+check(TEXT.count("STacticalFact") == 1,
+      "C1 the indicator builds exactly one tactical fact", "got %d" % TEXT.count("STacticalFact"))
+check(TEXT.count("TacticalObserve(") == 1,
+      "C1 and feeds the arbiter exactly once", "got %d" % TEXT.count("TacticalObserve("))
+FACT, FEED, HLINE, GATECALL = 6070, 6081, 6089, 5971
+check(tline(FACT).strip() == "STacticalFact _tf;", "C1 the fact is built at L%d" % FACT)
+check("TacticalObserve(_tf);" in tline(FEED), "C1 and fed at L%d" % FEED)
+check(GATECALL < FACT < FEED < HLINE,
+      "C1 both happen after the gate (L%d) and before the entry line is drawn (L%d)"
+      % (GATECALL, HLINE))
+fact_block = "\n".join(TL[FACT - 1:FEED])
+for f in ("_tf.valid=true;", "_tf.bull=bull;", "_tf.closed_confirm=closed_confirm;",
+          "_tf.entry_price=ep;", "_tf.exec_bar_time=et;", "_tf.exec_tf=etf;",
+          "_tf.trigger=trigger;", "_tf.trigger_time=trigger_time;",
+          "_tf.core_owned=core_owned;", "_tf.chase_atr=dist_close_atr;"):
+    check(f in fact_block, "C1 the fact carries %r" % f)
+check("auth" not in fact_block,
+      "C1 and carries no authority verdict - which costs nothing, per C2")
+
+# C2 - the arbiter refuses a location-less hint on its own, so a CONTEXT fact that
+# is still handed over cannot become an alert. This is the include, which Part B
+# never read.
+check("LOCATION FIRST (R1). Direction comes from the zone, never" in INCH,
+      "C2 the arbiter enforces LOCATION FIRST (R1): direction comes from the zone")
+check("if(hit.gap_atr>m_cfg.zone_reach_atr)" in INCH,
+      "C2 a zone out of reach is refused by the arbiter's own ATR limit")
+check('"BETWEEN ZONES - nearest zone is "' in INCH,
+      "C2 and the refusal states how far away the nearest zone was")
+check('" - the MTF trigger alone is not a location fact"' in INCH,
+      "C2 a trigger with no closed-bar reaction at the zone is refused in those words")
+check("if(have_fact && rf.dir!=0) dir=rf.dir;" in INCH,
+      "C2 direction comes from the closed-bar reaction fact, not from the hint")
+check("the tactical hint is only allowed to agree with it" in INCH,
+      "C2 the hint may agree with the zone's direction but can never set it")
+check("the arbitration layer already refuses to trade on it" in TEXT,
+      "C2 and nadir2.mq5 documents that the arbitration layer already refuses such a "
+      "hint (L32088)")
+check("The fact is STILL handed to" in TEXT
+      and "so its own explained refusal is unchanged" in TEXT,
+      "C2 and documents the hand-over as deliberate (L32090-L32091), so it cannot be "
+      "read as an oversight")
+
+# C3 - a refusal has exactly one writer, so no later pass can un-refuse a bar.
+check(TEXT.count("g_mtf_entry_blocked=true;") == 1,
+      "C3 g_mtf_entry_blocked=true has exactly one writer (L5977, the refusal branch)",
+      "got %d" % TEXT.count("g_mtf_entry_blocked=true;"))
+check(TEXT.count("g_tac_dir=bull?1:-1;") == 1,
+      "C3 and the resolver's tactical leg has exactly one publisher (L6016)",
+      "got %d" % TEXT.count("g_tac_dir=bull?1:-1;"))
+check(tline(6016) == "   g_tac_dir=bull?1:-1; g_tac_closed=closed_confirm;",
+      "C3 that publisher is the line Part B's ordering proof depends on")
+clr = region("void ClearMTFExecutionEntry()", "void UpdateMTFExecutionEntry()", "ClearMTFExecutionEntry")
+check("g_tac_dir=0; g_tac_closed=false;" in clr,
+      "C3 clearing zeroes the resolver's tactical leg, so a refused side stops voting")
+check('g_mtf_entry_authority=""; g_mtf_entry_blocked=false; g_mtf_entry_src=-1;' in clr,
+      "C3 and it clears the verdict together with the display it belongs to")
+
+# C4 - the blacklist leg is per-side too. Part B pins that the adapter calls
+# IsSameIdeaAsBlacklisted(bull,...); this pins that the callee honours the side.
+bl = def_body("bool IsSameIdeaAsBlacklisted(const bool is_buy,")
+check(bl != "", "C4 located the definition (not the forward declaration) of "
+                "IsSameIdeaAsBlacklisted")
+check('string dir=is_buy?"BUY":"SELL";' in bl,
+      "C4 the blacklist probe turns the side into a direction word")
+check("if(StringFind(g_setup_blacklist[i],dir)<0) continue;" in bl,
+      "C4 and skips every retired idea that is not about this side")
+check("g_blacklist_zone_type[i]==dir" in bl,
+      "C4 the centre-price match must also agree on the side")
+check("IsBlacklistEntryActive(g_blacklist_time[i])" in bl,
+      "C4 the veto stays inside the Core lifecycle's own horizon")
+check("if(n==0) return false;" in bl,
+      "C4 and an empty blacklist costs nothing, as the adapter's comment claims")
+
+# C5 - THE OPEN DECISION, pinned as-is. ResolveFinalSignal's tactical leg reads the
+# published direction and consults no authority verdict, so an OK direction and a
+# CONTEXT direction vote identically. Both readings are defensible (see doc 11.8);
+# this check exists so that picking the other one is a deliberate, reviewed act.
+res = def_body("int ResolveFinalSignal(const int closed,string &why)")
+check(res != "", "C5 located ResolveFinalSignal's definition")
+check("vote[3]=g_tac_dir;" in res, "C5 the tactical leg reads g_tac_dir (L6161)")
+check("w[3]=InpResWeightTactical;" in res and 'nm[3]="tactical";' in res,
+      "C5 weighted InpResWeightTactical and named tactical")
+for absent in ("g_mtf_entry_authority", "g_mtf_entry_blocked", "TAC_AUTH"):
+    check(absent not in res,
+          "C5 and consults no %s: OK and CONTEXT vote identically today" % absent)
+gate_body = def_body("ENUM_TACTICAL_AUTHORITY TacticalAuthorityGate(const bool bull,")
+check(gate_body != "" and "g_tac_dir" not in gate_body,
+      "C5 the gate decides nothing about the resolver's leg; only the display update writes it")
+
+
 print("-" * 74)
 if FAILS:
     print("RESULT: %d contract(s) FAILED" % len(FAILS))

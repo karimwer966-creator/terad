@@ -553,9 +553,10 @@ comment-stripped text.
 | **This document's own guard + the F7 defect guard** | **313** | **0** |
 | `tools/test_decision_journal.py` | 322 | 0 |
 | `tools/test_declutter_cap.py` | 197 | 0 |
+| `tools/test_tactical_authority.py` | 177 | 0 |
 
-Full gate: **5 static tools PASS · 29 suites · 3 473 PASS lines · 0 failures**.
-CI: **36 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`, step 34 = `tools/test_scalping.py`, step 35 = `tools/test_decision_journal.py`, step 36 = `tools/test_declutter_cap.py`).
+Full gate: **5 static tools PASS · 29 suites · 3 515 PASS lines · 0 failures**.
+CI: **36 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`, step 34 = `tools/test_scalping.py`, step 35 = `tools/test_decision_journal.py`, step 36 = `tools/test_declutter_cap.py`; AUDIT-A3 added no step - its Part C runs inside the existing `One authoritative scenario state` step).
 
 ### 10.1b This document is itself under test
 
@@ -1064,6 +1065,102 @@ it says it removes, from the families it says, oldest first. It does not prove t
 chart looks better to you, and it was never compiled here — no MetaEditor exists in
 this sandbox, so **F7 remains the only compiler evidence**, now outstanding for
 RS1 + GS1 + SC1 + OBS1 + D1 together.
+
+## 11.8 AUDIT-A3 — the per-side authority gate: investigated, **no defect found**
+
+Phase 1 carried A3 forward as a suspicion: that the v6.6.10 authoritative-state
+gate might not really be **per-side**, so a verdict about one direction could
+authorise or block the other. This section records what the code actually does,
+because a negative result that is not written down gets re-investigated — or
+worse, believed the other way.
+
+**Verdict: no defect.** `TacticalAuthorityGate()` (**L32118**) and the pure order
+it hands its facts to, `TacticalAuthorityDecide()` (**L32035**), are per-side at
+every step:
+
+| Step | Evidence | Per-side? |
+|---|---|---|
+| DSE terminal plan | `TacticalScenarioTerminal(bull,…)` **L31975** — mirrored halves; the BUY half reads only `g_scn_buy`, the SELL half only `g_scn_sell`, and both test the same five conditions | yes |
+| DSE live plan | `TacticalScenarioLive(bull,…)` **L32004** — same mirrored structure, plus the DSE's own `relevant` flag | yes |
+| Core blacklist | `IsSameIdeaAsBlacklisted(bull,…)` **L7213** — `string dir=is_buy?"BUY":"SELL"` (L7220), entries not naming that side are skipped (L7226), and the centre-price match must also agree on the side (L7230) | yes |
+| Every reason an operator reads | `string side=(bull?"BUY":"SELL")` and all four branches quote it | yes |
+| Precedence | terminal DSE → blacklisted idea (exempt when `src==1`) → stale bias-only trigger (exclusive bound, unknown age never guessed) → CONTEXT → OK as the fall-through | — |
+
+**Ordering.** The gate is called at **L5971**, before the direction is published
+to the resolver (**L6016**), before a tactical fact is built (**L6070**), before
+the arbiter is fed (**L6081**), and before any object is created (**L6089**). On
+`BLOCKED`/`STALE` it clears and returns at **L5985** — so `g_tac_dir` is zeroed,
+nothing is drawn, and the arbiter receives nothing. That is exactly what the
+field's own comment claims at **L2267** (*"the display AND the arbiter feed were
+refused"*), and it is the only writer of `g_mtf_entry_blocked=true`.
+
+**The CONTEXT case, which is where the suspicion was reasonable.** A bias-only
+direction (`src==2`) with no live DSE scenario is downgraded to `CONTEXT`, and the
+fact *is still handed to the arbiter*. That is deliberate and documented in the
+code itself (**L32086–L32093**): *"the arbitration layer already refuses to trade
+on it ('the MTF trigger alone is not a location fact')… The fact is STILL handed to
+the arbiter, so its own explained refusal is unchanged."* Verified in
+`MQL5/Include/QSMC/QSMC_Root.mqh`: `BuildTacticalCandidate` enforces **LOCATION
+FIRST (R1)** independently — a zone within `zone_reach_atr` (else `BETWEEN ZONES`,
+L803) *and* a closed-bar reaction fact at that zone (else *"the MTF trigger alone
+is not a location fact"*, L842) — and direction comes from the zone role plus that
+fact, with the hint *"only allowed to agree with it"*. So a location-less hint
+cannot become an alert, and `STacticalFact` carrying no authority field costs no
+protection.
+
+**The one open decision this audit leaves with the operator.** The resolver's
+tactical leg reads `vote[3]=g_tac_dir` (**L6161**) and consults **no** authority
+verdict, so an `OK` direction and a `CONTEXT` direction vote identically for
+`InpResWeightTactical` points. Both readings are defensible:
+
+1. **Leave it (current state).** `g_tac_dir` is non-zero only after a verdict that
+   is not BLOCKED or STALE, and a CONTEXT vote still carries a real fact the bias
+   leg does not have: price crossed a same-direction structure trigger on the
+   execution bar. The resolver also has separate bias (25) and zone (25) legs, and
+   the arbiter refuses a location-less hint downstream regardless.
+2. **Zero the tactical vote when the authority is CONTEXT.** Tighter, and arguably
+   what the word CONTEXT means — but it changes RS1's scoring semantics, and RS1's
+   weights and legs are pinned and documented. That is a strategy decision, not a
+   mechanical fix, so it was **not** made here.
+3. **Observability only.** Keep the score and add the authority verdict to the
+   resolver's why-text, so an operator can see that the tactical point came from a
+   downgraded direction. No scoring change; it would touch RS1's published strings.
+
+Nothing was changed. Part C5 of `tools/test_tactical_authority.py` pins the current state —
+including option 1's fact pattern, so that choosing option 2 or 3 later is a
+visible, deliberate act that must also update this section.
+
+**Contract suite — extended, not duplicated.** `tools/test_tactical_authority.py`
+already existed (PR #14) with Part A, a transcription of the decision logic, and
+Part B, the wiring. Between them they already pin the mirrored halves
+(`term.count("if(bull)")==2`, `g_scn_buy.relevant` *and* `g_scn_sell.relevant`), the
+gate running before the arbiter is fed / the label is drawn / the mark is painted,
+the refusal branch clearing and returning, the pure order's precedence and purity,
+the adapter's facts and age formula, and the self-test's TAC-1…TAC-7. Re-proving
+any of that would have been duplicated logic, so AUDIT-A3 added **Part C** (42
+checks, 177 in the file) covering only what no suite covered — *where the verdict
+goes*:
+
+| Part C | What it pins |
+|---|---|
+| C1 | the indicator builds exactly one `STacticalFact` (L6070) and feeds the arbiter exactly once (L6081), both after the gate (**L5971**) and before the entry line is drawn (L6089), all ten fields, and that the fact carries **no** authority verdict |
+| C2 | the include's own refusal of a location-less hint: LOCATION FIRST (R1), `zone_reach_atr`, `BETWEEN ZONES`, *"the MTF trigger alone is not a location fact"*, direction taken from the closed-bar reaction fact, the hint *"only allowed to agree with it"* — plus the two source comments (L32088, L32090–L32091) that make the hand-over deliberate rather than an oversight |
+| C3 | `g_mtf_entry_blocked=true` has exactly one writer and `g_tac_dir=bull?1:-1;` exactly one publisher (L6016), and clearing zeroes the resolver's tactical leg |
+| C4 | the blacklist veto is per-side *inside the callee*: the direction word, the `StringFind` skip, the `g_blacklist_zone_type` agreement, the horizon, and the empty-list short circuit |
+| C5 | the open decision, pinned as the current state: the tactical leg reads `g_tac_dir` (L6161) and consults no authority verdict |
+
+It runs in CI under the pre-existing step *One authoritative scenario state*, so the
+workflow stays at **36 steps** and no other suite's step pin moved. Writing Part C
+also caught two faults in my own earlier reading: `region()` returns the first
+match, so it had located the **forward declaration** of `IsSameIdeaAsBlacklisted`
+(84 characters, L5224) instead of its 24-line definition — Part C locates
+definitions by skipping declarations — and one phrase I intended to quote is
+line-wrapped in the source comment, so it is asserted in its two contiguous halves.
+
+**What this does NOT prove.** It proves the source text says what this section
+says. It does not prove the gate behaves well on live data, and it does not compile
+anything: no MetaEditor exists in this sandbox, so **F7 remains the only compiler
+evidence**, outstanding for RS1 + GS1 + SC1 + OBS1 + D1 together.
 
 ## 12. Known risks and what is NOT implemented
 
