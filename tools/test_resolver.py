@@ -381,8 +381,8 @@ check("L852" in DOCX and "L860" in DOCX,
 check("L6089" in DOCX, "H the doc cites the resolver's definition line (L6089)")
 check(re.search(r"run: python3 tools/test_resolver\.py", WFX),
       "H CI runs tools/test_resolver.py")
-check(WFX.count("- name: ") == 32,
-      "H the workflow has 32 named steps (31 + this suite)",
+check(WFX.count("- name: ") == 33,
+      "H the workflow has 33 named steps (31 + the resolver + the weighted gates)",
       "got %d" % WFX.count("- name: "))
 check("AUDIT-RS1" in WFX, "H the CI step names the audit it enforces")
 

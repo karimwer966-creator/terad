@@ -552,8 +552,8 @@ comment-stripped text.
 | `tools/test_comment_integrity.py` | 19 | 0 |
 | **This document's own guard + the F7 defect guard** | **313** | **0** |
 
-Full gate: **5 static tools PASS · 25 suites · 2 610 PASS lines · 0 failures**.
-CI: **32 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`).
+Full gate: **5 static tools PASS · 26 suites · 2 747 PASS lines · 0 failures**.
+CI: **33 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`).
 
 ### 10.1b This document is itself under test
 
@@ -777,6 +777,58 @@ weight-sum refusal, the CONFLICT branch, the demotion of the tactical word, the
 reuse of `PA_ZoneAt(` instead of a second zone scan, the absence of any
 `g_final_score` substring collision, and — as always — that no order API appears.
 
+
+## 11.4 AUDIT-GS1 — weighted evidence gates, hard vetoes first (Phase 2, item 2)
+
+**Why.** Publication was a conjunction: `alert_eligible` (which carries the level
+minimum) AND proximity AND channels AND cooldown AND ranking. Phase 1 ranked this
+B/C HIGH — every extra gate multiplied the miss rate, and a candidate that failed
+one weak leg was indistinguishable from one with no evidence at all, because the
+reason was never written down anywhere the operator could read.
+
+**What.** `WeightedGateAllows()` (**L41664**, inputs **L861–L871**, flag
+`InpUseWeightedGates` at **L862**) is called from the dispatcher's selection loop.
+It tests the vetoes that must never be traded away **first**, and returns
+immediately with a `HARD VETO: …` reason:
+
+| veto | rule reused |
+|---|---|
+| invalid candidate data | `!valid`, `direction==0`, `bar_time<=0`, `closed_index<0` |
+| spread | `g_spread > InpMaxSpreadPts`, keeping the `InpIgnoreSpreadInBacktest` exemption |
+| high-impact news | `MTF_SniperIsNewsBlackout(bar_time)` — the existing Golden Rule 6, not a second news rule |
+
+Only then does it weigh **evidence**, at **25 / 25 / 20 / 15 / 15 = 100**: level
+(reusing the same `MathMax(2,MathMin(5,InpRXNAlertMinLevel))` clamp as the
+existing eligibility rule), evidence score (`InpWGMinEvidenceScore = 68`, a
+*mirror* of the existing floor, not a change to it), proximity (reusing
+`InpAlertMaxDistanceATR` and its documented fallback), HTF+D1 alignment, and room
+to the opposing zone in ATR units (`InpWGMinRoomATR = 1.0`). Below
+`InpWGMinScore = 60` the answer is WAIT, and the why-text lists **both** the legs
+earned and the legs missed. The score is a weighted confluence count, not a probability — the same rule the resolver's why-text follows. `OnInit` refuses to initialise if the weights do not
+sum to 100, or if the minimum is outside 0–100 — it never renormalises.
+
+**What stays hard.** Channels, cooldown and ranking are delivery and
+de-duplication, not evidence, so they are outside the flag's scope and unchanged.
+`RXN_LevelEx` and its 1:1 self-tests are untouched, and no `InpWG*` input appears
+inside that function: the scorer wraps the decision, it does not rewrite the
+pinned level promotion. No shipped threshold moved (68 / STRICT / cooldown 5 /
+CF 60 / resolver 60).
+
+**Off by default, and provably inert.** With `InpUseWeightedGates = false` the
+selection is the original conjunction token for token — the ternary's OFF branch
+is literally `:(c.alert_eligible && c.distance_atr<=maxd);` — and the tooltip
+carries no gate line.
+
+**Verify.** F7, drag onto M5, set `InpUseWeightedGates = true`, then read the
+tooltip's `Weighted gate:` line on a bar with no alert: it must name either a
+`HARD VETO` or the missed legs. Then set the weights to 30/30/30/30/30 —
+`OnInit` must refuse with *"Invalid Quantum SMC weighted-gate weights: they must
+sum to exactly 100"*.
+
+**Contract suite.** `tools/test_weighted_gates.py` (CI step 33) pins all of the
+above, including the ordering that makes a veto un-outvotable: every veto line
+must precede the first `got+=`, and no weight may be accumulated above the news
+veto.
 
 ## 12. Known risks and what is NOT implemented
 

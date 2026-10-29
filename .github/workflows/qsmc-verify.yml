@@ -60,6 +60,14 @@ jobs:
       - name: Final-signal resolver contract (AUDIT-RS1)
         run: python3 tools/test_resolver.py 2>&1 | tee out/resolver.log
 
+      # Publication used to be a conjunction of gates, so a candidate that
+      # missed one weak leg looked like one with no evidence at all. The vetoes
+      # (data, spread, news) are hard and tested first; only evidence is
+      # weighted. Off by default - this pins that ordering so a future edit
+      # cannot let a weight outvote a veto.
+      - name: Weighted evidence gates contract (AUDIT-GS1)
+        run: python3 tools/test_weighted_gates.py 2>&1 | tee out/weighted_gates.log
+
       - name: Arbiter decision logic vs the MQL5 self-test (1:1)
         run: python3 tools/test_arbiter.py 2>&1 | tee out/test_arbiter.log
 
