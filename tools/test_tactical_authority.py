@@ -914,15 +914,13 @@ check("bool expect_buy=(g_scn_buy.valid && !g_scn_buy.execution_ready);" in TEXT
       and "bool expect_sell=(g_scn_sell.valid && !g_scn_sell.execution_ready);" in TEXT,
       "B8 the redraw expectation matches ScenarioDrawOne's own guard")
 
-# B9 - observability: the reconciliation row exists on both cards.
-compact = region("void ScenarioDashCompact(string &L[]", "string ScenarioPlanEntryText", "compact card")
+# B9 - observability: the reconciliation row exists on the card that is drawn.
+# The compact card (ScenarioDashCompact) was unreachable code and was deleted with
+# the 95 dead functions (doc 11.14), so its two checks went with it - they were
+# guarding a renderer no chart could reach. The full card is live and still pinned.
 full = region("void ScenarioDashFull(string &L[]", "void CoreDashboardDeleteObjects()", "full card")
-check("if(g_mtf_entry_authority!=\"\")" in compact and "TACTICAL: " in compact,
-      "B9 the compact card reconciles the tactical verdict with the scenario state")
 check("TACTICAL PREVIEW: " in full and "TACTICAL AUTHORITY: " in full,
       "B9 the full card states the tactical source, state and the authority reason")
-check("if(g_mtf_entry_authority!=\"\")" in compact,
-      "B9 the reconciliation row appears only when there is something to explain")
 
 # B10 - causality / ordering, stated as a source fact: the gate is called from
 #       the tactical path, which OnCalculate runs BEFORE ScenarioUpdate, so the
@@ -966,7 +964,7 @@ check(TEXT.count("#include <QSMC/QSMC_Root.mqh>") == 1,
 #   * BLOCKED / STALE stop everything: the direction is cleared, nothing is drawn
 #     and the arbiter is never fed (B2, B3).
 #   * CONTEXT is deliberately still fed, because the arbiter refuses a hint with no
-#     location on its own - the code says so at L32086-L32093, and C1/C2 below pin
+#     location on its own - the code says so at L30339-L30346, and C1/C2 below pin
 #     that the include really does.
 #   * The resolver's tactical leg is the ONE reader that cannot tell OK from
 #     CONTEXT. That is an open decision for the operator, not a defect, and C5 pins
@@ -1005,7 +1003,7 @@ check(TEXT.count("STacticalFact") == 1,
       "C1 the indicator builds exactly one tactical fact", "got %d" % TEXT.count("STacticalFact"))
 check(TEXT.count("TacticalObserve(") == 1,
       "C1 and feeds the arbiter exactly once", "got %d" % TEXT.count("TacticalObserve("))
-FACT, FEED, HLINE, GATECALL = 6070, 6081, 6089, 5971
+FACT, FEED, HLINE, GATECALL = 5741, 5752, 5760, 5642
 check(tline(FACT).strip() == "STacticalFact _tf;", "C1 the fact is built at L%d" % FACT)
 check("TacticalObserve(_tf);" in tline(FEED), "C1 and fed at L%d" % FEED)
 check(GATECALL < FACT < FEED < HLINE,
@@ -1037,20 +1035,20 @@ check("the tactical hint is only allowed to agree with it" in INCH,
       "C2 the hint may agree with the zone's direction but can never set it")
 check("the arbitration layer already refuses to trade on it" in TEXT,
       "C2 and nadir2.mq5 documents that the arbitration layer already refuses such a "
-      "hint (L32088)")
+      "hint (L30341)")
 check("The fact is STILL handed to" in TEXT
       and "so its own explained refusal is unchanged" in TEXT,
-      "C2 and documents the hand-over as deliberate (L32090-L32091), so it cannot be "
+      "C2 and documents the hand-over as deliberate (L30343-L30344), so it cannot be "
       "read as an oversight")
 
 # C3 - a refusal has exactly one writer, so no later pass can un-refuse a bar.
 check(TEXT.count("g_mtf_entry_blocked=true;") == 1,
-      "C3 g_mtf_entry_blocked=true has exactly one writer (L5977, the refusal branch)",
+      "C3 g_mtf_entry_blocked=true has exactly one writer (L5648, the refusal branch)",
       "got %d" % TEXT.count("g_mtf_entry_blocked=true;"))
 check(TEXT.count("g_tac_dir=bull?1:-1;") == 1,
-      "C3 and the resolver's tactical leg has exactly one publisher (L6016)",
+      "C3 and the resolver's tactical leg has exactly one publisher (L5687)",
       "got %d" % TEXT.count("g_tac_dir=bull?1:-1;"))
-check(tline(6016) == "   g_tac_dir=bull?1:-1; g_tac_closed=closed_confirm;",
+check(tline(5687) == "   g_tac_dir=bull?1:-1; g_tac_closed=closed_confirm;",
       "C3 that publisher is the line Part B's ordering proof depends on")
 clr = region("void ClearMTFExecutionEntry()", "void UpdateMTFExecutionEntry()", "ClearMTFExecutionEntry")
 check("g_tac_dir=0; g_tac_closed=false;" in clr,
@@ -1080,7 +1078,7 @@ check("if(n==0) return false;" in bl,
 # this check exists so that picking the other one is a deliberate, reviewed act.
 res = def_body("int ResolveFinalSignal(const int closed,string &why)")
 check(res != "", "C5 located ResolveFinalSignal's definition")
-check("vote[3]=g_tac_dir;" in res, "C5 the tactical leg reads g_tac_dir (L6161)")
+check("vote[3]=g_tac_dir;" in res, "C5 the tactical leg reads g_tac_dir (L5832)")
 check("w[3]=InpResWeightTactical;" in res and 'nm[3]="tactical";' in res,
       "C5 weighted InpResWeightTactical and named tactical")
 for absent in ("g_mtf_entry_authority", "g_mtf_entry_blocked", "TAC_AUTH"):

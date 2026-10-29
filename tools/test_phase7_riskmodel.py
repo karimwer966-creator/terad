@@ -494,13 +494,14 @@ DELTA = {
     "InpSniperMaxRiskPct": 3,     # 2 before + 1 (the reused risk percentage)
     # untouched: no new call into ANY scoring system
     "ScoreStructure(": 6, "ScoreLiquidity(": 5, "ScoreSession(": 5, "ScoreHTF(": 3,
-    "GraphConfluenceScore(": 3, "PMI_ComputeConfluence(": 3, "ComputeEntryQuality(": 3,
+    "GraphConfluenceScore(": 0,   # 3 -> 0: unreachable, deleted in the purge (doc 11.14)
+    "PMI_ComputeConfluence(": 3, "ComputeEntryQuality(": 3,
     "CalculateAITradeSetup(": 3, "CF_Update(": 3,
     # untouched: existing scoring state
-    "g_score.": 74, "final_score": 21, "setup_quality_score": 6,
+    "g_score.": 73, "final_score": 21, "setup_quality_score": 5,   # -1 each: one dead setter
     # untouched: buffers, objects, closed-bar conventions
-    "SetIndexBuffer(": 19, "ObjectCreate(": 24,
-    "int closed=rates_total-2;": 12, "int closed=ArraySize(g_buf_c)-2;": 3,
+    "SetIndexBuffer(": 19, "ObjectCreate(": 16,   # 24 -> 16: 8 calls lived in dead renderers
+    "int closed=rates_total-2;": 12, "int closed=ArraySize(g_buf_c)-2;": 2,   # 3 -> 2: purge
     "int closed=g_rates_total-2;": 8,
 }
 for f, want in sorted(DELTA.items()):

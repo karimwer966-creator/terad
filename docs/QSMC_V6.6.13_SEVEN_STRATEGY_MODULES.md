@@ -210,7 +210,7 @@ print a side next to a stand-aside.
 | `InpPAIncludePOC` | bool | `true` | count the active volume-profile POC as a zone |
 
 **The unification the brief asked for already existed.** `AnalyzeClosedCandle`
-(def **L5650**) is already the single function returning pattern type plus
+(def **L5321**) is already the single function returning pattern type plus
 strength. What was genuinely missing was **Inside Bar** and the **zone rule**,
 and those are what Phase 4 added. Three candle implementations still coexist in
 the file — see §8, C1.
@@ -318,13 +318,13 @@ Sniper model too, which is out of scope.
 
 | Module | State globals | Declarations | Section | Definition range | Self-test |
 |---|---|---|---|---|---|
-| OB1 | *(existing OB structs)* | L5530 | L18319 | inline in the detection loop | *(none — reuses the OB suite)* |
-| SB1 / P3 | L1966 / L1981 | L5741 | L25367 | L25495 / L25671 | `PASS (9/9)` @L15679 |
-| WY1 | L1996 | L5768 | L25946 | L26135 | `PASS (9/9)` @L15683 |
-| PA1 | L2020 | L5787 | L26385 | L26611 | `PASS (9/9)` @L15687 |
-| MR1 | L2039 | L5805 | L26808 | L27066 | `PASS (9/9)` @L15691 |
-| CF1 | L2064 | L5824 | L27409 | L27574 | `PASS (10/10)` @L15695 |
-| RM1 | L2097 | L5842 | L27905 | L28131 | `PASS (10/10)` @L15699 |
+| OB1 | *(existing OB structs)* | L5212 | L17519 | inline in the detection loop | *(none — reuses the OB suite)* |
+| SB1 / P3 | L1966 / L1981 | L5412 | L23924 | L24052 / L24228 | `PASS (9/9)` @L14931 |
+| WY1 | L1996 | L5439 | L24503 | L24692 | `PASS (9/9)` @L14935 |
+| PA1 | L2020 | L5458 | L24942 | L25168 | `PASS (9/9)` @L14939 |
+| MR1 | L2039 | L5476 | L25365 | L25623 | `PASS (9/9)` @L14943 |
+| CF1 | L2064 | L5495 | L25966 | L26131 | `PASS (10/10)` @L14947 |
+| RM1 | L2097 | L5513 | L26462 | L26688 | `PASS (10/10)` @L14951 |
 
 **Six self-tests, 56 in-file checks** (9+9+9+9+10+10), all gated by the existing
 `InpMTEERunSelfTest` — no new gate was introduced. Phase 1 added no self-test
@@ -340,13 +340,13 @@ Supporting anchors, all verified at `ebc43bc`:
 | `struct STopDownState` | L1929 |
 | `InpUseHTFBias` / `InpTopDownMinRR` / `InpMTEERunSelfTest` / `InpSniperMaxRiskPct` | L1187 / L1202 / L1841 / L1851 |
 | `InpLogLifecycleTransitions` | L1298 |
-| `ScoreStructure` / `ScoreLiquidity` / `ScoreSession` / `ScoreHTF` (defs) | L18278 / L18299 / L18430 / L18439 |
-| `CalculateAITradeSetup` (def) — the only writer of `g_score` | L21372 |
-| `TheoreticalRiskMoney` (def) | L23615 |
-| `PA_ZoneAt` (def) | L26541 |
-| `TopDown_Evaluate` (def); its existing R:R gate | L34583; L34775–34777 |
-| `TopDown_Update` (def) | L34814 |
-| Module self-tests (SB / WY / PA / MR / CF / RM) | L25808 / L26279 / L26683 / L27223 / L27727 / L28328 |
+| `ScoreStructure` / `ScoreLiquidity` / `ScoreSession` / `ScoreHTF` (defs) | L17478 / L17499 / L17630 / L17639 |
+| `CalculateAITradeSetup` (def) — the only writer of `g_score` | L19939 |
+| `TheoreticalRiskMoney` (def) | L22172 |
+| `PA_ZoneAt` (def) | L25098 |
+| `TopDown_Evaluate` (def); its existing R:R gate | L32661; L32853–34777 |
+| `TopDown_Update` (def) | L32892 |
+| Module self-tests (SB / WY / PA / MR / CF / RM) | L24365 / L24836 / L25240 / L25780 / L26284 / L26885 |
 
 Every self-test exercises **pure cores with local values only**. None reads
 series data, account data or tick data, so all six are deterministic in the
@@ -356,21 +356,21 @@ Strategy Tester and on any symbol.
 
 ## 5. The causal order inside `OnCalculate`
 
-`OnCalculate` begins at **L15883**. The relevant call order, verified:
+`OnCalculate` begins at **L15097**. The relevant call order, verified:
 
 ```
-L16127  OB age bound            inline, LAST within the closed bar (price outranks time)
-L16241  P3_Update(closed)
-L16242  SB_Update(closed)
-L16246  WY_Update(closed)
-L16302  TopDown_Update(rates_total,false)   <-- publishes the plan RM may adopt
-L16324  PMI_Update()
-L16474  MVP_Update(...)                     <-- volume profile / POC
-L16483  PA_Update(closed)
-L16491  MR_Update(closed,rates_total,full_indicators)
-L16497  CF_Update(closed,rates_total)       <-- reads PA, MR, WY, P3, SB
-L16502  RM_Update(closed,rates_total)       <-- reads CF's verdict + TopDown's plan
-L16509  ZRE_Update(...)
+L15341  OB age bound            inline, LAST within the closed bar (price outranks time)
+L15455  P3_Update(closed)
+L15456  SB_Update(closed)
+L15460  WY_Update(closed)
+L15516  TopDown_Update(rates_total,false)   <-- publishes the plan RM may adopt
+L15538  PMI_Update()
+L15688  MVP_Update(...)                     <-- volume profile / POC
+L15697  PA_Update(closed)
+L15705  MR_Update(closed,rates_total,full_indicators)
+L15711  CF_Update(closed,rates_total)       <-- reads PA, MR, WY, P3, SB
+L15716  RM_Update(closed,rates_total)       <-- reads CF's verdict + TopDown's plan
+L15723  ZRE_Update(...)
 ```
 
 Two properties this order guarantees:
@@ -383,7 +383,7 @@ Two properties this order guarantees:
 
 Each module's driver calls its own `Clear()` **as its first statement**, then
 early-exits. A disabled or blocked module can therefore never leave a previous
-bar's verdict on the dashboard. `RM_Clear()` is also called in `OnInit` (L15666)
+bar's verdict on the dashboard. `RM_Clear()` is also called in `OnInit` (L14918)
 after `CF_Clear()`.
 
 Every module refuses the forming bar with the file's own idiom,
@@ -400,13 +400,13 @@ it. All new content therefore goes into the **tooltip**, in this order:
 
 | Guard line | Block |
 |---|---|
-| L33878 | CF summary — **first**, ahead of the per-module detail |
-| L33909 | RM advisory |
-| L33937 | Power of 3 |
-| L33949 | Silver Bullet |
-| L33966 | Wyckoff |
-| L33986 | Price Action |
-| L34004 | Mean Reversion |
+| L32050 | CF summary — **first**, ahead of the per-module detail |
+| L32081 | RM advisory |
+| L32109 | Power of 3 |
+| L32121 | Silver Bullet |
+| L32138 | Wyckoff |
+| L32158 | Price Action |
+| L32176 | Mean Reversion |
 
 Each is guarded by its own `InpEnable… && Inp…ShowOnDashboard` pair, so with the
 switches off the tooltip is byte-identical to before this work.
@@ -459,8 +459,8 @@ mixed a body edge with a wick edge. `InpOBZoneBodyOnly` now makes that a choice,
 **defaulting to the existing hybrid**, so nothing changes unless you opt in.
 
 **C1 — three candle implementations coexist, and they disagree.**
-`AnalyzeClosedCandle` (def **L5650**), `AnalyzeCandleIntelligence` (decl L2657,
-def **L20353**) and `MTF_SniperEvaluateEntryTriggers` (decl L7071, def **L45097** —
+`AnalyzeClosedCandle` (def **L5321**), `AnalyzeCandleIntelligence` (decl L2657,
+def **L19239**) and `MTF_SniperEvaluateEntryTriggers` (decl L6712, def **L42644** —
 the **C1 gate**)
 classify the same bar differently. With body/range `(95,100,90,95)` the C1 gate
 returns **TRUE** while the ACC label reads **DOJI**. **Pinned, not repaired** —
@@ -475,7 +475,7 @@ state those scorers read *is* fresh: `BuildCausalEventGraph` (which also clears
 `g_selected_structure_event`) and `ComputeHTFBias` both run before the call site.
 
 **C3 — `AUDIT-CF1`: the existing weights sum to 1.1000, not 1.0000.** Both
-`final_score` branches (assignments at **L21836–21860**) do this — the default branch
+`final_score` branches (assignments at **L20403–21860**) do this — the default branch
 (`.18/.12/.14/.10/.08/.12/.16/.10/.10`) and the institutional branch
 (`.22/.14/.16/.10/.10/.18/.10/.05/.05`). **Reported, not fixed.** The new
 engine's weights sum to exactly 100 and are validated every bar.
@@ -489,15 +489,15 @@ file**. They are therefore zeroed **locally inside `CF_Update`** (the MTF leg
 reads `g_htf_bias` directly and never calls `ScoreHTF()`), and the two existing
 functions are pinned byte-for-byte by the test suite.
 
-**C5 — `AUDIT-MR1`: two divergence helpers were dead code.** `IsFractalHigh` (def **L35306**),
-`IsFractalLow` (def **L35317**) and `FractalRightBars` (def **L24354**) had a declaration and a definition and **no caller**. Phase 5 wired them
+**C5 — `AUDIT-MR1`: two divergence helpers were dead code.** `IsFractalHigh` (def **L33021**),
+`IsFractalLow` (def **L33032**) and `FractalRightBars` (def **L22911**) had a declaration and a definition and **no caller**. Phase 5 wired them
 in rather than writing a fourth swing detector.
 
 **C6 — `AUDIT-RM1`: the named inputs do not exist.** See §3.7. Reused, not
 invented; the reported risk percentage is **1.50, not 1.0**.
 
 **C7 — `AUDIT-RM1`: a complete risk model already existed.**
-`MTF_SniperComputeTradeManagement` (decl L7072, def **L45250–45361**) already computes entry, a stop
+`MTF_SniperComputeTradeManagement` (decl L6713, def **L42797–45361**) already computes entry, a stop
 behind the zone or the opposing swing, a hard ATR cap that yields
 `SKIP_SL_MAX`, TP1/2/3 from the nearest opposing zone / HTF zone / D1-W1
 liquidity with 1R/2R/3R fallback, break-even, trailing and `rec_lot_size`. The
@@ -508,7 +508,7 @@ instead of re-deriving (and possibly contradicting) it"*. **Phase 7 is that
 planner**, and adopts the chain's plan verbatim when directions agree.
 
 **C8 — buffers 7–12 already carry Entry/SL/TP1/TP2/TP3** per signal, via
-`SigLog_BufWrite` (def **L14682**), with ZRE using 13–18. Phase 7 did not need a buffer
+`SigLog_BufWrite` (def **L13934**), with ZRE using 13–18. Phase 7 did not need a buffer
 and did not add one.
 
 ---
@@ -528,11 +528,11 @@ and did not add one.
 | Enums | 43, all appended — none renumbered | Phase 5 suite |
 | Inputs | 583 total, 67 new, all new ones default `false` where behavioural | release gate + suites |
 | Inputs that read nothing | **6 of 519** — 3 legacy, 3 reserved; each labelled with a reason (§11.12) | `check_release_gate.py` G3 |
-| Inputs whose only reader is unreachable | **17 of 519** — 10 of them default `true` (§11.13) | `check_release_gate.py` G3 (pinned) |
-| Unreachable free functions | **68** (1 539 body lines), reported not deleted (§11.13) | `check_release_gate.py` G3 (pinned) |
+| Inputs whose only reader was unreachable | **41 of 519** — each labelled `INERT` in the file (§11.14) | `check_release_gate.py` G3 (allowlist, with a reason) |
+| Unreachable free functions | **0** — the 95 that existed were deleted (§11.14) | `check_release_gate.py` G3 (fails on any) |
 
 Line-ending discipline: pure CRLF, **0 bare LF** (`*.mq5`/`*.mqh` are byte-exact
-via `.gitattributes`). Braces **3740/3740**; paren balance verified on
+via `.gitattributes`). Braces **3593/3593**; paren balance verified on
 comment-stripped text.
 
 ---
@@ -543,22 +543,40 @@ comment-stripped text.
 
 | Suite | Checks | Failures |
 |---|---|---|
-| `tools/test_orderblock_lifecycle.py` | 103 | 0 |
-| `tools/test_phase2_modules.py` | 204 | 0 |
-| `tools/test_phase3_wyckoff.py` | 182 | 0 |
-| `tools/test_phase4_priceaction.py` | 234 | 0 |
-| `tools/test_phase5_meanreversion.py` | 256 | 0 |
-| `tools/test_phase6_confluence.py` | 313 | 0 |
-| `tools/test_phase7_riskmodel.py` | 292 | 0 |
-| **Seven phase suites** | **1 557** | **0** |
-| `tools/test_docs_freshness.py` | 294 | 0 |
-| `tools/test_comment_integrity.py` | 19 | 0 |
-| **This document's own guard + the F7 defect guard** | **313** | **0** |
+| Suite | Checks | Failures |
+|---|---|---|
 | `tools/test_decision_journal.py` | 322 | 0 |
+| `tools/test_phase6_confluence.py` | 313 | 0 |
+| `tools/test_docs_freshness.py` | 294 | 0 |
+| `tools/test_phase7_riskmodel.py` | 292 | 0 |
+| `tools/test_phase5_meanreversion.py` | 256 | 0 |
+| `tools/test_phase4_priceaction.py` | 234 | 0 |
+| `tools/test_scalping.py` | 207 | 0 |
+| `tools/test_phase2_modules.py` | 203 | 0 |
 | `tools/test_declutter_cap.py` | 197 | 0 |
-| `tools/test_tactical_authority.py` | 177 | 0 |
+| `tools/test_phase3_wyckoff.py` | 181 | 0 |
+| `tools/test_tactical_authority.py` | 175 | 0 |
+| `tools/test_weighted_gates.py` | 137 | 0 |
+| `tools/test_diag_bridge.py` | 130 | 0 |
+| `tools/test_resolver.py` | 117 | 0 |
+| `tools/test_orderblock_lifecycle.py` | 103 | 0 |
+| `tools/test_autotrader_contract.py` | 90 | 0 |
+| `tools/test_gate_profile.py` | 61 | 0 |
+| `tools/test_ux1_master_switch.py` | 56 | 0 |
+| `tools/test_scanners.py` | 40 | 0 |
+| `tools/test_arbiter.py` | 27 | 0 |
+| `tools/test_zre_signal_role.py` | 23 | 0 |
+| `tools/test_dashboard_clarity.py` | 20 | 0 |
+| `tools/test_edgebook_contract.py` | 19 | 0 |
+| `tools/test_comment_integrity.py` | 19 | 0 |
+| `tools/test_quant_stats.py` | 16 | 0 |
+| `tools/test_structure.py` | 13 | 0 |
+| `tools/test_zone_scoring.py` | 8 | 0 |
+| `tools/test_early_break.py` | 6 | 0 |
+| `tools/test_historical_atr_contract.py` | 5 | 0 |
+| **29 suites** | **3564** | **0** |
 
-Full gate: **5 static tools PASS · 29 suites · 3 568 PASS lines · 0 failures**.
+Full gate: **5 static tools PASS · 29 suites · 3564 PASS lines · 0 failures**.
 CI: **36 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`, step 33 = `tools/test_weighted_gates.py`, step 34 = `tools/test_scalping.py`, step 35 = `tools/test_decision_journal.py`, step 36 = `tools/test_declutter_cap.py`; AUDIT-A3 added no step - its Part C runs inside the existing `One authoritative scenario state` step).
 
 ### 10.1b This document is itself under test
@@ -757,7 +775,7 @@ dashboard STATUS card reads it, and `UpdateMTFExecutionEntry` derives its own
 compares the two. The tactical state word printed `CONFIRMED` although the rule
 printed three lines above it says only the arbiter may say that.
 
-**What.** `ResolveFinalSignal()` (**L6146**, inputs **L852–L860**) — one function, called once from `OnCalculate`
+**What.** `ResolveFinalSignal()` (**L5817**, inputs **L852–L860**) — one function, called once from `OnCalculate`
 after `AlertDispatcherFinalize`, and only on a closed-bar or detection event. Four
 layers vote (HTF/D1 bias, zone role, reaction level, tactical entry) weighted
 **25 / 25 / 30 / 20 = 100**. `OnInit` refuses to initialise if they do not sum to
@@ -792,7 +810,7 @@ B/C HIGH — every extra gate multiplied the miss rate, and a candidate that fai
 one weak leg was indistinguishable from one with no evidence at all, because the
 reason was never written down anywhere the operator could read.
 
-**What.** `WeightedGateAllows()` (**L42416**, inputs **L861–L871**, flag
+**What.** `WeightedGateAllows()` (**L40023**, inputs **L861–L871**, flag
 `InpUseWeightedGates` at **L862**) is called from the dispatcher's selection loop.
 It tests the vetoes that must never be traded away **first**, and returns
 immediately with a `HARD VETO: …` reason:
@@ -843,7 +861,7 @@ veto.
 as a strategy layer: no scalping verdict, no scalping reason, and no cost model.
 Scalping dies on spread, and the file had no place that said so.
 
-**What.** `SCALP_Update()` (**L6310**) behind `InpEnableScalping = false`
+**What.** `SCALP_Update()` (**L5981**) behind `InpEnableScalping = false`
 (**L873**), with a separate display opt-in `InpScalpShowOnDashboard` (**L874**).
 Six strategies vote, each reading state the existing modules **already published**
 for the same closed bar — the overlay re-derives nothing and re-runs no module:
@@ -919,8 +937,8 @@ which one said no?"* — which is exactly the question the five missed XAUUSD M1
 setups of 2026-10-27..29 needed answered. Guessing at a missed setup and
 auditing one are different activities; this makes the second one possible.
 
-**What.** `OBS_Record()` (**L6534**) behind `InpEnableDecisionJournal = false`
-(**L889**), writing rows of `SObsJournalRow` (**L4785**) into a bounded
+**What.** `OBS_Record()` (**L6205**) behind `InpEnableDecisionJournal = false`
+(**L889**), writing rows of `SObsJournalRow` (**L4490**) into a bounded
 **ring buffer** `g_obs_rows[]`. One row per **closed** bar, ten columns:
 
 | Column | Source it is read from | Never re-derived |
@@ -938,15 +956,15 @@ count stays at 44. A veto outranks a strong score in `OBS_GateState()` on purpos
 the journal must never read as *95/100 but no trade* without also naming the veto.
 
 **Where it runs, and why that is the load-bearing detail.** Measured order inside
-`OnCalculate`: `CF_Update` (L16497) → `RM_Update` (L16502) → `SCALP_Update`
-(L16506) → `AlertDispatcherFinalize` (L16522) → `g_final_signal=ResolveFinalSignal`
-(L16528) → `g_final_why=rs_why` (L16529) → **`OBS_Record(closed,rates_total)`
-(L16535)**. It is recorded LAST, not next to `SCALP_Update`, which would have
+`OnCalculate`: `CF_Update` (L15711) → `RM_Update` (L15716) → `SCALP_Update`
+(L15720) → `AlertDispatcherFinalize` (L15736) → `g_final_signal=ResolveFinalSignal`
+(L15742) → `g_final_why=rs_why` (L15743) → **`OBS_Record(closed,rates_total)`
+(L15749)**. It is recorded LAST, not next to `SCALP_Update`, which would have
 transcribed the *previous* bar's resolver verdict and reproduced the stale-citation
 defect this module exists to end. The call gate mirrors the resolver's own:
 `is_new_bar || detection_updated || prev_calculated==0`.
 
-**The reason precedence** (`OBS_Reason()`, **L6507**) is the order an operator
+**The reason precedence** (`OBS_Reason()`, **L6178**) is the order an operator
 asks in: a hard veto's own text → thin evidence → `resolver CONFLICT - …` →
 `scalp CONFLICT - …` → the resolver's verdict → the overlay's verdict → the
 published gate's text → and, when nothing spoke,
@@ -955,8 +973,8 @@ published gate's text → and, when nothing spoke,
 **One honesty fix, recorded because it was mine.** The first draft mapped the
 alert source as `3=CORE, 2=RXN, else ZRE`. The `else` was an assumption and it was
 wrong: the dispatcher's own field says `int source; // 1=ZRE, 2=RXN, 3=CORE legacy`
-(L4223) and `AlertCandidateInit` sets `source=0` for an unused candidate. So the
-mapping became a pure core, `OBS_SourceName()` (**L6524**): 3=CORE, 2=RXN, 1=ZRE,
+(L3928) and `AlertCandidateInit` sets `source=0` for an unused candidate. So the
+mapping became a pure core, `OBS_SourceName()` (**L6195**): 3=CORE, 2=RXN, 1=ZRE,
 anything else `unset`. A transcript that invents a source is worse than no
 transcript.
 
@@ -974,13 +992,13 @@ own four `g_obs_*` globals and reads only state the layers already published —
 **transcript, not a voter**, and never a fifth opinion. It is deliberately *not*
 folded into `InpEnableAllModules`, which stays pinned to the seven strategy modules.
 
-**Self-test.** `OBS_SelfTest()` (**L6612**) runs eleven deterministic checks
+**Self-test.** `OBS_SelfTest()` (**L6283**) runs eleven deterministic checks
 (OBS-1…OBS-11) over the pure cores only — ring wrap, non-positive cap, all four
 state names plus an unknown one, not-run beating 95 points, a veto beating 95
 points, the inclusive minimum from both sides, veto text outranking a resolver
 verdict, both conflict labels, silence, and the source names. It touches no chart,
 no series and no journal state, and it is hooked into the file's existing general
-switch `InpMTEERunSelfTest` (L15707, after the scalping hook).
+switch `InpMTEERunSelfTest` (L14959, after the scalping hook).
 
 **Contract suite.** `tools/test_decision_journal.py` (**CI step 35**) pins all of
 the above: the exact input lines, the struct's ten columns and their order, the
@@ -1000,11 +1018,11 @@ sandbox — so every claim above is a claim about the source text, measured.
 
 **The defect.** Phase 1 item D was reported as *chart clutter*. Reading the code,
 the drawing side is already disciplined: `DrawTextLabel` routes through
-`QSMC_DisplayAllowsObject()` (**L42068**) and `QSMC_InVisualDistance()`, every
+`QSMC_DisplayAllowsObject()` (**L39675**) and `QSMC_InVisualDistance()`, every
 family is capped at draw time (`InpMaxZonesShown`, `InpMaxStructureShown`,
 `InpMaxFVGShown`, `InpMaxStrongOB`), and `PrepareDynamicRedraw()` rebuilds the
 dynamic families each new bar. The real defect was in the object cap inside
-`SmartObjectCleanup()` (**L8052**), which contradicted *both* its own comment
+`SmartObjectCleanup()` (**L7666**), which contradicted *both* its own comment
 (*"drop the oldest ZONE_/STRUCT_/OB_/FVG_ decorations (never entry marks)"*) and
 its own input label (**L1285**: *"hard cap on QSMC_\* chart objects per pass"*)
 in four separate ways:
@@ -1013,27 +1031,27 @@ in four separate ways:
 |---|---|---|
 | a | drop **the oldest** decorations | `ObjectsDeleteAll(0,cut[c],-1,OBJ_RECTANGLE)` deleted **every** object in the family. Being **one object over the cap** could erase every demand/supply box on the chart; `excess` was computed and then ignored as a budget |
 | b | the cap is on **QSMC_\*** objects | measured with `ObjectsTotal(0,-1,-1)` — every object on the chart, including other indicators' and the operator's own drawings, so our zones were pruned to pay for somebody else's clutter |
-| c | four families share the burden | `cut[1] = PFX+"STRUCT_"` was filtered by `OBJ_RECTANGLE`, but structure marks are **OBJ_TEXT** (drawn by `DrawTextLabel` at **L28741**), so that family could never contribute a single deletion and the loop over-deleted from `OB_`/`FVG` instead |
+| c | four families share the burden | `cut[1] = PFX+"STRUCT_"` was filtered by `OBJ_RECTANGLE`, but structure marks are **OBJ_TEXT** (drawn by `DrawTextLabel` at **L27277**), so that family could never contribute a single deletion and the loop over-deleted from `OB_`/`FVG` instead |
 | d | family by family until the excess is gone | `excess-=removed`, with `removed` a whole-family count, drove the budget far negative and ended the loop after the first family |
 
-**The fix** (**L7901–L8050**, four functions above `SmartObjectCleanup`):
+**The fix** (**L7515–L7664**, four functions above `SmartObjectCleanup`):
 
-- `QSMC_DeclutterExcess(owned,cap)` (**L7921**) — PURE. 0 at or under the cap
+- `QSMC_DeclutterExcess(owned,cap)` (**L7535**) — PURE. 0 at or under the cap
   (the cap is inclusive), 0 for a non-positive cap or count, else `owned-cap`.
-- `QSMC_OldestSlot(times[],taken[])` (**L7933**) — PURE. The oldest free slot by
+- `QSMC_OldestSlot(times[],taken[])` (**L7547**) — PURE. The oldest free slot by
   the object's **own anchor time** (no price, no history, no symbol assumption);
   ties go to the lower index so one pass is reproducible; `-1` when none is left;
   a shorter mask bounds the scan, so a size mismatch can never read past either
   array.
-- `QSMC_CountOwnedObjects()` (**L7950**) — counts `PFX`-owned objects only, using
+- `QSMC_CountOwnedObjects()` (**L7564**) — counts `PFX`-owned objects only, using
   the same enumerate-the-chart idiom `QSMC_ApplyVisualPolicy()` already uses,
   once per new bar.
-- `QSMC_DeleteOldestFamily(prefix,want)` (**L7966**) — deletes **at most `want`**
+- `QSMC_DeleteOldestFamily(prefix,want)` (**L7580**) — deletes **at most `want`**
   objects of one family, **oldest first**, of any type, and returns how many
   really went. Two passes over the object list, three arrays sized once outside
   any loop, each slot marked taken before it is deleted.
 
-The cap block (**L8061**) keeps the cap value itself untouched
+The cap block (**L7675**) keeps the cap value itself untouched
 (`InpMaxChartObjects`, else 900 with Clean and 1200 without), keeps the family
 priority order, and now hands each family the *remaining* budget. If the four
 decoration families cannot cover the excess it prints that plainly instead of
@@ -1044,17 +1062,17 @@ reaching for anything else: entry marks, the dashboard and every other family ar
 the cap value and its `isNewBar` cadence are identical, `InpSmartObjectManagement`
 still gates the whole function, and `PrepareDynamicRedraw()` still clears its
 families wholesale — that is a redraw in the same pass, not a cap. Each of the four
-families has exactly one creation site (**L28721** `ZONE_` box, **L28739**
-`STRUCT_` text, **L28753** `OB_` box, **L28786** `FVG_` box), so dropping the
+families has exactly one creation site (**L27257** `ZONE_` box, **L27275**
+`STRUCT_` text, **L27289** `OB_` box, **L27322** `FVG_` box), so dropping the
 `OBJ_RECTANGLE` filter lets `STRUCT_` finally contribute and cannot catch a
 bystander.
 
-**Self-test.** `QSMC_DeclutterSelfTest()` (**L8008**) runs eleven deterministic
+**Self-test.** `QSMC_DeclutterSelfTest()` (**L7622**) runs eleven deterministic
 checks (DC-1…DC-11) over the two pure cores only — under cap, at cap, **one over
 the cap costs exactly one object**, the excess is the difference, non-positive cap,
 non-positive count, age order, a deliberate tie, a taken slot skipped, all slots
 taken, and an empty list. No chart, no object list, no terminal state. Hooked into
-the file's existing `InpMTEERunSelfTest` block (**L15711**, after the journal's).
+the file's existing `InpMTEERunSelfTest` block (**L14963**, after the journal's).
 
 **Contract suite.** `tools/test_declutter_cap.py` (**CI step 36**) pins all of the
 above, including the negative claims that matter: no `ObjectsDeleteAll`, no
@@ -1077,22 +1095,22 @@ authorise or block the other. This section records what the code actually does,
 because a negative result that is not written down gets re-investigated — or
 worse, believed the other way.
 
-**Verdict: no defect.** `TacticalAuthorityGate()` (**L32118**) and the pure order
-it hands its facts to, `TacticalAuthorityDecide()` (**L32035**), are per-side at
+**Verdict: no defect.** `TacticalAuthorityGate()` (**L30371**) and the pure order
+it hands its facts to, `TacticalAuthorityDecide()` (**L30288**), are per-side at
 every step:
 
 | Step | Evidence | Per-side? |
 |---|---|---|
-| DSE terminal plan | `TacticalScenarioTerminal(bull,…)` **L31975** — mirrored halves; the BUY half reads only `g_scn_buy`, the SELL half only `g_scn_sell`, and both test the same five conditions | yes |
-| DSE live plan | `TacticalScenarioLive(bull,…)` **L32004** — same mirrored structure, plus the DSE's own `relevant` flag | yes |
-| Core blacklist | `IsSameIdeaAsBlacklisted(bull,…)` **L7213** — `string dir=is_buy?"BUY":"SELL"` (L7220), entries not naming that side are skipped (L7226), and the centre-price match must also agree on the side (L7230) | yes |
+| DSE terminal plan | `TacticalScenarioTerminal(bull,…)` **L30228** — mirrored halves; the BUY half reads only `g_scn_buy`, the SELL half only `g_scn_sell`, and both test the same five conditions | yes |
+| DSE live plan | `TacticalScenarioLive(bull,…)` **L30257** — same mirrored structure, plus the DSE's own `relevant` flag | yes |
+| Core blacklist | `IsSameIdeaAsBlacklisted(bull,…)` **L6853** — `string dir=is_buy?"BUY":"SELL"` (L6860), entries not naming that side are skipped (L6866), and the centre-price match must also agree on the side (L6870) | yes |
 | Every reason an operator reads | `string side=(bull?"BUY":"SELL")` and all four branches quote it | yes |
 | Precedence | terminal DSE → blacklisted idea (exempt when `src==1`) → stale bias-only trigger (exclusive bound, unknown age never guessed) → CONTEXT → OK as the fall-through | — |
 
-**Ordering.** The gate is called at **L5971**, before the direction is published
-to the resolver (**L6016**), before a tactical fact is built (**L6070**), before
-the arbiter is fed (**L6081**), and before any object is created (**L6089**). On
-`BLOCKED`/`STALE` it clears and returns at **L5985** — so `g_tac_dir` is zeroed,
+**Ordering.** The gate is called at **L5642**, before the direction is published
+to the resolver (**L5687**), before a tactical fact is built (**L5741**), before
+the arbiter is fed (**L5752**), and before any object is created (**L5760**). On
+`BLOCKED`/`STALE` it clears and returns at **L5656** — so `g_tac_dir` is zeroed,
 nothing is drawn, and the arbiter receives nothing. That is exactly what the
 field's own comment claims at **L2267** (*"the display AND the arbiter feed were
 refused"*), and it is the only writer of `g_mtf_entry_blocked=true`.
@@ -1100,7 +1118,7 @@ refused"*), and it is the only writer of `g_mtf_entry_blocked=true`.
 **The CONTEXT case, which is where the suspicion was reasonable.** A bias-only
 direction (`src==2`) with no live DSE scenario is downgraded to `CONTEXT`, and the
 fact *is still handed to the arbiter*. That is deliberate and documented in the
-code itself (**L32086–L32093**): *"the arbitration layer already refuses to trade
+code itself (**L30339–L30346**): *"the arbitration layer already refuses to trade
 on it ('the MTF trigger alone is not a location fact')… The fact is STILL handed to
 the arbiter, so its own explained refusal is unchanged."* Verified in
 `MQL5/Include/QSMC/QSMC_Root.mqh`: `BuildTacticalCandidate` enforces **LOCATION
@@ -1112,7 +1130,7 @@ cannot become an alert, and `STacticalFact` carrying no authority field costs no
 protection.
 
 **The one open decision this audit leaves with the operator.** The resolver's
-tactical leg reads `vote[3]=g_tac_dir` (**L6161**) and consults **no** authority
+tactical leg reads `vote[3]=g_tac_dir` (**L5832**) and consults **no** authority
 verdict, so an `OK` direction and a `CONTEXT` direction vote identically for
 `InpResWeightTactical` points. Both readings are defensible:
 
@@ -1146,17 +1164,17 @@ goes*:
 
 | Part C | What it pins |
 |---|---|
-| C1 | the indicator builds exactly one `STacticalFact` (L6070) and feeds the arbiter exactly once (L6081), both after the gate (**L5971**) and before the entry line is drawn (L6089), all ten fields, and that the fact carries **no** authority verdict |
-| C2 | the include's own refusal of a location-less hint: LOCATION FIRST (R1), `zone_reach_atr`, `BETWEEN ZONES`, *"the MTF trigger alone is not a location fact"*, direction taken from the closed-bar reaction fact, the hint *"only allowed to agree with it"* — plus the two source comments (L32088, L32090–L32091) that make the hand-over deliberate rather than an oversight |
-| C3 | `g_mtf_entry_blocked=true` has exactly one writer and `g_tac_dir=bull?1:-1;` exactly one publisher (L6016), and clearing zeroes the resolver's tactical leg |
+| C1 | the indicator builds exactly one `STacticalFact` (L5741) and feeds the arbiter exactly once (L5752), both after the gate (**L5642**) and before the entry line is drawn (L5760), all ten fields, and that the fact carries **no** authority verdict |
+| C2 | the include's own refusal of a location-less hint: LOCATION FIRST (R1), `zone_reach_atr`, `BETWEEN ZONES`, *"the MTF trigger alone is not a location fact"*, direction taken from the closed-bar reaction fact, the hint *"only allowed to agree with it"* — plus the two source comments (L30341, L30343–L30344) that make the hand-over deliberate rather than an oversight |
+| C3 | `g_mtf_entry_blocked=true` has exactly one writer and `g_tac_dir=bull?1:-1;` exactly one publisher (L5687), and clearing zeroes the resolver's tactical leg |
 | C4 | the blacklist veto is per-side *inside the callee*: the direction word, the `StringFind` skip, the `g_blacklist_zone_type` agreement, the horizon, and the empty-list short circuit |
-| C5 | the open decision, pinned as the current state: the tactical leg reads `g_tac_dir` (L6161) and consults no authority verdict |
+| C5 | the open decision, pinned as the current state: the tactical leg reads `g_tac_dir` (L5832) and consults no authority verdict |
 
 It runs in CI under the pre-existing step *One authoritative scenario state*, so the
 workflow stays at **36 steps** and no other suite's step pin moved. Writing Part C
 also caught two faults in my own earlier reading: `region()` returns the first
 match, so it had located the **forward declaration** of `IsSameIdeaAsBlacklisted`
-(84 characters, L5224) instead of its 24-line definition — Part C locates
+(84 characters, L4929) instead of its 24-line definition — Part C locates
 definitions by skipping declarations — and one phrase I intended to quote is
 line-wrapped in the source comment, so it is asserted in its two contiguous halves.
 
@@ -1175,13 +1193,13 @@ the one thing that was not.
 **Already sound — checked, not assumed.** The data path is hardened and stays that
 way: `CopyBuffer` results are compared against the requested count, retried a
 bounded number of times and otherwise invalidated to `EMPTY_VALUE` rather than left
-stale (**L16024–16045**, **L24083–24088**, **L44053–44070**); every indicator handle
-is tested against `INVALID_HANDLE` at init (**L15395–15400**, **L15409**,
-**L15427–15434**); the dispatcher's distance limit is sanitised
-(`MathIsValidNumber`, **L42496**); the cooldown is clamped into `0…10000`
-(**L42318**), so a negative input cannot mute a channel forever; and the
+stale (**L15238–16045**, **L22640–24088**, **L41600–44070**); every indicator handle
+is tested against `INVALID_HANDLE` at init (**L14647–15400**, **L14661**,
+**L14679–15434**); the dispatcher's distance limit is sanitised
+(`MathIsValidNumber`, **L40103**); the cooldown is clamped into `0…10000`
+(**L39925**), so a negative input cannot mute a channel forever; and the
 one-directional-alert-per-closed-bar rule is deliberate and documented at
-**L24028**. Nothing in this list was changed.
+**L22585**. Nothing in this list was changed.
 
 **The defect that was real.** Both alert paths called the terminal's channel
 functions and **threw the answer away**:
@@ -1189,14 +1207,14 @@ functions and **threw the answer away**:
 | Path | Before | Consequence |
 |---|---|---|
 | quant events | `SendNotification(pm);` and `if(sound) PlaySound("alert.wav");` | a terminal with no MetaQuotes ID, or a chart whose `Sounds/` folder lacks `alert.wav`, produced *silence* — indistinguishable from "no setup" |
-| primary dispatcher | `if(push) SendNotification(message);` and `if(sound) PlaySound("alert.wav");` | the same, on the path that also consumes the bar's one-alert claim first (**L42618**), so the alert was gone for that bar with no trace |
+| primary dispatcher | `if(push) SendNotification(message);` and `if(sound) PlaySound("alert.wav");` | the same, on the path that also consumes the bar's one-alert claim first (**L40225**), so the alert was gone for that bar with no trace |
 
 That is the same class of failure as defect F: the system knew something the
 operator needed and did not say it. `Alert()` is `void` in MQL5, so the popup has
 no answer to consume and its call is left as a plain call — wrapping it in a
 condition would not compile, and the contract suite asserts that nobody tries.
 
-**The fix.** Two zero-line-delta edits (**L24037–24039**, **L42625–42626**): the
+**The fix.** Two zero-line-delta edits (**L22594–24039**, **L40232–42626**): the
 return value is consumed, and a refusal prints one diagnostic line. No new input —
 the diagnostics ride on switches that already existed (`InpDebugLog` for the quant
 path, `InpAlertDispatcherLog` for the dispatcher), so the file still declares
@@ -1204,7 +1222,7 @@ path, `InpAlertDispatcherLog` for the dispatcher), so the file still declares
 failure can be seen.
 
 **Why only one path clamps its push text.** The quant path accepts arbitrary
-caller strings and clamps to 240 characters (**L24036**). The dispatcher's text is
+caller strings and clamps to 240 characters (**L22593**). The dispatcher's text is
 composed by `AlertCompactLine()` from bounded parts, and that bound is now measured
 rather than assumed: the longest literals its three sources can emit are 37
 (`RXN_ExecReason`), 20 (`RXN_NeedsText`) and 12 (`AlertInvalidationText`)
@@ -1282,7 +1300,7 @@ tree: `G1 host version triple: v6.6.13 / "6.613"` and
 **GO, 0 warnings** · `mql5_rules.py` no dialect errors, **0 warnings** (D10 clean
 across all five programs) · `static_check.py` no errors (its 5 warnings are the
 pre-existing `new`/`delete` balance notes in files this pass does not touch) · docs
-freshness 0 failures · `nadir2.mq5` still **45 838** lines / **583** inputs / 3 842
+freshness 0 failures · `nadir2.mq5` was **45 838** lines / **583** inputs / 3 842
 braces — every edit here was content-only, so no line moved and no other pin drifted.
 
 **What this does NOT prove.** It proves the repository agrees on one version string
@@ -1303,13 +1321,13 @@ checks), so changing one is a visible act that must edit this section too.
 ### C3 — the score weights sum to 1.10, and a gate reads that score
 
 Measured, not quoted: summing the decimal literals of both branches of the
-aggregation gives **1.1000** in each — the institutional branch (**L21840–21851**)
-and the default branch (**L21857–21862**). Both then clamp to `0…100`
-(**L21853** / **L21867**), and that clamp is what hides the scale.
+aggregation gives **1.1000** in each — the institutional branch (**L20407–21851**)
+and the default branch (**L20424–21862**). Both then clamp to `0…100`
+(**L20420** / **L20434**), and that clamp is what hides the scale.
 
 The consequence is concrete, and it is **not** display-only: `final_score` becomes
-`conf`, and `if(conf<EffMinConfidenceScore())` rejects the entry (**L21952–21959**).
-`EffMinConfidenceScore()` (**L19831–19835**) returns `InpMinConfidenceScore`
+`conf`, and `if(conf<EffMinConfidenceScore())` rejects the entry (**L20519–21959**).
+`EffMinConfidenceScore()` (**L18734–19835**) returns `InpMinConfidenceScore`
 (default **75**) and applies no compensation of any kind. So:
 
 | | reads as | actually admits |
@@ -1329,13 +1347,13 @@ saturates at 100.
 
 ### C4 — two free points exist, and the confluence engine already neutralises them
 
-Verified at the source: `ScoreSession()` (**L18430–18438**) falls through to
+Verified at the source: `ScoreSession()` (**L17630–18438**) falls through to
 `return 30.0;` when no session matched — free credit for absent evidence — and
-`ScoreHTF()` (**L18439–18444**) returns **50.0** twice, for "bias disabled" and for
+`ScoreHTF()` (**L17639–18444**) returns **50.0** twice, for "bias disabled" and for
 "no higher-timeframe structure". Both feed the **legacy** weighted score.
 
 The engine built in this pass does not inherit them: `CF_Update`
-(**L27574–27721**) detects the floor (`sess_raw>CF_SESSION_NO_EVIDENCE+0.001`) and
+(**L26131–27721**) detects the floor (`sess_raw>CF_SESSION_NO_EVIDENCE+0.001`) and
 zeroes that pillar, and it reads `g_htf_bias` directly rather than calling
 `ScoreHTF()` at all. Both checks are pinned. So C4 is **closed by mitigation**: the
 two functions are untouched (and pinned byte-for-byte) because editing them would
@@ -1344,12 +1362,12 @@ score itself is ever revisited.
 
 ### C1 — a textbook doji passes the entry gate as a pin bar
 
-The pin-bar branch of `MTF_SniperEvaluateEntryTriggers` (**L45097–45245**) reads
+The pin-bar branch of `MTF_SniperEvaluateEntryTriggers` (**L42644–45245**) reads
 `bull_pin=(lower_wick>=0.50*c_range && c_close>=c_open)`, and `c1_candle_inside`
 never consults the body. With the example from §8 — body/range `(95,100,90,95)`,
 i.e. body `0`, range `10`, lower wick `5` — the test passes **exactly at its
 boundary** (`5 >= 0.50*10` and `95 >= 95`), while `AnalyzeClosedCandle`'s doji rule
-(`x.body_ratio<=0.12`, **L5674**) classifies the same bar as **DOJI**. The label and
+(`x.body_ratio<=0.12`, **L5345**) classifies the same bar as **DOJI**. The label and
 the gate describe one bar differently, which is what §8 recorded.
 
 | Option | Effect |
@@ -1394,7 +1412,7 @@ with `[ \t]+` because it was spanning newlines and matching 519 of 583 lines.
 | `InpScalpShowOnDashboard` | L874 | "add the advisory line to the tooltip" | no scalping row exists in the tooltip |
 | `InpDockDashboard` | L1169 | legacy | nothing (label already said so) |
 | `InpPanelsStartCollapsed` | L1174 | legacy | nothing (label already said so) |
-| `InpShowGateAudit` | L1236 | "dashboard: per-gate survival + top blocker" | `SignalGateAuditLine()` is only **printed**, at L16285, gated by `InpGateAuditLogEveryBars`; `GateAuditTopBlocker()` also feeds the idle note at L42709. No dashboard row. |
+| `InpShowGateAudit` | L1236 | "dashboard: per-gate survival + top blocker" | `SignalGateAuditLine()` is only **printed**, at L15499, gated by `InpGateAuditLogEveryBars`; `GateAuditTopBlocker()` also feeds the idle note at L40316. No dashboard row. |
 | `InpAlertOnEntryPreview` | L1253 | legacy | nothing (label already said so) |
 | `InpShowEntryQualityPanel` | L1416 | "Show STRUCTURAL/CONTEXT/EXECUTION/GEOMETRY rows" | those rows are not built |
 
@@ -1424,114 +1442,158 @@ entry is stale. Both branches were proven by mutation, not asserted:
 The check is not tautological in either direction, and it is cheaper than the
 alternative - a comment nobody re-reads.
 
-## 11.13 AUDIT-DEAD2 — 68 functions nothing calls, and the 17 switches only they read
+## 11.13 AUDIT-DEAD2 — counting what nothing calls, and the index that lied
 
 §11.12 counted inputs that **nothing reads**. This is the next question down: an input
 that *is* read — but only from inside a function that nothing calls — is exactly as
 inert, and the properties dialog lies exactly as much. Answering it needs a call
-index, not a read index.
+index, not a read index: comment-stripped code, depth-0 definitions found with a
+brace-depth walk, then every name-before-paren counted once, with declarations and
+the definition itself excluded.
 
-**Method.** Comment-stripped code (same load-bearing order as §11.12), depth-0
-function definitions found with a brace-depth walk, then every name-before-paren
-counted once. A definition is unreachable when its only occurrence is itself, its
-forward declaration counted separately. Two cross-checks before believing it: none
-of the 68 appears in `MQL5/Include/QSMC/QSMC_Root.mqh` (0 hits), and none is reached
-through a `#define` (0 hits). The four terminal callbacks — `OnInit`, `OnDeinit`,
-`OnCalculate`, `OnChartEvent` — are excluded by construction: the terminal calls
-them, not the program.
+**The first version of that index was wrong, and it was wrong in the expensive
+direction.** It decided "this occurrence is a declaration" with a line-start regex
+that also matched every statement beginning at column 0 and ending in `;`:
 
-**Result: 68 of 1 062 free functions are unreachable — 1 539 body lines.** The
-inventory, by what they were for (all line numbers are the definition):
+    14337:   return SigLog_ResName(r.res[k]);
 
-| Class | Count | Body lines |
-|---|---|---|
-| Legacy panel renderers and their helpers | 21 | 713 |
-| Selection / scoring (`SelectEntryOB`, `SelectEntryFVG`, `GreedyFindBestTarget`, `CalculateSetupQualityScore`, `RankSetupCandidates`, `ScoreAlgo`, `FormatFinalEntryOutput`, the graph optimisers) | 13 | 424 |
-| Text / colour helpers (`GateTxt`, `NormText`, `BlendColor`, `MTF_HTFRowIndex`, `SigLog_Shift`, `L_Trim`, ...) | 19 | 173 |
-| PMI internals | 8 | 107 |
-| ZRE / RXN cores (`MarkZREEntry`, `ZRE_ScoreZone`, `RXN_LevelFor`, ...) | 4 | 40 |
-| Self-tests nothing invokes (`PMI_SelfTest`, `RXN_SelfTest`, `PMI_StructDedupeCheckInvariants`) | 3 | 82 |
-| **Total** | **68** | **1 539** |
+That is a **call**, but the regex classified it as a declaration, so a function with
+exactly one call scored zero calls. The index reported **68** dead functions. The
+truth was **95**, and at least two of the 68 — `SigLog_Shift` and `SigLog_ResName` —
+were alive. The corrected rule is explicit and local: a declaration is a statement
+whose text between the return type and the name is only whitespace, `*` or `&`.
 
-The single largest group is what the file used to draw with: `DrawMTFPanel` (L34185,
-93 lines), `DrawTopDownPanel` (L34929, 128), `DrawUnifiedEntryPanel` (L30032),
-`BuildUnifiedEntryVerdict` (L29918, 102), the five `CoreDash*` builders, the two
-`ScenarioDash*` renderers and `ZRE_DashMini/Full` + `RXN_DashMini/Full`. The live
-chart is drawn by **`DrawQuantumDashboard`** (definition **L33658**), called from
-`OnCalculate` at **L16552** and from `RedrawAllPanels` at **L29651**; the per-panel
-drawers predate it. One detail worth keeping: `DrawUnifiedEntryPanel` itself calls
-`DrawQuantumDashboard` at L30036 - a dead function can look busy. This is consistent with the
-v5.7.5 redesign in the file header (D4, MINI/COMPACT/FULL replacing the older
-screens) and with the audit decision already on record not to resurrect
-`ZRE_/RXN_Dash*`.
+**Corrected result: 95 of 1 062 free functions are unreachable — 2 399 body lines.**
+The largest group is the pre-redesign UI (`DrawMTFPanel`, `DrawTopDownPanel`,
+`DrawUnifiedEntryPanel`, `BuildUnifiedEntryVerdict`, five `CoreDash*` builders, both
+`ScenarioDash*` renderers, `ZRE_`/`RXN_DashMini/Full`), then the entry-selection layer
+that the live path replaced (`SelectEntryOB`, `SelectEntryFVG`,
+`GreedyFindBestTarget`, `CalculateSetupQualityScore`, `RankSetupCandidates`,
+`ScoreAlgo`, `GraphConfluenceScore`), the causal-graph optimisers
+(`OptimizeCausalGraphPath`, `CausalEvidenceDP`, `RunDijkstraCausalPath`,
+`RunBellmanFordCausalPath`, `RunBeamCausalPath`), PMI internals, text and colour
+helpers, and three self-tests nothing invoked (`PMI_SelfTest`, `RXN_SelfTest`,
+`PMI_StructDedupeCheckInvariants`). The live chart is **`DrawQuantumDashboard`**
+(definition **L31830**), called from `OnCalculate` at **L15766** and from
+`RedrawAllPanels` at **L28104**; the per-panel drawers predate it.
 
-**The 17 inputs whose every read sits inside one of those functions.** Ten of them
-default to `true`, so the operator believes they are on:
+**Two cross-checks make the number believable:** none of the 95 appears in
+`MQL5/Include/QSMC/QSMC_Root.mqh` (0 hits, so the include cannot be calling them) and
+none is reached through a `#define` (0 hits). The four terminal callbacks are
+excluded by construction — the terminal calls them, not the program.
 
-| Input | Default | Only read from | Line |
-|---|---|---|---|
-| `InpAllowFVGEntryZone` | `true` | `SelectEntryFVG` (unreachable) | L18732 |
-| `InpMinEntryOBStrength` | `3` | `SelectEntryOB` (unreachable) | L18691 |
-| `InpMaxOBDistATR` | `8.0` | `SelectEntryOB` (unreachable) | L18678 |
-| `InpUseAdvancedSweepEngine` | `true` | `GetBestAdvancedSweepCandidate` | L3482 |
-| `InpUseMergeSortRanking` | `true` | `GetBestAdvancedSweepCandidate` | L3502 |
-| `InpUseCausalGraphOptimizer` | `true` | `OptimizeCausalGraphPath` | L35255 |
-| `InpUseDijkstraPathSearch` | `true` | `OptimizeCausalGraphPath` | L35258 |
-| `InpUseBellmanFordValidation` | `true` | `OptimizeCausalGraphPath` | L35261 |
-| `InpUseBeamSearch` | `true` | `OptimizeCausalGraphPath` | L35266 |
-| `InpRequireGraphAgreement` | `false` | `OptimizeCausalGraphPath` | L35269 |
-| `InpUseCausalDPOptimizer` | `true` | `CausalEvidenceDP` | L35285 |
-| `InpASCIIBar` | `true` | `BuildConfidenceBar` | L18636 |
-| `InpShowTopDownPanel` | `true` | `DrawTopDownPanel` | L34931 |
-| `InpShowPerfMeter` | `false` | `DrawTopDownPanel` | L35002 |
-| `InpPanelRightPad` | `68` | `RepositionDashboard` | L15855 |
-| `InpPanelIdleMaxHeightPct` | `15` | `LayoutPanelBadge` | L29607 |
-| `InpPMIPanelRefreshTicks` | `3` | `PMI_DrawPanelThrottled` | L13258 |
+**41 inputs, not 17, have no live reader.** The 17 first reported were an artefact of
+the same bug; the corrected index finds 41, and the purge then revealed the rest.
+They are listed and labelled in §11.14.
 
-Each was verified twice: by the index, and by `grep` on the raw file, which returns
-exactly two lines for most of them — the declaration and the single read inside the
-dead body. `InpAllowFVGEntryZone` is the one to look at first: it reads like a
-strategy switch, defaults to `true`, and no live code consults it.
-
-**A documentation contradiction, recorded not rewritten.** The file header at
+**The documentation contradiction stands and is now visible.** The file header at
 **L249–251** (v5.7.4, "D1. Wire-up of dead features") states that
 `BuildConfidenceBar()` and `BuildInstitutionalPatternChecklist()` "were fully
-implemented but never called; **both now render in the dashboard**". At v6.6.13 both
-have **zero call sites** (definitions L18632 and L3192). The changelog entry is a dated record of
-what v5.7.4 did and is left untouched under the G1 rule; this section is the current
-status. Which of the two readings is true — the calls were removed by a later
-redesign, or the entry was aspirational — **cannot be dated from this checkout: the
-clone is shallow (9 commits, `.git/shallow`)**, so `git log -S` returns only the
-merge. That is a measurement limit, not an inference, and nothing here claims a
-regression.
+implemented but never called; **both now render in the dashboard**". At the time of
+the audit both had **zero call sites**. The changelog entry is a dated record of what
+v5.7.4 did and is left untouched under the G1 rule; which reading is true — the calls
+were removed by a later redesign, or the entry was aspirational — **cannot be dated
+from this checkout: the clone is shallow (9 commits, `.git/shallow`)**, so
+`git log -S` returns only the merge. No regression is claimed, and both functions are
+now deleted with the rest (§11.14), which makes the question moot for the current
+build.
 
-**Decision: reported, not repaired.** Three routes, and all three need the operator:
+## 11.14 The purge — 95 dead functions deleted, and the five checks that prove nothing else moved
 
-| Option | Effect | Cost |
+You asked for a production build with the unused code gone, so the audit above was
+executed rather than filed. **Option B of §11.13, with the numbers corrected first.**
+
+| | Before | After |
 |---|---|---|
-| **A. Leave it** | nothing changes; the 17 switches stay inert silently | none, but 10 default-`true` lies stay |
-| **B. Delete the dead code** (the A8 precedent — the header already records one such purge) | −1 539 lines, behaviour-neutral *by construction*, no logic touched | a large diff, and F7 must re-run over it |
-| **C. Wire the switches back** (`SelectEntryOB`/`SelectEntryFVG` on the live path, the graph optimisers, the top-down panel) | each one changes entry selection or the chart — **strategy decisions**, not fixes | highest: it can move signals |
-| **D. Label them `RESERVED`, as §11.12 did** | comment-only, zero behaviour change, the dialog stops lying | the honest minimum if B and C wait |
+| Lines | 45 838 | **43 352** |
+| Free function definitions | 1 062 | **967** |
+| Braces | 3 842 / 3 842 | **3 593 / 3 593** |
+| `input`/`sinput` lines | 583 | 583 (35 relabelled, none removed) |
+| Enums | 44 | 44 |
+| Line endings | pure CRLF | pure CRLF, 0 bare LF |
 
-**The gate now pins both numbers.** `check_release_gate.py` **G3** grows a second
-half: it builds the same call index, and **fails** if unreachable functions exceed 68
-or dead-only inputs exceed 17, **warns** if either shrinks (something was wired or
-deleted — lower the pin and update this section), and stays silent otherwise. Both
-directions were proven by mutation on the real file:
+**What was removed: 95 definitions, 80 forward declarations, and the blank lines
+around them — 2 486 lines.** The manifest, so any name can be checked against
+`git show df23251:nadir2.mq5`:
 
-| Mutation | Result |
-|---|---|
-| append `void PhantomDeadHelper()` with no caller | **BLOCK** — 69 functions |
-| append that function *and* an input it alone reads | **BLOCK** — 69 functions, 18 inputs |
-| raise the pin by 2 | **WARN** "shrank ... lower the pins" |
-| delete a dead function (my two sloppy attempts sliced 23 000 lines by accident) | **BLOCK** — the gate caught the damage immediately, 79 functions |
-| restore | GO, 0 warnings, file byte-identical |
+```
+AdvancedPathWeight, BadgeTabCount, BadgeTabDashEnabled, BadgeTabMTFEnabled,
+BadgeTabPMIEnabled, BinarySearchNearestBarrier, BinarySearchNearestOB, BlendColor,
+BuildAdvancedSweepCandidate, BuildConfidenceBar, BuildInstitutionalPatternChecklist,
+BuildUnifiedEntryVerdict, CalculateSetupQualityScore, CausalEdgeCost,
+CausalEdgeSignedWeight, CausalEvidenceDP, CoreDashAccent, CoreDashBiasToken,
+CoreDashEventDetails, CoreDashObservationsLine, CoreDashZone, DashLine, DashPushWrapped,
+DrawBadgeTab, DrawMTFPanel, DrawTopDownPanel, DrawUnifiedEntryPanel,
+EvaluateStructuralPathDP, FibDPValue, FindLastBearishOB, FindLastBullishOB,
+FormatFinalEntryOutput, GateTxt, GetBestAdvancedSweepCandidate, GradeColor,
+GraphConfluenceScore, GreedyFindBestTarget, InstitutionalBehaviorName,
+InstrumentFreezeDistance, IntegerToBinary, L_Trim, LayoutPanelBadge, MTF_AlignmentText,
+MTF_HTFRowIndex, MTF_SniperDashboardLine, MVP_Label, MarkZREEntry, MemoizedCausalPathScore,
+NormText, NormalizeVolumeToStep, OppositeBiasPotential, OptimizeCausalGraphPath,
+PMI_CountEvents, PMI_DrawPanel, PMI_DrawPanelThrottled, PMI_FeatureNames,
+PMI_FirstBarAtOrAfter, PMI_HashDoubleArray, PMI_LiqStatusName, PMI_Mark, PMI_PanelLine,
+PMI_SelfTest, PMI_StructDedupeCheckInvariants, PMI_TreeAxisName, PctColor,
+QSMC_DataHealthLine, QSMC_DataHealthReason, QSMC_FitTextPx, QuantSweepClassLabel,
+RXN_DashFull, RXN_DashMini, RXN_ExecName, RXN_LevelFor, RXN_SelfTest, RankSetupCandidates,
+RepositionDashboard, ResetCausalPathResult, RunBeamCausalPath, RunBellmanFordCausalPath,
+RunDijkstraCausalPath, ScenarioDashCompact, ScenarioDashLadder, ScenarioLegStrip,
+ScenarioPreviousClosedPeriod, ScoreAlgo, ScoreSweepCandidate, SelectEntryFVG,
+SelectEntryOB, SortSweepCandidates, TruncateToWidth, ValidateCausalPathAgreement,
+ZRE_DashFull, ZRE_DashMini, ZRE_LifecycleName, ZRE_ScoreZone
+```
 
-The third row is the point of the pin: growth is a smell worth stopping, shrinkage is
-progress worth recording. Neither is a judgement about the code itself.
+**Five checks, because a 2 486-line deletion is not something to eyeball.** Every one
+runs against the result, and four of them can fail:
 
-## 12. Known risks and what is NOT implemented
+1. **The definition-set diff is exactly the dead set.** Depth-0 definitions before
+   (1 062) minus after (967) must equal the 95 names, with no unexpected additions
+   and no unexpected removals. Measured: `removed=95 unexpected=[] added=[]`.
+2. **Zero dangling references.** Every deleted name must appear nowhere in the
+   surviving code. This is the check that caught the *first* deletion attempt, built
+   on the buggy index: it reported `SigLog_Shift`, `SigLog_ResName` and 90-odd others
+   still being called, and the attempt was thrown away. On the final deletion the
+   list is empty.
+3. **Braces balance**, 3 593/3 593, and the file stays pure CRLF with zero bare LF.
+4. **The terminal callbacks survive**: `OnInit`, `OnDeinit`, `OnCalculate`,
+   `OnChartEvent`, one definition each, and `#property` (34 lines) and `#include`
+   (1) are untouched.
+5. **The gate has no dead code to report.** `check_release_gate.py` G3 used to pin a
+   count; it now **fails on any** unreachable free function or any input read only
+   from inside one. It reports zero of each.
+
+**The 41 inert inputs stay, and say so.** Deleting a switch the operator can see is a
+different act from deleting code: it changes the properties dialog and every saved
+`.set`. So the 35 that lost their last reader in the purge now carry
+`// INERT: nothing reads it (doc 11.14)` on their declaration line, the six already
+labelled `legacy`/`RESERVED` keep their wording, and all 41 are allowlisted in the
+gate with that reason. **Nothing about their values changed, and none of them could
+have changed behaviour before either** — that is what "no reader" means. If you want
+them gone from the dialog as well, that is one more commit and the same repin.
+
+**What the test suites had to give up, stated rather than hidden:**
+
+- Three `test_tactical_authority.py` checks pinned the **compact card**
+  (`ScenarioDashCompact`), a renderer no chart could reach. They went with the
+  function; the full card's checks remain.
+- Nine "unchanged count" pins moved with the code: `g_score.` 74→73,
+  `setup_quality_score` 6→5, `ObjectCreate(` 24→16, `int closed=ArraySize(g_buf_c)-2;`
+  3→2, `GraphConfluenceScore(` 3→**0** (the function is gone), and the
+  `ObjectsDeleteAll(` baseline 50→41. Each says in place what moved and why.
+- `test_docs_freshness.py` used to require the literal `3740/3740` in this document —
+  which is how a stale number survives a 100-line growth spurt. It now compares the
+  doc's brace count against the file's.
+- 132 `L####` citations in the tools and 213 in the docs were remapped through the
+  exact line map of the deletion (a monotone shift built from the deleted ranges), so
+  every citation still points at what it claims. The freshness suite — which resolves
+  citations against the file and fails on any drift — is green.
+
+**What this does NOT prove.** F7 remains the only compiler evidence; nothing here was
+compiled. The claim that behaviour is unchanged rests on the diff shape (deletions
+plus comment-only lines) and on check 2 (no surviving reference to anything deleted),
+not on a test run — a dead function by definition has no effect, but the *set* being
+dead is a measurement, and the measurement was wrong once already this session.
+
+## 12. Known risks and what is NOT implemented## 12. Known risks and what is NOT implemented
 
 **Compilation.** F7 has now been run once (§11.1): 42 errors from a single
 missing `//`, fixed, and the file rescanned lexically with zero further prose

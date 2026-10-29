@@ -586,7 +586,9 @@ for s in ("g_score.", "g_score =", "final_score", "setup_quality_score", "g_pmi_
 
 # C2 whole-file occurrence counts of the existing scoring state are UNCHANGED.
 #    These are the numbers measured before the module was added.
-for lit, want in (("g_score.", 74), ("final_score", 21), ("setup_quality_score", 6)):
+# 74/6 -> 73/5: the purge in doc 11.14 deleted one dead function that SET
+# setup_quality_score, so the two counts fall together. final_score is untouched.
+for lit, want in (("g_score.", 73), ("final_score", 21), ("setup_quality_score", 5)):
     got = c_all.count(lit)
     check(got == want, "C2 %r still occurs exactly %d times file-wide" % (lit, want),
           "got %d" % got)
@@ -604,7 +606,7 @@ DELTA = {
                                 # which reuses this same single zone scan instead of
                                 # building a second one of its own)
     "ScoreHTF(": 3,             # unchanged - bypassed
-    "GraphConfluenceScore(": 3,     # unchanged
+    "GraphConfluenceScore(": 0,     # 3 -> 0: unreachable, deleted in the purge (doc 11.14)
     "PMI_ComputeConfluence(": 3,    # unchanged
     "ComputeEntryQuality(": 3,      # unchanged
     "CalculateAITradeSetup(": 3,    # unchanged - CF does not trigger scoring
@@ -629,7 +631,8 @@ check(len(re.findall(r"InpRelationshipScoreMaxBonus", c_all)) >= 1,
 # C5 the existing closed-bar conventions are unchanged - CF added NO new instance
 #    of any of them, because it receives `closed` as a parameter.
 for lit, want in (("int closed=rates_total-2;", 12),
-                  ("int closed=ArraySize(g_buf_c)-2;", 3),
+                  ("int closed=ArraySize(g_buf_c)-2;", 2),   # 3 -> 2: one site was
+                                                             # inside a deleted dead function
                   ("int closed=g_rates_total-2;", 8)):
     got = c_all.count(lit)
     check(got == want, "C5 %r still occurs exactly %d times" % (lit, want), "got %d" % got)

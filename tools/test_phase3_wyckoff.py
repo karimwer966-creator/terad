@@ -447,7 +447,9 @@ NEW_STATE = ["g_wy_range_high", "g_wy_range_low", "g_wy_range_start", "g_wy_rang
              "g_wy_range_valid", "g_wy_touches_high", "g_wy_touches_low", "g_wy_event",
              "g_wy_dir", "g_wy_bar", "g_wy_extreme", "g_wy_active", "g_wy_volume_ok",
              "g_wy_conflict", "g_wy_score", "g_wy_reason", "g_wy_invalidation"]
-CONSUMERS = ["QSMC_ArbiterFeedAndFinalize", "UpdateSignalMask", "GraphConfluenceScore",
+CONSUMERS = ["QSMC_ArbiterFeedAndFinalize", "UpdateSignalMask",
+             # GraphConfluenceScore was unreachable and was deleted (doc 11.14):
+             # a function that no longer exists cannot be a consumer.
              "PMI_ComputeConfluence", "ScenarioUpdate", "ScenarioDashFull",
              "ScoreOrderBlock", "PMI_BuildLocation", "CoreDashChain",
              "TacticalAuthorityDecide", "ValidateCausalGraphInvariants",
