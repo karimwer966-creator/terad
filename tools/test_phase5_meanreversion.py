@@ -699,8 +699,8 @@ check(code_only.count("int closed=ArraySize(g_buf_c)-2;") == 3,
       "D all 3 mirrored-array closed-bar sites are unchanged")
 check(code_only.count("int closed=g_rates_total-2;") == 8,
       "D all 8 replay-path closed-bar sites are unchanged")
-check(TEXT.count('#property version   "6.69"') == 1, "D the version property is unchanged")
-check(TEXT.count('"v6.6.9"') >= 1, "D the version text is unchanged")
+check(TEXT.count('#property version   "6.613"') == 1, "D the version property is 6.613 since AUDIT-G1")
+check(TEXT.count('"v6.6.13"') >= 1, "D the version text is v6.6.13 since AUDIT-G1")
 check(len(re.findall(r'(?m)^#property indicator_buffers\s+19\b', TEXT)) == 1,
       "D indicator_buffers is still 19 - no buffer was appended")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,

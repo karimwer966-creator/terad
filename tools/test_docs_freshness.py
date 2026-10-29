@@ -406,12 +406,12 @@ check("#property indicator_buffers 19" in RAW and
 check("indicator_buffers` 19" in DOC_FLAT or "indicator_buffers 19" in DOC_FLAT,
       "D the doc states buffers 19 / plots 7")
 
-check(re.search(r'QSMC_VERSION_TEXT\s+"v6\.6\.9"', RAW) is not None,
-      "D QSMC_VERSION_TEXT is still v6.6.9")
-check(re.search(r'#property version\s+"6\.69"', RAW) is not None,
-      "D #property version is still \"6.69\"")
-check("v6.6.9" in DOC_FLAT and '"6.69"' in DOC_FLAT,
-      "D the doc reports the unchanged version triple v6.6.9 / \"6.69\"")
+check(re.search(r'QSMC_VERSION_TEXT\s+"v6\.6\.13"', RAW) is not None,
+      "D AUDIT-G1 moved QSMC_VERSION_TEXT to v6.6.13 and no later pass silently changed it")
+check(re.search(r'#property version\s+"6\.613"', RAW) is not None,
+      "D #property version is \"6.613\" - the X.(Y+Z) form G1 requires")
+check("v6.6.13" in DOC_FLAT and '"6.613"' in DOC_FLAT,
+      "D the doc reports the moved triple v6.6.13 / \"6.613\"")
 
 # six module self-tests, 9+9+9+9+10+10 = 56 in-file checks
 ST = re.findall(r"self-test: PASS \((\d+)/\1\)", RAW)

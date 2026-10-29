@@ -522,7 +522,7 @@ and did not add one.
 | Existing score state | `g_score.` 74, `final_score` 21, `setup_quality_score` 6 — unchanged | Phase 6 suite |
 | Closed-bar idioms | `rates_total-2` ×12, `ArraySize(g_buf_c)-2` ×3, `g_rates_total-2` ×8 — unchanged | Phases 5 & 6 suites |
 | Dashboard card | **13 candidate rows under the 11-row cap** — no module added a row | `test_dashboard_clarity.py` + Phases 6 & 7 |
-| Version triple | `v6.6.9` / `"6.69"` — unchanged | `check_release_gate.py` G1 |
+| Version triple | `v6.6.13` / `"6.613"` — **moved** (AUDIT-G1, §11.10) | `check_release_gate.py` G1 |
 | Sizing | text only; one formatter; both branches disclaim; no division by zero | Phase 7 suite |
 | Symbol-agnostic | no literal price level in any module core | Phases 2, 3, 5, 7 suites |
 | Enums | 43, all appended — none renumbered | Phase 5 suite |
@@ -1221,6 +1221,73 @@ for that bar is still consumed, by design. It makes the loss *visible*. And it
 compiles nothing — **F7 remains the only compiler evidence**, outstanding for
 RS1 + GS1 + SC1 + OBS1 + D1.
 
+## 11.10 AUDIT-G1 — one version, everywhere: the triple moves to v6.6.13
+
+This is a **release decision**, taken on the operator's instruction to proceed. The
+repository had already prescribed it: `docs/QSMC_V6.6.10_TACTICAL_AUTHORITY.md` §9.2
+says *"target v6.6.13, not v6.6.10"* — the v6.6.10, v6.6.11 and v6.6.12 labels are
+already taken by shipped work, so a bump landing on any of them would worsen the
+collision it was meant to end.
+
+**The drift, stated exactly.** Before this pass the build shipped code labelled
+`v6.6.10` (×24), `v6.6.11` (×5) and `v6.6.12` (×5) while every release-triple site
+still read `v6.6.9` / `"6.69"`. `docs/QSMC_DASHBOARD_CLARITY.md` tells the operator
+to identify a stale compiled copy **by its banner version** — and that rule was
+worthless, because a build carrying five minor versions of work still introduced
+itself as v6.6.9.
+
+**What moved, and why each site is unavoidable:**
+
+| Site | Was | Now | Why it cannot be left |
+|---|---|---|---|
+| `nadir2.mq5:625` `QSMC_VERSION_TEXT` | `"v6.6.9"` | `"v6.6.13"` | the build's own identity |
+| `nadir2.mq5:614` `#property version` | `"6.69"` | `"6.613"` | G1 requires `X.(Y+Z)`, so 6.6.13 → `6.613` |
+| `QSMC_Root.mqh:457` layer banner | `v6.6.9` | `v6.6.13` | G1 and dialect rule D10 compare it to the host |
+| `QSMC_AutoTrader.mq5:88` + its `:1102` startup line | `"6.69"` / `v6.69` | `"6.613"` / `v6.613` | D10: a companion that calls itself a different version than the layer it drives is exactly the confusion this ends |
+| `QSMC_ScannerProbe.mq5:37`, `QSMC_ArbiterTest.mq5:32`, `KLJ_DataFeeder.mq5:38` | `"6.69"` | `"6.613"` | same D10 rule; leaving them would have produced four warnings and a non-clean gate |
+| CI manual-gate echo (`qsmc-verify.yml:220`) | `v6.6.9` | `v6.6.13` | it prints the banner the operator is told to compare against |
+| `docs/QSMC_BUILD_AND_RUN.md`, `QSMC_DASHBOARD_CLARITY.md`, `QSMC_PRODUCTION_CHECKLIST.md`, `QSMC_AUTOTRADER.md`, `QSMC_WHY_NO_TRADES.md` | `v6.6.9` | `v6.6.13` | these are **instructions**: "the banner must read …" is wrong the moment the banner changes |
+| `tools/check_release_gate.py`, `tools/static_check.py` banners | `v6.6.9` | `v6.6.13` | a tool announcing a release it no longer checks |
+| three suites that pinned the triple | `v6.6.9` | `v6.6.13` | see below |
+
+**The pins were re-aimed, not deleted.** `test_docs_freshness.py`, `test_ux1_master_switch.py`
+and `test_phase5_meanreversion.py` each assert that the version triple is *unchanged*
+— they exist so an audit cannot silently bump a release. That is the right guard, so
+this pass updated their expected value in the same commit instead of removing them;
+they now pin v6.6.13 and will still catch an unauthorised bump.
+
+**What deliberately did NOT move.** The historical markers stay exactly where they
+are: `v6.6.9 AUDIT-SIG1` (6 sites), `v6.6.10 AUDIT-TAC` (24), `v6.6.11`/`v6.6.12` (5
+each), the `v6.6.9` mention inside this document's own SC1 record, and the two
+historical audit documents (`KLJ_V6.6.9_ONE_ZONE_ROLE.md`,
+`QSMC_V6.6.10_TACTICAL_AUTHORITY.md`). They are **the date the work landed**, not
+claims about what is compiled. Renaming them would have rewritten ~40 comments
+across a 45 838-line file to say something that never happened. One prose string is
+left as-is too: `KLJ_DataFeeder.mq5:37` `#property copyright "KLJ / QSMC v6.6.0"` —
+dialect rule D10 does not scan that program, so it produces no warning; it is a
+copyright line, not a build claim.
+
+**The missing half of G1 is now a check.** `check_release_gate.py` G1 verified that
+the host triple, the layer banner and the runbook agree — which is exactly why the
+drift *behind* it stayed invisible. It now also fails if **any marker in the layer
+claims a version ahead of `QSMC_VERSION_TEXT`** (the item §9.2 called *"the exact
+drift CI cannot see today"*), and notes the newest version it saw. Run on this
+tree: `G1 host version triple: v6.6.13 / "6.613"` and
+`G1 no in-code marker is ahead of v6.6.13 (newest seen v6.6.13)`.
+
+**Measured after the change.** 29 suites / 3 541 PASS / 0 FAIL · `check_release_gate.py`
+**GO, 0 warnings** · `mql5_rules.py` no dialect errors, **0 warnings** (D10 clean
+across all five programs) · `static_check.py` no errors (its 5 warnings are the
+pre-existing `new`/`delete` balance notes in files this pass does not touch) · docs
+freshness 0 failures · `nadir2.mq5` still **45 838** lines / **583** inputs / 3 842
+braces — every edit here was content-only, so no line moved and no other pin drifted.
+
+**What this does NOT prove.** It proves the repository agrees on one version string
+and that CI can no longer miss drift ahead of it. It does not make the build newer in
+any behavioural sense — no threshold, gate or strategy changed — and it compiles
+nothing: **F7 remains the only compiler evidence**, outstanding for
+RS1 + GS1 + SC1 + OBS1 + D1.
+
 ## 12. Known risks and what is NOT implemented
 
 **Compilation.** F7 has now been run once (§11.1): 42 errors from a single
@@ -1290,7 +1357,7 @@ building a second SL/TP model beside `MTF_SniperComputeTradeManagement`.
 
 - Pull request **#15** — `karimwer966-creator/terad`, 11 commits, `mergeable_state: clean`
 - Prior deliverable: `docs/QSMC_V6.6.10_TACTICAL_AUTHORITY.md`
-- Operational runbook: `docs/QSMC_BUILD_AND_RUN.md` (titled **v6.6.9** — matches the triple)
+- Operational runbook: `docs/QSMC_BUILD_AND_RUN.md` (titled **v6.6.13** — matches the triple)
 - Production checklist: `docs/QSMC_PRODUCTION_CHECKLIST.md`
 - Execution companion (the only file permitted to reach the trade API):
   `MQL5/Experts/QSMC_AutoTrader.mq5`

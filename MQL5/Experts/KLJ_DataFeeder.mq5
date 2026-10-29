@@ -35,7 +35,7 @@
 //|  inputs you must supply. See the PROVIDER NOTES block below.      |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC v6.6.0"
-#property version   "6.69"
+#property version   "6.613"
 #property description "Companion data feeder for the QSMC indicator. No trading."
 #property strict
 

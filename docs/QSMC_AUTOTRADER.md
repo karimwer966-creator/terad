@@ -1,4 +1,4 @@
-# QSMC v6.6.9 — the execution companion (`QSMC_AutoTrader.mq5`)
+# QSMC v6.6.13 — the execution companion (`QSMC_AutoTrader.mq5`)
 
 ## 0. العربية — باختصار
 
@@ -313,7 +313,7 @@ problem.
 3. Attach the EA to the chart with **Algorithmic trading** enabled. Read the first
    journal line, it states the whole configuration:
    ```
-   [QSMC_AT] QSMC v6.69 execution companion ON | XAUUSD PERIOD_M15 | magic 20261027 | mode RISK% risk 0.25% | tp 1 | break-even 1.00R | INERT | demo-only | closed-bar signals only, no martingale, no stop widening
+   [QSMC_AT] QSMC v6.613 execution companion ON | XAUUSD PERIOD_M15 | magic 20261027 | mode RISK% risk 0.25% | tp 1 | break-even 1.00R | INERT | demo-only | closed-bar signals only, no martingale, no stop widening
    ```
 4. **Session one — INERT.** Leave `InpEnableTrading=false`, set `InpVerbose=true`
    and read every `[QSMC_AT] skip ...` line. You are checking that the refusals

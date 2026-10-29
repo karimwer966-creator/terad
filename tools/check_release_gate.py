@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-QSMC v6.6.9 - RELEASE GATE
+QSMC v6.6.13 - RELEASE GATE
 
 A go / no-go check for taking this layer to a live chart. It does not re-check
 what static_check.py already checks (dialect rules, includes, balance); it
@@ -98,6 +98,36 @@ else:
                  "a stale runbook is how an operator follows the wrong steps"
                  % (title.group(1), title.group(2), title.group(3),
                     triple[0], triple[1], triple[2]))
+
+    # G1b - the half of G1 that could not see drift AHEAD of the triple. A comment
+    # may name an older release (that is when the work landed); nothing may name a
+    # newer one, because that ships code labelled with a version that does not exist
+    # yet - and the operator's "identify a stale build by its banner" rule dies with
+    # it. This is the check docs/QSMC_V6.6.10_TACTICAL_AUTHORITY.md 9.2 asked for.
+    build = (int(triple[0]), int(triple[1]), int(triple[2]))
+    ahead, newest = [], build
+    scan = [os.path.join(ROOT, "nadir2.mq5")]
+    for d in LAYER_DIRS:
+        if os.path.isdir(d):
+            scan += [os.path.join(d, f) for f in sorted(os.listdir(d))
+                     if f.lower().endswith((".mq5", ".mqh"))]
+    for path in scan:
+        if not os.path.isfile(path):
+            continue
+        text = read(path)
+        for m in re.finditer(r"\bv(\d+)\.(\d+)\.(\d+)\b", text):
+            got = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            if got > newest:
+                newest = got
+            if got > build:
+                ahead.append("%s: %s" % (os.path.basename(path), m.group(0)))
+    if ahead:
+        fail("G1 a marker claims a version AHEAD of the build (%s) while QSMC_VERSION_TEXT "
+             "says v%s.%s.%s - the next reader would trust the wrong number"
+             % (", ".join(sorted(set(ahead))[:6]), triple[0], triple[1], triple[2]))
+    else:
+        NOTES.append("G1 no in-code marker is ahead of v%s.%s.%s (newest seen v%d.%d.%d)"
+                     % (triple[0], triple[1], triple[2], newest[0], newest[1], newest[2]))
 
 # ---------------------------------------------------------------- G2 layout
 NEEDED = (["QSMC_%s.mqh" % n for n in

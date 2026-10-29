@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.69"
+#property version   "6.613"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -621,8 +621,8 @@
 // 13 v6.5.1 and 23 v6.5.2 fixes in its body, so every dashboard title, the
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
-// #property version and the banner now use this release's value (v6.6.3).
-#define QSMC_VERSION_TEXT "v6.6.9"
+// #property version and the banner now use this release's value (v6.6.13).
+#define QSMC_VERSION_TEXT "v6.6.13"
 #property indicator_chart_window
 #property indicator_buffers 19   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (SigLog, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -801,10 +801,10 @@ input double InpOBMaxHeightATR = 3.0;
 //--- display vocabulary. There is no second OB engine and no parallel registry.
 //--- Every one defaults to today's behaviour bit-for-bit: with all four left
 //--- alone, no order block is created, sized, scored, drawn or retired differently.
-//--- No version prefix is used on purpose: the release triple still reads v6.6.9
-//--- while the file already carries v6.6.10/v6.6.11/v6.6.12 markers, and picking
-//--- the next release number is a release decision (docs/QSMC_V6.6.10_TACTICAL_
-//--- AUTHORITY.md defect 4), not something a module should pre-empt.
+//--- AUDIT-G1: the release triple now reads v6.6.13 (docs 11.10). The older
+//--- v6.6.10/v6.6.11/v6.6.12 markers in this file are the dates the work landed,
+//--- not claims about the build - and CI now fails if any marker ever claims a
+//--- version AHEAD of the triple.
 input bool   InpOBUseAgeExpiry       = false;  // retire an OB after InpOBMaxAgeBars closed bars (false = today: only a close through the zone retires it)
 input int    InpOBMaxAgeBars         = 200;    // closed CHART bars; <=0 disables even when the switch is on
 input bool   InpOBZoneBodyOnly       = false;  // zone = pure candle body instead of the default body+rejection-wick hybrid
