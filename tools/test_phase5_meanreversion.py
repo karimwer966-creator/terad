@@ -538,7 +538,7 @@ for api in ("iTime(", "iClose(", "iOpen(", "iHigh(", "iLow(", "CopyRates("):
 check("g_buf_c[closed]" in upd, "B9 the band test uses the CLOSED bar's close")
 check("if(closed<2 || rates_total<3) return;" in upd,
       "B9 a bar with no history behind it is refused")
-check("if(!InpEnableMeanReversion) return;" in upd,
+check("if(!(InpEnableMeanReversion||InpEnableAllModules)) return;" in upd,
       "B9 the module returns immediately while its switch is off")
 resets = upd[:upd.find("if(!InpEnableMeanReversion)")]
 for g in ("g_mr_ext_dir=0", "g_mr_div_dir=0", "g_mr_dir=0", "g_mr_score=0",
@@ -650,7 +650,7 @@ precedes(TEXT, "return INIT_FAILED;", "if(InpMRUseMACD)",
 check('tooltip+="\\nMR: stretch ' in TEXT, "C the MR rows go to the dashboard tooltip")
 _d = TEXT.find('tooltip+="\\nMR: stretch ')
 dash_seg = TEXT[max(0, _d - 400):_d + 1600]
-check("if(InpEnableMeanReversion && InpMRShowOnDashboard)" in dash_seg,
+check("if((InpEnableMeanReversion||InpEnableAllModules) && (InpMRShowOnDashboard||InpEnableAllModules))" in dash_seg,
       "C the MR rows need BOTH the module switch and the dashboard switch")
 check('string mr_dir=(g_mr_dir>0?"BUY":(g_mr_dir<0?"SELL":"none"));' in dash_seg,
       "C a side is printed only when a direction is actually resolved")
@@ -708,7 +708,7 @@ check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,
 idx = sorted(int(m) for m in re.findall(r'SetIndexBuffer\(\s*(\d+)', TEXT))
 check(idx == list(range(19)), "D buffer indices are still 0..18 with no gap or shift", str(idx))
 ENUMS = len(re.findall(r'(?m)^enum\s+ENUM_', TEXT))
-check(ENUMS == 43, "D no enum was added or removed (%d, was 43 before this phase)" % ENUMS)
+check(ENUMS == 44, "D no enum was added or removed (%d, was 44 before this phase)" % ENUMS)
 check(re.search(r"enum\s+ENUM_", mr_section) is None,
       "D the section declares no enum, so no existing enumerator can shift")
 check(BARE_LF == 0, "D the file has no bare LF (%d)" % BARE_LF)

@@ -849,6 +849,24 @@ input group "====== Session Clock / DST ======"
 input int InpBrokerUTCOffsetWinterMinutes = 120;
 input ENUM_BROKER_DST_RULE InpBrokerDSTRule = BROKER_DST_EU;
 input bool InpUseDSTSessions = true;
+input group "====== Final Signal Resolver (AUDIT-RS1, one verdict everywhere) ======"
+input bool   InpUseFinalResolver     = false; // ONE verdict for card STATUS, tactical
+                                              // label wording and the tooltip. Off =
+                                              // every surface keeps its own wording.
+input int    InpResWeightBias        = 25;    // resolver weight: HTF/D1 bias
+input int    InpResWeightZone        = 25;    // resolver weight: causal zone role under price
+input int    InpResWeightReaction    = 30;    // resolver weight: reaction evidence
+input int    InpResWeightTactical    = 20;    // resolver weight: tactical trigger cross
+input int    InpResMinScore          = 60;    // weighted points a lone side needs = CONFIRMED
+input group "====== All Seven Modules At Once (AUDIT-UX1) ======"
+input bool   InpEnableAllModules        = false;  // one switch: all seven strategy modules ON plus
+                                             // their tooltip output. Does NOT enable the chart-object
+                                             // opt-ins (SB entry zone, WY range box, OB label): boxes on
+                                             // the chart are clutter, and clutter was the complaint.
+input bool   InpRedrawTradeBoxOnNewBarOnly= false;  // stop the per-tick object churn of the trade box and
+                                             // its five SL/TP levels. Their values are closed-bar state,
+                                             // so nothing visible is lost; a confirmation that lands
+                                             // mid-bar without a detection update waits for the next bar.
 input group "====== Silver Bullet / Power of 3 (AUDIT-SB1, display only) ======"
 // Every switch below defaults to OFF. With them off, nothing in this group is
 // computed, drawn, logged or appended to the dashboard, and no existing value,
@@ -4689,6 +4707,25 @@ datetime         g_alert_candidate_bar_time=0;
 datetime         g_alert_finalized_bar_time=0;
 datetime         g_directional_alert_bar_time=0;
 string           g_directional_alert_event_id="";
+// AUDIT-RS1: the resolver verdict vocabulary. The word CONFIRMED belongs to
+// the resolver alone while InpUseFinalResolver is on; every other layer
+// writes PREVIEW or INFO.
+enum ENUM_FINAL_SIGNAL
+  {
+   FS_WAIT=0,
+   FS_BUY=1,
+   FS_SELL=-1,
+   FS_CONFLICT_WAIT=2
+  };
+// AUDIT-RS1: the single verdict every surface reads. Written once per closed
+// bar by ResolveFinalSignal(), never edited afterwards.
+int    g_final_signal=0;   // 1 BUY, -1 SELL, 0 WAIT, 2 CONFLICT-WAIT
+int    g_res_score=0;    // weighted points of the winning side, 0-100
+string g_final_why="";     // the layer votes, or the conflicting pair
+// Tactical exposure for the resolver: UpdateMTFExecutionEntry() owns the
+// trigger cross; the resolver reads these and must not write them.
+int    g_tac_dir=0;        // +1/-1 while a tactical trigger is live, else 0
+bool   g_tac_closed=false; // the execution bar closed through the trigger
 SAlertCandidate  g_alert_primary;
 SAlertCandidate  g_alert_opposite;
 string           g_alert_context_text="";
@@ -5806,6 +5843,7 @@ string MTFEntryGrade(const bool confirmed,const bool core_owned)
 }
 void ClearMTFExecutionEntry()
 {
+   g_tac_dir=0; g_tac_closed=false;
    g_mtf_entry_state=""; g_mtf_entry_price=0.0; g_mtf_entry_time=0;
    g_mtf_entry_late=false; g_mtf_sig_time=0;
    // v6.6.10 AUDIT-TAC: the authority verdict belongs to this display, so it is
@@ -5900,11 +5938,16 @@ void UpdateMTFExecutionEntry()
    // same price PREVIEW/CONFIRMED on every tick and re-alerted each time.
    bool closed_confirm=bull ? (ch>=trigger && cc>co && cc>=trigger)
                             : (cl<=trigger && cc<co && cc<=trigger);
+   // AUDIT-RS1: publish the tactical layer to the resolver. Cleared in
+   // ClearMTFExecutionEntry() so a lapsed trigger never keeps voting.
+   g_tac_dir=bull?1:-1; g_tac_closed=closed_confirm;
    // PREVIEW needs a reason: a live cross of the trigger, or the closed bar
    // that is heading for confirmation. Otherwise nothing is displayed.
    bool show_preview=live_cross;
    if(!closed_confirm && !show_preview){ ClearMTFExecutionEntry(); return; }
-   string state=closed_confirm?"CONFIRMED":"PREVIEW";
+   // AUDIT-RS1: CONFIRMED is the resolver's word. With the resolver on this
+   // layer says INFO - a closed execution bar is a fact, not a passed gate.
+   string state=closed_confirm?(InpUseFinalResolver?"INFO":"CONFIRMED"):"PREVIEW";
    double ep=closed_confirm?cc:lc; datetime et=closed_confirm?ct:lt;
    string id=StringFormat("%s|%d|%I64d|%s|%.5f",_Symbol,(int)etf,(long)trigger_time,bull?"B":"S",trigger);
    // v6.4.1 DEDUP: a signal that already fired CONFIRMED never re-alerts as a
@@ -6017,6 +6060,60 @@ void UpdateMTFExecutionEntry()
 
 void DrawProvisionalFractals(const int total,const datetime &t[],const double &h[],const double &l[]);
 void UpdateEarlyBreakPreview(const int total,const datetime &t[],const double &h[],const double &l[],const double &c[]);
+//------------------------------------------------------------------ AUDIT-RS1
+// ONE verdict for every surface. Four closed-bar layers vote; each vote is
+// weighted by an input; the four weights must sum to exactly 100 (validated
+// in OnInit, never renormalised). A side is CONFIRMED only here, and only
+// when it is the ONLY side with votes and its weighted score reaches
+// InpResMinScore. If both sides vote the verdict is CONFLICT-WAIT:
+// disagreeing layers are evidence to stand aside, not a coin flip.
+// Reads only globals published by closed-bar work earlier in OnCalculate:
+// g_htf_bias (Bias), PA_ZoneAt (zone role), g_rxn_best_* (Reaction) and
+// g_tac_dir/g_tac_closed (Tactical). Writes g_final_* and nothing else.
+int ResolveFinalSignal(const int closed,string &why)
+  {
+   why="";
+   if(closed<0 || closed>=ArraySize(g_buf_c)) return 0;
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ?g_atr_buf[closed]:g_atr;
+   int vote[4]; int w[4]; string nm[4];
+   vote[0]=(InpUseHTFBias && g_htf_bias!=0)?(g_htf_bias>0?1:-1):0;
+   w[0]=InpResWeightBias; nm[0]="bias";
+   string zn=""; double zt=0.0,zb=0.0; int zd=0;
+   vote[1]=PA_ZoneAt(g_buf_c[closed],closed,atr,zn,zt,zb,zd)
+           ?(zd>0?1:(zd<0?-1:0)):0;
+   w[1]=InpResWeightZone; nm[1]="zone";
+   vote[2]=g_rxn_best_buy.valid?1:(g_rxn_best_sell.valid?-1:0);
+   w[2]=InpResWeightReaction; nm[2]="reaction";
+   vote[3]=g_tac_dir;
+   w[3]=InpResWeightTactical; nm[3]="tactical";
+   int buy=0,sell=0; string vb="",vs="";
+   for(int k=0;k<4;k++)
+     {
+      if(vote[k]>0){ buy+=w[k];  if(vb!="") vb+="+"; vb+=nm[k]; }
+      if(vote[k]<0){ sell+=w[k]; if(vs!="") vs+="+"; vs+=nm[k]; }
+     }
+   g_res_score=buy>0?buy:sell;
+   if(buy>0 && sell>0)
+     {
+      why="CONFLICT: BUY "+vb+" ("+IntegerToString(buy)+") vs SELL "+vs+" ("+
+          IntegerToString(sell)+") - disagreeing layers mean stand aside";
+      return 2;
+     }
+   if(buy==0 && sell==0){ why="no layer voted - WAIT"; g_res_score=0; return 0; }
+   int side=buy>0?1:-1; string voters=buy>0?vb:vs;
+   if(g_res_score<InpResMinScore)
+     {
+      why=(side>0?"BUY":"SELL")+" evidence "+IntegerToString(g_res_score)+
+          "/100 from "+voters+" is below InpResMinScore "+
+          IntegerToString(InpResMinScore)+" - WAIT";
+      return 0;
+     }
+   why=(side>0?"BUY":"SELL")+" CONFIRMED "+IntegerToString(g_res_score)+
+       "/100 from "+voters+" - a weighted confluence count, not a probability";
+   return side;
+  }
+
 void UpdateMTFExecutionEntry();
 bool IsFractalHigh(const double &h[],const int i,const int n,const int total);
 bool IsFractalLow(const double &l[],const int i,const int n,const int total);
@@ -6302,6 +6399,7 @@ void   AlertCandidateInit(SAlertCandidate &candidate);
 void   AlertDispatcherClear();
 void   AlertDispatcherSubmit(const SAlertCandidate &candidate);
 void   AlertDispatcherFinalize(const int rates_total);
+int    ResolveFinalSignal(const int closed,string &why);
 string AlertInvalidationText(const SAlertCandidate &candidate);
 bool   QSMC_ClaimDirectionalAlert(const datetime bar_time,const string event_id);
 bool   QSMC_IsDirectionalAlertMessage(const string message);
@@ -14447,6 +14545,15 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       return INIT_PARAMETERS_INCORRECT;
    }
 
+   // AUDIT-RS1: the resolver weights must sum to exactly 100. Refuse rather
+   // than renormalise - the same rule the Confluence Engine weights follow.
+   if(InpUseFinalResolver &&
+      InpResWeightBias+InpResWeightZone+InpResWeightReaction+InpResWeightTactical!=100)
+     {
+      Print("Invalid Quantum SMC resolver weights: they must sum to exactly 100");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+
    // v5.8.0: quant/scaling input validation with safe clamped defaults.
    ApplyQuantInputConfig();
 
@@ -15573,8 +15680,10 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       if(ObjectFind(0,epname)>=0) ObjectDelete(0,epname);
    }
 
-   if(InpShowTradeBox && g_trade_setup.valid) DrawTradeBox();
-   if(InpDrawTradeLevels && g_trade_setup.valid && InpShowSLTP) DrawTradeLevels(rates_total,g_buf_t);
+   if(InpShowTradeBox && g_trade_setup.valid &&
+      (!InpRedrawTradeBoxOnNewBarOnly || (is_new_bar || detection_updated || prev_calculated==0))) DrawTradeBox();
+   if(InpDrawTradeLevels && g_trade_setup.valid && InpShowSLTP &&
+      (!InpRedrawTradeBoxOnNewBarOnly || (is_new_bar || detection_updated || prev_calculated==0))) DrawTradeLevels(rates_total,g_buf_t);
    // v6.4.1 SIGNAL VISIBILITY: entry marks / preview / chase verdict. Display
    // only - it reads the published closed-bar state, never mutates a setup.
    DrawEntrySignalVisuals(rates_total,is_new_bar || prev_calculated==0);
@@ -15637,6 +15746,14 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    RXN_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);
    // One closed-bar arbiter for Core/ZRE/RXN directional alerts; no live-preview alert path.
    AlertDispatcherFinalize(rates_total);
+   // AUDIT-RS1: one verdict for every surface. Reads only the closed-bar
+   // globals published above; writes g_final_*. Nothing else observes it.
+   if(InpUseFinalResolver && (is_new_bar || detection_updated || prev_calculated==0))
+     {
+      string rs_why="";
+      g_final_signal=ResolveFinalSignal(closed,rs_why);
+      g_final_why=rs_why;
+     }
    RXN_Draw();
    // Directional Scenario Engine: reads the finished ZRE/RXN snapshots and Core
    // lifecycle only. It publishes conditional plans; it cannot arm or authorize.
@@ -24600,7 +24717,7 @@ void P3_Update(const int closed)
 {
    g_p3_phase=P3_PHASE_NONE; g_p3_dir=0; g_p3_score=0;
    g_p3_reason=""; g_p3_invalidation="";
-   if(!InpEnablePowerOf3) return;
+   if(!(InpEnablePowerOf3||InpEnableAllModules)) return;
    if(closed<0 || closed>=ArraySize(g_buf_c)) return;
    // The Asia range and its sweep are published by DetectJudasSwing, so Power of
    // 3 depends on that EXISTING switch. Report the dependency rather than a phase
@@ -24777,7 +24894,7 @@ void SB_Update(const int closed)
    g_sb_active=false; g_sb_window=-1; g_sb_dir=0; g_sb_fvg=-1;
    g_sb_entry_high=0.0; g_sb_entry_low=0.0;
    g_sb_reason=""; g_sb_score=0; g_sb_invalidation="";
-   if(!InpEnableSilverBullet) return;
+   if(!(InpEnableSilverBullet||InpEnableAllModules)) return;
    if(closed<0 || closed>=ArraySize(g_buf_t) || closed>=ArraySize(g_buf_c) ||
       closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return;
 
@@ -24891,7 +25008,7 @@ void SB_Update(const int closed)
 void SB_DrawEntryZone(const int closed)
 {
    const string name=PFX+"SBP3_ENTRY";
-   if(!InpEnableSilverBullet || !InpSBShowEntryZone || !g_sb_active ||
+   if(!(InpEnableSilverBullet||InpEnableAllModules) || !InpSBShowEntryZone || !g_sb_active ||
       g_sb_fvg<0 || !(g_sb_entry_high>g_sb_entry_low) ||
       closed<6 || closed>=ArraySize(g_buf_t))
    {
@@ -25244,7 +25361,7 @@ void WY_Update(const int closed)
    g_wy_event=WY_EVENT_NONE; g_wy_dir=0; g_wy_bar=-1; g_wy_extreme=0.0;
    g_wy_active=false; g_wy_volume_ok=false; g_wy_conflict=false;
    g_wy_score=0; g_wy_reason=""; g_wy_invalidation="";
-   if(!InpEnableWyckoff) return;
+   if(!(InpEnableWyckoff||InpEnableAllModules)) return;
    if(closed<3) return;
    int n_c=ArraySize(g_buf_c), n_h=ArraySize(g_buf_h), n_l=ArraySize(g_buf_l);
    if(closed>=n_c || closed>=n_h || closed>=n_l) return;
@@ -25363,7 +25480,7 @@ void WY_Update(const int closed)
 void WY_DrawRange(const int closed)
 {
    const string name=PFX+"WY_RANGE";
-   if(!InpEnableWyckoff || !InpWyckoffShowRange || !g_wy_range_valid ||
+   if(!(InpEnableWyckoff||InpEnableAllModules) || !InpWyckoffShowRange || !g_wy_range_valid ||
       !(g_wy_range_high>g_wy_range_low) || g_wy_range_start<0 ||
       g_wy_range_end<0 || g_wy_range_end>=ArraySize(g_buf_t) ||
       g_wy_range_start>=ArraySize(g_buf_t))
@@ -25718,7 +25835,7 @@ void PA_Update(const int closed)
    g_pa_in_zone=false; g_pa_zone_name=""; g_pa_zone_top=0.0; g_pa_zone_bottom=0.0;
    g_pa_zone_dir=0; g_pa_dir=0; g_pa_confirms=false; g_pa_score=0;
    g_pa_reason=""; g_pa_invalidation="";
-   if(!InpEnablePriceAction) return;
+   if(!(InpEnablePriceAction||InpEnableAllModules)) return;
    if(closed<2 || closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_h) ||
       closed>=ArraySize(g_buf_l) || closed>=ArraySize(g_buf_o)) return;
 
@@ -26176,7 +26293,7 @@ void MR_Update(const int closed,const int rates_total,const bool full)
    g_mr_macd_dir=0; g_mr_macd_conflict=false;
    g_mr_dir=0; g_mr_confirms=false; g_mr_score=0;
    g_mr_reason=""; g_mr_invalidation="";
-   if(!InpEnableMeanReversion) return;
+   if(!(InpEnableMeanReversion||InpEnableAllModules)) return;
    if(closed<2 || rates_total<3) return;
    if(closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return;
    if(closed>=ArraySize(BufVWAP) || closed>=ArraySize(g_rsi_buf)) return;
@@ -26681,7 +26798,7 @@ void CF_Update(const int closed,const int rates_total)
    // use, so a disabled or blocked engine can never leave a previous bar's
    // verdict on the dashboard.
    CF_Clear();
-   if(!InpEnableConfluence) return;
+   if(!(InpEnableConfluence||InpEnableAllModules)) return;
    if(rates_total<3) return;
    if(closed<1 || closed>rates_total-2) return;    // never touch the forming bar
    if(closed>=ArraySize(g_buf_c)) return;
@@ -26717,7 +26834,7 @@ void CF_Update(const int closed,const int rates_total)
    //--- CANDLE. Reuse the unified pattern AUDIT-PA1 published. With Price Action
    //--- switched off the leg is ABSENT and scores 0 - it does not collect a
    //--- neutral half-credit for evidence nobody looked at.
-   g_cf_has_candle=(InpEnablePriceAction && g_pa_pattern!="NONE" && g_pa_pattern!="");
+   g_cf_has_candle=((InpEnablePriceAction||InpEnableAllModules) && g_pa_pattern!="NONE" && g_pa_pattern!="");
    g_cf_pillar_candle=(g_cf_has_candle ? (double)g_pa_strength : 0.0);
    int candle_dir=(g_cf_has_candle ? g_pa_pattern_dir : 0);
 
@@ -27235,7 +27352,7 @@ double RM_NearestPoolBehind(const bool is_buy,const double price,const int max_s
 void RM_Update(const int closed,const int rates_total)
 {
    RM_Clear();
-   if(!InpEnableRiskModel) return;
+   if(!(InpEnableRiskModel||InpEnableAllModules)) return;
    if(rates_total<3) return;
    if(closed<1 || closed>rates_total-2) return;    // never touch the forming bar
    if(closed>=ArraySize(g_buf_c)) return;
@@ -32782,6 +32899,15 @@ void DrawQuantumDashboard(const int total,const double &c[])
    int primary_dir=(g_alert_primary.valid?g_alert_primary.direction:0);
    string status=(primary_dir>0?"BUY":(primary_dir<0?"SELL":"WAIT"));
    color status_col=(primary_dir>0?clrLimeGreen:(primary_dir<0?clrLightCoral:clrOrange));
+   // AUDIT-RS1: with the resolver on, the card STATUS is the resolver verdict
+   // - one verdict on every surface instead of four separate opinions.
+   if(InpUseFinalResolver)
+     {
+      status=(g_final_signal==1?"BUY":(g_final_signal==-1?"SELL":
+              (g_final_signal==2?"CONFLICT - WAIT":"WAIT")));
+      status_col=(g_final_signal==1?clrLimeGreen:
+                  (g_final_signal==-1?clrLightCoral:clrOrange));
+     }
    string source=(g_alert_primary.source==3?"CORE":(g_alert_primary.source==2?"RXN":"ZRE"));
    string primary="PRIMARY: none (closed-bar only)";
    string needs="NEEDS: wait for a closed-bar reaction";
@@ -32942,6 +33068,8 @@ void DrawQuantumDashboard(const int total,const double &c[])
                   "Why no alert this bar: "+AlertWhyNoPopup(closed,g_buf_t[closed])+"\n"+
                   "Direction consensus: "+market_direction+" (context only)\n"+
                   "Primary: "+(g_alert_primary_tooltip==""?"none":g_alert_primary_tooltip)+"\n"+
+                  (InpUseFinalResolver?
+                   "Resolver: "+(g_final_why==""?"none":g_final_why)+"\n":"")+
                   "Core state: "+core_state+" | blocker: "+CoreDashBlocker(core_state,path)+"\n"+
                   "Core chain: "+CoreDashChain(path,core_state,closed)+"\n"+
                   CoreDashBiasLine(g_buf_t[closed+1])+"\n"+
@@ -32962,7 +33090,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    // display-only module: tooltip only, never the 11-row card. The card's budget
    // is fixed and pinned by test_dashboard_clarity.py, and a display-only extra
    // must not be able to push a Core row off it.
-   if(InpEnableConfluence && InpCFShowOnDashboard)
+   if((InpEnableConfluence||InpEnableAllModules) && (InpCFShowOnDashboard||InpEnableAllModules))
    {
       string cf_legs_a="structure "+DoubleToString(g_cf_pillar_structure,0)+(g_cf_has_structure?"":" (absent)")+
                        " | liquidity "+DoubleToString(g_cf_pillar_liquidity,0)+(g_cf_has_liquidity?"":" (absent)")+
@@ -32993,7 +33121,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    // AUDIT-RM1 Risk Model. Advisory text, directly after the confluence summary
    // it belongs to. Tooltip only, never the 11-row card, for the same reason: a
    // display-only extra must not be able to push a Core row off the card.
-   if(InpEnableRiskModel && InpRMShowOnDashboard)
+   if((InpEnableRiskModel||InpEnableAllModules) && (InpRMShowOnDashboard||InpEnableAllModules))
    {
       tooltip+="\nRM: "+g_rm_verdict+(g_rm_dir>0?" BUY":(g_rm_dir<0?" SELL":""))+
                (g_rm_plan_src==""?"":" ("+g_rm_plan_src+")");
@@ -33021,7 +33149,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    // never into the 11-row card: the card's budget is fixed and pinned by
    // test_dashboard_clarity.py, and a display-only extra must not be able to push
    // a Core row off the card. This is the same merge the DSE section uses.
-   if(InpEnablePowerOf3 && InpP3ShowOnDashboard)
+   if((InpEnablePowerOf3||InpEnableAllModules) && (InpP3ShowOnDashboard||InpEnableAllModules))
    {
       string p3_dir="";
       if(g_p3_phase==P3_PHASE_DISTRIBUTION && g_p3_dir!=0)
@@ -33033,7 +33161,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
       if(g_p3_reason!="") tooltip+="\nP3 why: "+g_p3_reason;
       if(g_p3_invalidation!="") tooltip+="\nP3 invalidation: "+g_p3_invalidation;
    }
-   if(InpEnableSilverBullet && InpSBShowOnDashboard)
+   if((InpEnableSilverBullet||InpEnableAllModules) && (InpSBShowOnDashboard||InpEnableAllModules))
    {
       // No direction is printed unless the setup is ACTIVE, so the card can never
       // show a direction next to a stand-aside.
@@ -33050,7 +33178,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
 
    // AUDIT-WY1 Wyckoff Spring / Upthrust. Tooltip, never the 11-row card, for the
    // same reason as the two above.
-   if(InpEnableWyckoff && InpWyckoffShowOnDashboard)
+   if((InpEnableWyckoff||InpEnableAllModules) && (InpWyckoffShowOnDashboard||InpEnableAllModules))
    {
       // A direction is printed only while the event is ACTIVE, so an invalidated or
       // conflicted event can never show a side next to a stand-aside.
@@ -33070,7 +33198,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
 
    // AUDIT-PA1 Pure Price Action. Tooltip, never the 11-row card, for the same
    // reason as the modules above.
-   if(InpEnablePriceAction && InpPAShowOnDashboard)
+   if((InpEnablePriceAction||InpEnableAllModules) && (InpPAShowOnDashboard||InpEnableAllModules))
    {
       // A direction is printed only when one is actually resolved, so a standalone
       // or conflicted pattern can never show a side next to a stand-aside.
@@ -33088,7 +33216,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
 
    // AUDIT-MR1 Mean Reversion / Momentum. Tooltip, never the 11-row card, for the
    // same reason as the modules above.
-   if(InpEnableMeanReversion && InpMRShowOnDashboard)
+   if((InpEnableMeanReversion||InpEnableAllModules) && (InpMRShowOnDashboard||InpEnableAllModules))
    {
       // A side is printed only when one is actually resolved, so a bare stretch or
       // a vetoed fade can never show a direction next to a stand-aside.

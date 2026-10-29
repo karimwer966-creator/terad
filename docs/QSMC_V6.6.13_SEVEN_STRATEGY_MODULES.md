@@ -147,7 +147,7 @@ step from the brief's:
 Renaming them would have churned every consumer for no behavioural gain, so the
 file's vocabulary was kept (operator decision, Phase 1).
 
-### 3.2 Phase 2 — Power of 3 + Silver Bullet (14 inputs, L852–873)
+### 3.2 Phase 2 — Power of 3 + Silver Bullet (14 inputs, L870–882)
 
 | Input | Type | Default | Meaning |
 |---|---|---|---|
@@ -174,7 +174,7 @@ M5 and M15. This is why they are integers rather than `datetime`s.
 `judas==0` → `ACCUMULATION`; `min>0 && distribution_atr>=min` → `DISTRIBUTION`;
 otherwise → `MANIPULATION`. There is no path that returns "unknown".
 
-### 3.3 Phase 3 — Wyckoff Spring / Upthrust (10 inputs, L874–894)
+### 3.3 Phase 3 — Wyckoff Spring / Upthrust (10 inputs, L892–903)
 
 | Input | Type | Default | Meaning |
 |---|---|---|---|
@@ -197,7 +197,7 @@ existing `SweepHasDisplacementOrVolume()`; **no new data source**.
 A Judas conflict forces `dir=0, active=false, score=0` — the module will never
 print a side next to a stand-aside.
 
-### 3.4 Phase 4 — Pure Price Action (7 inputs, L895–914)
+### 3.4 Phase 4 — Pure Price Action (7 inputs, L913–923)
 
 | Input | Type | Default | Meaning |
 |---|---|---|---|
@@ -210,7 +210,7 @@ print a side next to a stand-aside.
 | `InpPAIncludePOC` | bool | `true` | count the active volume-profile POC as a zone |
 
 **The unification the brief asked for already existed.** `AnalyzeClosedCandle`
-(def **L5540**) is already the single function returning pattern type plus
+(def **L5577**) is already the single function returning pattern type plus
 strength. What was genuinely missing was **Inside Bar** and the **zone rule**,
 and those are what Phase 4 added. Three candle implementations still coexist in
 the file — see §8, C1.
@@ -219,7 +219,7 @@ the file — see §8, C1.
 `pattern_dir` → `zone_dir`. `PA_Score`: `if(!in_zone) return 0;` →
 `25 + round(strength*0.45) + (agrees ? 30 : 0)`.
 
-### 3.5 Phase 5 — Mean Reversion / Momentum (13 inputs, L915–939)
+### 3.5 Phase 5 — Mean Reversion / Momentum (13 inputs, L933–948)
 
 | Input | Type | Default | Meaning |
 |---|---|---|---|
@@ -255,7 +255,7 @@ never award points. That is enforced by the test suite, not by convention.
 The printed direction is always **opposite** the stretch: an overextension above
 the upper band prints a SELL-side fade.
 
-### 3.6 Phase 6 — Confluence Engine (11 inputs, L940–951)
+### 3.6 Phase 6 — Confluence Engine (11 inputs, L958–969)
 
 | Input | Type | Default | Meaning |
 |---|---|---|---|
@@ -283,7 +283,7 @@ below, the PA candle leg, and `g_htf_bias` directly.
 **This is a new column beside the existing scoring, not a replacement.** The
 existing `final_score`, `setup_quality_score` and `g_score` are untouched (§9).
 
-### 3.7 Phase 7 — Risk Model (8 inputs, L952–961)
+### 3.7 Phase 7 — Risk Model (8 inputs, L970–977)
 
 | Input | Type | Default | Meaning |
 |---|---|---|---|
@@ -302,8 +302,8 @@ equivalents:
 
 | Brief's name | Actual input reused | Default |
 |---|---|---|
-| `InpMinRR` | `InpTopDownMinRR` (**L1148**) — *"hard R:R floor (policy: never below 1:2)"* | `2.0` |
-| `InpRiskPercent` | `InpSniperMaxRiskPct` (**L1797**) — *"Advisory equity risk % per trade (1.0–2.0%)"* | **`1.50`** |
+| `InpMinRR` | `InpTopDownMinRR` (**L1166**) — *"hard R:R floor (policy: never below 1:2)"* | `2.0` |
+| `InpRiskPercent` | `InpSniperMaxRiskPct` (**L1815**) — *"Advisory equity risk % per trade (1.0–2.0%)"* | **`1.50`** |
 
 **So the risk percentage the module reports defaults to 1.50, not 1.0.** That is
 the single most consequential deviation from the brief, and it is deliberate:
@@ -318,13 +318,13 @@ Sniper model too, which is out of scope.
 
 | Module | State globals | Declarations | Section | Definition range | Self-test |
 |---|---|---|---|---|---|
-| OB1 | *(existing OB structs)* | L5429 | L17423 | inline in the detection loop | *(none — reuses the OB suite)* |
-| SB1 / P3 | L1921 / L1936 | L5640 | L24471 | L24599 / L24775 | `PASS (9/9)` @L14814 |
-| WY1 | L1951 | L5667 | L25050 | L25239 | `PASS (9/9)` @L14818 |
-| PA1 | L1975 | L5686 | L25489 | L25715 | `PASS (9/9)` @L14822 |
-| MR1 | L1994 | L5704 | L25912 | L26170 | `PASS (9/9)` @L14826 |
-| CF1 | L2019 | L5723 | L26513 | L26678 | `PASS (10/10)` @L14830 |
-| RM1 | L2052 | L5741 | L27009 | L27235 | `PASS (10/10)` @L14834 |
+| OB1 | *(existing OB structs)* | L5457 | L17540 | inline in the detection loop | *(none — reuses the OB suite)* |
+| SB1 / P3 | L1930 / L1945 | L5668 | L24588 | L24716 / L24892 | `PASS (9/9)` @L14921 |
+| WY1 | L1960 | L5695 | L25167 | L25356 | `PASS (9/9)` @L14925 |
+| PA1 | L1984 | L5714 | L25606 | L25832 | `PASS (9/9)` @L14929 |
+| MR1 | L2003 | L5732 | L26029 | L26287 | `PASS (9/9)` @L14933 |
+| CF1 | L2028 | L5751 | L26630 | L26795 | `PASS (10/10)` @L14937 |
+| RM1 | L2061 | L5769 | L27126 | L27352 | `PASS (10/10)` @L14941 |
 
 **Six self-tests, 56 in-file checks** (9+9+9+9+10+10), all gated by the existing
 `InpMTEERunSelfTest` — no new gate was introduced. Phase 1 added no self-test
@@ -336,17 +336,17 @@ Supporting anchors, all verified at `ebc43bc`:
 |---|---|
 | `#property indicator_buffers 19` / `indicator_plots 7` | L627 / L628 |
 | `enum ENUM_P3_PHASE` / `enum ENUM_WYCKOFF_EVENT` | L747 / L757 |
-| `SNIPER_SL_BUFFER_ATR 0.30` / `SL_HARD_MAX_H1_ATR 2.00` / `BE_DISP_ATR 2.00` / `TRAIL_M15_ATR 0.50` | L1841–1844 |
-| `struct STopDownState` | L1875 |
-| `InpUseHTFBias` / `InpTopDownMinRR` / `InpMTEERunSelfTest` / `InpSniperMaxRiskPct` | L1133 / L1148 / L1787 / L1797 |
-| `InpLogLifecycleTransitions` | L1244 |
-| `ScoreStructure` / `ScoreLiquidity` / `ScoreSession` / `ScoreHTF` (defs) | L17382 / L17403 / L17534 / L17543 |
-| `CalculateAITradeSetup` (def) — the only writer of `g_score` | L20476 |
-| `TheoreticalRiskMoney` (def) | L22719 |
-| `PA_ZoneAt` (def) | L25645 |
-| `TopDown_Evaluate` (def); its existing R:R gate | L33670; L33862–33864 |
-| `TopDown_Update` (def) | L33901 |
-| Module self-tests (SB / WY / PA / MR / CF / RM) | L24923 / L25394 / L25798 / L26338 / L26842 / L27432 |
+| `SNIPER_SL_BUFFER_ATR 0.30` / `SL_HARD_MAX_H1_ATR 2.00` / `BE_DISP_ATR 2.00` / `TRAIL_M15_ATR 0.50` | L1859–1862 |
+| `struct STopDownState` | L1893 |
+| `InpUseHTFBias` / `InpTopDownMinRR` / `InpMTEERunSelfTest` / `InpSniperMaxRiskPct` | L1151 / L1166 / L1805 / L1815 |
+| `InpLogLifecycleTransitions` | L1262 |
+| `ScoreStructure` / `ScoreLiquidity` / `ScoreSession` / `ScoreHTF` (defs) | L17499 / L17520 / L17651 / L17660 |
+| `CalculateAITradeSetup` (def) — the only writer of `g_score` | L20593 |
+| `TheoreticalRiskMoney` (def) | L22836 |
+| `PA_ZoneAt` (def) | L25762 |
+| `TopDown_Evaluate` (def); its existing R:R gate | L33798; L33990–33992 |
+| `TopDown_Update` (def) | L34029 |
+| Module self-tests (SB / WY / PA / MR / CF / RM) | L25029 / L25500 / L25904 / L26444 / L26948 / L27549 |
 
 Every self-test exercises **pure cores with local values only**. None reads
 series data, account data or tick data, so all six are deterministic in the
@@ -356,21 +356,21 @@ Strategy Tester and on any symbol.
 
 ## 5. The causal order inside `OnCalculate`
 
-`OnCalculate` begins at **L15006**. The relevant call order, verified:
+`OnCalculate` begins at **L15113**. The relevant call order, verified:
 
 ```
-L15250  OB age bound            inline, LAST within the closed bar (price outranks time)
-L15364  P3_Update(closed)
-L15365  SB_Update(closed)
-L15369  WY_Update(closed)
-L15425  TopDown_Update(rates_total,false)   <-- publishes the plan RM may adopt
-L15447  PMI_Update()
-L15595  MVP_Update(...)                     <-- volume profile / POC
-L15604  PA_Update(closed)
-L15612  MR_Update(closed,rates_total,full_indicators)
-L15618  CF_Update(closed,rates_total)       <-- reads PA, MR, WY, P3, SB
-L15623  RM_Update(closed,rates_total)       <-- reads CF's verdict + TopDown's plan
-L15626  ZRE_Update(...)
+L15357  OB age bound            inline, LAST within the closed bar (price outranks time)
+L15471  P3_Update(closed)
+L15472  SB_Update(closed)
+L15476  WY_Update(closed)
+L15532  TopDown_Update(rates_total,false)   <-- publishes the plan RM may adopt
+L15554  PMI_Update()
+L15704  MVP_Update(...)                     <-- volume profile / POC
+L15713  PA_Update(closed)
+L15721  MR_Update(closed,rates_total,full_indicators)
+L15727  CF_Update(closed,rates_total)       <-- reads PA, MR, WY, P3, SB
+L15732  RM_Update(closed,rates_total)       <-- reads CF's verdict + TopDown's plan
+L15735  ZRE_Update(...)
 ```
 
 Two properties this order guarantees:
@@ -383,7 +383,7 @@ Two properties this order guarantees:
 
 Each module's driver calls its own `Clear()` **as its first statement**, then
 early-exits. A disabled or blocked module can therefore never leave a previous
-bar's verdict on the dashboard. `RM_Clear()` is also called in `OnInit` (L14801)
+bar's verdict on the dashboard. `RM_Clear()` is also called in `OnInit` (L14908)
 after `CF_Clear()`.
 
 Every module refuses the forming bar with the file's own idiom,
@@ -400,13 +400,13 @@ it. All new content therefore goes into the **tooltip**, in this order:
 
 | Guard line | Block |
 |---|---|
-| L32965 | CF summary — **first**, ahead of the per-module detail |
-| L32996 | RM advisory |
-| L33024 | Power of 3 |
-| L33036 | Silver Bullet |
-| L33053 | Wyckoff |
-| L33073 | Price Action |
-| L33091 | Mean Reversion |
+| L33093 | CF summary — **first**, ahead of the per-module detail |
+| L33124 | RM advisory |
+| L33152 | Power of 3 |
+| L33164 | Silver Bullet |
+| L33181 | Wyckoff |
+| L33201 | Price Action |
+| L33219 | Mean Reversion |
 
 Each is guarded by its own `InpEnable… && Inp…ShowOnDashboard` pair, so with the
 switches off the tooltip is byte-identical to before this work.
@@ -459,8 +459,8 @@ mixed a body edge with a wick edge. `InpOBZoneBodyOnly` now makes that a choice,
 **defaulting to the existing hybrid**, so nothing changes unless you opt in.
 
 **C1 — three candle implementations coexist, and they disagree.**
-`AnalyzeClosedCandle` (def **L5540**), `AnalyzeCandleIntelligence` (decl L2612,
-def **L19457**) and `MTF_SniperEvaluateEntryTriggers` (decl L6442, def **L44089** —
+`AnalyzeClosedCandle` (def **L5577**), `AnalyzeCandleIntelligence` (decl L2621,
+def **L19574**) and `MTF_SniperEvaluateEntryTriggers` (decl L6531, def **L44217** —
 the **C1 gate**)
 classify the same bar differently. With body/range `(95,100,90,95)` the C1 gate
 returns **TRUE** while the ACC label reads **DOJI**. **Pinned, not repaired** —
@@ -475,7 +475,7 @@ state those scorers read *is* fresh: `BuildCausalEventGraph` (which also clears
 `g_selected_structure_event`) and `ComputeHTFBias` both run before the call site.
 
 **C3 — `AUDIT-CF1`: the existing weights sum to 1.1000, not 1.0000.** Both
-`final_score` branches (assignments at **L20940–20975**) do this — the default branch
+`final_score` branches (assignments at **L21057–21081**) do this — the default branch
 (`.18/.12/.14/.10/.08/.12/.16/.10/.10`) and the institutional branch
 (`.22/.14/.16/.10/.10/.18/.10/.05/.05`). **Reported, not fixed.** The new
 engine's weights sum to exactly 100 and are validated every bar.
@@ -489,15 +489,15 @@ file**. They are therefore zeroed **locally inside `CF_Update`** (the MTF leg
 reads `g_htf_bias` directly and never calls `ScoreHTF()`), and the two existing
 functions are pinned byte-for-byte by the test suite.
 
-**C5 — `AUDIT-MR1`: two divergence helpers were dead code.** `IsFractalHigh` (def **L34393**),
-`IsFractalLow` (def **L34404**) and `FractalRightBars` (def **L23458**) had a declaration and a definition and **no caller**. Phase 5 wired them
+**C5 — `AUDIT-MR1`: two divergence helpers were dead code.** `IsFractalHigh` (def **L34521**),
+`IsFractalLow` (def **L34532**) and `FractalRightBars` (def **L23575**) had a declaration and a definition and **no caller**. Phase 5 wired them
 in rather than writing a fourth swing detector.
 
 **C6 — `AUDIT-RM1`: the named inputs do not exist.** See §3.7. Reused, not
 invented; the reported risk percentage is **1.50, not 1.0**.
 
 **C7 — `AUDIT-RM1`: a complete risk model already existed.**
-`MTF_SniperComputeTradeManagement` (decl L6443, def **L44242–44366**) already computes entry, a stop
+`MTF_SniperComputeTradeManagement` (decl L6532, def **L44370–44483**) already computes entry, a stop
 behind the zone or the opposing swing, a hard ATR cap that yields
 `SKIP_SL_MAX`, TP1/2/3 from the nearest opposing zone / HTF zone / D1-W1
 liquidity with 1R/2R/3R fallback, break-even, trailing and `rec_lot_size`. The
@@ -508,7 +508,7 @@ instead of re-deriving (and possibly contradicting) it"*. **Phase 7 is that
 planner**, and adopts the chain's plan verbatim when directions agree.
 
 **C8 — buffers 7–12 already carry Entry/SL/TP1/TP2/TP3** per signal, via
-`SigLog_BufWrite` (def **L13874**), with ZRE using 13–18. Phase 7 did not need a buffer
+`SigLog_BufWrite` (def **L13972**), with ZRE using 13–18. Phase 7 did not need a buffer
 and did not add one.
 
 ---
@@ -526,7 +526,7 @@ and did not add one.
 | Sizing | text only; one formatter; both branches disclaim; no division by zero | Phase 7 suite |
 | Symbol-agnostic | no literal price level in any module core | Phases 2, 3, 5, 7 suites |
 | Enums | 43, all appended — none renumbered | Phase 5 suite |
-| Inputs | 538 total, 67 new, all new ones default `false` where behavioural | release gate + suites |
+| Inputs | 548 total, 67 new, all new ones default `false` where behavioural | release gate + suites |
 
 Line-ending discipline: pure CRLF, **0 bare LF** (`*.mq5`/`*.mqh` are byte-exact
 via `.gitattributes`). Braces **3740/3740**; paren balance verified on
@@ -552,8 +552,8 @@ comment-stripped text.
 | `tools/test_comment_integrity.py` | 19 | 0 |
 | **This document's own guard + the F7 defect guard** | **313** | **0** |
 
-Full gate: **5 static tools PASS · 23 suites · 2 437 PASS lines · 0 failures**.
-CI: **30 steps**, `.github/workflows/qsmc-verify.yml`.
+Full gate: **5 static tools PASS · 25 suites · 2 610 PASS lines · 0 failures**.
+CI: **32 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`).
 
 ### 10.1b This document is itself under test
 
@@ -571,7 +571,7 @@ It checks, in both directions:
 | A | 87 citations resolve against source; for definitions the *computed* definition line must equal the citation, so a **wrong** citation fails too, not only a drifted source |
 | B | the §5 call order is real and ascending, plus the three claims it argues for |
 | C | the §6 tooltip guards are where stated, in the stated order |
-| D | every countable fact above is **recomputed** from source and compared to this text — 67 inputs, 538 total, 43 enums, buffers 19, plots 7, the version triple, 56 in-file self-test checks, zero trade API |
+| D | every countable fact above is **recomputed** from source and compared to this text — 67 inputs, 548 total, 44 enums, buffers 19, plots 7, the version triple, 56 in-file self-test checks, zero trade API |
 | D2 | the §2.1 dependency is **derived**: weights must sum to exactly 100, the reachable maximum is computed as `100 − InpCFWeightCandle` = 85, this document must state that number, and CF's candle leg must really be guarded by `InpEnablePriceAction &&` |
 | E | no citation past EOF, the nine stale numbers absent, disclaimers present, all 13 sections present |
 | F | **two-way binding** — every line the test pins must also be cited here, directly or inside a range. Without F, this document and the test could disagree while both stayed green |
@@ -679,7 +679,7 @@ declarations**. That produced 40 further errors: `variable already defined` for
 `g_p3_dir`, `g_p3_score`, `g_p3_reason`, `g_p3_invalidation`, `g_sb_active`,
 `g_sb_window`, `g_sb_dir`, `g_sb_fvg`, `g_sb_entry_high`, `g_sb_entry_low`,
 `g_sb_reason`, `g_sb_score` and `g_sb_invalidation` — each pointing back at its
-real declaration near L1932–1949 — and finally `expressions are not allowed on a
+real declaration near L1941–1958 — and finally `expressions are not allowed on a
 global scope` on the closing brace at 24921.
 
 **One missing `//` became 42 errors.** Fixed by restoring the marker; the
@@ -741,6 +741,42 @@ half was already asserted above, so it could never fail) — replaced with the r
 invariant that the file contains no block comments.
 
 ---
+
+## 11.3 AUDIT-RS1 — the final resolver (Phase 2, commit 1)
+
+**Why.** Phase 1 read the code and found the direction conflict is real, not a
+rendering artefact: `AlertDispatcherFinalize` writes `g_alert_primary`, the
+dashboard STATUS card reads it, and `UpdateMTFExecutionEntry` derives its own
+`bull` for the label, the arrow and the hline colour — nothing in the file ever
+compares the two. The tactical state word printed `CONFIRMED` although the rule
+printed three lines above it says only the arbiter may say that.
+
+**What.** `ResolveFinalSignal()` (**L6073**, inputs **L852–L860**) — one function, called once from `OnCalculate`
+after `AlertDispatcherFinalize`, and only on a closed-bar or detection event. Four
+layers vote (HTF/D1 bias, zone role, reaction level, tactical entry) weighted
+**25 / 25 / 30 / 20 = 100**. `OnInit` refuses to initialise if they do not sum to
+100 and never renormalises silently. Both sides voting ⇒ CONFLICT → WAIT (the
+resolver never picks a side to look useful); the winning side below
+`InpResMinScore` (60) ⇒ WAIT; otherwise it writes `g_final_signal` /
+`g_res_score` / `g_final_why`, and that why-text always states the score is a
+confluence count, **not** a probability.
+
+**Off by default, and provably inert.** `InpUseFinalResolver = false`: with it off
+the dashboard, the tooltip and the tactical word behave exactly as before. With it
+on all three read the same `g_final_signal`, and the tactical word is demoted
+`CONFIRMED` → `INFO`, so `CONFIRMED` can only come from the resolver.
+
+**Verify.** F7, drag onto M5, set `InpUseFinalResolver = true`, then compare the
+STATUS card with the tactical label on the same bar: they must agree, or both must
+say WAIT / CONFLICT. Then set the four weights to 40/40/40/40 — `OnInit` must
+refuse with a weight-sum message rather than quietly renormalise.
+
+**Contract suite.** `tools/test_resolver.py` pins all of the above (CI step 32):
+the flag's default, the call site's position and its closed-bar gate, the
+weight-sum refusal, the CONFLICT branch, the demotion of the tactical word, the
+reuse of `PA_ZoneAt(` instead of a second zone scan, the absence of any
+`g_final_score` substring collision, and — as always — that no order API appears.
+
 
 ## 12. Known risks and what is NOT implemented
 
