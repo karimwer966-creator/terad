@@ -600,7 +600,7 @@ DELTA = {
     "ScoreStructure(": 6,       # 4 before + 2 (one per side)
     "ScoreLiquidity(": 5,       # 3 before + 2 (one per side)
     "ScoreSession(": 5,         # 4 before + 1
-    "PA_ZoneAt(": 6,            # 5 -> 6: the AUDIT-RS1 resolver reuses the same single zone scan
+    "PA_ZoneAt(": 7,            # 6 -> 7: the AUDIT-SC1 edge leg reuses the same single zone scan
                                 # which reuses this same single zone scan instead of
                                 # building a second one of its own)
     "ScoreHTF(": 3,             # unchanged - bypassed

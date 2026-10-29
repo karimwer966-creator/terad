@@ -489,7 +489,7 @@ DELTA = {
     "TheoreticalRiskMoney(": 8,   # 7 before + 1
     "AccountInfoDouble(": 2,      # 1 before + 1
     "AccountInfoString(": 2,      # 1 before + 1
-    "PA_ZoneAt(": 6,              # 5 -> 6: the AUDIT-RS1 resolver reuses the same single zone scan
+    "PA_ZoneAt(": 7,              # 6 -> 7: the AUDIT-SC1 edge leg reuses the same single zone scan
     "InpTopDownMinRR": 7,         # 4 before + 3 (the reused hard R:R floor)
     "InpSniperMaxRiskPct": 3,     # 2 before + 1 (the reused risk percentage)
     # untouched: no new call into ANY scoring system

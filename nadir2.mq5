@@ -869,6 +869,22 @@ input int    InpWGMinScore           = 60;    // weighted points a candidate nee
 input int    InpWGMinEvidenceScore   = 68;    // evidence floor for the evidence leg (mirrors the
                                               // existing 68; changes no shipped threshold)
 input double InpWGMinRoomATR         = 1.0;   // room to the opposing zone, in ATR units
+input group "====== Scalping Strategies (AUDIT-SC1, M1-M5, display only, advisory) ======"
+input bool   InpEnableScalping           = false; // overlay switch: six scalping strategies
+input bool   InpScalpShowOnDashboard     = false; // add the advisory line to the tooltip
+input int    InpScalpWeightMomentum      = 20;    // SC-MOM  closed-bar displacement burst
+input int    InpScalpWeightEdge          = 20;    // SC-EDGE zone-edge fade with MR stretch
+input int    InpScalpWeightSilverBullet  = 15;    // SC-SB   inside a resolved SB window
+input int    InpScalpWeightPowerOf3      = 15;    // SC-P3   after the Judas swing resolves
+input int    InpScalpWeightWyckoff       = 15;    // SC-WY   spring / upthrust at the boundary
+input int    InpScalpWeightConfluence    = 15;    // SC-CF   the Confluence Engine agrees
+input int    InpScalpMinScore            = 60;    // weighted points needed to name a scalp
+input double InpScalpDispATR             = 0.40;  // SC-MOM displacement, ATR (SCALPER preset)
+input double InpScalpStopATR             = 0.80;  // advisory stop distance, ATR units
+input double InpScalpTargetATR           = 1.20;  // advisory target distance, ATR units
+input double InpScalpMinRR               = 1.20;  // refuse below this RR (SCALPER preset)
+input double InpScalpMaxSpreadATR        = 0.10;  // HARD VETO: spread cost above this ATR ratio
+input bool   InpScalpRequireSession      = true;  // HARD VETO: London/New York kill zones only
 input group "====== All Seven Modules At Once (AUDIT-UX1) ======"
 input bool   InpEnableAllModules        = false;  // one switch: all seven strategy modules ON plus
                                              // their tooltip output. Does NOT enable the chart-object
@@ -4742,6 +4758,18 @@ bool   g_tac_closed=false; // the execution bar closed through the trigger
 int    g_wgate_score=0;    // weighted evidence points of the tested candidate, 0-100
 string g_wgate_why="";     // the legs it earned, or the hard veto that stopped it
 bool   g_wgate_veto=false; // true only for data/spread/news - never for evidence
+// AUDIT-SC1: the scalping overlay's advisory verdict for the last CLOSED bar.
+// Written only by SCALP_Update(), read only for display. It never writes the
+// resolver verdict, the alert primary, or any setup - it advises.
+int    g_sc_dir=0;         // +1 long scalp, -1 short, 0 WAIT, 2 CONFLICT
+int    g_sc_score=0;       // weighted confluence count 0-100, NOT a probability
+string g_sc_legs="";       // which scalping strategies voted (MOM/EDGE/SB/P3/WY/CF)
+string g_sc_why="";        // the veto, the missed legs, or the full advisory line
+bool   g_sc_veto=false;    // true only for data/spread/session/news - never evidence
+double g_sc_stop=0.0;      // advisory stop price, ATR-derived (no hard-coded points)
+double g_sc_target=0.0;    // advisory target price, ATR-derived
+double g_sc_rr=0.0;        // advisory reward:risk of those two distances
+int    g_sc_bar=-1;        // the closed bar this verdict belongs to (no repaint)
 SAlertCandidate  g_alert_primary;
 SAlertCandidate  g_alert_opposite;
 string           g_alert_context_text="";
@@ -6129,6 +6157,269 @@ int ResolveFinalSignal(const int closed,string &why)
        "/100 from "+voters+" - a weighted confluence count, not a probability";
    return side;
   }
+//--------------------------------------------------------------------
+// AUDIT-SC1: SCALPING STRATEGIES (M1-M5), display only, advisory.
+//
+// What already existed and is REUSED rather than duplicated:
+//   * QSMC_PRESET_SCALPER in QSMC_Preset.mqh (auto-selected on M1-M5) and
+//     QSMC_PresetInt/QSMC_PresetDouble, whose M1/M5 columns already carry the
+//     scalper profile. The defaults below are that profile's numbers:
+//     displacement 0.40 ATR, stop 0.80 ATR, target 1.20 ATR, RR floor 1.20.
+//   * the published state of all six strategy modules (P3, Silver Bullet,
+//     Wyckoff, Price Action / zones, Mean Reversion, Confluence) plus RXN's
+//     best snapshots and the HTF bias. A scalping leg that re-derived any of
+//     that would be a second opinion, which is the defect AUDIT-RS1 removed.
+//   * MTF_SniperIsNewsBlackout() and IsInSession() for the vetoes, and
+//     PA_ZoneAt() for the zone leg - one zone scan, as everywhere else.
+//
+// Ordering rule inherited from AUDIT-GS1: the vetoes that must never be traded
+// away are tested FIRST - no data, spread cost, session, news - and each one
+// returns immediately with its own reason. Only after them is evidence weighed.
+//
+// The score is a weighted confluence count, NOT a probability. The stop and
+// target are advisory distances in ATR units; nothing here sends an order,
+// touches the forming bar, or edits a verdict another layer owns.
+//--------------------------------------------------------------------
+
+// PURE. Spread cost as a fraction of ATR. A scalp whose cost is a large slice
+// of the move it is trying to capture cannot work on any symbol, so this is a
+// veto and not a weighted leg. No data => veto (never publish on a guess).
+double SCALP_SpreadRatio(const double spread_pts,const double atr)
+  {
+   if(!(atr>0.0)) return DBL_MAX;
+   if(!(spread_pts>=0.0)) return DBL_MAX;
+   return (spread_pts*_Point)/atr;
+  }
+
+bool SCALP_SpreadVeto(const double spread_pts,const double atr,const double max_ratio_atr)
+  {
+   if(!(max_ratio_atr>0.0)) return true;
+   return SCALP_SpreadRatio(spread_pts,atr)>max_ratio_atr;
+  }
+
+// PURE. Advisory reward:risk from two ATR multiples. A non-positive stop has no
+// RR at all, so it reports 0 and the caller refuses.
+double SCALP_RR(const double stop_atr,const double target_atr)
+  {
+   if(!(stop_atr>0.0) || !(target_atr>0.0)) return 0.0;
+   return target_atr/stop_atr;
+  }
+
+// PURE. The six shipped weights, summed. OnInit refuses anything but 100.
+int SCALP_WeightsSum()
+  {
+   return InpScalpWeightMomentum+InpScalpWeightEdge+InpScalpWeightSilverBullet+
+          InpScalpWeightPowerOf3+InpScalpWeightWyckoff+InpScalpWeightConfluence;
+  }
+
+// PURE. Weighted points one side earned, and the legs that voted for it.
+int SCALP_ScoreSide(const int side,const int &vote[],const int &w[],const string &nm[],
+                    string &have)
+  {
+   int got=0; have="";
+   for(int k=0;k<6;k++)
+     {
+      if(vote[k]==side && side!=0)
+        {
+         got+=w[k];
+         if(have!="") have+="+";
+         have+=nm[k];
+        }
+     }
+   return got;
+  }
+
+// PURE. The same verdict rule the resolver uses, so a scalp can never disagree
+// with the engine about what a disagreement means: both sides voting is
+// CONFLICT (2), nothing voting is WAIT (0), and a lone side below the minimum
+// is also WAIT - it is never promoted to look useful.
+int SCALP_Decide(const int buy,const int sell,const int min_score)
+  {
+   if(buy>0 && sell>0) return 2;
+   if(buy==0 && sell==0) return 0;
+   int got=buy>0?buy:sell;
+   if(got<min_score) return 0;
+   return buy>0?1:-1;
+  }
+
+// The six votes, read from state the modules already published for this closed
+// bar. vote[k] is +1 long, -1 short, 0 abstain - an abstain costs nothing and
+// invents nothing.
+void SCALP_Votes(const int closed,const double atr,int &vote[],const int &w_unused[],
+                 string &nm[])
+  {
+   ArrayResize(vote,6); ArrayResize(nm,6);
+   nm[0]="MOM"; nm[1]="EDGE"; nm[2]="SB"; nm[3]="P3"; nm[4]="WY"; nm[5]="CF";
+   for(int k=0;k<6;k++) vote[k]=0;
+   // SC-MOM: one closed bar that displaced price by the scalper profile's
+   // 0.40 ATR. Read from the mirrored close buffer, never from the forming bar.
+   if(closed>=1 && closed<ArraySize(g_buf_c) && atr>0.0)
+     {
+      double disp=g_buf_c[closed]-g_buf_c[closed-1];
+      if(MathAbs(disp)>=InpScalpDispATR*atr) vote[0]=(disp>0?1:-1);
+     }
+   // SC-EDGE: mean reversion stretched into a causal zone whose role opposes the
+   // stretch. Both facts come from the modules that already computed them.
+   if(g_mr_ext_dir!=0)
+     {
+      string zn=""; double zt=0.0,zb=0.0; int zd=0;
+      if(closed>=0 && closed<ArraySize(g_buf_c) &&
+         PA_ZoneAt(g_buf_c[closed],closed,atr,zn,zt,zb,zd) && zd==-g_mr_ext_dir)
+         vote[1]=-g_mr_ext_dir;
+     }
+   // SC-SB / SC-P3 / SC-WY: a resolved window, Judas verdict or spring/upthrust.
+   vote[2]=(g_sb_active?g_sb_dir:0);
+   vote[3]=g_p3_dir;
+   vote[4]=(g_wy_active?g_wy_dir:0);
+   // SC-CF: the Confluence Engine's own stronger side, at its OWN display
+   // threshold - no second confluence rule and no new number to drift.
+   if(g_cf_buy_score>=InpCFMinDisplayScore && g_cf_buy_score>g_cf_sell_score) vote[5]=1;
+   else if(g_cf_sell_score>=InpCFMinDisplayScore && g_cf_sell_score>g_cf_buy_score) vote[5]=-1;
+  }
+
+// Module entry. Closed bar only; writes g_sc_* and nothing else.
+void SCALP_Update(const int closed,const int rates_total)
+  {
+   g_sc_dir=0; g_sc_score=0; g_sc_legs=""; g_sc_why=""; g_sc_veto=false;
+   g_sc_stop=0.0; g_sc_target=0.0; g_sc_rr=0.0; g_sc_bar=-1;
+   // Never the forming bar, never a bar the mirror does not hold.
+   if(closed<1 || closed>rates_total-2 || closed>=ArraySize(g_buf_c)) return;
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ?g_atr_buf[closed]:g_atr;
+   // ---- hard vetoes: tested first, reported first, never weighted away ----
+   if(!(atr>0.0))
+     {
+      g_sc_veto=true;
+      g_sc_why="HARD VETO: no ATR for this closed bar - a scalp has no cost model - WAIT";
+      return;
+     }
+   if(SCALP_SpreadVeto((double)g_spread,atr,InpScalpMaxSpreadATR))
+     {
+      g_sc_veto=true;
+      g_sc_why="HARD VETO: spread "+IntegerToString((int)g_spread)+" pts is "+
+               DoubleToString(SCALP_SpreadRatio((double)g_spread,atr),3)+
+               " ATR, above the "+DoubleToString(InpScalpMaxSpreadATR,3)+
+               " ATR cap - the move would pay the broker - WAIT";
+      return;
+     }
+   if(InpScalpRequireSession &&
+      !IsInSession(g_buf_t[closed],SESSION_LONDON) &&
+      !IsInSession(g_buf_t[closed],SESSION_NEWYORK))
+     {
+      g_sc_veto=true;
+      g_sc_why="HARD VETO: outside the London/New York kill zones - WAIT";
+      return;
+     }
+   if(MTF_SniperIsNewsBlackout(g_buf_t[closed]))
+     {
+      g_sc_veto=true;
+      g_sc_why="HARD VETO: high-impact news blackout (Golden Rule 6) - WAIT";
+      return;
+     }
+   // ---- weighted evidence ----
+   int vote[]; string nm[]; int wdummy[];
+   SCALP_Votes(closed,atr,vote,wdummy,nm);
+   int w[6];
+   w[0]=InpScalpWeightMomentum;   w[1]=InpScalpWeightEdge;
+   w[2]=InpScalpWeightSilverBullet; w[3]=InpScalpWeightPowerOf3;
+   w[4]=InpScalpWeightWyckoff;    w[5]=InpScalpWeightConfluence;
+   string hb="",hs="";
+   int buy=SCALP_ScoreSide(1,vote,w,nm,hb);
+   int sell=SCALP_ScoreSide(-1,vote,w,nm,hs);
+   g_sc_dir=SCALP_Decide(buy,sell,InpScalpMinScore);
+   g_sc_score=(buy>0?buy:sell);
+   g_sc_legs=(buy>=sell?hb:hs);
+   if(g_sc_dir==2)
+     {
+      g_sc_score=0; g_sc_legs="";
+      g_sc_why="CONFLICT: long "+hb+" ("+IntegerToString(buy)+") vs short "+hs+" ("+
+               IntegerToString(sell)+") - disagreeing scalps mean stand aside";
+      return;
+     }
+   if(g_sc_dir==0)
+     {
+      string miss="";
+      for(int k=0;k<6;k++) if(vote[k]==0){ if(miss!="") miss+=" "; miss+=nm[k]; }
+      g_sc_score=(buy>0||sell>0?g_sc_score:0);
+      g_sc_why=(buy>0||sell>0?
+                ((buy>0?"BUY":"SELL")+" evidence "+IntegerToString(g_sc_score)+"/100 from "+
+                 (buy>0?hb:hs)+" below InpScalpMinScore "+IntegerToString(InpScalpMinScore)):
+                "no scalping strategy voted")+
+               " - abstained: "+(miss==""?"none":miss)+" - WAIT";
+      return;
+     }
+   // Advisory geometry, in ATR units, then the RR floor. A scalp that does not
+   // clear the floor is refused rather than published with a bad shape.
+   g_sc_rr=SCALP_RR(InpScalpStopATR,InpScalpTargetATR);
+   if(g_sc_rr<InpScalpMinRR)
+     {
+      g_sc_dir=0; g_sc_score=0; g_sc_legs="";
+      g_sc_why="REFUSED: advisory RR "+DoubleToString(g_sc_rr,2)+" is below the "+
+               DoubleToString(InpScalpMinRR,2)+" floor - WAIT";
+      g_sc_rr=0.0;
+      return;
+     }
+   double px=g_buf_c[closed];
+   double stop_dist=InpScalpStopATR*atr, tgt_dist=InpScalpTargetATR*atr;
+   g_sc_stop=(g_sc_dir>0?px-stop_dist:px+stop_dist);
+   g_sc_target=(g_sc_dir>0?px+tgt_dist:px-tgt_dist);
+   g_sc_bar=closed;
+   g_sc_why="SCALP "+(g_sc_dir>0?"BUY":"SELL")+" "+IntegerToString(g_sc_score)+
+            "/100 from "+g_sc_legs+" | stop "+DoubleToString(InpScalpStopATR,2)+
+            " ATR @ "+DoubleToString(g_sc_stop,_Digits)+" | target "+
+            DoubleToString(InpScalpTargetATR,2)+" ATR @ "+
+            DoubleToString(g_sc_target,_Digits)+" | RR "+DoubleToString(g_sc_rr,2)+
+            " - a weighted confluence count, not a probability";
+  }
+
+// AUDIT-SC1 self-test. Exercises the PURE cores with local values only - no
+// chart, no series, no terminal state - so a regression is caught at OnInit
+// instead of on a live bar. Gated by InpMTEERunSelfTest, the file's existing
+// general self-test switch, exactly like the six modules before it.
+bool SCALP_SelfTest(string &where)
+  {
+   where="";
+   // SC-1 No ATR means no cost model, so the spread veto must fire rather than
+   //      publish a scalp on a guess.
+   if(!SCALP_SpreadVeto(0.0,0.0,0.10))
+   { where="SC-1 no ATR must veto, never divide by zero"; return false; }
+   // SC-2 A zero spread with real ATR is not a veto.
+   if(SCALP_SpreadVeto(0.0,1000.0*_Point,0.10))
+   { where="SC-2 a zero spread must not veto"; return false; }
+   // SC-3 A spread that is 20% of ATR is above a 10% cap: vetoed.
+   if(!SCALP_SpreadVeto(200.0,1000.0*_Point,0.10))
+   { where="SC-3 a spread of 0.20 ATR must veto against a 0.10 ATR cap"; return false; }
+   // SC-4 The cap itself is not a veto (strictly greater), so the boundary is
+   //      documented rather than accidental.
+   if(SCALP_SpreadVeto(100.0,1000.0*_Point,0.10))
+   { where="SC-4 a spread exactly at the cap must not veto"; return false; }
+   // SC-5 RR is target/stop, and a non-positive stop has no RR.
+   if(MathAbs(SCALP_RR(0.80,1.20)-1.50)>1.0e-9 || SCALP_RR(0.0,1.20)!=0.0)
+   { where="SC-5 RR must be target/stop, and 0 without a stop"; return false; }
+   // SC-6 The shipped weights sum to exactly 100, or OnInit refuses.
+   if(SCALP_WeightsSum()!=100)
+   { where="SC-6 the six scalping weights must sum to 100"; return false; }
+   int vote[6]; int w[6]; string nm[6];
+   for(int k=0;k<6;k++){ vote[k]=0; w[k]=10; nm[k]="L"+IntegerToString(k); }
+   string have="";
+   // SC-7 Only votes equal to the side are counted.
+   vote[0]=1; vote[3]=1; vote[5]=-1;
+   if(SCALP_ScoreSide(1,vote,w,nm,have)!=20 || have!="L0+L3")
+   { where="SC-7 a side counts only its own votes and names them"; return false; }
+   // SC-8 The short side of the same votes is the mirror.
+   if(SCALP_ScoreSide(-1,vote,w,nm,have)!=10 || have!="L5")
+   { where="SC-8 the opposite side counts only its own votes"; return false; }
+   // SC-9 Both sides voting is CONFLICT (2), never a coin flip, and nothing
+   //      voting is WAIT (0).
+   if(SCALP_Decide(30,10,25)!=2 || SCALP_Decide(0,0,25)!=0)
+   { where="SC-9 disagreement is CONFLICT and silence is WAIT"; return false; }
+   // SC-10 A lone side below the minimum stays WAIT; at or above it, it is the
+   //       side - the minimum is inclusive, like every other floor here.
+   if(SCALP_Decide(20,0,25)!=0 || SCALP_Decide(25,0,25)!=1 || SCALP_Decide(0,60,25)!=-1)
+   { where="SC-10 a lone side is promoted only at or above the minimum"; return false; }
+   return true;
+  }
+
 
 void UpdateMTFExecutionEntry();
 bool IsFractalHigh(const double &h[],const int i,const int n,const int total);
@@ -14585,6 +14876,25 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       return INIT_PARAMETERS_INCORRECT;
      }
 
+   // AUDIT-SC1: the scalping overlay refuses an inconsistent configuration rather
+   // than clamping it - a weight sum that is not 100, or a target that does not
+   // clear the RR floor, would silently change what SCALP means.
+   if(InpEnableScalping && SCALP_WeightsSum()!=100)
+     {
+      Print("Invalid Quantum SMC scalping weights: they must sum to exactly 100");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpEnableScalping && (InpScalpStopATR<=0.0 || InpScalpTargetATR<=0.0 ||
+      InpScalpMaxSpreadATR<=0.0 || InpScalpMinScore<0 || InpScalpMinScore>100 ||
+      SCALP_RR(InpScalpStopATR,InpScalpTargetATR)<InpScalpMinRR))
+     {
+      Print("Invalid Quantum SMC scalping geometry: stop/target/spread cap/minimum are inconsistent");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpEnableScalping)
+      Print(">>> ",QSMC_VERSION_TEXT," Scalping overlay: ON | advisory | display only | "
+            "closed-bar only | no orders | weights ",IntegerToString(SCALP_WeightsSum()),"/100");
+
    // v5.8.0: quant/scaling input validation with safe clamped defaults.
    ApplyQuantInputConfig();
 
@@ -14972,6 +15282,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          Print(">>> ",QSMC_VERSION_TEXT," Risk model self-test: PASS (10/10)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Risk model self-test: FAIL - ",mtee_fail);
+      if(SCALP_SelfTest(mtee_fail))
+         Print(">>> ",QSMC_VERSION_TEXT," Scalping strategies self-test: PASS (10/10)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," Scalping strategies self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
@@ -15761,6 +16075,10 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // AFTER TopDown_Update() above so the chain's own entry/SL/TP1 can be
    // adopted instead of re-derived. No buffer, no drawing, no order.
    if(is_new_bar || detection_updated) RM_Update(closed,rates_total);
+   // AUDIT-SC1: the scalping overlay reads only what the modules above already
+   // published for this CLOSED bar. Advisory: it never writes the resolver verdict,
+   // the alert primary, or any setup, and it sends no order.
+   if(InpEnableScalping && (is_new_bar || detection_updated)) SCALP_Update(closed,rates_total);
    // v6.3.0 Zone Reaction Engine: closed-bar, observational, no entry authority.
    // Runs after MVP_Update so the active profile levels are current.
    ZRE_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);
@@ -33103,6 +33421,8 @@ void DrawQuantumDashboard(const int total,const double &c[])
                    "Resolver: "+(g_final_why==""?"none":g_final_why)+"\n":"")+
                   (InpUseWeightedGates?
                    "Weighted gate: "+(g_wgate_why==""?"none":g_wgate_why)+"\n":"")+
+                  (InpEnableScalping?
+                   "Scalp: "+(g_sc_why==""?"none":g_sc_why)+"\n":"")+
                   "Core state: "+core_state+" | blocker: "+CoreDashBlocker(core_state,path)+"\n"+
                   "Core chain: "+CoreDashChain(path,core_state,closed)+"\n"+
                   CoreDashBiasLine(g_buf_t[closed+1])+"\n"+
