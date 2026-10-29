@@ -28,6 +28,13 @@ the file changes.
 The single deleted line in the whole pull request is Phase 1's order-block
 geometry line, replaced by the opt-in body/wick rule (§8, C0).
 
+This was verified PR-wide, not just for `nadir2.mq5`: a multiset comparison of
+every one of the **10 changed files** between `e3c0b5b` and `f3309cb` shows
+**exactly 1 real line lost in total**. The seven new `tools/` suites, this
+document and the workflow are pure additions (+5 980 lines, −0). So the
+"nothing that works was deleted" claim holds for the whole pull request, not
+merely for the indicator.
+
 > **On the diffstat.** `git diff e3c0b5b..ebc43bc -- nadir2.mq5` reports
 > **+4 155 / −173**, which is misleading. A multiset comparison of the two file
 > versions proves **exactly one** original line is absent. The other 172
