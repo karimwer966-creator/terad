@@ -53,6 +53,13 @@ jobs:
       - name: Master switch + redraw gate contract (AUDIT-UX1)
         run: python3 tools/test_ux1_master_switch.py 2>&1 | tee out/ux1.log
 
+      # Four layers used to be able to disagree about direction with nothing
+      # comparing them. One resolver now owns the verdict, off by default; this
+      # pins the weighting, the CONFLICT rule, the causality and the demotion of
+      # the tactical word so the conflict cannot come back silently.
+      - name: Final-signal resolver contract (AUDIT-RS1)
+        run: python3 tools/test_resolver.py 2>&1 | tee out/resolver.log
+
       - name: Arbiter decision logic vs the MQL5 self-test (1:1)
         run: python3 tools/test_arbiter.py 2>&1 | tee out/test_arbiter.log
 

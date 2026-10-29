@@ -552,8 +552,8 @@ comment-stripped text.
 | `tools/test_comment_integrity.py` | 19 | 0 |
 | **This document's own guard + the F7 defect guard** | **313** | **0** |
 
-Full gate: **5 static tools PASS · 23 suites · 2 437 PASS lines · 0 failures**.
-CI: **30 steps**, `.github/workflows/qsmc-verify.yml`.
+Full gate: **5 static tools PASS · 25 suites · 2493 PASS lines · 0 failures**.
+CI: **32 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`).
 
 ### 10.1b This document is itself under test
 
@@ -751,7 +751,7 @@ dashboard STATUS card reads it, and `UpdateMTFExecutionEntry` derives its own
 compares the two. The tactical state word printed `CONFIRMED` although the rule
 printed three lines above it says only the arbiter may say that.
 
-**What.** `ResolveFinalSignal()` — one function, called once from `OnCalculate`
+**What.** `ResolveFinalSignal()` (**L6073**, inputs **L852–L860**) — one function, called once from `OnCalculate`
 after `AlertDispatcherFinalize`, and only on a closed-bar or detection event. Four
 layers vote (HTF/D1 bias, zone role, reaction level, tactical entry) weighted
 **25 / 25 / 30 / 20 = 100**. `OnInit` refuses to initialise if they do not sum to
