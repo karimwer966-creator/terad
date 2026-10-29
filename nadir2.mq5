@@ -24909,7 +24909,7 @@ void SB_DrawEntryZone(const int closed)
 }
 
 // Reset BOTH modules to their inert state.
- Called when a new symbol/day context
+// Called when a new symbol/day context
 // arrives so a stale phase or window can never be displayed against fresh bars.
 void SBP3_Clear()
 {
