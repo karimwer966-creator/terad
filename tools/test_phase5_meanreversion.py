@@ -708,7 +708,7 @@ check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,
 idx = sorted(int(m) for m in re.findall(r'SetIndexBuffer\(\s*(\d+)', TEXT))
 check(idx == list(range(19)), "D buffer indices are still 0..18 with no gap or shift", str(idx))
 ENUMS = len(re.findall(r'(?m)^enum\s+ENUM_', TEXT))
-check(ENUMS == 43, "D no enum was added or removed (%d, was 43 before this phase)" % ENUMS)
+check(ENUMS == 44, "D no enum was added or removed (%d, was 44 before this phase)" % ENUMS)
 check(re.search(r"enum\s+ENUM_", mr_section) is None,
       "D the section declares no enum, so no existing enumerator can shift")
 check(BARE_LF == 0, "D the file has no bare LF (%d)" % BARE_LF)

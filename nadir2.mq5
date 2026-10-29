@@ -849,6 +849,15 @@ input group "====== Session Clock / DST ======"
 input int InpBrokerUTCOffsetWinterMinutes = 120;
 input ENUM_BROKER_DST_RULE InpBrokerDSTRule = BROKER_DST_EU;
 input bool InpUseDSTSessions = true;
+input group "====== Final Signal Resolver (AUDIT-RS1, one verdict everywhere) ======"
+input bool   InpUseFinalResolver     = false; // ONE verdict for card STATUS, tactical
+                                              // label wording and the tooltip. Off =
+                                              // every surface keeps its own wording.
+input int    InpResWeightBias        = 25;    // resolver weight: HTF/D1 bias
+input int    InpResWeightZone        = 25;    // resolver weight: causal zone role under price
+input int    InpResWeightReaction    = 30;    // resolver weight: reaction evidence
+input int    InpResWeightTactical    = 20;    // resolver weight: tactical trigger cross
+input int    InpResMinScore          = 60;    // weighted points a lone side needs = CONFIRMED
 input group "====== All Seven Modules At Once (AUDIT-UX1) ======"
 input bool   InpEnableAllModules        = false;  // one switch: all seven strategy modules ON plus
                                              // their tooltip output. Does NOT enable the chart-object
@@ -4698,6 +4707,25 @@ datetime         g_alert_candidate_bar_time=0;
 datetime         g_alert_finalized_bar_time=0;
 datetime         g_directional_alert_bar_time=0;
 string           g_directional_alert_event_id="";
+// AUDIT-RS1: the resolver verdict vocabulary. The word CONFIRMED belongs to
+// the resolver alone while InpUseFinalResolver is on; every other layer
+// writes PREVIEW or INFO.
+enum ENUM_FINAL_SIGNAL
+  {
+   FS_WAIT=0,
+   FS_BUY=1,
+   FS_SELL=-1,
+   FS_CONFLICT_WAIT=2
+  };
+// AUDIT-RS1: the single verdict every surface reads. Written once per closed
+// bar by ResolveFinalSignal(), never edited afterwards.
+int    g_final_signal=0;   // 1 BUY, -1 SELL, 0 WAIT, 2 CONFLICT-WAIT
+int    g_res_score=0;    // weighted points of the winning side, 0-100
+string g_final_why="";     // the layer votes, or the conflicting pair
+// Tactical exposure for the resolver: UpdateMTFExecutionEntry() owns the
+// trigger cross; the resolver reads these and must not write them.
+int    g_tac_dir=0;        // +1/-1 while a tactical trigger is live, else 0
+bool   g_tac_closed=false; // the execution bar closed through the trigger
 SAlertCandidate  g_alert_primary;
 SAlertCandidate  g_alert_opposite;
 string           g_alert_context_text="";
@@ -5815,6 +5843,7 @@ string MTFEntryGrade(const bool confirmed,const bool core_owned)
 }
 void ClearMTFExecutionEntry()
 {
+   g_tac_dir=0; g_tac_closed=false;
    g_mtf_entry_state=""; g_mtf_entry_price=0.0; g_mtf_entry_time=0;
    g_mtf_entry_late=false; g_mtf_sig_time=0;
    // v6.6.10 AUDIT-TAC: the authority verdict belongs to this display, so it is
@@ -5909,11 +5938,16 @@ void UpdateMTFExecutionEntry()
    // same price PREVIEW/CONFIRMED on every tick and re-alerted each time.
    bool closed_confirm=bull ? (ch>=trigger && cc>co && cc>=trigger)
                             : (cl<=trigger && cc<co && cc<=trigger);
+   // AUDIT-RS1: publish the tactical layer to the resolver. Cleared in
+   // ClearMTFExecutionEntry() so a lapsed trigger never keeps voting.
+   g_tac_dir=bull?1:-1; g_tac_closed=closed_confirm;
    // PREVIEW needs a reason: a live cross of the trigger, or the closed bar
    // that is heading for confirmation. Otherwise nothing is displayed.
    bool show_preview=live_cross;
    if(!closed_confirm && !show_preview){ ClearMTFExecutionEntry(); return; }
-   string state=closed_confirm?"CONFIRMED":"PREVIEW";
+   // AUDIT-RS1: CONFIRMED is the resolver's word. With the resolver on this
+   // layer says INFO - a closed execution bar is a fact, not a passed gate.
+   string state=closed_confirm?(InpUseFinalResolver?"INFO":"CONFIRMED"):"PREVIEW";
    double ep=closed_confirm?cc:lc; datetime et=closed_confirm?ct:lt;
    string id=StringFormat("%s|%d|%I64d|%s|%.5f",_Symbol,(int)etf,(long)trigger_time,bull?"B":"S",trigger);
    // v6.4.1 DEDUP: a signal that already fired CONFIRMED never re-alerts as a
@@ -6026,6 +6060,60 @@ void UpdateMTFExecutionEntry()
 
 void DrawProvisionalFractals(const int total,const datetime &t[],const double &h[],const double &l[]);
 void UpdateEarlyBreakPreview(const int total,const datetime &t[],const double &h[],const double &l[],const double &c[]);
+//------------------------------------------------------------------ AUDIT-RS1
+// ONE verdict for every surface. Four closed-bar layers vote; each vote is
+// weighted by an input; the four weights must sum to exactly 100 (validated
+// in OnInit, never renormalised). A side is CONFIRMED only here, and only
+// when it is the ONLY side with votes and its weighted score reaches
+// InpResMinScore. If both sides vote the verdict is CONFLICT-WAIT:
+// disagreeing layers are evidence to stand aside, not a coin flip.
+// Reads only globals published by closed-bar work earlier in OnCalculate:
+// g_htf_bias (Bias), PA_ZoneAt (zone role), g_rxn_best_* (Reaction) and
+// g_tac_dir/g_tac_closed (Tactical). Writes g_final_* and nothing else.
+int ResolveFinalSignal(const int closed,string &why)
+  {
+   why="";
+   if(closed<0 || closed>=ArraySize(g_buf_c)) return 0;
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ?g_atr_buf[closed]:g_atr;
+   int vote[4]; int w[4]; string nm[4];
+   vote[0]=(InpUseHTFBias && g_htf_bias!=0)?(g_htf_bias>0?1:-1):0;
+   w[0]=InpResWeightBias; nm[0]="bias";
+   string zn=""; double zt=0.0,zb=0.0; int zd=0;
+   vote[1]=PA_ZoneAt(g_buf_c[closed],closed,atr,zn,zt,zb,zd)
+           ?(zd>0?1:(zd<0?-1:0)):0;
+   w[1]=InpResWeightZone; nm[1]="zone";
+   vote[2]=g_rxn_best_buy.valid?1:(g_rxn_best_sell.valid?-1:0);
+   w[2]=InpResWeightReaction; nm[2]="reaction";
+   vote[3]=g_tac_dir;
+   w[3]=InpResWeightTactical; nm[3]="tactical";
+   int buy=0,sell=0; string vb="",vs="";
+   for(int k=0;k<4;k++)
+     {
+      if(vote[k]>0){ buy+=w[k];  if(vb!="") vb+="+"; vb+=nm[k]; }
+      if(vote[k]<0){ sell+=w[k]; if(vs!="") vs+="+"; vs+=nm[k]; }
+     }
+   g_res_score=buy>0?buy:sell;
+   if(buy>0 && sell>0)
+     {
+      why="CONFLICT: BUY "+vb+" ("+IntegerToString(buy)+") vs SELL "+vs+" ("+
+          IntegerToString(sell)+") - disagreeing layers mean stand aside";
+      return 2;
+     }
+   if(buy==0 && sell==0){ why="no layer voted - WAIT"; g_res_score=0; return 0; }
+   int side=buy>0?1:-1; string voters=buy>0?vb:vs;
+   if(g_res_score<InpResMinScore)
+     {
+      why=(side>0?"BUY":"SELL")+" evidence "+IntegerToString(g_res_score)+
+          "/100 from "+voters+" is below InpResMinScore "+
+          IntegerToString(InpResMinScore)+" - WAIT";
+      return 0;
+     }
+   why=(side>0?"BUY":"SELL")+" CONFIRMED "+IntegerToString(g_res_score)+
+       "/100 from "+voters+" - a weighted confluence count, not a probability";
+   return side;
+  }
+
 void UpdateMTFExecutionEntry();
 bool IsFractalHigh(const double &h[],const int i,const int n,const int total);
 bool IsFractalLow(const double &l[],const int i,const int n,const int total);
@@ -6311,6 +6399,7 @@ void   AlertCandidateInit(SAlertCandidate &candidate);
 void   AlertDispatcherClear();
 void   AlertDispatcherSubmit(const SAlertCandidate &candidate);
 void   AlertDispatcherFinalize(const int rates_total);
+int    ResolveFinalSignal(const int closed,string &why);
 string AlertInvalidationText(const SAlertCandidate &candidate);
 bool   QSMC_ClaimDirectionalAlert(const datetime bar_time,const string event_id);
 bool   QSMC_IsDirectionalAlertMessage(const string message);
@@ -14456,6 +14545,15 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       return INIT_PARAMETERS_INCORRECT;
    }
 
+   // AUDIT-RS1: the resolver weights must sum to exactly 100. Refuse rather
+   // than renormalise - the same rule the Confluence Engine weights follow.
+   if(InpUseFinalResolver &&
+      InpResWeightBias+InpResWeightZone+InpResWeightReaction+InpResWeightTactical!=100)
+     {
+      Print("Invalid Quantum SMC resolver weights: they must sum to exactly 100");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+
    // v5.8.0: quant/scaling input validation with safe clamped defaults.
    ApplyQuantInputConfig();
 
@@ -15648,6 +15746,14 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    RXN_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);
    // One closed-bar arbiter for Core/ZRE/RXN directional alerts; no live-preview alert path.
    AlertDispatcherFinalize(rates_total);
+   // AUDIT-RS1: one verdict for every surface. Reads only the closed-bar
+   // globals published above; writes g_final_*. Nothing else observes it.
+   if(InpUseFinalResolver && (is_new_bar || detection_updated || prev_calculated==0))
+     {
+      string rs_why="";
+      g_final_signal=ResolveFinalSignal(closed,rs_why);
+      g_final_why=rs_why;
+     }
    RXN_Draw();
    // Directional Scenario Engine: reads the finished ZRE/RXN snapshots and Core
    // lifecycle only. It publishes conditional plans; it cannot arm or authorize.
@@ -32793,6 +32899,15 @@ void DrawQuantumDashboard(const int total,const double &c[])
    int primary_dir=(g_alert_primary.valid?g_alert_primary.direction:0);
    string status=(primary_dir>0?"BUY":(primary_dir<0?"SELL":"WAIT"));
    color status_col=(primary_dir>0?clrLimeGreen:(primary_dir<0?clrLightCoral:clrOrange));
+   // AUDIT-RS1: with the resolver on, the card STATUS is the resolver verdict
+   // - one verdict on every surface instead of four separate opinions.
+   if(InpUseFinalResolver)
+     {
+      status=(g_final_signal==1?"BUY":(g_final_signal==-1?"SELL":
+              (g_final_signal==2?"CONFLICT - WAIT":"WAIT")));
+      status_col=(g_final_signal==1?clrLimeGreen:
+                  (g_final_signal==-1?clrLightCoral:clrOrange));
+     }
    string source=(g_alert_primary.source==3?"CORE":(g_alert_primary.source==2?"RXN":"ZRE"));
    string primary="PRIMARY: none (closed-bar only)";
    string needs="NEEDS: wait for a closed-bar reaction";
@@ -32953,6 +33068,8 @@ void DrawQuantumDashboard(const int total,const double &c[])
                   "Why no alert this bar: "+AlertWhyNoPopup(closed,g_buf_t[closed])+"\n"+
                   "Direction consensus: "+market_direction+" (context only)\n"+
                   "Primary: "+(g_alert_primary_tooltip==""?"none":g_alert_primary_tooltip)+"\n"+
+                  (InpUseFinalResolver?
+                   "Resolver: "+(g_final_why==""?"none":g_final_why)+"\n":"")+
                   "Core state: "+core_state+" | blocker: "+CoreDashBlocker(core_state,path)+"\n"+
                   "Core chain: "+CoreDashChain(path,core_state,closed)+"\n"+
                   CoreDashBiasLine(g_buf_t[closed+1])+"\n"+
