@@ -552,7 +552,7 @@ comment-stripped text.
 | `tools/test_comment_integrity.py` | 19 | 0 |
 | **This document's own guard + the F7 defect guard** | **313** | **0** |
 
-Full gate: **5 static tools PASS · 25 suites · 2493 PASS lines · 0 failures**.
+Full gate: **5 static tools PASS · 25 suites · 2 610 PASS lines · 0 failures**.
 CI: **32 steps**, `.github/workflows/qsmc-verify.yml` (step 32 = `tools/test_resolver.py`).
 
 ### 10.1b This document is itself under test
