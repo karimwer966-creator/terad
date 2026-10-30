@@ -214,7 +214,25 @@ input bool   InpCloseOnOpposite      = false;  // close this magic's position on
 input double InpMinRRAtFill          = 1.00;   // refuse when reward:risk at the CURRENT price is below this; 0 = off
 input int    InpOrderRetryMax        = 3;      // transient order failures tolerated per signal before it is abandoned
 
-//--- 5. runtime ------------------------------------------------------
+//--- 5. professional trade management ---------------------------------
+// The indicator already scores the SESSION (100 in a kill zone, 75 in London/
+// NY, 40 Asia, 30 off-session) but a score is not a filter: a 0.05-weight term
+// cannot stop a setup at 03:00. These four inputs are the execution-side
+// habits a discretionary professional applies and a score cannot:
+//   * trade only inside the session window,
+//   * a hard cap on entries per day (overtrading is the #1 account killer),
+//   * a cooldown after a losing close (no revenge re-entry),
+//   * bank half at +1R instead of hoping for the full target.
+// Every one of them is OFF by default (0), so behaviour is unchanged unless an
+// operator asks for it - presets/QSMC_pro_execution.set turns them on.
+input int    InpSessionStartHour     = 0;      // server hour to start trading (0 + End 0 = no session filter)
+input int    InpSessionEndHour       = 0;      // server hour to stop  (wrap over midnight is allowed, e.g. 22 -> 6)
+input int    InpMaxTradesPerDay      = 0;      // entries per server day, persisted (0 = no cap)
+input int    InpCooldownAfterLossMin = 0;      // minutes to stand down after a losing close (0 = off)
+input double InpPartialCloseAtR      = 0.0;    // close InpPartialClosePercent at this R (0 = off)
+input double InpPartialClosePercent  = 50.0;   // percent of the volume banked at InpPartialCloseAtR
+
+//--- 6. runtime ------------------------------------------------------
 input int    InpPollSeconds          = 2;      // timer period, seconds
 input bool   InpVerbose              = false;  // print every skipped signal and why
 input int    InpHeartbeatSeconds     = 300;    // diagnostic journal line every N seconds (0 = off)
@@ -264,6 +282,15 @@ int       g_retry_count=0;
 ulong     g_be_ticket=0;
 datetime  g_be_last_try=0;
 ulong     g_be_warned_ticket=0;
+
+// Per-position memory for the partial close: the ORIGINAL stop distance (R) and
+// whether the partial was already taken. Break-even moves the stop to entry, so
+// R has to be remembered at first sight or it is lost forever.
+#define QSMC_AT_POS_RING 16
+ulong     g_pos_ticket[QSMC_AT_POS_RING];
+double    g_pos_risk[QSMC_AT_POS_RING];
+bool      g_pos_partial[QSMC_AT_POS_RING];
+int       g_pos_n=0;
 
 struct SQsigSignal
   {
@@ -567,6 +594,7 @@ void DayGuardLoad(const int day)
       GlobalVariableSet(kd,(double)day);
       GlobalVariableSet(DayGuardKey("EQ"),g_day_start_equity);
       GlobalVariableSet(DayGuardKey("BLOCKED"),0.0);
+      GlobalVariableSet(DayGuardKey("TRADES"),0.0);   // new day, new entry budget
       GlobalVariablesFlush();
       Print("[QSMC_AT] day guard: new baseline ",
             DoubleToString(g_day_start_equity,2)," for server day ",
@@ -603,6 +631,82 @@ void DayGuardUpdate()
                " <= ",DoubleToString(floor_eq,2)," - no new entries today (persisted)");
         }
      }
+  }
+
+//+------------------------------------------------------------------+
+//| Session window, on SERVER hours (the same clock the daily guard    |
+//| uses). Start == End means "no window". A window may wrap midnight  |
+//| (22 -> 6), which is how an Asia-only or NY-only mandate is set.    |
+//| This is a filter, not a score: it refuses an entry, and the note   |
+//| says so, instead of quietly lowering a quality number.            |
+//+------------------------------------------------------------------+
+bool SessionOpenNow(string &why)
+  {
+   why="";
+   if(InpSessionStartHour==InpSessionEndHour) return true;   // filter off
+   MqlDateTime st;
+   TimeToStruct(TimeCurrent(),st);
+   int h=st.hour;
+   bool inside;
+   if(InpSessionStartHour<InpSessionEndHour)
+      inside=(h>=InpSessionStartHour && h<InpSessionEndHour);
+   else
+      inside=(h>=InpSessionStartHour || h<InpSessionEndHour);  // wraps midnight
+   if(inside) return true;
+   why="outside the session window "+IntegerToString(InpSessionStartHour)+":00-"+
+       IntegerToString(InpSessionEndHour)+":00 server ("+IntegerToString(h)+":00 now)";
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Entries taken today, persisted with the day guard so a reload in   |
+//| the middle of an overtrading session cannot reset the cap.         |
+//+------------------------------------------------------------------+
+int TradesToday()
+  {
+   string k=DayGuardKey("TRADES");
+   if(!GlobalVariableCheck(k)) return 0;
+   return (int)GlobalVariableGet(k);
+  }
+
+void CountOneTrade()
+  {
+   int n=TradesToday()+1;
+   GlobalVariableSet(DayGuardKey("TRADES"),(double)n);
+   GlobalVariablesFlush();
+  }
+
+//+------------------------------------------------------------------+
+//| Cooldown after a LOSS. A professional does not re-enter the same   |
+//| minute a stop was hit; the next setup is judged by the market, not |
+//| by the need to recover. Reads the account's own history for this   |
+//| magic only, and costs nothing while the input is 0.               |
+//+------------------------------------------------------------------+
+bool CooldownActive(string &why)
+  {
+   why="";
+   if(InpCooldownAfterLossMin<=0) return false;
+   datetime from=(datetime)((long)TimeCurrent()-(long)InpCooldownAfterLossMin*60);
+   if(!HistorySelect(from,TimeCurrent())) return false;
+   for(int i=HistoryDealsTotal()-1;i>=0;i--)
+     {
+      ulong t=HistoryDealGetTicket(i);
+      if(t==0) continue;
+      if((long)HistoryDealGetInteger(t,DEAL_MAGIC)!=InpMagic) continue;
+      if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(t,DEAL_ENTRY)!=DEAL_ENTRY_OUT) continue;
+      double net=HistoryDealGetDouble(t,DEAL_PROFIT)+
+                 HistoryDealGetDouble(t,DEAL_COMMISSION)+
+                 HistoryDealGetDouble(t,DEAL_SWAP);
+      if(net<0.0)
+        {
+         why="inside the "+IntegerToString(InpCooldownAfterLossMin)+
+             "-minute cooldown after a losing close (net "+
+             DoubleToString(net,2)+")";
+         return true;
+        }
+      return false;   // the most recent close was not a loss
+     }
+   return false;
   }
 
 //+------------------------------------------------------------------+
@@ -759,6 +863,26 @@ void HandleSignal(SQsigSignal &s)
       Note(key,"daily loss guard is active");
       return;
      }
+   // --- professional discipline: session, day cap, cooldown ----------
+   // All three are TRANSIENT (no MarkSeen): the same signal may be tradable
+   // once the window opens, but refusing it must not burn it.
+   string dis="";
+   if(!SessionOpenNow(dis))
+     {
+      Note(key,dis);
+      return;
+     }
+   if(InpMaxTradesPerDay>0 && TradesToday()>=InpMaxTradesPerDay)
+     {
+      Note(key,"already "+IntegerToString(TradesToday())+" entr(ies) today (InpMaxTradesPerDay="+
+           IntegerToString(InpMaxTradesPerDay)+")");
+      return;
+     }
+   if(CooldownActive(dis))
+     {
+      Note(key,dis);
+      return;
+     }
    if(OpenCount(sym)>=InpMaxOpenPositions)
      {
       Note(key,"already "+IntegerToString(OpenCount(sym))+" position(s) open");
@@ -806,6 +930,9 @@ void HandleSignal(SQsigSignal &s)
             " tp ",DoubleToString(s.tp,_Digits)," risk ",DoubleToString(risk_money,2),
             " | signal bar ",TimeToString(s.bar_time,TIME_DATE|TIME_MINUTES));
       MarkSeen(key,s.bar_time,s.dir);
+      // DRY RUN counts too: the daily cap must be rehearsable, otherwise the
+      // operator meets it for the first time with real money.
+      CountOneTrade();
       g_dry++;
       return;
      }
@@ -849,6 +976,7 @@ void HandleSignal(SQsigSignal &s)
             " tp ",DoubleToString(s.tp,_Digits)," risk ",DoubleToString(risk_money,2),
             " | signal bar ",TimeToString(s.bar_time,TIME_DATE|TIME_MINUTES));
       MarkSeen(key,s.bar_time,s.dir);
+      CountOneTrade();
       g_sent++;
      }
    else
@@ -1073,6 +1201,30 @@ string IndicatorVerdictSuffix()
 
 
 //+------------------------------------------------------------------+
+//| One suffix that says whether the DISCIPLINE layer (not the         |
+//| analysis layer) is what is holding fire. Without it an operator    |
+//| sees "CORE 1, sent 0" and blames the signal.                      |
+//+------------------------------------------------------------------+
+string DisciplineSuffix()
+  {
+   string out="";
+   string why="";
+   if(!SessionOpenNow(why))
+      out+=" | session FILTER: "+why;
+   else if(InpSessionStartHour!=InpSessionEndHour)
+      out+=" | session open ("+IntegerToString(InpSessionStartHour)+":00-"+
+           IntegerToString(InpSessionEndHour)+":00 server)";
+   if(InpMaxTradesPerDay>0)
+      out+=" | entries today "+IntegerToString(TradesToday())+"/"+IntegerToString(InpMaxTradesPerDay);
+   if(CooldownActive(why))
+      out+=" | COOLDOWN: "+why;
+   if(InpPartialCloseAtR>0.0)
+      out+=" | partial "+DoubleToString(InpPartialClosePercent,0)+"% at "+
+           DoubleToString(InpPartialCloseAtR,2)+"R";
+   return out;
+  }
+
+//+------------------------------------------------------------------+
 //| Diagnostic heartbeat. Read-only: it copies the CORE direction    |
 //| buffer and prints, it never changes a gate, an order or a        |
 //| position. It answers the one question a silent chart cannot:     |
@@ -1184,7 +1336,8 @@ void DiagnosticHeartbeat()
          " dry "+IntegerToString(g_dry)+
          " refused "+IntegerToString(g_refused)+
          " open "+IntegerToString(OpenCount(_Symbol))+
-         (g_day_blocked ? " | daily loss guard ACTIVE" : "");
+         (g_day_blocked ? " | daily loss guard ACTIVE" : "")+
+         DisciplineSuffix();
    if(g_last_note!="")
       line+=" | last skip: "+g_last_note;
 
@@ -1196,11 +1349,65 @@ void DiagnosticHeartbeat()
   }
 
 //+------------------------------------------------------------------+
-//| Break-even only. The stop never moves away from the entry.       |
+//| Position management: optional partial bank at +R, then an optional |
+//| break-even move. The stop never moves AWAY from the entry.        |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| Small ticket ring: original R per position + "partial already      |
+//| handled". Break-even overwrites the stop with entry, which erases  |
+//| the risk distance the partial-close test needs, so the first sight |
+//| of a ticket stores it. 16 slots is far more than one EA holds.     |
+//+------------------------------------------------------------------+
+int PosFind(const ulong ticket)
+  {
+   for(int i=0;i<g_pos_n;i++)
+      if(g_pos_ticket[i]==ticket) return i;
+   return -1;
+  }
+
+int PosSlot(const ulong ticket)
+  {
+   if(g_pos_n<QSMC_AT_POS_RING) return g_pos_n++;
+   return (int)(ticket%QSMC_AT_POS_RING);
+  }
+
+double PosRiskRemember(const ulong ticket,const double risk)
+  {
+   int i=PosFind(ticket);
+   if(i<0)
+     {
+      i=PosSlot(ticket);
+      g_pos_ticket[i]=ticket;
+      g_pos_risk[i]=0.0;
+      g_pos_partial[i]=false;
+     }
+   if(risk>0.0 && g_pos_risk[i]<=0.0) g_pos_risk[i]=risk;
+   return g_pos_risk[i];
+  }
+
+bool PosPartialDone(const ulong ticket)
+  {
+   int i=PosFind(ticket);
+   return (i>=0 && g_pos_partial[i]);
+  }
+
+void PosMarkPartial(const ulong ticket,const double risk)
+  {
+   int i=PosFind(ticket);
+   if(i<0)
+     {
+      i=PosSlot(ticket);
+      g_pos_ticket[i]=ticket;
+      g_pos_risk[i]=0.0;
+      g_pos_partial[i]=false;
+     }
+   if(risk>0.0 && g_pos_risk[i]<=0.0) g_pos_risk[i]=risk;
+   g_pos_partial[i]=true;
+  }
+
 void ManageOpenPositions()
   {
-   if(InpBreakEvenAtR<=0.0) return;
+   if(InpBreakEvenAtR<=0.0 && InpPartialCloseAtR<=0.0) return;
    for(int i=PositionsTotal()-1;i>=0;i--)
      {
       ulong ticket=PositionGetTicket(i);
@@ -1215,8 +1422,50 @@ void ManageOpenPositions()
       double cur=(buy ? SymbolInfoDouble(_Symbol,SYMBOL_BID) : SymbolInfoDouble(_Symbol,SYMBOL_ASK));
       if(sl<=0.0 || cur<=0.0) continue;
       double risk=(buy ? entry-sl : sl-entry);
+      if(risk<=0.0) risk=PosRiskRemember(ticket,0.0);   // stop already at BE: use the stored R
       if(risk<=0.0) continue;
       double moved=(buy ? cur-entry : entry-cur);
+
+      // ---- bank a partial at +InpPartialCloseAtR ---------------------
+      // A discretionary professional rarely rides a full target with the whole
+      // size: half comes off at the first clean R and the rest is left to run
+      // with the stop at entry. Done BEFORE the break-even block so the two do
+      // not fight over the same tick.
+      if(InpPartialCloseAtR>0.0 && moved>=InpPartialCloseAtR*risk &&
+         !PosPartialDone(ticket))
+        {
+         double vol=PositionGetDouble(POSITION_VOLUME);
+         double vmin=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+         double vstep=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+         double pct=MathMin(95.0,MathMax(1.0,InpPartialClosePercent));
+         double part=vol*pct/100.0;
+         if(vstep>0.0) part=MathFloor(part/vstep+0.0000001)*vstep;
+         part=NormalizeDouble(part,3);
+         double remain=NormalizeDouble(vol-part,3);
+         if(part<vmin || remain<vmin)
+           {
+            PosMarkPartial(ticket,risk);   // too small to split: never retried
+            Print("[QSMC_AT] partial close skipped on #",IntegerToString((long)ticket),
+                  ": ",DoubleToString(vol,2)," lots cannot be split into ",
+                  DoubleToString(part,2)," + ",DoubleToString(remain,2),
+                  " (broker minimum ",DoubleToString(vmin,(vstep>0.0 ? (int)MathMax(0,MathRound(-MathLog10(vstep))) : 2)),")");
+           }
+         else if(g_trade.PositionClosePartial(ticket,part))
+           {
+            PosMarkPartial(ticket,risk);
+            Print("[QSMC_AT] banked ",DoubleToString(pct,0),"% (",DoubleToString(part,2),
+                  " lots) of #",IntegerToString((long)ticket)," at ",
+                  DoubleToString(InpPartialCloseAtR,2),"R; ",
+                  DoubleToString(remain,2)," lots left with the stop at entry");
+           }
+         else
+            Print("[QSMC_AT] partial close REFUSED on #",IntegerToString((long)ticket),
+                  " retcode=",IntegerToString((long)g_trade.ResultRetcode())," ",
+                  g_trade.ResultRetcodeDescription()," - retried on the next tick");
+        }
+
+      if(InpBreakEvenAtR<=0.0) continue;
+      PosRiskRemember(ticket,risk);  // remember R before the stop moves to entry
       if(moved<InpBreakEvenAtR*risk) continue;
       if(buy && sl>=entry) continue;
       if(!buy && sl<=entry) continue;
@@ -1385,6 +1634,14 @@ int OnInit()
          " | RR at fill>= ",DoubleToString(InpMinRRAtFill,2),
          " | stop ",IntegerToString(InpMinStopPoints),"..",IntegerToString(InpMaxStopPoints)," pts",
          " | signal age<= ",IntegerToString(InpMaxSignalAgeBars)," closed bar(s)");
+   Print("[QSMC_AT] discipline: ",
+         (InpSessionStartHour==InpSessionEndHour ? "session filter OFF" :
+          "session "+IntegerToString(InpSessionStartHour)+":00-"+IntegerToString(InpSessionEndHour)+":00 server"),
+         " | max entries/day ",(InpMaxTradesPerDay>0 ? IntegerToString(InpMaxTradesPerDay) : "none"),
+         " | cooldown after loss ",(InpCooldownAfterLossMin>0 ? IntegerToString(InpCooldownAfterLossMin)+" min" : "off"),
+         " | partial ",(InpPartialCloseAtR>0.0 ?
+            DoubleToString(InpPartialClosePercent,0)+"% at "+DoubleToString(InpPartialCloseAtR,2)+"R" : "off"),
+         " | break-even at ",(InpBreakEvenAtR>0.0 ? DoubleToString(InpBreakEvenAtR,2)+"R" : "off"));
    PurgeStaleSignalGlobals();
 
    EventSetTimer(InpPollSeconds);

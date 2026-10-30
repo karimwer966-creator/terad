@@ -215,6 +215,53 @@ if runbook.is_file():
     ):
         check(needle in rb, "D6g " + label)
 
+# ---------------------------------------------------------------- D7 discipline
+# The indicator SCORES the session (100 in a kill zone, 75 London/NY, 40 Asia,
+# 30 off) but that score is 5% of a reliability blend: it can never stop an
+# entry at 03:00. The four habits below live in the EXECUTION layer, because a
+# professional trader's discipline is not a number in a formula - it is a
+# refusal. All four default to OFF so shipped behaviour is unchanged.
+check("InpSessionStartHour" in code and "InpSessionEndHour" in code,
+      "D7a the session window is an explicit input pair, not an implicit hour test")
+check("bool SessionOpenNow(string &why)" in code,
+      "D7b one function decides the session, so the gate and the journal cannot disagree")
+check("inside=(h>=InpSessionStartHour || h<InpSessionEndHour)" in code,
+      "D7c a window may wrap midnight (Asia / NY-only mandates), not only sit inside one day")
+check("if(!SessionOpenNow(dis))" in code and "Note(key,dis);" in code,
+      "D7d a closed window REFUSES the entry and prints the reason")
+check("InpMaxTradesPerDay" in code and "void CountOneTrade()" in code,
+      "D7e entries per day are capped and counted")
+check('DayGuardKey("TRADES")' in noc,
+      "D7f the daily count is persisted in the day-guard namespace, so a reload cannot reset it")
+check('GlobalVariableSet(DayGuardKey("TRADES"),0.0);' in noc,
+      "D7g the counter resets on a NEW server day, together with the equity baseline")
+check("bool CooldownActive(string &why)" in code,
+      "D7h there is a cooldown after a losing close (no revenge re-entry)")
+check("(ENUM_DEAL_ENTRY)HistoryDealGetInteger(t,DEAL_ENTRY)!=DEAL_ENTRY_OUT" in code,
+      "D7i the cooldown reads CLOSING deals only, not entries")
+check("HistoryDealGetDouble(t,DEAL_COMMISSION)" in code and "HistoryDealGetDouble(t,DEAL_SWAP)" in code,
+      "D7j the cooldown classifies a loss NET of commission and swap, not gross")
+check("InpPartialCloseAtR" in code and "InpPartialClosePercent" in code,
+      "D7k a partial can be banked at +R (default off)")
+check("g_trade.PositionClosePartial(ticket,part)" in code,
+      "D7l the partial is a real partial close, not a second opposite order")
+check("PosRiskRemember(ticket,risk)" in code and "g_pos_risk" in code,
+      "D7m the ORIGINAL R is remembered per ticket (break-even erases it)")
+check("if(part<vmin || remain<vmin)" in code,
+      "D7n a lot size that cannot be split is skipped and counted, not sent and rejected")
+check("moved>=InpPartialCloseAtR*risk" in code,
+      "D7o the partial triggers on R moved from the real entry")
+# Ordering: the partial must be evaluated before break-even moves the stop.
+check(code.find("moved>=InpPartialCloseAtR*risk") < code.find("moved<InpBreakEvenAtR*risk") or
+      code.find("InpPartialCloseAtR>0.0 && moved") < code.find("moved<InpBreakEvenAtR*risk"),
+      "D7p the partial is taken BEFORE break-even can overwrite the stop distance")
+check(code.count("CountOneTrade();") >= 2,
+      "D7s a DRY RUN entry is counted too, so the daily cap is rehearsable before it costs money")
+check("DisciplineSuffix()" in code,
+      "D7q the heartbeat names the discipline layer instead of leaving 'CORE 1, sent 0' unexplained")
+check("discipline: " in noc,
+      "D7r the init banner states all four discipline settings, so a preset is visible")
+
 print("=" * 60)
 TOTAL = ea.count("\n")
 print("AUDIT-EX1 execution-safety checks: %d checks, failures: %d" % (CHECKS[0], len(FAILURES)))
