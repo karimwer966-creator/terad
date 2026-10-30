@@ -62,6 +62,10 @@ iCustom(_Symbol,_Period,InpIndicatorName)   // بلا أي إدخال
 | تُبقي إعدادات المؤشر افتراضية | السطر التشخيصي في الـheartbeat يصف **نفس** النسخة التي يتداولها الـEA |
 | تُغيّر `InpMinConfidenceScore` على الشارت | اللوحة تصف إعداداتك، والـEA يتداول 75، و`closest rejection` قد يصف النسخة الأخرى |
 
+**للقراءة فقط:** `docs/QSMC_CHART_READING_AR.md` يشرح معنى كل نص على الشارت، وترتيب سلطة
+الطبقات (`PRIMARY > SCENARIO > RXN/WATCH`)، ومعنى `STATUS/PRIMARY/INVALIDATION`، وإعداد
+`presets/QSMC_clean_chart.set` لشارت نظيف.
+
 **الإجراء الإنتاجي:** إما (أ) لا تغيّر إعدادات المؤشر إطلاقًا ما دام الـEA يعمل، أو (ب) شغّل
 الـEA على شارت مستقل برمز/فريم منفصلين عن شارت المراقبة، واعتبر سطر `indicator verdict` في
 الـheartbeat **استشاريًا** لا حكمًا نهائيًا. هذا قيد موثّق، لا عطل خفي.
