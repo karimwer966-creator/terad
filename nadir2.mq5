@@ -871,7 +871,7 @@ input int    InpWGMinEvidenceScore   = 68;    // evidence floor for the evidence
 input double InpWGMinRoomATR         = 1.0;   // room to the opposing zone, in ATR units
 input group "====== Scalping Strategies (AUDIT-SC1, M1-M5, display only, advisory) ======"
 input bool   InpEnableScalping           = false; // overlay switch: six scalping strategies
-input bool   InpScalpShowOnDashboard     = false; // RESERVED: no scalping row exists in the tooltip yet (doc 11.12)
+input bool   InpScalpShowOnDashboard     = false; // INERT - this input changes NOTHING: RESERVED: no scalping row exists in the tooltip yet (doc 11.12)
 input int    InpScalpWeightMomentum      = 20;    // SC-MOM  closed-bar displacement burst
 input int    InpScalpWeightEdge          = 20;    // SC-EDGE zone-edge fade with MR stretch
 input int    InpScalpWeightSilverBullet  = 15;    // SC-SB   inside a resolved SB window
@@ -1166,12 +1166,12 @@ input bool InpShowAIDashboard = true;
 input bool InpDashboardFullWidth = false;      // v6.6.8: OFF = compact card (does not cover the chart); ON = wide strip
 input int  InpDashboardMaxRows   = 6;          // Rows drawn on the card (3-10); everything else stays in the hover tooltip
 input int  InpDashboardMaxWidthPx= 430;        // Pixel width cap for the compact card; the wide mode is capped at 900
-input bool InpDockDashboard = true;            // Legacy positioning setting; compact Core panel is left-docked
+input bool InpDockDashboard = true;            // INERT - this input changes NOTHING: Legacy positioning setting; compact Core panel is left-docked
 input bool InpDashboardCollapsible = true;     // Click Core title row to show/hide the three detail rows
 input bool InpShowMTFPanel = true;   // INERT: nothing reads it (doc 11.14)
 input bool InpShowTradeBox = true;
 input group "====== v6.1.3 Chart Layout (panels / labels) ======"
-input bool   InpPanelsStartCollapsed   = true;  // Legacy setting; Core details always start collapsed
+input bool   InpPanelsStartCollapsed   = true;  // INERT - this input changes NOTHING: Legacy setting; Core details always start collapsed
 input int    InpPanelReserveBars       = 30;    // Newest visible candles no panel may ever cover
 input int    InpPanelIdleMaxHeightPct  = 15;   // INERT: nothing reads it (doc 11.14)
 input bool   InpPanelsAvoidTradeLevels = true;  // Keep panels clear of the terminal's order/position labels
@@ -1233,7 +1233,7 @@ input group "====== DEBUGGING ======"
 input bool InpShowDebugAlerts = false;
 input bool InpLogSignalDetails = true;
 input group "====== SIGNAL GATE AUDIT (why is there no signal?) ======"
-input bool InpShowGateAudit = true;        // RESERVED: no dashboard row yet; the audit prints via InpGateAuditLogEveryBars (doc 11.12)
+input bool InpShowGateAudit = true;        // INERT - this input changes NOTHING: RESERVED: no dashboard row yet; the audit prints via InpGateAuditLogEveryBars (doc 11.12)
 input int  InpGateAuditLogEveryBars = 0;   // log the audit every N closed bars (0 = off)
 input group "====== REAL-TIME MODE ======"
 input bool InpRealTimeZones = true;
@@ -1250,7 +1250,7 @@ input bool InpUseRetestLifecycle = true;
 input double InpInvalidateBufferATR = 0.3;
 input bool InpAlertOnSetupReady = false;
 input bool InpShowEntryPreview = true; // live entry preview on retest; non-authoritative
-input bool InpAlertOnEntryPreview = true; // legacy template field; live PREVIEW is chart-only (closed-bar alerts only)
+input bool InpAlertOnEntryPreview = true; // INERT - this input changes NOTHING: legacy template field; live PREVIEW is chart-only (closed-bar alerts only)
 input bool InpInvalidateOnOppositeMSS = true; // closed opposite MSS cancels active setup and releases opposite scan
 input group "====== MTF EXECUTION ENTRY (TACTICAL, NON-AUTHORITATIVE) ======"
 input bool InpUseMTFExecutionEntry = true;
@@ -1413,7 +1413,7 @@ input group "====== v5.8.0 ENTRY QUALITY ENGINE ======"
 // Transparent soft-score model (Phase 21). The hard gates remain the
 // existing causal/retest/confirmation architecture and are mirrored,
 // never duplicated. Soft scores only RANK valid candidates.
-input bool   InpShowEntryQualityPanel = true;   // RESERVED: those rows are not built yet (doc 11.12)
+input bool   InpShowEntryQualityPanel = true;   // INERT - this input changes NOTHING: RESERVED: those rows are not built yet (doc 11.12)
 input double InpQualityHighThreshold  = 75.0;   // final blend >= this  -> HIGH_QUALITY
 input double InpQualityAPlusThreshold = 88.0;   // final blend >= this  -> A_PLUS
 
@@ -5243,8 +5243,7 @@ bool IsInstitutionalLocation(const bool is_buy,const double zone_top,const doubl
 void PushTarget(STarget &arr[],STarget &t);
 bool GetClosedCurrentDayHighLow(double &day_high,double &day_low);
 double DirectionalRR(const bool is_buy,const double entry,const double sl,const double target);
-bool ValidateTargetGeometry(const bool is_buy,const double entry,const double sl,
-                            const double tp1,const double tp2,const double tp3);
+bool ValidateTargetGeometry(const bool is_buy,const double entry,const double sl,const double tp1,const double tp2,const double tp3);
 double NearestOpposingBarrier(const double from,const bool is_buy,string &type_out,
                                string &source_event_id,int &source_bar,
                                const datetime model_boundary=0);
@@ -5269,11 +5268,15 @@ string SignalGateSourceLine();
 string SignalGateRXNLine();   // v6.5.0 Reaction Signal Layer funnel (display only)
 string GateAuditTopBlocker();
 string GateAuditTopReason();
-// v6.6.10 DIAGNOSTIC BRIDGE (read-only): the indicator publishes its own
-// verdict on the closed bar as terminal globals, so the execution companion
-// can name the blocker instead of saying only "no signal".
+// v6.6.10 DIAGNOSTIC BRIDGE (read-only): the closed-bar verdict is published as terminal globals, so the companion can name the blocker.
 int    DiagBlockerCode(const string key);
 void   DiagPublishCoreState(const int closed);
+// AUDIT-TH1: the signal path gates on Eff*() (STRICT inputs or PRACTICAL floors), so
+// any diagnostic REPORTING a threshold must call the same function, not the raw input.
+int    EffMinConfidenceScore();
+int    EffMinReliability();
+double EffMinRR1();
+double EffMaxStopATR();
 // v6.6.11 GATE PROFILER (read-only): how far each candidate was from passing.
 void   GateProfileReset();
 void   GateProfileNote(const string what,const double value);
@@ -5281,15 +5284,12 @@ void   GateProfileNeed(const string what,const double short_by);
 void   GateProfilePublish(const int closed);
 string AlertWhyNoPopup(const int closed,const datetime bar_time);
 int MTFAlignmentPercent();
-// v6.5.1 MTF AUDIT: the alignment vector used to be filled only inside
-// DrawMTFPanel(), so a consumer on the signal path (PMI_BuildSweep) and the
-// dashboard read zero-initialised state whenever the panel was hidden.
-// Refresh is now a data-path function, independent of panel visibility.
+// v6.5.1 MTF AUDIT: the alignment vector was filled only inside DrawMTFPanel(), so the
+// signal path and the dashboard read zero-initialised state whenever it was hidden.
 void   MTF_RefreshAlignment(const bool force);
 int    MTF_KnownCount();
 int    MTF_UpCount();
-// v6.5.1 DATA HEALTH (F-06): one symbol-level verdict built from the detectors
-// that already exist, plus the four conditions nothing covered before.
+// v6.5.1 DATA HEALTH (F-06): one symbol-level verdict from the existing detectors plus four uncovered conditions.
 int    QSMC_DataHealthLevel();
 void   QSMC_DrawDataHealthBanner(const string reason);
 void   QSMC_ClearDataHealthBanner();
@@ -14162,7 +14162,7 @@ void SigLog_AddCore(const SConfirmedSignalJournalEntry &je,const int idx,const i
    double risk=MathAbs(je.entry-je.stop_loss);
    double rr1=(risk>0.0 ? MathAbs(je.target1-je.entry)/risk : 0.0);
    r.score=(same ? g_trade_setup.confidence : -1);
-   r.score_min=InpMinConfidenceScore;
+   r.score_min=EffMinConfidenceScore();
    r.grade=(same ? g_trade_setup.quality_grade : "");
    r.reliability=(same ? g_trade_setup.reliability : -1);
    if(same && g_trade_setup.market_regime!="") r.regime_score=g_trade_setup.market_regime;
@@ -14173,15 +14173,15 @@ void SigLog_AddCore(const SConfirmedSignalJournalEntry &je,const int idx,const i
    SigLog_GateAdd(g,nf,ff,"causal_chain",1,"");
    SigLog_GateAdd(g,nf,ff,(InpUseRetestLifecycle ? "retest_close_holds" : "next_bar_confirm"),1,"");
    if(same)
-      SigLog_GateAdd(g,nf,ff,"confidence>="+IntegerToString(InpMinConfidenceScore),
-                     (g_trade_setup.confidence>=InpMinConfidenceScore ? 1 : 0),IntegerToString(g_trade_setup.confidence));
+      SigLog_GateAdd(g,nf,ff,"confidence>="+IntegerToString(EffMinConfidenceScore()),
+                     (g_trade_setup.confidence>=EffMinConfidenceScore() ? 1 : 0),IntegerToString(g_trade_setup.confidence));
    if(same)
-      SigLog_GateAdd(g,nf,ff,"reliability>="+IntegerToString(InpMinReliability),
-                     (g_trade_setup.reliability>=InpMinReliability ? 1 : 0),IntegerToString(g_trade_setup.reliability));
-   SigLog_GateAdd(g,nf,ff,"rr1>="+DoubleToString(InpMinRR1,2),(rr1+1e-9>=InpMinRR1 ? 1 : 0),DoubleToString(rr1,2));
+      SigLog_GateAdd(g,nf,ff,"reliability>="+IntegerToString(EffMinReliability()),
+                     (g_trade_setup.reliability>=EffMinReliability() ? 1 : 0),IntegerToString(g_trade_setup.reliability));
+   SigLog_GateAdd(g,nf,ff,"rr1>="+DoubleToString(EffMinRR1(),2),(rr1+1e-9>=EffMinRR1() ? 1 : 0),DoubleToString(rr1,2));
    if(r.atr>0.0)
-      SigLog_GateAdd(g,nf,ff,"stop_atr<="+DoubleToString(InpMaxStopATR,2),
-                     (risk<=InpMaxStopATR*r.atr+1e-9 ? 1 : 0),DoubleToString(risk/r.atr,2));
+      SigLog_GateAdd(g,nf,ff,"stop_atr<="+DoubleToString(EffMaxStopATR(),2),
+                     (risk<=EffMaxStopATR()*r.atr+1e-9 ? 1 : 0),DoubleToString(risk/r.atr,2));
    if(g_is_backtest && InpIgnoreSpreadInBacktest)
       SigLog_GateAdd(g,nf,ff,"spread<="+IntegerToString(InpMaxSpreadPts),-1,"backtest");
    else if(r.spread_pts>=0)
@@ -14997,8 +14997,8 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    SigLog_Init();
    if(InpSigLogCSV)
       Print(">>> ",QSMC_VERSION_TEXT," Signal outcome log: ON | file ",SigLog_FileName(),
-            (InpSigLogCommonFolder?" (Common\\Files)":" (MQL5\\Files)"),
-            " | outcomes from later closed bars only | observed results, not a forecast");
+            (InpSigLogCommonFolder?" (Common\\Files)":" (MQL5\\Files)")," | entry model: ",
+            (InpSigLogEntryRef==SIGLOG_ENTRY_PUBLISHED?"LIMIT at the published zone edge - these rows canNOT describe a market-execution EA":"MARKET at the signal bar close")," | outcomes from later closed bars only | observed results, not a forecast");
    if(InpSigLogRunSelfTest)
    {
       if(SigLog_SelfTest())
