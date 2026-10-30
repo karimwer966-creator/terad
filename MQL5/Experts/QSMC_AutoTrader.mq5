@@ -30,6 +30,15 @@
 //|  - It refuses a signal with no stop, a stop on the wrong side, a  |
 //|    stop wider than InpMaxStopPoints, or geometry the broker's     |
 //|    stops level rejects. No stop means no trade, ever.             |
+//|  - It refuses a plan whose reward:risk has already collapsed at   |
+//|    the price it would actually pay (InpMinRRAtFill): the          |
+//|    indicator approved RR at its zone edge, market execution does  |
+//|    not get to keep that number for free.                          |
+//|  - A server refusal is classified: transient ones (requote,       |
+//|    price changed/off, timeout, connection, busy) are retried on   |
+//|    the next poll up to InpOrderRetryMax, permanent ones abandon   |
+//|    the signal. Neither path marks a good signal "done" by        |
+//|    accident, and neither can flood the server.                    |
 //|  - It refuses to exceed InpMaxRiskPercent (hard ceiling = 1% of    |
 //|    equity) or InpMaxOpenPositions.                                |
 //|  - It stops opening trades for the rest of the day after a        |
@@ -190,6 +199,13 @@ input int    InpMaxSignalAgeBars     = 2;      // ignore a signal older than thi
 input int    InpMinStopPoints        = 20;     // refuse a stop closer than this
 input int    InpMaxStopPoints        = 5000;   // refuse a stop wider than this
 input bool   InpCloseOnOpposite      = false;  // close this magic's position on an opposite signal
+// The indicator validates RR at its PLANNED entry, which is a zone edge. This EA
+// executes at MARKET, so by the time the order is sent the remaining reward:risk
+// can be a fraction of what the gate approved. InpMinRRAtFill re-checks RR at the
+// price actually on the ticket; 0 disables the check (and restores the old
+// behaviour, where a plan could be chased down to almost nothing).
+input double InpMinRRAtFill          = 1.00;   // refuse when reward:risk at the CURRENT price is below this; 0 = off
+input int    InpOrderRetryMax        = 3;      // transient order failures tolerated per signal before it is abandoned
 
 //--- 5. runtime ------------------------------------------------------
 input int    InpPollSeconds          = 2;      // timer period, seconds
@@ -228,6 +244,20 @@ datetime  g_last_heartbeat=0;
 bool      g_heartbeat_first=true;
 bool      g_last_copy_ok=false;
 
+// Transient order-failure bookkeeping: which signal was refused by the SERVER
+// (not by a gate), and how many times. A permanent retcode never retries; a
+// transient one retries on the next poll, bounded by InpOrderRetryMax and by
+// InpMaxSignalAgeBars, so a broken broker cannot turn into an order flood.
+string    g_retry_key="";
+int       g_retry_count=0;
+
+// Break-even throttle: PositionModify used to be re-sent on EVERY tick while the
+// broker kept refusing it, with the failure silent. One ticket, one attempt per
+// pause, and the reason printed once.
+ulong     g_be_ticket=0;
+datetime  g_be_last_try=0;
+ulong     g_be_warned_ticket=0;
+
 struct SQsigSignal
   {
    bool      valid;
@@ -254,8 +284,36 @@ string SignalKey(const datetime bar_time,const int dir)
 
 string GlobName(const datetime bar_time,const int dir)
   {
-   return ("QSMC_AT_"+IntegerToString(InpMagic)+"_"+IntegerToString((long)bar_time)+"_"+
+   // The SYMBOL is part of the name, and that is a defect fix, not decoration.
+   // Terminal globals are shared by every chart in the terminal, while this EA
+   // is normally attached to several charts with the same InpMagic. Bars align
+   // across symbols, so two charts could produce the same bar time and the same
+   // direction - and a name without the symbol made the second chart read the
+   // first chart's signal as "already seen" and silently drop a real trade.
+   return ("QSMC_AT_"+IntegerToString(InpMagic)+"_"+_Symbol+"_"+IntegerToString((long)bar_time)+"_"+
            (dir>0 ? "B" : "S"));
+  }
+
+// A transient retcode means the REQUEST never became an ORDER (requote, price
+// moved, no quotes, timeout, dropped connection, broker busy). Those are safe to
+// retry on the next poll: the position count is re-checked before every send, so
+// a request that did reach the server cannot be opened twice by the retry.
+// Anything else (no money, wrong stops, trade disabled, volume invalid) is a
+// decision, and re-sending it every 2 seconds only hides the reason.
+bool RetcodeIsTransient(const uint rc)
+  {
+   switch((int)rc)
+     {
+      case TRADE_RETCODE_REQUOTE:
+      case TRADE_RETCODE_PRICE_CHANGED:
+      case TRADE_RETCODE_PRICE_OFF:
+      case TRADE_RETCODE_TIMEOUT:
+      case TRADE_RETCODE_CONNECTION:
+      case TRADE_RETCODE_TOO_MANY_REQUESTS:
+      case TRADE_RETCODE_FROZEN:
+         return true;
+     }
+   return false;
   }
 
 bool SeenBefore(const string key,const datetime bar_time,const int dir)
@@ -603,6 +661,25 @@ void HandleSignal(SQsigSignal &s)
       g_refused++;
       return;
      }
+   // ... and the plan must still be worth taking at the price that will actually
+   // be on the ticket. The indicator's RR gate measured reward:risk from ITS
+   // planned entry (a zone edge); market execution can erase that edge, and
+   // nothing downstream re-measured it. Transient on purpose: if price returns
+   // towards the plan inside InpMaxSignalAgeBars the signal becomes tradable
+   // again, and if it does not, the signal simply ages out.
+   if(InpMinRRAtFill>0.0)
+     {
+      double reward_at_fill=MathAbs(s.tp-price);
+      double risk_at_fill=MathAbs(price-s.sl);
+      double rr_at_fill=(risk_at_fill>0.0 ? reward_at_fill/risk_at_fill : 0.0);
+      if(rr_at_fill<InpMinRRAtFill)
+        {
+         Note(key,"reward:risk at the CURRENT price is "+DoubleToString(rr_at_fill,2)+
+              " < InpMinRRAtFill="+DoubleToString(InpMinRRAtFill,2)+
+              " - the plan was priced at "+DoubleToString(s.entry,_Digits)+", not here");
+         return;
+        }
+     }
 
    // --- transient refusals: retried until the signal ages out --------
    if(!SpreadOK(sym))
@@ -678,7 +755,18 @@ void HandleSignal(SQsigSignal &s)
       if(g_trade.PositionClose(opposite))
          Print("[QSMC_AT] closed opposite position #",IntegerToString((long)opposite));
       else
-         Note(key,"closing the opposite position failed");
+        {
+         // Not a note-and-continue any more. Continuing here opened a SECOND
+         // exposure with the opposite sign while the operator had asked for the
+         // old one to be closed: on a hedging account that is two live positions
+         // and on a netting account an order that may silently cancel the
+         // exposure the EA thinks it just opened. Retry on the next poll.
+         Note(key,"opposite position #"+IntegerToString((long)opposite)+
+              " could not be closed (retcode "+IntegerToString((long)g_trade.ResultRetcode())+
+              ") - no new position opened on top of it");
+         g_refused++;
+         return;
+        }
      }
 
    bool ok=false;
@@ -698,10 +786,35 @@ void HandleSignal(SQsigSignal &s)
      }
    else
      {
-      Print("[QSMC_AT] ORDER FAILED retcode=",IntegerToString((long)g_trade.ResultRetcode()),
-            " ",g_trade.ResultRetcodeDescription());
-      // Not marked: the next poll may succeed if the refusal was transient.
-      MarkSeen(key,s.bar_time,s.dir);
+      uint rc=(uint)g_trade.ResultRetcode();
+      Print("[QSMC_AT] ORDER FAILED ",DirText(s.dir)," ",sym," retcode=",
+            IntegerToString((long)rc)," ",g_trade.ResultRetcodeDescription(),
+            (RetcodeIsTransient(rc) ? " | transient: retried on the next poll"
+                                    : " | permanent: this signal is abandoned"));
+      // The old code MARKED THE SIGNAL SEEN HERE while its own comment said the
+      // opposite ("Not marked: the next poll may succeed if the refusal was
+      // transient"). One requote - the most common server answer on a fast bar -
+      // therefore destroyed a valid signal for good, and the journal showed
+      // "signals 1, sent 0, refused 0" with no order and no retry.
+      if(!RetcodeIsTransient(rc))
+        {
+         // Counted as a refusal, not as "no signal": the heartbeat's "refused"
+         // number used to stay 0 while orders were failing, which read as
+         // "nothing was ever evaluated".
+         MarkSeen(key,s.bar_time,s.dir);
+         g_refused++;
+        }
+      else
+        {
+         if(key!=g_retry_key) { g_retry_key=key; g_retry_count=0; }
+         g_retry_count++;
+         if(g_retry_count>=(int)MathMax(1,InpOrderRetryMax))
+           {
+            Print("[QSMC_AT] giving up on ",key," after ",IntegerToString(g_retry_count),
+                  " transient failures - the signal is marked seen so it cannot flood the server");
+            MarkSeen(key,s.bar_time,s.dir);
+           }
+        }
      }
   }
 
@@ -1038,8 +1151,23 @@ void ManageOpenPositions()
       if(!buy && sl<=entry) continue;
       double new_sl=NormalizeDouble(entry,_Digits);
       if(!StopsDistanceOK(_Symbol,cur,new_sl,0.0)) continue;
+      // One attempt per ticket per 30 s. The old loop re-sent PositionModify on
+      // every tick while the broker kept refusing it and printed nothing on
+      // failure, so a refused break-even looked like "the EA does not manage
+      // stops" and the server was asked hundreds of times an hour.
+      if(ticket==g_be_ticket && (long)(TimeCurrent()-g_be_last_try)<30) continue;
+      g_be_ticket=ticket;
+      g_be_last_try=TimeCurrent();
       if(g_trade.PositionModify(ticket,new_sl,tp))
          Print("[QSMC_AT] stop moved to break-even on #",IntegerToString((long)ticket));
+      else if(g_be_warned_ticket!=ticket)
+        {
+         g_be_warned_ticket=ticket;
+         Print("[QSMC_AT] break-even MODIFY REFUSED on #",IntegerToString((long)ticket),
+               " retcode=",IntegerToString((long)g_trade.ResultRetcode()),
+               " ",g_trade.ResultRetcodeDescription(),
+               " | the stop is unchanged and is retried every 30 s, never widened");
+        }
      }
   }
 
@@ -1072,6 +1200,11 @@ int OnInit()
    if(InpMinStopPoints<0 || InpMaxStopPoints<=InpMinStopPoints)
      {
       Print("[QSMC_AT] stop bounds are inconsistent");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpMinRRAtFill<0.0 || InpOrderRetryMax<1)
+     {
+      Print("[QSMC_AT] InpMinRRAtFill must be >= 0 (0 = off) and InpOrderRetryMax >= 1");
       return INIT_PARAMETERS_INCORRECT;
      }
 

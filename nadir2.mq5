@@ -5243,8 +5243,7 @@ bool IsInstitutionalLocation(const bool is_buy,const double zone_top,const doubl
 void PushTarget(STarget &arr[],STarget &t);
 bool GetClosedCurrentDayHighLow(double &day_high,double &day_low);
 double DirectionalRR(const bool is_buy,const double entry,const double sl,const double target);
-bool ValidateTargetGeometry(const bool is_buy,const double entry,const double sl,
-                            const double tp1,const double tp2,const double tp3);
+bool ValidateTargetGeometry(const bool is_buy,const double entry,const double sl,const double tp1,const double tp2,const double tp3);
 double NearestOpposingBarrier(const double from,const bool is_buy,string &type_out,
                                string &source_event_id,int &source_bar,
                                const datetime model_boundary=0);
@@ -5269,11 +5268,15 @@ string SignalGateSourceLine();
 string SignalGateRXNLine();   // v6.5.0 Reaction Signal Layer funnel (display only)
 string GateAuditTopBlocker();
 string GateAuditTopReason();
-// v6.6.10 DIAGNOSTIC BRIDGE (read-only): the indicator publishes its own
-// verdict on the closed bar as terminal globals, so the execution companion
-// can name the blocker instead of saying only "no signal".
+// v6.6.10 DIAGNOSTIC BRIDGE (read-only): the closed-bar verdict is published as terminal globals, so the companion can name the blocker.
 int    DiagBlockerCode(const string key);
 void   DiagPublishCoreState(const int closed);
+// AUDIT-TH1: the signal path gates on Eff*() (STRICT inputs or PRACTICAL floors), so
+// any diagnostic REPORTING a threshold must call the same function, not the raw input.
+int    EffMinConfidenceScore();
+int    EffMinReliability();
+double EffMinRR1();
+double EffMaxStopATR();
 // v6.6.11 GATE PROFILER (read-only): how far each candidate was from passing.
 void   GateProfileReset();
 void   GateProfileNote(const string what,const double value);
@@ -5281,15 +5284,12 @@ void   GateProfileNeed(const string what,const double short_by);
 void   GateProfilePublish(const int closed);
 string AlertWhyNoPopup(const int closed,const datetime bar_time);
 int MTFAlignmentPercent();
-// v6.5.1 MTF AUDIT: the alignment vector used to be filled only inside
-// DrawMTFPanel(), so a consumer on the signal path (PMI_BuildSweep) and the
-// dashboard read zero-initialised state whenever the panel was hidden.
-// Refresh is now a data-path function, independent of panel visibility.
+// v6.5.1 MTF AUDIT: the alignment vector was filled only inside DrawMTFPanel(), so the
+// signal path and the dashboard read zero-initialised state whenever it was hidden.
 void   MTF_RefreshAlignment(const bool force);
 int    MTF_KnownCount();
 int    MTF_UpCount();
-// v6.5.1 DATA HEALTH (F-06): one symbol-level verdict built from the detectors
-// that already exist, plus the four conditions nothing covered before.
+// v6.5.1 DATA HEALTH (F-06): one symbol-level verdict from the existing detectors plus four uncovered conditions.
 int    QSMC_DataHealthLevel();
 void   QSMC_DrawDataHealthBanner(const string reason);
 void   QSMC_ClearDataHealthBanner();
@@ -14162,7 +14162,7 @@ void SigLog_AddCore(const SConfirmedSignalJournalEntry &je,const int idx,const i
    double risk=MathAbs(je.entry-je.stop_loss);
    double rr1=(risk>0.0 ? MathAbs(je.target1-je.entry)/risk : 0.0);
    r.score=(same ? g_trade_setup.confidence : -1);
-   r.score_min=InpMinConfidenceScore;
+   r.score_min=EffMinConfidenceScore();
    r.grade=(same ? g_trade_setup.quality_grade : "");
    r.reliability=(same ? g_trade_setup.reliability : -1);
    if(same && g_trade_setup.market_regime!="") r.regime_score=g_trade_setup.market_regime;
@@ -14173,15 +14173,15 @@ void SigLog_AddCore(const SConfirmedSignalJournalEntry &je,const int idx,const i
    SigLog_GateAdd(g,nf,ff,"causal_chain",1,"");
    SigLog_GateAdd(g,nf,ff,(InpUseRetestLifecycle ? "retest_close_holds" : "next_bar_confirm"),1,"");
    if(same)
-      SigLog_GateAdd(g,nf,ff,"confidence>="+IntegerToString(InpMinConfidenceScore),
-                     (g_trade_setup.confidence>=InpMinConfidenceScore ? 1 : 0),IntegerToString(g_trade_setup.confidence));
+      SigLog_GateAdd(g,nf,ff,"confidence>="+IntegerToString(EffMinConfidenceScore()),
+                     (g_trade_setup.confidence>=EffMinConfidenceScore() ? 1 : 0),IntegerToString(g_trade_setup.confidence));
    if(same)
-      SigLog_GateAdd(g,nf,ff,"reliability>="+IntegerToString(InpMinReliability),
-                     (g_trade_setup.reliability>=InpMinReliability ? 1 : 0),IntegerToString(g_trade_setup.reliability));
-   SigLog_GateAdd(g,nf,ff,"rr1>="+DoubleToString(InpMinRR1,2),(rr1+1e-9>=InpMinRR1 ? 1 : 0),DoubleToString(rr1,2));
+      SigLog_GateAdd(g,nf,ff,"reliability>="+IntegerToString(EffMinReliability()),
+                     (g_trade_setup.reliability>=EffMinReliability() ? 1 : 0),IntegerToString(g_trade_setup.reliability));
+   SigLog_GateAdd(g,nf,ff,"rr1>="+DoubleToString(EffMinRR1(),2),(rr1+1e-9>=EffMinRR1() ? 1 : 0),DoubleToString(rr1,2));
    if(r.atr>0.0)
-      SigLog_GateAdd(g,nf,ff,"stop_atr<="+DoubleToString(InpMaxStopATR,2),
-                     (risk<=InpMaxStopATR*r.atr+1e-9 ? 1 : 0),DoubleToString(risk/r.atr,2));
+      SigLog_GateAdd(g,nf,ff,"stop_atr<="+DoubleToString(EffMaxStopATR(),2),
+                     (risk<=EffMaxStopATR()*r.atr+1e-9 ? 1 : 0),DoubleToString(risk/r.atr,2));
    if(g_is_backtest && InpIgnoreSpreadInBacktest)
       SigLog_GateAdd(g,nf,ff,"spread<="+IntegerToString(InpMaxSpreadPts),-1,"backtest");
    else if(r.spread_pts>=0)

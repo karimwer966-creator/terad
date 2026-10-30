@@ -108,6 +108,16 @@ jobs:
       - name: Execution companion contract (buffer map, switches, sizing)
         run: python3 tools/test_autotrader_contract.py 2>&1 | tee out/test_autotrader.log
 
+      # AUDIT-EX1. The contract above proves the companion ships inert and sizes
+      # down; it did not cover five defects in the SEND PATH itself: a failed
+      # order marked the signal seen (one requote killed it), the terminal-global
+      # key carried no symbol (two charts suppressed each other), RR was never
+      # re-measured at the price actually paid, a failed close of the opposite
+      # position still opened a second exposure, and a refused break-even modify
+      # was re-sent on every tick with the failure silent.
+      - name: Execution safety (retry class, symbol-scoped keys, RR at fill, BE throttle)
+        run: python3 tools/test_execution_safety.py 2>&1 | tee out/test_execution_safety.log
+
       - name: Diagnostic bridge (the indicator's verdict -> the companion's heartbeat)
         run: python3 tools/test_diag_bridge.py 2>&1 | tee out/test_diag_bridge.log
 

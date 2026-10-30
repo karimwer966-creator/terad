@@ -392,7 +392,7 @@ check("L7675" in DOCX, "K the doc cites the cap value's line (L7675)")
 check("L1285" in DOCX, "K the doc cites the cap input's line (L1285)")
 check(re.search(r"run: python3 tools/test_declutter_cap\.py", WFX),
       "K CI runs tools/test_declutter_cap.py")
-check(WFX.count("- name: ") == 36, "K the workflow has 36 named steps",
+check(WFX.count("- name: ") == 37, "K the workflow has 37 named steps",
       "got %d" % WFX.count("- name: "))
 check("AUDIT-D1" in WFX, "K the CI step names the audit it enforces")
 
