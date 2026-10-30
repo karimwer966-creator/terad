@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-QSMC v6.6.9 - RELEASE GATE
+QSMC v6.6.13 - RELEASE GATE
 
 A go / no-go check for taking this layer to a live chart. It does not re-check
 what static_check.py already checks (dialect rules, includes, balance); it
@@ -99,6 +99,36 @@ else:
                  % (title.group(1), title.group(2), title.group(3),
                     triple[0], triple[1], triple[2]))
 
+    # G1b - the half of G1 that could not see drift AHEAD of the triple. A comment
+    # may name an older release (that is when the work landed); nothing may name a
+    # newer one, because that ships code labelled with a version that does not exist
+    # yet - and the operator's "identify a stale build by its banner" rule dies with
+    # it. This is the check docs/QSMC_V6.6.10_TACTICAL_AUTHORITY.md 9.2 asked for.
+    build = (int(triple[0]), int(triple[1]), int(triple[2]))
+    ahead, newest = [], build
+    scan = [os.path.join(ROOT, "nadir2.mq5")]
+    for d in LAYER_DIRS:
+        if os.path.isdir(d):
+            scan += [os.path.join(d, f) for f in sorted(os.listdir(d))
+                     if f.lower().endswith((".mq5", ".mqh"))]
+    for path in scan:
+        if not os.path.isfile(path):
+            continue
+        text = read(path)
+        for m in re.finditer(r"\bv(\d+)\.(\d+)\.(\d+)\b", text):
+            got = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            if got > newest:
+                newest = got
+            if got > build:
+                ahead.append("%s: %s" % (os.path.basename(path), m.group(0)))
+    if ahead:
+        fail("G1 a marker claims a version AHEAD of the build (%s) while QSMC_VERSION_TEXT "
+             "says v%s.%s.%s - the next reader would trust the wrong number"
+             % (", ".join(sorted(set(ahead))[:6]), triple[0], triple[1], triple[2]))
+    else:
+        NOTES.append("G1 no in-code marker is ahead of v%s.%s.%s (newest seen v%d.%d.%d)"
+                     % (triple[0], triple[1], triple[2], newest[0], newest[1], newest[2]))
+
 # ---------------------------------------------------------------- G2 layout
 NEEDED = (["QSMC_%s.mqh" % n for n in
             ("Types", "Structure", "EarlyBreakDetector", "MarketData", "Zones", "ZoneScorer",
@@ -154,6 +184,203 @@ for n in QUIET_FALSE:
              "per-bar logs and per-bar CSV writes are how a live chart dies of "
              "attention" % (n, defaults[n].strip()))
 NOTES.append("G3 verbose log + CSV logging default to false")
+
+# ------------------------------------------------- G3b inputs that do nothing
+# A switch the operator can flip with no effect is worse than a missing feature: it
+# is a lie in the properties dialog. Detecting one needs the CODE, not the file - and
+# the order of stripping matters. nadir2.mq5:635 carries `QSMC/*.mqh` inside a `//`
+# comment, so stripping block comments first deletes 21 000 lines and reports every
+# input as dead. Strings, then line comments, then block comments.
+DEAD_ALLOWED = {
+    "InpDockDashboard": "legacy, and its own comment says so",
+    "InpPanelsStartCollapsed": "legacy, and its own comment says so",
+    "InpAlertOnEntryPreview": "legacy, and its own comment says so",
+    "InpScalpShowOnDashboard": "RESERVED: no scalping tooltip row exists yet (doc 11.12)",
+    "InpShowGateAudit": "RESERVED: no dashboard row exists yet; the audit prints instead",
+    "InpShowEntryQualityPanel": "RESERVED: those rows are not built (doc 11.12)",
+    "InpMinEntryOBStrength": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpMaxOBDistATR": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpASCIIBar": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpPanelRightPad": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpDashMode": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpShowMTFPanel": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpPanelIdleMaxHeightPct": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpShowTopDownPanel": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpShowPerfMeter": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpUseAdvancedSweepEngine": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpSweepEntryMinScore": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpSweepEntryMaxBarsAfterSweep": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpSweepEntryMinRR": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpUseMergeSortRanking": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpUseMemoizedDP": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpUseFibonacciDP": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpUseCausalGraphOptimizer": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpUseDijkstraPathSearch": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpUseBellmanFordValidation": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpUseBeamSearch": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpBeamWidth": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpGraphMaxPathHops": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpGraphTemporalPenaltyATR": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpGraphConflictPenalty": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpGraphCausalReward": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpRejectGraphNegativeCycle": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpRequireGraphAgreement": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpUseCausalDPOptimizer": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpAllowFVGEntryZone": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpShowPredictivePanel": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpDockPMIPanel": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpPMIPanelCollapsible": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpPMIPanelX": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpPMIPanelY": "INERT: its only reader was dead code, deleted in doc 11.14",
+    "InpPMIPanelRefreshTicks": "INERT: its only reader was dead code, deleted in doc 11.14",
+}
+_host = read(os.path.join(ROOT, "nadir2.mq5"))
+_code = re.sub(r'"(?:\\.|[^"\\\n])*"', '""', _host)
+_code = re.sub(r"//[^\n]*", "", _code)
+_code = re.sub(r"/\*.*?\*/", "", _code, flags=re.S)
+_read_at = {}
+for _i, _line in enumerate(_code.split("\n")):
+    for _w in set(re.findall(r"[A-Za-z_]\w*", _line)):
+        _read_at.setdefault(_w, []).append(_i)
+_decl = {}
+for _i, _line in enumerate(_host.split("\n")):
+    _m = re.match(r"^[ \t]*(?:sinput|input)[ \t]+(?:group[ \t]+\"[^\"]*\"|"
+                  r"(?:[A-Za-z_]\w*(?:[ \t]*\*)?[ \t]+)+([A-Za-z_]\w*)[ \t]*=)", _line)
+    if _m and _m.group(1):
+        _decl.setdefault(_m.group(1), _i)
+_dead = [n for n, i in _decl.items() if not [j for j in _read_at.get(n, []) if j != i]]
+_unexpected = sorted(n for n in _dead if n not in DEAD_ALLOWED)
+_stale = sorted(n for n in DEAD_ALLOWED if n not in _dead)
+if _unexpected:
+    fail("G3 %s read by nothing but its own declaration - a switch the operator can "
+         "flip with no effect. Wire it, correct its label, or list it in "
+         "DEAD_ALLOWED with a reason" % ", ".join(_unexpected))
+elif _stale:
+    warn("G3 these were listed as dead but are read now: %s - drop them from "
+         "DEAD_ALLOWED" % ", ".join(_stale))
+else:
+    NOTES.append("G3 %d inputs parsed; %d read by nothing, every one of them listed "
+                 "with a reason" % (len(_decl), len(_dead)))
+
+# --------------------------------- G3c inputs read only by dead functions
+# G3b counts ANY read - but a read inside a function that nothing calls can never
+# happen, so the switch is just as inert and the dialog just as misleading.
+#
+# THE FIRST VERSION OF THIS CHECK WAS WRONG, and the way it was wrong is worth
+# keeping. It decided "has a forward declaration" with a line-start regex that also
+# matched `return SigLog_ResName(r.res[k]);` and every other statement that begins
+# at column 0 and ends in `;` - so a function with exactly one call scored 0 calls.
+# It reported 68 dead functions; 95 were really dead and two of the 68 were alive.
+# The purge script trusted it and severed two live functions, which the
+# dangling-reference check caught immediately. The rule below is explicit: a
+# DECLARATION is a statement whose text between the type and the name is only
+# whitespace, `*` or `&`. A call is everything else.
+#
+# At v6.6.13, after the purge in doc 11.14: 0 unreachable free functions.
+_TYPE = (r"(?:static[ \t]+)?(?:void|bool|int|double|string|long|ulong|uint|char|"
+         r"float|datetime|color|uchar|short|ushort)")
+_DECLRE = re.compile(r"[ \t]*" + _TYPE + r"\b[ \t]*[\*&]?[ \t]*$")
+ENTRY_POINTS = {"OnInit", "OnDeinit", "OnCalculate", "OnChartEvent", "OnTimer",
+                "OnTrade", "OnTradeTransaction", "OnTick", "OnBookEvent", "OnTester"}
+_line_start = [0]
+for _i, _ch in enumerate(_code):
+    if _ch == "\n":
+        _line_start.append(_i + 1)
+def _line_of(_p):
+    _lo, _hi = 0, len(_line_start) - 1
+    while _lo < _hi:
+        _mid = (_lo + _hi + 1) // 2
+        if _line_start[_mid] <= _p:
+            _lo = _mid
+        else:
+            _hi = _mid - 1
+    return _lo
+_occ = {}
+for _m in re.finditer(r"(?<![A-Za-z0-9_])([A-Za-z_]\w*)[ \t]*\(", _code):
+    _occ.setdefault(_m.group(1), []).append(_m.start())
+def _is_decl(_p):
+    return _DECLRE.match(_code[_code.rfind("\n", 0, _p) + 1:_p]) is not None
+_defpos = {}
+_depth, _pos = 0, 0
+for _m in re.finditer(r"([A-Za-z_]\w*)[ \t]*\((?:[^(){}]|\([^(){}]*\))*\)[ \t\r\n]*\{", _code):
+    _depth += _code.count("{", _pos, _m.start()) - _code.count("}", _pos, _m.start())
+    _pos = _m.start()
+    if _depth == 0:
+        _defpos.setdefault(_m.group(1), _m.end() - 1)
+_pairs, _stack = {}, []
+for _i, _ch in enumerate(_code):
+    if _ch == "{":
+        _stack.append(_i)
+    elif _ch == "}" and _stack:
+        _pairs[_stack.pop()] = _i
+_dead_fns = {}
+for _n, _brace in _defpos.items():
+    if _n in ENTRY_POINTS:
+        continue
+    # A definition's own signature line also starts with a type, so it is already
+    # classified as a declaration here - do NOT subtract it again, or every
+    # single-call function scores zero and the gate cries wolf.
+    _calls = [p for p in _occ.get(_n, []) if not _is_decl(p)]
+    if not _calls:
+        _dead_fns[_n] = (_line_of(_brace), _line_of(_pairs.get(_brace, _brace)))
+_dead_only = []
+for _n, _dl in _decl.items():
+    _reads = [j for j in _read_at.get(_n, []) if j != _dl]
+    if not _reads:
+        continue
+    if all(any(_dead_fns[f][0] <= r <= _dead_fns[f][1] for f in _dead_fns) for r in _reads):
+        _dead_only.append(_n)
+DELETED_MANIFEST = {
+    "AdvancedPathWeight", "BadgeTabCount", "BadgeTabDashEnabled", "BadgeTabMTFEnabled",
+    "BadgeTabPMIEnabled", "BinarySearchNearestBarrier", "BinarySearchNearestOB",
+    "BlendColor", "BuildAdvancedSweepCandidate", "BuildConfidenceBar",
+    "BuildInstitutionalPatternChecklist", "BuildUnifiedEntryVerdict",
+    "CalculateSetupQualityScore", "CausalEdgeCost", "CausalEdgeSignedWeight",
+    "CausalEvidenceDP", "CoreDashAccent", "CoreDashBiasToken", "CoreDashEventDetails",
+    "CoreDashObservationsLine", "CoreDashZone", "DashLine", "DashPushWrapped",
+    "DrawBadgeTab", "DrawMTFPanel", "DrawTopDownPanel", "DrawUnifiedEntryPanel",
+    "EvaluateStructuralPathDP", "FibDPValue", "FindLastBearishOB", "FindLastBullishOB",
+    "FormatFinalEntryOutput", "GateTxt", "GetBestAdvancedSweepCandidate", "GradeColor",
+    "GraphConfluenceScore", "GreedyFindBestTarget", "InstitutionalBehaviorName",
+    "InstrumentFreezeDistance", "IntegerToBinary", "L_Trim", "LayoutPanelBadge",
+    "MTF_AlignmentText", "MTF_HTFRowIndex", "MTF_SniperDashboardLine", "MVP_Label",
+    "MarkZREEntry", "MemoizedCausalPathScore", "NormText", "NormalizeVolumeToStep",
+    "OppositeBiasPotential", "OptimizeCausalGraphPath", "PMI_CountEvents", "PMI_DrawPanel",
+    "PMI_DrawPanelThrottled", "PMI_FeatureNames", "PMI_FirstBarAtOrAfter",
+    "PMI_HashDoubleArray", "PMI_LiqStatusName", "PMI_Mark", "PMI_PanelLine", "PMI_SelfTest",
+    "PMI_StructDedupeCheckInvariants", "PMI_TreeAxisName", "PctColor",
+    "QSMC_DataHealthLine", "QSMC_DataHealthReason", "QSMC_FitTextPx",
+    "QuantSweepClassLabel", "RXN_DashFull", "RXN_DashMini", "RXN_ExecName", "RXN_LevelFor",
+    "RXN_SelfTest", "RankSetupCandidates", "RepositionDashboard", "ResetCausalPathResult",
+    "RunBeamCausalPath", "RunBellmanFordCausalPath", "RunDijkstraCausalPath",
+    "ScenarioDashCompact", "ScenarioDashLadder", "ScenarioLegStrip",
+    "ScenarioPreviousClosedPeriod", "ScoreAlgo", "ScoreSweepCandidate", "SelectEntryFVG",
+    "SelectEntryOB", "SortSweepCandidates", "TruncateToWidth",
+    "ValidateCausalPathAgreement", "ZRE_DashFull", "ZRE_DashMini", "ZRE_LifecycleName",
+    "ZRE_ScoreZone",
+}
+# The 95 names removed in doc 11.14. A call to one of them is a DANGLING REFERENCE:
+# the function no longer exists, so the code cannot compile. Re-adding a function is
+# fine and passes - only a call with no definition behind it fails. This is the check
+# that would have caught the first, wrong deletion attempt (which severed two live
+# functions and left 90-odd calls behind) before it reached a commit.
+_ghosts = sorted(n for n in DELETED_MANIFEST
+                 if _occ.get(n) and n not in _defpos
+                 and any(not _is_decl(p) for p in _occ[n]))
+if _ghosts:
+    fail("G3 %d call(s) to functions that no longer exist: %s. Either the function "
+         "must come back or the call must go - this does not compile (doc 11.14)"
+         % (len(_ghosts), ", ".join(_ghosts)))
+_body = sum(b - a + 1 for a, b in _dead_fns.values())
+if _dead_fns or _dead_only:
+    fail("G3 %d unreachable free function(s) and %d input(s) read only from inside "
+         "them: %s. Nothing calls this code, so it can only rot - delete it (doc "
+         "11.14 did that once) or wire it" %
+         (len(_dead_fns), len(_dead_only),
+          ", ".join(sorted(_dead_fns)) + ("; inputs: " + ", ".join(_dead_only) if _dead_only else "")))
+else:
+    NOTES.append("G3 no unreachable free functions and no input read only from "
+                 "dead code - the purge in doc 11.14 is still complete")
 
 # --------------------------------------------------------------- G4 no trading
 # Scoped on purpose. The QSMC LAYER (headers + the indicator + the probe) must not

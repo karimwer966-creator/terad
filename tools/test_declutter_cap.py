@@ -88,16 +88,16 @@ def fn_end(start):
 
 # ---------------------------------------------------- measured anchors
 INP_CAP, INP_DECL, INP_SMART = 1285, 1287, 1297
-BANNER = 7901
-EXCESS, OLDEST, COUNT, DELETE = 7921, 7933, 7950, 7966
-SELFTEST, SMART = 8008, 8052
-CAPLINE, OWNEDCALL, EXCESSCALL = 8061, 8067, 8068
-CUT, FAMCALL, LEFTOVER = 8077, 8080, 8091
-FAM_ZONE, FAM_STRUCT, FAM_OB, FAM_FVG = 28721, 28739, 28753, 28786
-STRUCT_LABEL_CALL = 28741
-GUARD, OBS_HOOK, HOOK_PASS, HOOK_FAIL = 15667, 15707, 15711, 15713
-ONCALC, SMART_CALL = 15883, 16356
-DISPLAY_ALLOWS, VISUAL_POLICY = 42068, 42079
+BANNER = 7515
+EXCESS, OLDEST, COUNT, DELETE = 7535, 7547, 7564, 7580
+SELFTEST, SMART = 7622, 7666
+CAPLINE, OWNEDCALL, EXCESSCALL = 7675, 7681, 7682
+CUT, FAMCALL, LEFTOVER = 7691, 7694, 7705
+FAM_ZONE, FAM_STRUCT, FAM_OB, FAM_FVG = 27257, 27275, 27289, 27322
+STRUCT_LABEL_CALL = 27277
+GUARD, OBS_HOOK, HOOK_PASS, HOOK_FAIL = 14919, 14959, 14963, 14965
+ONCALC, SMART_CALL = 15097, 15570
+DISPLAY_ALLOWS, VISUAL_POLICY = 39675, 39686
 
 EXCESS_END, OLDEST_END = fn_end(EXCESS), fn_end(OLDEST)
 COUNT_END, DELETE_END = fn_end(COUNT), fn_end(DELETE)
@@ -110,10 +110,10 @@ CB = body(CAPLINE - 2, LEFTOVER + 3)          # the cap block inside SmartObject
 # against the block with its comments stripped.
 CB_CODE = "\n".join(l.split("//")[0] for l in LINES[CAPLINE - 3:LEFTOVER + 2])
 
-check(EXCESS_END == 7927 and OLDEST_END == 7945 and COUNT_END == 7960
-      and DELETE_END == 8003, "A the four new functions close where this suite says",
+check(EXCESS_END == 7541 and OLDEST_END == 7559 and COUNT_END == 7574
+      and DELETE_END == 7617, "A the four new functions close where this suite says",
       "%d %d %d %d" % (EXCESS_END, OLDEST_END, COUNT_END, DELETE_END))
-check(SELFTEST_END == 8050 and SMART_END == 8116 and GUARD_END == 15714,
+check(SELFTEST_END == 7664 and SMART_END == 7730 and GUARD_END == 14966,
       "A the self-test, SmartObjectCleanup and the hook block close where expected",
       "%d %d %d" % (SELFTEST_END, SMART_END, GUARD_END))
 
@@ -338,23 +338,23 @@ check("tk[1]=true;" in ST, "I DC-9 pins that a taken slot is skipped")
 check("QSMC_OldestSlot(notime,none)!=-1" in ST, "I DC-11 pins the empty list")
 
 # ------------------------------------------------------- J. counts and nothing weakened
-check(len(TEXT.split("\n")) - 1 == 45838, "J the file is 45838 lines",
+check(len(TEXT.split("\n")) - 1 == 43352, "J the file is 43352 lines",
       "got %d" % (len(TEXT.split("\n")) - 1))
-check(TEXT.count("{") == TEXT.count("}") == 3842, "J braces balance at 3842",
+check(TEXT.count("{") == TEXT.count("}") == 3593, "J braces balance at 3593",
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
 check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44, "J still 44 enums",
       "got %d" % len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)))
 check(RAW.replace("\r\n", "").count("\n") == 0, "J every line still ends CRLF")
 check(TEXT.count("#include") == 1, "J still exactly one #include")
-check(TEXT.count("ObjectsDeleteAll(") == 50,
-      "J ObjectsDeleteAll( is at 50: 49 before the fix, minus the cap's call, plus "
+check(TEXT.count("ObjectsDeleteAll(") == 41,
+      "J ObjectsDeleteAll( is at 41: 50 before the purge, minus the 9 calls that lived in dead code, "
       "the two comments that name the old API so the next reader knows what changed",
       "got %d" % TEXT.count("ObjectsDeleteAll("))
 check(TEXT.count("DrawTextLabel(") == 32, "J DrawTextLabel( is untouched at 32",
       "got %d" % TEXT.count("DrawTextLabel("))
 check(TEXT.count("OBJ_HLINE") == 6, "J OBJ_HLINE is untouched at 6",
       "got %d" % TEXT.count("OBJ_HLINE"))
-check(TEXT.count("ObjectCreate(") == 24, "J ObjectCreate( is untouched at 24",
+check(TEXT.count("ObjectCreate(") == 16, "J ObjectCreate( fell 24 -> 16 with the dead renderers",
       "got %d" % TEXT.count("ObjectCreate("))
 check(TEXT.count("PA_ZoneAt(") == 11, "J PA_ZoneAt( is untouched at 11",
       "got %d" % TEXT.count("PA_ZoneAt("))
@@ -363,10 +363,10 @@ J_EXACT = {
     868: "input int    InpWGMinScore           = 60;    // weighted points a candidate needs to be published",
     881: "input int    InpScalpMinScore            = 60;    // weighted points needed to name a scalp",
     889: "input bool   InpEnableDecisionJournal  = false; // record one row per CLOSED bar",
-    8099: '      ObjectDelete(0,PFX+"SETUPZONE");',
-    8106: '      ObjectDelete(0,PFX+"ENTRY");',
-    8114: '      for(int i=0;i<10;i++) ObjectDelete(0,PFX+"TBOX_"+IntegerToString(i));',
-    16535: "      OBS_Record(closed,rates_total);",
+    7713: '      ObjectDelete(0,PFX+"SETUPZONE");',
+    7720: '      ObjectDelete(0,PFX+"ENTRY");',
+    7728: '      for(int i=0;i<10;i++) ObjectDelete(0,PFX+"TBOX_"+IntegerToString(i));',
+    15749: "      OBS_Record(closed,rates_total);",
 }
 for ln, want in sorted(J_EXACT.items()):
     check(line_at(ln) == want, "J L%d is unchanged: %r" % (ln, want.strip()[:62]),
@@ -386,9 +386,9 @@ for phrase in ("## 11.7 AUDIT-D1", "InpMaxChartObjects", "QSMC_DeclutterExcess",
                "tools/test_declutter_cap.py", "CI step 36", "583",
                "one object over the cap", "never pruned"):
     check(phrase in DOCX, "K the doc states %r" % phrase)
-check("L8052" in DOCX, "K the doc cites SmartObjectCleanup's definition line (L8052)")
-check("L7921" in DOCX, "K the doc cites the excess core's line (L7921)")
-check("L8061" in DOCX, "K the doc cites the cap value's line (L8061)")
+check("L7666" in DOCX, "K the doc cites SmartObjectCleanup's definition line (L7666)")
+check("L7535" in DOCX, "K the doc cites the excess core's line (L7535)")
+check("L7675" in DOCX, "K the doc cites the cap value's line (L7675)")
 check("L1285" in DOCX, "K the doc cites the cap input's line (L1285)")
 check(re.search(r"run: python3 tools/test_declutter_cap\.py", WFX),
       "K CI runs tools/test_declutter_cap.py")

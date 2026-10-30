@@ -586,7 +586,9 @@ for s in ("g_score.", "g_score =", "final_score", "setup_quality_score", "g_pmi_
 
 # C2 whole-file occurrence counts of the existing scoring state are UNCHANGED.
 #    These are the numbers measured before the module was added.
-for lit, want in (("g_score.", 74), ("final_score", 21), ("setup_quality_score", 6)):
+# 74/6 -> 73/5: the purge in doc 11.14 deleted one dead function that SET
+# setup_quality_score, so the two counts fall together. final_score is untouched.
+for lit, want in (("g_score.", 73), ("final_score", 21), ("setup_quality_score", 5)):
     got = c_all.count(lit)
     check(got == want, "C2 %r still occurs exactly %d times file-wide" % (lit, want),
           "got %d" % got)
@@ -604,7 +606,7 @@ DELTA = {
                                 # which reuses this same single zone scan instead of
                                 # building a second one of its own)
     "ScoreHTF(": 3,             # unchanged - bypassed
-    "GraphConfluenceScore(": 3,     # unchanged
+    "GraphConfluenceScore(": 0,     # 3 -> 0: unreachable, deleted in the purge (doc 11.14)
     "PMI_ComputeConfluence(": 3,    # unchanged
     "ComputeEntryQuality(": 3,      # unchanged
     "CalculateAITradeSetup(": 3,    # unchanged - CF does not trigger scoring
@@ -629,7 +631,8 @@ check(len(re.findall(r"InpRelationshipScoreMaxBonus", c_all)) >= 1,
 # C5 the existing closed-bar conventions are unchanged - CF added NO new instance
 #    of any of them, because it receives `closed` as a parameter.
 for lit, want in (("int closed=rates_total-2;", 12),
-                  ("int closed=ArraySize(g_buf_c)-2;", 3),
+                  ("int closed=ArraySize(g_buf_c)-2;", 2),   # 3 -> 2: one site was
+                                                             # inside a deleted dead function
                   ("int closed=g_rates_total-2;", 8)):
     got = c_all.count(lit)
     check(got == want, "C5 %r still occurs exactly %d times" % (lit, want), "got %d" % got)
@@ -858,6 +861,102 @@ for f in DECLARED:
 
 print("")
 print("=" * 74)
+
+# ======================================================================
+# 8. THE FOUR CONFLICTS THIS AUDIT REPORTED AND DELIBERATELY DID NOT "FIX"
+# ======================================================================
+# Section 8 of docs/QSMC_V6.6.13_SEVEN_STRATEGY_MODULES.md records nine conflicts
+# in code that already existed. Four of them are still open decisions for the
+# operator (C1, C3, C4, C6 - see doc 11.11). Nothing below changes behaviour: these
+# checks make each of them impossible to change SILENTLY, because normalising the
+# weights, tightening the pin-bar branch or removing a free point would have to
+# arrive with an edited doc section in the same commit.
+
+# --- C3: the existing weights sum to 1.10, and nothing compensates for it.
+def _coeff_sum(anchor_text, label):
+    i = TEXT.find(anchor_text)
+    check(i >= 0, label + " (statement found)")
+    stmt = TEXT[i:TEXT.find(';', i)]
+    parts = [float(x) for x in re.findall(r'\d+\.\d+', stmt) if float(x) < 1.0]
+    return sum(parts), stmt
+
+
+inst_sum, inst_stmt = _coeff_sum("final_score=0.22*g_score.structure+",
+                                 "C3 the institutional branch is still there")
+dflt_sum, dflt_stmt = _coeff_sum("final_score=0.18*g_score.structure+0.12*g_score.liquidity+",
+                                 "C3 the default branch is still there")
+check(abs(inst_sum - 1.10) < 1e-9,
+      "C3 the institutional weights still sum to 1.1000, not 1.0000 (measured %.4f)" % inst_sum)
+check(abs(dflt_sum - 1.10) < 1e-9,
+      "C3 the default weights still sum to 1.1000, not 1.0000 (measured %.4f)" % dflt_sum)
+check("MathMax(0.0,MathMin(100.0,final_score))" in inst_stmt + dflt_stmt
+      or TEXT.count("final_score=MathMax(0.0,MathMin(100.0,final_score));") == 2,
+      "C3 both branches still clamp to 0..100, which is what hides the 1.10 scale")
+eff = body_of("int EffMinConfidenceScore()", "C3 the effective threshold")
+check("return InpMinConfidenceScore;" in eff and "MathMin(InpMinConfidenceScore,60)" in eff,
+      "C3 EffMinConfidenceScore applies the gate profile and NOTHING else")
+check("*1.1" not in eff and "1.1*" not in eff and "/1.1" not in eff,
+      "C3 so no compensation for the 1.10 scale exists - the gate is ~9.1% looser "
+      "than its input reads")
+check("int conf=(int)MathRound(final_score);" in TEXT
+      and "if(conf<EffMinConfidenceScore())" in TEXT,
+      "C3 and final_score really does gate an entry, so this is not display-only")
+check(input_default("InpMinConfidenceScore") == "75",
+      "C3 the default threshold is still 75 (a true weighted average of ~68.2 passes it)")
+
+# --- C4: two scorers hand out points for absent evidence; CF neutralises both.
+sess = body_of("double ScoreSession()", "C4 ScoreSession")
+check("return 30.0;" in sess,
+      "C4 ScoreSession still returns 30.0 when no session matched at all")
+check(sess.count("return 30.0;") == 1
+      and sess.find("return 30.0;") > sess.find("return 40.0;"),
+      "C4 and it is the fall-through return, so it is the no-evidence path")
+htf = body_of("double ScoreHTF(", "C4 ScoreHTF")
+check(htf.count("return 50.0;") == 2,
+      "C4 ScoreHTF still returns 50.0 both when the bias is off and when it is zero",
+      "got %d" % htf.count("return 50.0;"))
+cf = body_of("void CF_Update(", "C4 CF_Update")
+check("g_cf_has_session=(sess_raw>CF_SESSION_NO_EVIDENCE+0.001);" in norm(cf),
+      "C4 CF_Update detects the 30.0 floor instead of trusting it")
+check("g_cf_pillar_session=(g_cf_has_session ? sess_raw : 0.0);" in norm(cf),
+      "C4 and zeroes that pillar when there is no session")
+check("g_cf_has_mtf=(InpUseHTFBias && g_htf_bias!=0);" in norm(cf),
+      "C4 the MTF leg is read straight from g_htf_bias")
+check("ScoreHTF" not in strip_comments(cf),
+      "C4 so the 50.0 free point in ScoreHTF never reaches this engine "
+      "(the code path; the comment that explains why is allowed to name it)")
+
+# --- C1: the entry gate has no body guard, so a textbook doji passes as a pin bar.
+trig = body_of("void MTF_SniperEvaluateEntryTriggers(", "C1 the entry-trigger gate")
+check("bull_pin=(lower_wick>=0.50*c_range && c_close>=c_open);" in norm(trig),
+      "C1 the bullish pin-bar test is still lower_wick>=50% of range with an "
+      "INCLUSIVE close>=open")
+check("bear_pin=(upper_wick>=0.50*c_range && c_close<=c_open);" in norm(trig),
+      "C1 and the bearish mirror is inclusive too")
+c1_all = [l for l in trig.split("\n") if "c1_candle_inside=" in l]
+c1_branch = [l for l in c1_all if "closes_inside" in l]
+check(len(c1_all) == 3,
+      "C1 one reset plus two branch assignments exist", "got %d" % len(c1_all))
+check(len(c1_branch) == 2, "C1 both branch assignments require closes_inside")
+check(all("c_body" not in l for l in c1_branch),
+      "C1 neither branch consults the body, so a zero-body doji satisfies a pin bar")
+check("bool doji=(x.body_ratio<=0.12);" in TEXT,
+      "C1 while the ACC label calls that same bar a DOJI (body_ratio <= 0.12)")
+# The example from doc 8: body 0 over range 10 -> pin TRUE and doji TRUE.
+c_range, c_body, lwick = 10.0, 0.0, 5.0
+check(lwick >= 0.50 * c_range and c_body == 0.0,
+      "C1 with body/range (95,100,90,95) the pin test passes at exactly the boundary")
+check((c_body / c_range) <= 0.12,
+      "C1 and the same bar is a DOJI by the ACC rule - the two disagree")
+
+# --- C6: the brief named inputs that do not exist. Nothing was invented.
+check(input_default("InpRMNoZoneSLATR") == "1.50",
+      "C6 the stop used when no zone sits behind entry is 1.50 ATR, not the 1% the "
+      "brief named")
+for missing in ("InpMinRR", "InpRiskPercent"):
+    check(re.search(r"(?m)^\s*input\s+[^;\n]*\b" + missing + r"\b", TEXT) is None,
+          "C6 %s still does not exist (a doc may not name it as an input)" % missing)
+
 print("AUDIT-CF1 checks: %d   failures: %d" % (COUNT[0], len(FAILURES)))
 if FAILURES:
     for f in FAILURES:

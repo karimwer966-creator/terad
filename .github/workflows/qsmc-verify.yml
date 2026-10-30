@@ -217,7 +217,7 @@ jobs:
         run: |
           echo "NOT COMPILED HERE. Open nadir2.mq5 in MetaEditor and press F7."
           echo "The init log must read:"
-          echo '  [QSMC_ARB] v6.6.9 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ...'
+          echo '  [QSMC_ARB] v6.6.13 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ...'
           echo "Any other version in that line means a stale copy is in the Data Folder."
 
       - uses: actions/upload-artifact@v4

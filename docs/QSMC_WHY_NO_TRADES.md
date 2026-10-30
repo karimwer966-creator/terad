@@ -1,4 +1,4 @@
-# لماذا لا يفتح النظام صفقة؟ — تقرير كامل (QSMC v6.6.9)
+# لماذا لا يفتح النظام صفقة؟ — تقرير كامل (QSMC v6.6.13)
 
 هذا التقرير يجمع **كل** سبب يمكن أن يمنع صفقة، مرتباً بترتيب الفحص الصحيح:
 الأسباب التي تُفحص أولاً هي التي تُفسّر ٩٠٪ من الحالات، وما بعدها حالات أندر.
@@ -132,7 +132,7 @@ PRACTICAL يفعل **خمسة أشياء فقط**، وكل واحد منها ي�
 يقول سطر الافتتاح بالحرف:
 
 ```text
->>> QSMC v6.6.9 GATE PROFILE: PRACTICAL (opt-in) - the following entry thresholds are RELAXED:
+>>> QSMC v6.6.13 GATE PROFILE: PRACTICAL (opt-in) - the following entry thresholds are RELAXED:
 >>>   reliability 80 -> 60  (InpMinReliability, floored at 60)
 >>>   ...
 >>>   UNCHANGED: causal chain, location, blacklist, journal gate, top-down switch, and every risk rule of the execution companion.
@@ -204,7 +204,7 @@ PRACTICAL يفعل **خمسة أشياء فقط**، وكل واحد منها ي�
 | بوابات طبقة التحكيم رفضت | صف `NEEDS:` في اللوحة يعرض `arbiter top blocker: …` |
 | الاتجاه متعارض | اللوحة تعرض `LOCAL READY / DIRECTION MIXED - WAIT` |
 | لا مستوى MTF مُتحقق | `BEST LEVEL: none | waiting for validated MTF confluence` |
-| نسخة قديمة على المخطط | أول سطر Journal ليس `[QSMC_ARB] v6.6.9 arbitration layer ON` |
+| نسخة قديمة على المخطط | أول سطر Journal ليس `[QSMC_ARB] v6.6.13 arbitration layer ON` |
 | معاينة الشمعة الحالية فقط | اللوحة تقول `TOUCHED ON THE LIVE CANDLE only` — لا تنبيه ولا صفقة قبل الإغلاق |
 
 **الفرق الجوهري:** منطقة مرسومة ≠ إشارة. المنطقة تُرسم عندما تُكتشف السيولة؛
@@ -295,7 +295,7 @@ PRACTICAL يفعل **خمسة أشياء فقط**، وكل واحد منها ي�
 4. **إن لم يظهر شيء أبداً** → لا إشارة. افتح اللوحة واقرأ صف `NEEDS:`:
    سيقول لك بالحرف أي بوابة رفضت. ولتفصيل أعمق فعّل في المؤشر
    `InpGateAuditLogEveryBars=50` فيطبع `[GateAudit] … top blocker: …`.
-5. **تأكد من الإصدار**: `[QSMC_ARB] v6.6.9` في Journal، وليس رقماً أقدم.
+5. **تأكد من الإصدار**: `[QSMC_ARB] v6.6.13` في Journal، وليس رقماً أقدم.
 
 > النبضة للقراءة فقط: تنسخ المخزن 7 وتطبع، لا تلمس بوابة ولا أمراً ولا صفقة.
 > إيقافها: `InpHeartbeatSeconds=0`.
@@ -316,7 +316,7 @@ PRACTICAL يفعل **خمسة أشياء فقط**، وكل واحد منها ي�
 
 **الترتيب الصحيح:** انسخ `nadir2.mq5` + ١٨ ملف `Include/QSMC` +
 `QSMC_AutoTrader.mq5` → F7 على المؤشر ثم على الـ EA → أعد إرفاق المؤشر →
-تأكد `v6.6.9` → شغّل `DRY RUN` ساعة → ثم `InpDemoOnly=false` +
+تأكد `v6.6.13` → شغّل `DRY RUN` ساعة → ثم `InpDemoOnly=false` +
 `InpRealAccountConfirm=<رقم حسابك>` → ثم راقب أول صفقة.
 
 ---

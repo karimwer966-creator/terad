@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.69"
+#property version   "6.613"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -621,8 +621,8 @@
 // 13 v6.5.1 and 23 v6.5.2 fixes in its body, so every dashboard title, the
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
-// #property version and the banner now use this release's value (v6.6.3).
-#define QSMC_VERSION_TEXT "v6.6.9"
+// #property version and the banner now use this release's value (v6.6.13).
+#define QSMC_VERSION_TEXT "v6.6.13"
 #property indicator_chart_window
 #property indicator_buffers 19   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (SigLog, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -801,10 +801,10 @@ input double InpOBMaxHeightATR = 3.0;
 //--- display vocabulary. There is no second OB engine and no parallel registry.
 //--- Every one defaults to today's behaviour bit-for-bit: with all four left
 //--- alone, no order block is created, sized, scored, drawn or retired differently.
-//--- No version prefix is used on purpose: the release triple still reads v6.6.9
-//--- while the file already carries v6.6.10/v6.6.11/v6.6.12 markers, and picking
-//--- the next release number is a release decision (docs/QSMC_V6.6.10_TACTICAL_
-//--- AUTHORITY.md defect 4), not something a module should pre-empt.
+//--- AUDIT-G1: the release triple now reads v6.6.13 (docs 11.10). The older
+//--- v6.6.10/v6.6.11/v6.6.12 markers in this file are the dates the work landed,
+//--- not claims about the build - and CI now fails if any marker ever claims a
+//--- version AHEAD of the triple.
 input bool   InpOBUseAgeExpiry       = false;  // retire an OB after InpOBMaxAgeBars closed bars (false = today: only a close through the zone retires it)
 input int    InpOBMaxAgeBars         = 200;    // closed CHART bars; <=0 disables even when the switch is on
 input bool   InpOBZoneBodyOnly       = false;  // zone = pure candle body instead of the default body+rejection-wick hybrid
@@ -871,7 +871,7 @@ input int    InpWGMinEvidenceScore   = 68;    // evidence floor for the evidence
 input double InpWGMinRoomATR         = 1.0;   // room to the opposing zone, in ATR units
 input group "====== Scalping Strategies (AUDIT-SC1, M1-M5, display only, advisory) ======"
 input bool   InpEnableScalping           = false; // overlay switch: six scalping strategies
-input bool   InpScalpShowOnDashboard     = false; // add the advisory line to the tooltip
+input bool   InpScalpShowOnDashboard     = false; // RESERVED: no scalping row exists in the tooltip yet (doc 11.12)
 input int    InpScalpWeightMomentum      = 20;    // SC-MOM  closed-bar displacement burst
 input int    InpScalpWeightEdge          = 20;    // SC-EDGE zone-edge fade with MR stretch
 input int    InpScalpWeightSilverBullet  = 15;    // SC-SB   inside a resolved SB window
@@ -1031,13 +1031,13 @@ input bool InpAllowPartialFVG = true;
 input int InpMinReliability = 80;
 input ENUM_MIN_GRADE InpMinGrade = GRADE_B;
 input bool InpBlockLowGrade = false;
-input int InpMinEntryOBStrength = 3;
-input double InpMaxOBDistATR = 8.0;
+input int InpMinEntryOBStrength = 3;   // INERT: nothing reads it (doc 11.14)
+input double InpMaxOBDistATR = 8.0;   // INERT: nothing reads it (doc 11.14)
 input bool InpAlertOnSetup = true;
 input int InpMinConfidenceScore = 75;
 input group "====== Panel Layout ======"
-input bool InpASCIIBar = true;
-input int InpPanelRightPad = 68;
+input bool InpASCIIBar = true;   // INERT: nothing reads it (doc 11.14)
+input int InpPanelRightPad = 68;   // INERT: nothing reads it (doc 11.14)
 input int InpPanelFontSize = 0;
 // Legacy dashboard-size values are retained for saved-template compatibility.
 // The current decision panel supports 10 rows with a full-width readable layout.
@@ -1155,7 +1155,7 @@ enum ENUM_SETUP_RANK
    RANK_WEAK      = 2,
    RANK_NONE      = 3
   };
-input ENUM_DASH_MODE InpDashMode = DASH_MINI;   // Legacy setting; current panel uses the fixed compact layout
+input ENUM_DASH_MODE InpDashMode = DASH_MINI;   // INERT: nothing reads it (doc 11.14)
 input group "====== Clarity (1920x1080) ======"
 input bool InpUltraCleanMode = true;           // clear default: outlines only; hides detailed research panels
 input bool InpShowBattleAnnotations = true;
@@ -1168,12 +1168,12 @@ input int  InpDashboardMaxRows   = 6;          // Rows drawn on the card (3-10);
 input int  InpDashboardMaxWidthPx= 430;        // Pixel width cap for the compact card; the wide mode is capped at 900
 input bool InpDockDashboard = true;            // Legacy positioning setting; compact Core panel is left-docked
 input bool InpDashboardCollapsible = true;     // Click Core title row to show/hide the three detail rows
-input bool InpShowMTFPanel = true;              // Legacy toggle; MTF is shown as Core-dashboard context
+input bool InpShowMTFPanel = true;   // INERT: nothing reads it (doc 11.14)
 input bool InpShowTradeBox = true;
 input group "====== v6.1.3 Chart Layout (panels / labels) ======"
 input bool   InpPanelsStartCollapsed   = true;  // Legacy setting; Core details always start collapsed
 input int    InpPanelReserveBars       = 30;    // Newest visible candles no panel may ever cover
-input int    InpPanelIdleMaxHeightPct  = 15;    // Max % of chart height used by the idle (collapsed) badge
+input int    InpPanelIdleMaxHeightPct  = 15;   // INERT: nothing reads it (doc 11.14)
 input bool   InpPanelsAvoidTradeLevels = true;  // Keep panels clear of the terminal's order/position labels
 input double InpConfluentSRMergeATR    = 0.5;   // Confluent S/R levels closer than this x ATR merge into one
 input bool   InpResolveLabelCollisions = true;  // Shift chart text labels so no two overlap
@@ -1189,7 +1189,7 @@ input int InpHTFStructureFractalN = 3;
 input group "====== v6.4.0 TOP-DOWN DECISION ENGINE (D1 -> M5) ======"
 input bool   InpTopDownEnabled = true;   // master switch: closed-bar top-down D1->M5 decision
 input bool   InpTopDownGateCore = true;  // AND-gate Layer A: core cannot confirm while top-down disagrees
-input bool   InpShowTopDownPanel = true; // show the TOP-DOWN decision panel
+input bool   InpShowTopDownPanel = true;   // INERT: nothing reads it (doc 11.14)
 input bool   InpTopDownAlerts = true;    // alert on top-down BUY/SELL verdict flips (closed bars only)
 input int    InpTopDownStructureBars = 120;  // closed bars per TF for structure + dealing range
 input int    InpTopDownFractalN = 3;         // swing fractal right-side bars per TF
@@ -1203,7 +1203,7 @@ input double InpTopDownMinRR = 2.0;          // hard R:R floor (policy: never be
 input int    InpTopDownMinConfluences = 3;   // minimum distinct-timeframe confluences to publish
 input bool   InpTopDownRequireSession = false; // additionally require an active killzone
 input int    InpTopDownProfileBars = 120;    // H1 bars for the value-area (POC/VAH/VAL) profile
-input bool   InpShowPerfMeter = false;        // TOP-DOWN panel: show microsecond timings (runtime evidence)
+input bool   InpShowPerfMeter = false;   // INERT: nothing reads it (doc 11.14)
 input bool InpDetectJudas = true;
 input int InpMaxSpreadPts = 60;
 input bool InpIgnoreSpreadOffHours = false;
@@ -1233,7 +1233,7 @@ input group "====== DEBUGGING ======"
 input bool InpShowDebugAlerts = false;
 input bool InpLogSignalDetails = true;
 input group "====== SIGNAL GATE AUDIT (why is there no signal?) ======"
-input bool InpShowGateAudit = true;        // dashboard: per-gate survival + top blocker
+input bool InpShowGateAudit = true;        // RESERVED: no dashboard row yet; the audit prints via InpGateAuditLogEveryBars (doc 11.12)
 input int  InpGateAuditLogEveryBars = 0;   // log the audit every N closed bars (0 = off)
 input group "====== REAL-TIME MODE ======"
 input bool InpRealTimeZones = true;
@@ -1302,25 +1302,25 @@ input bool InpRuntimeNoLookaheadAudit = true;
 input int  InpRuntimeAuditBars = 500;
 
 input group "====== v5.6.6 ADVANCED CAUSAL SWEEP ENGINE ======"
-input bool   InpUseAdvancedSweepEngine      = true;
-input double InpSweepEntryMinScore          = 75.0;
-input int    InpSweepEntryMaxBarsAfterSweep = 3;
-input double InpSweepEntryMinRR             = 1.50;
-input bool   InpUseMergeSortRanking         = true;
-input bool   InpUseMemoizedDP               = true;
-input bool   InpUseFibonacciDP              = true;
-input bool   InpUseCausalGraphOptimizer      = true;
-input bool   InpUseDijkstraPathSearch         = true;
-input bool   InpUseBellmanFordValidation      = true;
-input bool   InpUseBeamSearch                 = true;
-input int    InpBeamWidth                     = 5;
-input int    InpGraphMaxPathHops              = 8;
-input double InpGraphTemporalPenaltyATR       = 0.04;
-input double InpGraphConflictPenalty          = 2.50;
-input double InpGraphCausalReward             = 3.00;
-input bool   InpRejectGraphNegativeCycle      = true;
-input bool   InpRequireGraphAgreement         = false;
-input bool   InpUseCausalDPOptimizer           = true;
+input bool   InpUseAdvancedSweepEngine      = true;   // INERT: nothing reads it (doc 11.14)
+input double InpSweepEntryMinScore          = 75.0;   // INERT: nothing reads it (doc 11.14)
+input int    InpSweepEntryMaxBarsAfterSweep = 3;   // INERT: nothing reads it (doc 11.14)
+input double InpSweepEntryMinRR             = 1.50;   // INERT: nothing reads it (doc 11.14)
+input bool   InpUseMergeSortRanking         = true;   // INERT: nothing reads it (doc 11.14)
+input bool   InpUseMemoizedDP               = true;   // INERT: nothing reads it (doc 11.14)
+input bool   InpUseFibonacciDP              = true;   // INERT: nothing reads it (doc 11.14)
+input bool   InpUseCausalGraphOptimizer      = true;   // INERT: nothing reads it (doc 11.14)
+input bool   InpUseDijkstraPathSearch         = true;   // INERT: nothing reads it (doc 11.14)
+input bool   InpUseBellmanFordValidation      = true;   // INERT: nothing reads it (doc 11.14)
+input bool   InpUseBeamSearch                 = true;   // INERT: nothing reads it (doc 11.14)
+input int    InpBeamWidth                     = 5;   // INERT: nothing reads it (doc 11.14)
+input int    InpGraphMaxPathHops              = 8;   // INERT: nothing reads it (doc 11.14)
+input double InpGraphTemporalPenaltyATR       = 0.04;   // INERT: nothing reads it (doc 11.14)
+input double InpGraphConflictPenalty          = 2.50;   // INERT: nothing reads it (doc 11.14)
+input double InpGraphCausalReward             = 3.00;   // INERT: nothing reads it (doc 11.14)
+input bool   InpRejectGraphNegativeCycle      = true;   // INERT: nothing reads it (doc 11.14)
+input bool   InpRequireGraphAgreement         = false;   // INERT: nothing reads it (doc 11.14)
+input bool   InpUseCausalDPOptimizer           = true;   // INERT: nothing reads it (doc 11.14)
 
 input group "====== v5.6.9 CAUSAL DIAGNOSTICS ======"
 input int    InpWatchMinQuality            = 75;
@@ -1371,7 +1371,7 @@ input group "====== v5.6.3 Causal Institutional Sequence ======"
 input bool   InpInstitutionalSequence       = true;
 input int    InpSweepToStructureMaxBars     = 8;
 input bool   InpRequireMSSAfterSweep         = false; // was true; MSS-only anchor was the top blocker (docs/SIGNAL_VISIBILITY_DIAGNOSIS.md)
-input bool   InpAllowFVGEntryZone            = true;
+input bool   InpAllowFVGEntryZone            = true;   // INERT: nothing reads it (doc 11.14)
 input int    InpOrderZonePreSweepBars        = 1;
 input bool   InpBlockEquilibriumEntries      = true;
 input double InpEquilibriumBufferATR         = 0.15;
@@ -1413,7 +1413,7 @@ input group "====== v5.8.0 ENTRY QUALITY ENGINE ======"
 // Transparent soft-score model (Phase 21). The hard gates remain the
 // existing causal/retest/confirmation architecture and are mirrored,
 // never duplicated. Soft scores only RANK valid candidates.
-input bool   InpShowEntryQualityPanel = true;   // Show STRUCTURAL/CONTEXT/EXECUTION/GEOMETRY rows
+input bool   InpShowEntryQualityPanel = true;   // RESERVED: those rows are not built yet (doc 11.12)
 input double InpQualityHighThreshold  = 75.0;   // final blend >= this  -> HIGH_QUALITY
 input double InpQualityAPlusThreshold = 88.0;   // final blend >= this  -> A_PLUS
 
@@ -1782,12 +1782,12 @@ input group "====== v6.1.0 PREDICTIVE MARKET INTELLIGENCE (research layer) =====
 // trade by itself: PMI_EntryGate() can only narrow the existing
 // authoritative decision, never widen it.
 input bool   InpUsePredictiveEngine     = true;   // Master switch for the PMI layer
-input bool   InpShowPredictivePanel     = true;   // Draw the market-intelligence panel
-input bool   InpDockPMIPanel              = true;   // Dock at lower-left, outside the newest candles
-input bool   InpPMIPanelCollapsible       = true;
-input int    InpPMIPanelX               = 8;      // Panel X distance (pixels)
-input int    InpPMIPanelY               = 420;    // Panel Y distance (pixels)
-input int    InpPMIPanelRefreshTicks    = 3;      // panel refresh (ticks) between closed bars
+input bool   InpShowPredictivePanel     = true;   // INERT: nothing reads it (doc 11.14)
+input bool   InpDockPMIPanel              = true;   // INERT: nothing reads it (doc 11.14)
+input bool   InpPMIPanelCollapsible       = true;   // INERT: nothing reads it (doc 11.14)
+input int    InpPMIPanelX               = 8;   // INERT: nothing reads it (doc 11.14)
+input int    InpPMIPanelY               = 420;   // INERT: nothing reads it (doc 11.14)
+input int    InpPMIPanelRefreshTicks    = 3;   // INERT: nothing reads it (doc 11.14)
 input int    InpPMIFractalN             = 3;      // Swing fractal N for PMI structure events
 input int    InpPMIMTFWindow            = 200;    // Closed HTF bars analysed per timeframe
 input int    InpPMIStructureDedupeWindow = 4096;  // Recent structure-event keys retained for duplicate checks (128..65536)
@@ -2134,7 +2134,7 @@ bool     g_rm_size_available=false;
 string   g_rm_size_text="";             // TEXT ONLY - the entire output of the sizing step
 datetime g_htf_cache_time = 0;
 datetime g_d1_cache_time = 0;
-bool g_memo_hit = false;
+   // PURGED (doc 11.14): g_memo_hit had no reader and no writer.
 datetime g_last_alert_bar = 0;
 string g_last_confirmed_alert_id = "";
 int g_dash_lines = 0;
@@ -2146,10 +2146,10 @@ int g_dash_h=110;
 // pacing; signal logic never reads these). GetTickCount() ms; 0 = draw now.
 uint g_ui_last_dash_ms=0;
 uint g_ui_last_lbl_ms=0;
-uint g_ui_last_panel_ms=0;
+   // PURGED (doc 11.14): g_ui_last_panel_ms had no reader and no writer.
 #define QSMC_UI_COALESCE_MS 300
-int g_pmi_panel_y=0;
-int g_pmi_panel_height=0;
+   // PURGED (doc 11.14): g_pmi_panel_y had no reader and no writer.
+   // PURGED (doc 11.14): g_pmi_panel_height had no reader and no writer.
 datetime g_visual_audit_last_time=0;
 int g_visual_audit_runs=0;
 int g_visual_audit_failures=0;
@@ -2161,9 +2161,9 @@ bool g_pmi_panel_expanded=true;
 // v6.1.3 (L1): panel layout state. The badge geometry is computed once per
 // panel refresh (LayoutPanelBadge) and every expanded panel stacks below it.
 bool g_mtf_panel_expanded=true;
-int  g_badge_x=8,g_badge_y=8,g_badge_w=0,g_badge_h=0,g_badge_rows=3;
-int  g_panel_stack_top=64;      // first free y below the badge
-int  g_panel_stack_bottom=64;   // first free y below the last docked panel
+   // PURGED (doc 11.14): g_badge_x/y/w/h/rows had no reader and no writer.
+   // PURGED (doc 11.14): g_panel_stack_top had no reader and no writer.
+   // PURGED (doc 11.14): g_panel_stack_bottom had no reader and no writer.
 // v6.1.3 (L4): pixel bands occupied by the terminal's own trade-level labels
 #define QSMC_KEEPOUT_MAX 48
 int  g_keepout_count=0;
@@ -2243,16 +2243,16 @@ string g_mtf_entry_state="";
 double g_mtf_entry_price=0.0;
 datetime g_mtf_entry_time=0;
 ENUM_TIMEFRAMES g_mtf_entry_tf=PERIOD_M5;
-string g_last_mtf_entry_id="";
+   // PURGED (doc 11.14): g_last_mtf_entry_id had no reader and no writer.
 //--- v6.4.1 SIGNAL VISIBILITY: dedup store + tactical state
 string   g_entry_keys[];            // dedup keys of every CONFIRMED signal this attach
 datetime g_entry_key_bar[];         // the (immutable) chart bar each key was painted on
 bool     g_entry_key_buy[];         // v6.4.1: direction of that signal (for the redraw pass)
 int      g_entry_key_src[];         // v6.4.1: 0=CORE, 1=ZRE
 double   g_entry_key_price[];       // v6.4.1: entry price (replay after a full rebuild)
-datetime g_mtf_last_confirm_bar=0;  // one CONFIRMED mark/alert per execution bar
+   // PURGED (doc 11.14): g_mtf_last_confirm_bar had no reader and no writer.
 string   g_last_mtf_entry_key="";    // one CONFIRMED alert/mark per signal (permanent dedup)
-datetime g_last_mtf_preview_bar=0;   // PREVIEW alerts: at most once per execution bar
+   // PURGED (doc 11.14): g_last_mtf_preview_bar had no reader and no writer.
 bool     g_mtf_entry_late=false;    // chase filter tripped (display + journal only)
 datetime g_mtf_sig_time=0;           // v6.4.1: signal bar of the CONFIRMED tactical entry (InpAlertOnSignalBar)
 //--- v6.6.10 AUDIT-TAC: the authoritative-state verdict behind the tactical
@@ -2671,26 +2671,16 @@ SInstitutionalBehavior AnalyzeInstitutionalBehavior(const int closed,const bool 
                                                   const double atr);
 void BuildLiquidityPriceIndex();
 int  BinarySearchNearestLiquidity(const double price,const bool find_above,const bool resting_only,const string type_filter="");
-int  BinarySearchNearestOB(const double price,const bool find_above,const bool unmitigated_only,const bool check_bullish=false,const bool bullish_val=false);
-int  BinarySearchNearestBarrier(const double from_price,const bool is_buy);
-double EvaluateStructuralPathDP(const int sw_event,const int dp_event,const int mss_event,
-                                const int zone_event,const int retest_bar,const bool is_buy);
-void CalculateSetupQualityScore(SetupCandidate &cand,const int total,const double &o[],const double &h[],
-                                const double &l[],const double &c[],const double atr);
-void RankSetupCandidates(SetupCandidate &primary_out,SetupCandidate &secondary_out);
 bool IsLegalSignalStateTransition(const ENUM_SIGNAL_STATE from,const ENUM_SIGNAL_STATE to);
 bool IsConfirmedSignalState(const ENUM_SIGNAL_STATE state);
 bool TryTransitionSignalState(const ENUM_SIGNAL_STATE next,const string setup_id,const int bar);
 string SignalStateName(const ENUM_SIGNAL_STATE state);
-string InstitutionalBehaviorName(const ENUM_INSTITUTIONAL_BEHAVIOR ib);
 void ConfirmPendingDirectSetup(const int total,const datetime &t[]);
 void UpdateHistoricalOutcomes(const int closed,const double &h[],const double &l[],const double &c[],const datetime &t[]);
 void UpdateStatisticalMetrics();
 void BuildSetupExplanation(const SetupCandidate &cand,string &reasons[],int &count);
-string FormatFinalEntryOutput(const SetupCandidate &cand);
 double GetClosedHTFEMAForBoundary(const datetime boundary,int &state_out,string &label_out);
 string QuantDisplacementClassLabel(const ENUM_DISP_QUALITY q);
-string QuantSweepClassLabel(const ENUM_SWEEP_QUALITY q);
 string QuantVolClassLabel(const ENUM_VOL_CLASS v);
 void   ComputeEntryQuality(const int total);
 void   UpdateAnalyticalScalePlan(const int total);
@@ -2847,28 +2837,7 @@ double InstrumentMinStopDistance()
    return MathMax(0.0,(double)g_instrument.stops_level_points*p);
 }
 
-double InstrumentFreezeDistance()
-{
-   if(!g_instrument.valid) return 0.0;
-   double p=(g_instrument.point>0.0 ? g_instrument.point : _Point);
-   return MathMax(0.0,(double)g_instrument.freeze_level_points*p);
-}
 
-double NormalizeVolumeToStep(const double requested)
-{
-   if(!g_instrument.valid || g_instrument.volume_step<=0.0)
-      return requested;
-
-   double v=MathMax(g_instrument.volume_min,
-                    MathMin(g_instrument.volume_max,requested));
-   double steps=MathFloor((v-g_instrument.volume_min)/g_instrument.volume_step+1e-9);
-   double normalized=g_instrument.volume_min+steps*g_instrument.volume_step;
-
-   if(normalized<g_instrument.volume_min) normalized=g_instrument.volume_min;
-   if(normalized>g_instrument.volume_max) normalized=g_instrument.volume_max;
-
-   return normalized;
-}
 
 string InstrumentClassName()
 {
@@ -3189,50 +3158,6 @@ ENUM_MTF_CONFLICT_STATE ClassifyMarketConflict(const bool is_buy,const string st
 // causal/decision structure, so it cannot introduce a new gate, a new
 // score contribution, or any repainting/look-ahead risk.
 //====================================================================
-void BuildInstitutionalPatternChecklist(string &out_lines[],int &out_count)
-{
-   out_count=0;
-   ArrayResize(out_lines,7);
-
-   bool is_buy=g_trade_setup.is_buy;
-   if(g_causal_diag.decision_state=="SELL_WATCH")
-      is_buy=false;
-   else if(g_causal_diag.decision_state=="BUY_WATCH")
-      is_buy=true;
-   else if(g_causal_diag.zone_kind!="")
-      is_buy=(StringFind(g_causal_diag.zone_kind,"BUY")>=0);
-
-   bool sweep_ok=g_causal_diag.sweep_event_ok || g_causal_diag.hop_sweep_disp;
-   bool disp_ok=g_causal_diag.disp_event_ok || g_causal_diag.hop_sweep_disp;
-   bool mss_ok=g_causal_diag.hop_disp_mss || g_causal_diag.mss_event_ok;
-   bool zone_ok=g_causal_diag.hop_mss_zone || g_causal_diag.zone_valid;
-   string zone_label=(StringFind(g_causal_diag.zone_kind,"FVG")>=0) ? "FVG" :
-                     (StringFind(g_causal_diag.zone_kind,"OB")>=0) ? "OB" : "ZONE";
-
-   bool retest_confirmed=(g_active_setup.active &&
-                          (IsConfirmedSignalState(g_active_setup.state))) || g_trade_setup.valid;
-   bool retest_active=(g_active_setup.active &&
-                       (g_active_setup.state==STATE_ARMED ||
-                        g_active_setup.state==STATE_PREVIEW ||
-                        IsConfirmedSignalState(g_active_setup.state)));
-
-   int done=0;
-   if(sweep_ok) done++;
-   if(disp_ok) done++;
-   if(mss_ok) done++;
-   if(zone_ok) done++;
-   if(retest_confirmed) done++;
-
-   out_lines[out_count++]=StringFormat("PATTERN %s Institutional Reversal (%d/5)",
-                                       is_buy?"Bullish":"Bearish",done);
-   out_lines[out_count++]=StringFormat("%s SWEEP",sweep_ok?"[v]":"[ ]");
-   out_lines[out_count++]=StringFormat("%s DISPLACEMENT",disp_ok?"[v]":"[ ]");
-   out_lines[out_count++]=StringFormat("%s MSS",mss_ok?"[v]":"[ ]");
-   out_lines[out_count++]=StringFormat("%s %s",zone_ok?"[v]":"[ ]",zone_label);
-   out_lines[out_count++]=StringFormat("%s RETEST%s",
-                                       retest_confirmed?"[v]":"[ ]",
-                                       (!retest_confirmed && retest_active)?" (pending)":"");
-}
 
 //====================================================================
 // v5.6.6 ADVANCED CAUSAL SWEEP ENGINE
@@ -3257,26 +3182,7 @@ struct SSweepCandidate
    string structure_type;
 };
 
-double FibDPValue(const int n)
-{
-   if(n<=0) return 0.0;
-   if(n==1) return 1.0;
-   double a=0.0,b=1.0,c=0.0;
-   for(int i=2;i<=MathMin(n,20);i++)
-   {
-      c=a+b;
-      a=b;
-      b=c;
-   }
-   return b;
-}
 
-double AdvancedPathWeight(const int steps)
-{
-   int n=MathMax(1,MathMin(20,steps));
-   if(!InpUseFibonacciDP) return 1.0/(double)n;
-   return 1.0/MathMax(1.0,FibDPValue(n));
-}
 
 void MergeSweepCandidates(SSweepCandidate &a[],SSweepCandidate &tmp[],
                           const int left,const int right)
@@ -3299,211 +3205,10 @@ void MergeSweepCandidates(SSweepCandidate &a[],SSweepCandidate &tmp[],
    for(int p=left;p<=right;p++) a[p]=tmp[p];
 }
 
-void SortSweepCandidates(SSweepCandidate &a[])
-{
-   int n=ArraySize(a);
-   if(n<2) return;
-   SSweepCandidate tmp[];
-   ArrayResize(tmp,n);
-   MergeSweepCandidates(a,tmp,0,n-1);
-}
 
-double MemoizedCausalPathScore(const int sweep_ok,const int displacement_ok,
-                               const int structure_ok,const int anchor_ok,
-                               const int retest_ok)
-{
-   static int memo_key=-1;
-   static double memo_value=0.0;
 
-   int key=sweep_ok |
-           (displacement_ok<<1) |
-           (structure_ok<<2) |
-           (anchor_ok<<3) |
-           (retest_ok<<4);
 
-   if(InpUseMemoizedDP && key==memo_key)
-      return memo_value;
 
-   // Mandatory causal stages cannot be replaced by a high score.
-   if(!sweep_ok || !displacement_ok || !structure_ok)
-      return 0.0;
-
-   double score=30.0;
-   if(displacement_ok) score+=20.0;
-   if(structure_ok)    score+=20.0;
-   if(anchor_ok)       score+=15.0;
-   if(retest_ok)       score+=15.0;
-
-   memo_key=key;
-   memo_value=score;
-   return score;
-}
-
-double ScoreSweepCandidate(const SSweepCandidate &x,
-                           const bool displacement_ok,
-                           const bool structure_ok,
-                           const bool anchor_ok,
-                           const bool retest_ok)
-{
-   double causal=MemoizedCausalPathScore(
-      1,displacement_ok?1:0,structure_ok?1:0,
-      anchor_ok?1:0,retest_ok?1:0);
-
-   if(causal<=0.0) return 0.0;
-
-   double score=causal;
-   if(x.displacement_bar>=x.sweep_bar) score+=5.0;
-   if(x.structure_bar>=x.displacement_bar) score+=5.0;
-   if(x.rr>=InpSweepEntryMinRR) score+=10.0;
-
-   score+=20.0*AdvancedPathWeight(
-      MathMax(1,x.structure_bar-x.sweep_bar+1));
-
-   return MathMin(100.0,score);
-}
-
-bool BuildAdvancedSweepCandidate(const int liq_idx,const int sweep_bar,
-                                 SSweepCandidate &x)
-{
-   if(liq_idx<0 || liq_idx>=ArraySize(g_liquidity)) return false;
-   if(sweep_bar<0 || sweep_bar>=ArraySize(g_buf_c)) return false;
-
-   SLiquidity pool=g_liquidity[liq_idx];
-   if(!pool.swept || pool.availability_time<=0) return false;
-   if(pool.availability_time>g_buf_t[sweep_bar]) return false;
-
-   x.liquidity_index=liq_idx;
-   x.sweep_bar=sweep_bar;
-   x.displacement_bar=-1;
-   x.structure_bar=-1;
-   x.direction=0;
-   x.liquidity_price=pool.price;
-   x.entry_price=NormalizePriceToTick(g_buf_c[sweep_bar]);
-   x.stop_price=0.0;
-   x.target_price=0.0;
-   x.rr=0.0;
-   x.score=0.0;
-   x.structure_strength=0;
-   x.structure_type="";
-
-   bool high_pool=(pool.type=="EQH");
-   bool low_pool=(pool.type=="EQL");
-
-   if(high_pool)
-   {
-      if(g_buf_h[sweep_bar]<=pool.price || g_buf_c[sweep_bar]>=pool.price)
-         return false;
-      x.direction=-1;
-      x.stop_price=NormalizePriceToTick(g_buf_h[sweep_bar]);
-   }
-   else if(low_pool)
-   {
-      if(g_buf_l[sweep_bar]>=pool.price || g_buf_c[sweep_bar]<=pool.price)
-         return false;
-      x.direction=1;
-      x.stop_price=NormalizePriceToTick(g_buf_l[sweep_bar]);
-   }
-   else return false;
-
-   // Closed-bar boundary: never inspect the forming bar in candidate ranking.
-   int closed_limit=MathMax(0,ArraySize(g_buf_c)-2);
-   int last=MathMin(closed_limit,
-                    sweep_bar+MathMax(1,InpSweepEntryMaxBarsAfterSweep));
-
-   for(int b=sweep_bar+1;b<=last;b++)
-   {
-      double atr=(b<ArraySize(g_atr_buf) && g_atr_buf[b]>0.0)
-                 ? g_atr_buf[b] : g_atr;
-      if(atr<=0.0) continue;
-
-      double body=MathAbs(g_buf_c[b]-g_buf_o[b]);
-      if(body<0.50*atr) continue;
-
-      if(x.direction<0 && g_buf_c[b]>=g_buf_o[b]) continue;
-      if(x.direction>0 && g_buf_c[b]<=g_buf_o[b]) continue;
-
-      x.displacement_bar=b;
-      break;
-   }
-
-   if(x.displacement_bar<0) return false;
-
-   // Real structure confirmation is mandatory for the advanced sweep path.
-   // The previous implementation assigned structure_bar=displacement_bar,
-   // which could score an unconfirmed displacement as a structure break.
-   int structure_last=MathMin(closed_limit,
-                              sweep_bar+MathMax(1,InpSweepEntryMaxBarsAfterSweep));
-   int best_structure=-1;
-   int best_strength=-1;
-   string best_type="";
-   for(int si=0;si<ArraySize(g_structures);si++)
-   {
-      SStructureBreak st=g_structures[si];
-      if(st.type=="INIT") continue;
-      if(st.bar<x.displacement_bar || st.bar>structure_last) continue;
-      if((x.direction>0 && !st.bullish) || (x.direction<0 && st.bullish)) continue;
-      if(InpRequireMSSAfterSweep && st.type!="MSS") continue;
-      int type_strength=(st.type=="MSS" ? 30 : (st.type=="CHoCH" ? 20 : 12));
-      type_strength+=MathMax(0,20-(st.bar-x.displacement_bar)*4);
-      if(type_strength>best_strength ||
-         (type_strength==best_strength && (best_structure<0 || st.bar<best_structure)))
-      {
-         best_structure=st.bar;
-         best_strength=type_strength;
-         best_type=st.type;
-      }
-   }
-   if(best_structure<0) return false;
-   x.structure_bar=best_structure;
-   x.structure_strength=MathMax(0,best_strength);
-   x.structure_type=best_type;
-
-   double risk=(x.direction>0)
-               ? x.entry_price-x.stop_price
-               : x.stop_price-x.entry_price;
-   if(risk<=InstrumentTickSize()) return false;
-
-   x.target_price=NormalizePriceToTick(
-      x.direction>0
-      ? x.entry_price+risk*InpSweepEntryMinRR
-      : x.entry_price-risk*InpSweepEntryMinRR);
-
-   x.rr=(x.direction>0)
-        ? (x.target_price-x.entry_price)/risk
-        : (x.entry_price-x.target_price)/risk;
-
-   bool structure_ok=(x.structure_bar>x.displacement_bar && x.structure_strength>0);
-   x.score=ScoreSweepCandidate(x,true,structure_ok,false,false);
-   return x.score>=InpSweepEntryMinScore;
-}
-
-bool GetBestAdvancedSweepCandidate(SSweepCandidate &best)
-{
-   if(!InpUseAdvancedSweepEngine) return false;
-
-   SSweepCandidate candidates[];
-   int count=ArraySize(g_liquidity);
-
-   for(int i=0;i<count;i++)
-   {
-      if(!g_liquidity[i].swept) continue;
-      int bar=g_liquidity[i].bar;
-      if(bar<0 || bar>=ArraySize(g_buf_c)) continue;
-
-      SSweepCandidate c;
-      if(!BuildAdvancedSweepCandidate(i,bar,c)) continue;
-
-      int n=ArraySize(candidates);
-      ArrayResize(candidates,n+1,8);
-      candidates[n]=c;
-   }
-
-   if(ArraySize(candidates)==0) return false;
-   if(InpUseMergeSortRanking) SortSweepCandidates(candidates);
-
-   best=candidates[0];
-   return true;
-}
 
 //====================================================================
 // STRUCTURES
@@ -4003,8 +3708,8 @@ int g_liq_priority_idx[];
 #define MTF_TF_COUNT 5
 int      g_mtf_aligned[MTF_TF_COUNT];     // +1 bull, -1 bear, 0 unknown
 int      g_mtf_self_index=-1;             // row matching chart TF (if any)
-datetime g_mtf_event_time[MTF_TF_COUNT];  // last confirmed HTF structure event
-datetime g_mtf_avail_time[MTF_TF_COUNT];  // when that event became known
+   // PURGED (doc 11.14): g_mtf_event_time[] had no reader and no writer.
+   // PURGED (doc 11.14): g_mtf_avail_time[] had no reader and no writer.
 string   g_mtf_note[MTF_TF_COUNT];        // "EMA200 x" style note per row
 int      g_mtf_panel_tick=0;              // per-tick fetch throttle for the panel
 //--- blacklist for terminal setups
@@ -5227,16 +4932,6 @@ void ReevaluateFVGStateIncremental(SFVG &fvg, const int check_bar, const double 
 bool SweepHasDisplacementOrVolume(const int sweep_bar, const bool is_high, const double level, const double atr, const double &h[], const double &l[], const double &o[], const double &c[], const long &tv[]);
 void SmartObjectCleanup(const bool isNewBar);
 void PrepareDynamicRedraw();
-void RepositionDashboard();
-bool GetBestAdvancedSweepCandidate(SSweepCandidate &best);
-double FibDPValue(const int n);
-double AdvancedPathWeight(const int steps);
-double MemoizedCausalPathScore(const int sweep_ok,const int displacement_ok,
-                               const int structure_ok,const int anchor_ok,
-                               const int retest_ok);
-bool BuildAdvancedSweepCandidate(const int liq_idx,const int sweep_bar,
-                                 SSweepCandidate &x);
-void SortSweepCandidates(SSweepCandidate &a[]);
 
 // v5.6.9 Causal Graph Optimization
 struct SCausalPathResult
@@ -5252,15 +4947,6 @@ struct SCausalPathResult
    bool agreement;
    int nodes[16];
 };
-void ResetCausalPathResult(SCausalPathResult &r);
-double CausalEdgeCost(const int from,const int to);
-double CausalEdgeSignedWeight(const int from,const int to);
-bool RunDijkstraCausalPath(const int start_event,const int target_event,SCausalPathResult &out);
-bool RunBellmanFordCausalPath(const int start_event,const int target_event,SCausalPathResult &out);
-bool RunBeamCausalPath(const int start_event,const int target_event,SCausalPathResult &out);
-bool OptimizeCausalGraphPath(const int start_event,const int target_event,SCausalPathResult &out);
-bool ValidateCausalPathAgreement(const SCausalPathResult &a,const SCausalPathResult &b);
-int CausalEvidenceDP(SSignalFactor &factors[],const int max_weight);
 
 void RunRuntimeCausalValidation();
 void RunRuntimeDisplayNoLookaheadAudit(const int closed,const datetime &t[]);
@@ -5269,8 +4955,6 @@ bool LoadInstrumentSpec();
 double InstrumentTickSize();
 double NormalizePriceToTick(const double price);
 double InstrumentMinStopDistance();
-double InstrumentFreezeDistance();
-double NormalizeVolumeToStep(const double requested);
 string InstrumentClassName();
 void BuildPrimeSieve(const int count);
 double PrimeProximityScore(const double price,const double atr,string &nearest_label);
@@ -5279,7 +4963,6 @@ double InstitutionalRelationshipStrength(const ENUM_RELATION_NODE a,const ENUM_R
 string RelationNodeName(const ENUM_RELATION_NODE n);
 ENUM_MTF_CONFLICT_STATE ClassifyMarketConflict(const bool is_buy,const string structure_type,
                                                string &label_out);
-void BuildInstitutionalPatternChecklist(string &out_lines[],int &out_count);
 double PipSize();
 double OBMid(const int i);
 void BuildOBPriceIndex();
@@ -5290,7 +4973,6 @@ bool CheckSignalPattern(const int required_mask);
 void AddGraphNode(const string type,const double price,const int strength);
 void ConnectGraphNodes();
 void BuildMarketGraph();
-double GraphConfluenceScore(const double price);
 string CausalTypeName(const ENUM_CAUSAL_EVENT_TYPE type);
 int AddCausalEvent(const string id,const ENUM_CAUSAL_EVENT_TYPE type,const int bar,const datetime tm,
                    const bool bullish,const double price,const double top,const double bottom,
@@ -5547,7 +5229,6 @@ double ScoreOrderBlock(const int ob_index,const double price,const double atr,co
 double ScoreFVG(const bool is_buy,const double price,const int anchor_bar=-1);
 double ScoreSession();
 double ScoreHTF(const bool is_buy);
-double ScoreAlgo(const int knap,const int dp,const int max_possible,const double price);
 string DetectMarketRegime(const int closed,const double atr);
 double RegimeScoreMultiplier(const string regime);
 int IndependentEvidenceScore(SSignalFactor &factors[]);
@@ -5557,13 +5238,9 @@ string CalculateQualityGrade(const int conf,const int reliability);
 int GradeRank(const string g);
 string GetInstitutionalGrade(const int conf,const int knap,const int dp,const int maxp);
 string CalculateRiskLevel(const double entry,const double sl,const double atr,const long spread_pts,double &risk_pips_out);
-string BuildConfidenceBar(const int pct,const int cells=10);
-int SelectEntryOB(const double price,const bool is_buy,const double atr,const int anchor_bar=-1,const int sweep_bar=-1);
-int SelectEntryFVG(const double price,const bool is_buy,const double atr,const int anchor_bar,const int sweep_bar);
 int FindAlignedLiquiditySweep(const bool is_buy,const int structure_bar,const int max_bars,double &price_out);
 bool IsInstitutionalLocation(const bool is_buy,const double zone_top,const double zone_bottom,const double atr,string &why);
 void PushTarget(STarget &arr[],STarget &t);
-double GreedyFindBestTarget(const double from,const bool is_buy,const double min_dist,string &type_out);
 bool GetClosedCurrentDayHighLow(double &day_high,double &day_low);
 double DirectionalRR(const bool is_buy,const double entry,const double sl,const double target);
 bool ValidateTargetGeometry(const bool is_buy,const double entry,const double sl,
@@ -5583,7 +5260,6 @@ bool CreateSetupBranchTransactional(const string setup_event_id,const int closed
                                     const double entry,const double zone_top,const double zone_bottom,
                                     const double tp1,const double tp2,const double tp3);
 void ResetCausalHopReport();
-string GateTxt(const bool ok);
 void ResetSignalGateAudit();
 void GateAuditReject(const string key);
 string GateAuditPct(const long part,const long whole);
@@ -5604,22 +5280,17 @@ void   GateProfileNote(const string what,const double value);
 void   GateProfileNeed(const string what,const double short_by);
 void   GateProfilePublish(const int closed);
 string AlertWhyNoPopup(const int closed,const datetime bar_time);
-void DashPushWrapped(string &L[],int &ln,const string s,const int width);
 int MTFAlignmentPercent();
 // v6.5.1 MTF AUDIT: the alignment vector used to be filled only inside
 // DrawMTFPanel(), so a consumer on the signal path (PMI_BuildSweep) and the
 // dashboard read zero-initialised state whenever the panel was hidden.
 // Refresh is now a data-path function, independent of panel visibility.
 void   MTF_RefreshAlignment(const bool force);
-int    MTF_HTFRowIndex();
 int    MTF_KnownCount();
 int    MTF_UpCount();
-string MTF_AlignmentText();
 // v6.5.1 DATA HEALTH (F-06): one symbol-level verdict built from the detectors
 // that already exist, plus the four conditions nothing covered before.
 int    QSMC_DataHealthLevel();
-string QSMC_DataHealthReason();
-string QSMC_DataHealthLine();
 void   QSMC_DrawDataHealthBanner(const string reason);
 void   QSMC_ClearDataHealthBanner();
 void DiagnoseDirectionalWatch(const int total,const double &o[],const double &h[],
@@ -6657,8 +6328,6 @@ bool OBS_SelfTest(string &where)
 void UpdateMTFExecutionEntry();
 bool IsFractalHigh(const double &h[],const int i,const int n,const int total);
 bool IsFractalLow(const double &l[],const int i,const int n,const int total);
-int FindLastBearishOB(const double &o[],const double &c[],const int from,const int lookback);
-int FindLastBullishOB(const double &o[],const double &c[],const int from,const int lookback);
 void DetectOrderBlocks(const int total,const double &o[],const double &h[],const double &l[],const double &c[],const datetime &t[],const bool incremental=false);
 void AddBreakerBlock(const double &h[],const double &l[],const double &c[],const datetime &t[],const int break_bar,const double top,const double bottom,const bool bullish,const int total);
 void DetectZones(const int total,const double &o[],const double &h[],const double &l[],const double &c[],const datetime &t[],const bool incremental=false);
@@ -6677,7 +6346,6 @@ bool TopDown_BlocksDirection(const bool is_buy);
 bool TopDown_VetoesDirection(const bool is_buy);   // v6.4.1
 string TopDown_VerdictState();                     // v6.4.1: BUY/SELL/WAIT/CONFLICT/DATA_UNAVAILABLE
 string TopDown_GatingModeLine();                   // v6.4.1: audit/diagnostic row
-void DrawTopDownPanel();
 void DetectJudasSwing(const int total,const datetime &t[],const double &h[],const double &l[],const double &c[]);
 void DetectKillZones(const int total,const datetime &t[],const double &h[],const double &l[]);
 void DrawZones();
@@ -6688,24 +6356,17 @@ void DrawFVGZones();
 void DrawLiquidityMarkers();
 void DrawKillZones();
 void DrawQuantumDashboard(const int total,const double &c[]);
-void DrawUnifiedEntryPanel();
 void RedrawAllPanels();
 void CoreDashboardDeleteObjects();
-void DashLine(string &L[],color &C[],bool &H[],int &ln,const string text,
-              const color col,const bool is_header=false);
-void LayoutPanelBadge();
 void UpdateTradeLevelKeepOut();
 int  AvoidTradeLevelKeepOut(int y,const int h,const bool push_down);
 void RegisterChartLabel(const string name,const datetime tm,const double price,const bool above);
 void ResolveChartLabelCollisions();
-void BuildUnifiedEntryVerdict(string &verdict,string &reason,color &accent,double &blend_score);
 void BuildConfluentSRLevels(const int total,const datetime &t[],const double &h[],const double &l[]);
 void DrawBattleAnnotations(const int total,const datetime &t[],const double &o[],const double &h[],const double &l[],const double &c[],const long &tv[],const long &rv[]);
 int SafeLeftPanelWidth();
 void ResetVisualZoneRegistry();
 bool DrawUniqueSMCZoneBox(const string name,const datetime t1,const double top,const datetime t2,const double bottom,const color col,const string label,const int transparency=88);
-string L_Trim(const string s);
-void DrawMTFPanel();
 void DrawSetupZone(const int total,const datetime &t[]);
 void DrawTradeBox();
 void DrawTradeLevels(const int total,const datetime &t[]);
@@ -6739,7 +6400,6 @@ int ZRE_TouchPts(const int touches);
 int ZRE_CountPts(const int units);
 int ZRE_FreshPts(const int age,const int fresh);
 int ZRE_BiasPts(const int bias,const ENUM_ZRE_SIDE side,const int aligned_pts,const int neutral_pts);
-int ZRE_ScoreZone(const SZRECand &c,const ENUM_ZRE_SIDE side,const SZREContext &ctx, const int touches,const int age,string &detail);
 // v6.5.0: same score, split into intrinsic level quality and the HTF/D1 context term.
 int ZRE_ScoreZoneEx(const SZRECand &c,const ENUM_ZRE_SIDE side,const SZREContext &ctx,
                     const int touches,const int age,string &detail,
@@ -6756,7 +6416,6 @@ void ZRE_ParamsInit(SZREParams &p);
 void ZRE_EvidenceInit(SZREEvidence &e);
 void ZRE_RejectionInit(SZRERejection &r);
 void ZRE_StatusInit(SZREZoneStatus &s);
-string ZRE_LifecycleName(const ENUM_ZONE_LIFECYCLE state);
 ENUM_ZONE_LIFECYCLE ZRE_LifecycleGet(const string zone_id,const int closed);
 void ZRE_LifecycleSet(const string zone_id,const ENUM_ZONE_LIFECYCLE state,const int closed);
 bool ZRE_LifecycleRetired(const string zone_id);
@@ -6822,8 +6481,6 @@ void ZRE_FillContext(SZREContext &ctx,const int closed,const double atr);
 void ZRE_Clear();
 void ZRE_OnChartChange();
 void ZRE_Update(const int rates_total,const bool force_rebuild);
-void ZRE_DashMini(string &L[],color &C[],bool &H[],int &ln);
-void ZRE_DashFull(string &L[],color &C[],bool &H[],int &ln);
 
 //====================================================================
 // v6.5.0 REACTION SIGNAL LAYER (RXN) - forward declarations.
@@ -6837,7 +6494,6 @@ void   RXN_RecordInit(SRxnRecord &r);
 void   RXN_ParamsInit(SRxnParams &p);
 string RXN_LevelName(const int level);
 string RXN_PhaseName(const int phase);
-string RXN_ExecName(const int st);
 string RXN_ExecReason(const SRxnEvidence &e);
 string RXN_NeedsText(const SRxnEvidence &e);
 string RXN_OutcomeName(const int oc);
@@ -6907,7 +6563,6 @@ void   RXN_Scenario(const bool support_side,const int with_displacement,const in
                     const int vol_regime,const bool sweep,const bool htf_available,
                     const int htf_bias,const int d1_bias,SRxnEvidence &e,string &where);
 bool   RXN_SelfTestRun(string &where);
-bool   RXN_SelfTest();
 //====================================================================
 // RXN CHART-STATE ADAPTERS
 //====================================================================
@@ -6960,7 +6615,6 @@ void   RXN_RankExtra(const double close_px,const SRxnParams &p);
 void   RXN_ProcessClosedBar(const int rates_total,const int closed,const double atr);
 void   RXN_ProcessLive(const int rates_total);
 bool   RXN_BestReaction(const int dir,SRxnEvidence &out);
-int    RXN_LevelFor(const int dir);
 void   RXN_ReconcileActiveSetup(const int closed);
 void   RXN_ReportOwnershipBlock();
 void   RXN_Clear();
@@ -6971,8 +6625,6 @@ void   RXN_DeleteObjects();
 color  RXN_LevelColor(const int level,const bool buy);
 void   RXN_DrawOne(const SRxnEvidence &e,const string suffix);
 void   RXN_Draw();
-void   RXN_DashMini(string &L[],color &C[],bool &H[],int &ln);
-void   RXN_DashFull(string &L[],color &C[],bool &H[],int &ln);
 // Directional Scenario Engine: planning/display only. The Core lifecycle remains
 // the sole execution authority; see ScenarioUpdate / ScenarioApplyCoreReady.
 void   ScenarioTFInit(SScenarioTF &x,const ENUM_TIMEFRAMES tf);
@@ -6984,8 +6636,6 @@ string ScenarioDirectionToken(const bool data_ok,const int bias);
 bool   ScenarioCopyClosedRates(const ENUM_TIMEFRAMES tf,const int requested_closed,
                                const datetime boundary,MqlRates &rates[],int &last_closed,
                                string &reason);
-bool   ScenarioPreviousClosedPeriod(const ENUM_TIMEFRAMES tf,const datetime boundary,
-                                    MqlRates &bar,string &reason);
 void   TopDown_RangeEq(const MqlRates &rt[],const int from,const int to,
                        double &hi,double &lo,double &eq);
 double TopDown_ATR(const MqlRates &rt[],const int n,const int len);
@@ -7029,12 +6679,9 @@ void   ScenarioDeleteObjects();
 void   ScenarioDrawOne(const SScenarioPlan &p,const string tag);
 void   ScenarioDraw();
 void   ScenarioOnChartChange();
-void   ScenarioDashCompact(string &L[],color &C[],int &ln,const int cap);
 void   ScenarioDashFull(string &L[],color &C[],int &ln,const int cap);
 // v6.5.2 ladder / entry-vocabulary helpers (display only).
 void   ScenarioLead(SScenarioPlan &lead);
-string ScenarioLegStrip(const string s);
-void   ScenarioDashLadder(string &L[],color &C[],int &ln,const int cap,const SScenarioPlan &p);
 string ScenarioPlanEntryText(const SScenarioPlan &p);
 string ScenarioPlanTriggerText(const SScenarioPlan &p);
 string ScenarioPlanStopText(const SScenarioPlan &p);
@@ -7043,15 +6690,9 @@ string ScenarioPlanHeadline(const SScenarioPlan &p);
 string ScenarioPlanLeadKey(const SScenarioPlan &a,const SScenarioPlan &b);
 void DrawFibLine(const string name,const datetime t1,const datetime t2,const double price,const color col,const int style=STYLE_DOT,const int width=1);
 void DrawZoneBox(const string name,const datetime t1,const double p1,const datetime t2,const double p2,const color col,const string label,const int transparency=88);
-color GradeColor(const string g);
-color PctColor(const int p);
-color BlendColor(const color col,const int pct);
-string NormText(const string s);
 string TFName(const ENUM_TIMEFRAMES tf);
-string IntegerToBinary(const int num);
 // v6.5.2 MTF_SniperZone_Engine forward declarations
 void            PMI_Update();
-bool            PMI_SelfTest();
 ENUM_TIMEFRAMES MTF_SniperTFByIndex(const int idx);
 int             MTF_SniperTFIndex(const ENUM_TIMEFRAMES tf);
 double          MTF_SniperTFWeight(const ENUM_TIMEFRAMES tf);
@@ -7084,7 +6725,6 @@ void            MTF_SniperZone_DeleteObjects();
 void            MTF_SniperZone_Draw();
 void            MTF_SniperZone_OnChartChange();
 void            MTF_SniperZone_Update();
-string          MTF_SniperDashboardLine(const double current_price,const double chart_atr,color &col_out);
 double          MTF_SniperScoreForDirection(const bool is_buy,const double current_price,const double chart_atr);
 double          MTF_SniperScaleEightPillarScore(const double existing_seven_pillar_score,const double sniper_pillar_score);
 void            MTF_SniperExpect(const bool ok,const string why,string &where);
@@ -7374,7 +7014,6 @@ void   DrawEntryLevelsFor(const datetime sig_bar_time,const bool is_buy,
 void   EntryMarkInvalidateLatest();
 void   EntryMarkCoreFromSetup();
 void   EntryMarkCoreFromDirectSetup();
-void   MarkZREEntry(const SZRESignal &s);
 void   DrawEntrySignalVisuals(const int total,const bool is_new_bar);
 
 //====================================================================
@@ -7871,31 +7510,6 @@ void EntryMarkCoreFromDirectSetup()
    g_gate_audit.marks++;   g_gate_audit.core_marks++;
 }
 //--- ZRE (Zone Reaction Engine) entries: secondary layer, never authoritative.
-void MarkZREEntry(const SZRESignal &s)
-{
-   if(!InpShowZREEntryMarks) return;
-   if(s.bar_time<=0) return;
-   string key=StringFormat("%s|%.5f|%s",s.zone_id,s.entry,s.is_buy?"B":"S");
-   if(EntryKeySeen(key)) return;            // one signal per zone per direction until invalidated
-   if(EntryKeyCooling(key)) return;         // v6.4.2: + cooldown in bars after a release
-   if(InpProximityFilter)                   // v6.4.2: no BUY under a wall / SELL over one
-   {
-      double wall=NearestOpposingEdgeATR(s.is_buy,s.entry,MathMax(s.atr,g_atr));
-      if(wall>=0.0 && wall<InpProximityMaxATR)
-      {
-         if(InpDebugLog)
-            DebugLogSignal("ZRE","proximity-veto-mark",(s.is_buy?1:-1),s.zone_lo,s.zone_hi,
-                           s.entry,s.sl,(s.is_buy?"SUPPORT":"RESISTANCE"),"REACTION CONFIRMED",
-                           s.entry,s.entry,s.entry,s.entry,"0.0",
-                           StringFormat("%.2f ATR to the opposing level",wall));
-         return;
-      }
-   }
-   EntryKeyAdd(key,s.bar_time,1,s.is_buy,s.entry);
-   EntryMarkWriteAt(s.bar_time,1,s.is_buy,true,s.entry);
-   EntryMarkObjectsFor(s.bar_time,1,s.is_buy,true);
-   g_gate_audit.marks++;   g_gate_audit.zre_marks++;
-}
 
 //--------------------------------------------------------------------
 // AUDIT-D1: the declutter cap, made to do what it says.
@@ -8715,10 +8329,7 @@ void   PMI_CopyLevel(SPMILiquidity &dst,const SPMILiquidity &src);
 void   PMI_CopyStructEvent(StructureEvent &dst,const StructureEvent &src);
 void   PMI_CopyPath(SPMIPricePath &dst,const SPMIPricePath &src);
 ulong  PMI_HashString(const string s);
-ulong  PMI_HashDoubleArray(const double &v[],const int count);
 int    PMI_LiquidityTypeCode(const string t);
-string PMI_LiqStatusName(const ENUM_PMI_LIQ_STATUS s);
-string PMI_TreeAxisName(const int axis);
 string PMI_RegimeName(const ENUM_PMI_REGIME r);
 string PMI_SessionName(const int s);
 string PMI_PathStatusName(const ENUM_PMI_PATH_STATUS s);
@@ -8735,7 +8346,6 @@ void   PMI_StructDedupeRemoveBucket(const int removed_bucket);
 bool   PMI_StructDedupeUnlinkSlot(const int ring_slot);
 bool   PMI_StructDedupeInsertRaw(const ulong key);
 bool   PMI_StructDedupeReset(const int requested_capacity);
-bool   PMI_StructDedupeCheckInvariants();
 int    PMI_StructDedupeTimeframeSlot(const ENUM_TIMEFRAMES tf);
 bool   PMI_StructDedupeLegacyScan(const int tf_slot,const datetime origin_time,
                                   const int direction);
@@ -8780,7 +8390,6 @@ void   PMI_TFStateAtIndex(const int idx,const int kq,int &bias_out,int &sdir_out
 int    PMI_TFIndexAtBoundary(const int idx,const datetime boundary);
 void   PMI_BuildTFState(const int idx,const datetime boundary);
 void   PMI_ResolveContext(const int closed);
-int    PMI_FirstBarAtOrAfter(const datetime t);
 int    PMI_LevelStatusAt(const double price,const int type_code,const int avail_bar,
                          const int as_of,double &penetration_atr_out,int &touch_out);
 void   PMI_AddLevel(const string type,const double price,const datetime creation,
@@ -8801,10 +8410,8 @@ void   PMI_BuildLocation(const int closed,const double atr);
 void   PMI_AssembleMarketState(const int closed,const double atr,const datetime boundary);
 void   PMI_ResetEventRing();
 void   PMI_PushEvent(const int bar,const int kind,const int dir,const double value);
-int    PMI_CountEvents(const int kind,const int from,const int to);
 bool   PMI_LastEventBefore(const int bar,const int kind,int &dir_out,double &value_out,int &bar_out);
 int    PMI_ChartBarForTime(const datetime t);
-void   PMI_FeatureNames(string &names[]);
 bool   PMI_NearestChartLiquidity(const int bar,const bool above,double &price_out);
 double PMI_ChartPDAt(const int bar);
 void   PMI_BuildFeatureVector(const int bar,double &v[],int &dir_out);
@@ -8860,10 +8467,6 @@ bool   PMI_SelfTestExpect(const string name,const bool hasLiq,const bool hasSwee
                           const bool hasRetest,const bool hasLTF,const bool orderValid,
                           const string expected_missing,const bool expected_ready);
 int    PMI_RunSelfTests();
-string PMI_Mark(const bool ok);
-void   PMI_PanelLine(string &L[],color &C[],int &ln,const string text,const color col);
-void   PMI_DrawPanel();
-void   PMI_DrawPanelThrottled();
 string PMI_StateDigestString();
 void   PMI_UpdateAll(const int rates_total,const bool force);
 void   PMI_Init();
@@ -9273,17 +8876,6 @@ ulong PMI_HashString(const string s)
    return ((h1&0xFFFFFFFF)<<32)|(h2&0xFFFFFFFF);
 }
 
-ulong PMI_HashDoubleArray(const double &v[],const int count)
-{
-   ulong h=0;
-   for(int i=0;i<count;i++)
-   {
-      string s=StringFormat("%.6g",v[i]);
-      h^=PMI_HashString(s);
-      h=(h*31)+1013904223;
-   }
-   return h;
-}
 
 // Deterministic code for a liquidity type name (used by the replay audit so
 // re-derivation never depends on string comparison of stale names).
@@ -9302,27 +8894,7 @@ int PMI_LiquidityTypeCode(const string t)
    return 0;
 }
 
-string PMI_LiqStatusName(const ENUM_PMI_LIQ_STATUS s)
-{
-   if(s==PMI_LIQ_UNTOUCHED)   return "UNTOUCHED";
-   if(s==PMI_LIQ_APPROACHED)  return "APPROACHED";
-   if(s==PMI_LIQ_SWEPT)       return "SWEPT";
-   if(s==PMI_LIQ_CONSUMED)    return "CONSUMED";
-   return "INVALIDATED";
-}
 
-string PMI_TreeAxisName(const int axis)
-{
-   if(axis==PMI_AXIS_CONTEXT_DIR)  return "HTF DIRECTION";
-   if(axis==PMI_AXIS_PREMIUM_DISC) return "PREMIUM/DISCOUNT";
-   if(axis==PMI_AXIS_VOLATILITY)   return "VOLATILITY REGIME";
-   if(axis==PMI_AXIS_SWEEP_DIR)    return "SWEEP DIRECTION";
-   if(axis==PMI_AXIS_DISPLACEMENT) return "DISPLACEMENT STRENGTH";
-   if(axis==PMI_AXIS_MSS)          return "MSS STATE";
-   if(axis==PMI_AXIS_SESSION)      return "SESSION";
-   if(axis==PMI_AXIS_STRUCTURE)    return "STRUCTURE STATE";
-   return "TIME SEGMENT";
-}
 
 string PMI_RegimeName(const ENUM_PMI_REGIME r)
 {
@@ -9650,82 +9222,6 @@ bool PMI_StructDedupeReset(const int requested_capacity)
 }
 
 // Expensive invariant checker is exercised by the g++ harness, not on ticks.
-bool PMI_StructDedupeCheckInvariants()
-{
-   if(g_pmi_struct_dedupe_capacity<128 || g_pmi_struct_dedupe_capacity>65536 ||
-      (g_pmi_struct_dedupe_capacity&(g_pmi_struct_dedupe_capacity-1))!=0 ||
-      g_pmi_struct_dedupe_table_size!=g_pmi_struct_dedupe_capacity*2 ||
-      (g_pmi_struct_dedupe_table_size&(g_pmi_struct_dedupe_table_size-1))!=0 ||
-      g_pmi_struct_dedupe_ring_mask!=g_pmi_struct_dedupe_capacity-1 ||
-      g_pmi_struct_dedupe_table_mask!=g_pmi_struct_dedupe_table_size-1 ||
-      g_pmi_struct_dedupe_count<0 || g_pmi_struct_dedupe_count>g_pmi_struct_dedupe_capacity ||
-      g_pmi_struct_dedupe_write<0 || g_pmi_struct_dedupe_write>=g_pmi_struct_dedupe_capacity) return false;
-   int live_count=0;
-   int bucket_count=0;
-   for(int i=0;i<g_pmi_struct_dedupe_capacity;i++)
-   {
-      if(!g_pmi_struct_dedupe_ring[i].used)
-      {
-         if(g_pmi_struct_dedupe_ring[i].prev!=-1 || g_pmi_struct_dedupe_ring[i].next!=-1) return false;
-         continue;
-      }
-      live_count++;
-      int bucket=PMI_StructDedupeFindBucket(g_pmi_struct_dedupe_ring[i].key);
-      if(bucket<0 || g_pmi_struct_dedupe_buckets[bucket].key!=g_pmi_struct_dedupe_ring[i].key) return false;
-      int previous=g_pmi_struct_dedupe_ring[i].prev;
-      int next=g_pmi_struct_dedupe_ring[i].next;
-      if(previous<0)
-      {
-         if(g_pmi_struct_dedupe_buckets[bucket].head!=i) return false;
-      }
-      else if(previous>=g_pmi_struct_dedupe_capacity ||
-              !g_pmi_struct_dedupe_ring[previous].used ||
-              g_pmi_struct_dedupe_ring[previous].key!=g_pmi_struct_dedupe_ring[i].key ||
-              g_pmi_struct_dedupe_ring[previous].next!=i) return false;
-      if(next<0)
-      {
-         if(g_pmi_struct_dedupe_buckets[bucket].tail!=i) return false;
-      }
-      else if(next>=g_pmi_struct_dedupe_capacity ||
-              !g_pmi_struct_dedupe_ring[next].used ||
-              g_pmi_struct_dedupe_ring[next].key!=g_pmi_struct_dedupe_ring[i].key ||
-              g_pmi_struct_dedupe_ring[next].prev!=i) return false;
-   }
-   for(int i=0;i<g_pmi_struct_dedupe_table_size;i++)
-   {
-      if(!g_pmi_struct_dedupe_buckets[i].used)
-      {
-         if(g_pmi_struct_dedupe_buckets[i].head!=-1 || g_pmi_struct_dedupe_buckets[i].tail!=-1) return false;
-         continue;
-      }
-      bucket_count++;
-      if(g_pmi_struct_dedupe_buckets[i].head<0 || g_pmi_struct_dedupe_buckets[i].tail<0 ||
-         PMI_StructDedupeFindBucket(g_pmi_struct_dedupe_buckets[i].key)!=i) return false;
-      int probe=(int)(PMI_StructDedupeMix64(g_pmi_struct_dedupe_buckets[i].key)&(ulong)g_pmi_struct_dedupe_table_mask);
-      int steps=0;
-      while(probe!=i && steps<g_pmi_struct_dedupe_table_size)
-      {
-         if(!g_pmi_struct_dedupe_buckets[probe].used) return false;
-         probe=(probe+1)&g_pmi_struct_dedupe_table_mask;
-         steps++;
-      }
-      if(probe!=i) return false;
-      int entry=g_pmi_struct_dedupe_buckets[i].head;
-      int previous=-1;
-      int chain_count=0;
-      while(entry>=0 && chain_count<g_pmi_struct_dedupe_capacity)
-      {
-         if(entry>=g_pmi_struct_dedupe_capacity || !g_pmi_struct_dedupe_ring[entry].used ||
-            g_pmi_struct_dedupe_ring[entry].key!=g_pmi_struct_dedupe_buckets[i].key ||
-            g_pmi_struct_dedupe_ring[entry].prev!=previous) return false;
-         previous=entry;
-         entry=g_pmi_struct_dedupe_ring[entry].next;
-         chain_count++;
-      }
-      if(entry>=0 || previous!=g_pmi_struct_dedupe_buckets[i].tail) return false;
-   }
-   return live_count==g_pmi_struct_dedupe_count && bucket_count<=live_count;
-}
 // PMI_STRUCT_DEDUPE_CORE_END
 
 int PMI_StructDedupeTimeframeSlot(const ENUM_TIMEFRAMES tf)
@@ -10837,10 +10333,6 @@ void PMI_ResolveContext(const int closed)
 // v6.1.1: identical semantics to PMI_ChartBarForTime() (earliest bar whose open
 // time is at or after t), so it delegates instead of re-scanning the whole
 // history from bar 0 for every PDH/PDL/PWH/PWL level on every bar.
-int PMI_FirstBarAtOrAfter(const datetime t)
-{
-   return PMI_ChartBarForTime(t);
-}
 
 // Deepest penetration in ATR units beyond a level (closed bars only).
 int PMI_LevelStatusAt(const double price,const int type_code,const int avail_bar,
@@ -11693,18 +11185,6 @@ void PMI_PushEvent(const int bar,const int kind,const int dir,const double value
    if(g_pmi_ev_count<PMI_EV_RING) g_pmi_ev_count++;
 }
 
-int PMI_CountEvents(const int kind,const int from,const int to)
-{
-   int n=0;
-   for(int i=0;i<PMI_EV_RING;i++)
-   {
-      if(!g_pmi_events[i].used) continue;
-      if(kind>0 && g_pmi_events[i].kind!=kind) continue;
-      if(g_pmi_events[i].bar<from || g_pmi_events[i].bar>to) continue;
-      n++;
-   }
-   return n;
-}
 
 bool PMI_LastEventBefore(const int bar,const int kind,int &dir_out,double &value_out,int &bar_out)
 {
@@ -11759,19 +11239,6 @@ int PMI_ChartBarForTime(const datetime t)
 // Fixed-order, documented dimensions. Every value is derived from data
 // available at that bar only.
 //====================================================================
-void PMI_FeatureNames(string &names[])
-{
-   ArrayResize(names,PMI_FV_DIM);
-   names[0]="W1 bias"; names[1]="D1 bias"; names[2]="H4 bias"; names[3]="H1 bias";
-   names[4]="M15 bias"; names[5]="chart structure dir";
-   names[6]="D1 premium/discount"; names[7]="chart premium/discount";
-   names[8]="ATR ratio"; names[9]="volatility class";
-   names[10]="dist to BSL (ATR)"; names[11]="dist to SSL (ATR)";
-   names[12]="dist to PDH (ATR)"; names[13]="dist to PDL (ATR)";
-   names[14]="sweep state"; names[15]="displacement strength";
-   names[16]="MSS state"; names[17]="zone state"; names[18]="retest state";
-   names[19]="session"; names[20]="close location"; names[21]="directional efficiency";
-}
 
 // Nearest chart-fractal liquidity above/below a bar (causal: fractals with
 // their right window fully inside bars <= bar).
@@ -13245,22 +12712,9 @@ void PMI_BuildWalkForwardReport(const int closed)
 
 // Panel redraw is throttled: once per closed bar, plus at most one refresh
 // every InpPMIPanelRefreshTicks ticks, so intra-bar ticks stay cheap.
-int g_pmi_panel_ticks=0;
-int g_pmi_panel_last_closed=-2;
+   // PURGED (doc 11.14): g_pmi_panel_ticks had no reader and no writer.
+   // PURGED (doc 11.14): g_pmi_panel_last_closed had no reader and no writer.
 
-void PMI_DrawPanelThrottled()
-{
-   if(InpDisplayMode==QSMC_MODE_MINIMAL)
-   { ObjectsDeleteAll(0,PFX+"PMI_"); return; }
-   if(!InpShowPredictivePanel || !g_pmi_enabled) return;
-   g_pmi_panel_ticks++;
-   bool on_new_closed=(g_pmi_last_closed!=g_pmi_panel_last_closed);
-   if(!on_new_closed && g_pmi_panel_ticks<PMI_IMax(1,InpPMIPanelRefreshTicks)) return;
-   g_pmi_panel_ticks=0;
-   g_pmi_panel_last_closed=g_pmi_last_closed;
-   PMI_DrawPanel();
-   ChartRedraw(0);
-}
 
 //====================================================================
 // PMI — CAUSAL REPLAY ENGINE (Phase 24)
@@ -13470,210 +12924,8 @@ int PMI_RunSelfTests()
 // Markers use [OK] / [--] instead of glyphs so the panel renders
 // identically on every terminal font.
 //====================================================================
-string PMI_Mark(const bool ok) { return (ok ? "[OK]" : "[--]"); }
 
-void PMI_PanelLine(string &L[],color &C[],int &ln,const string text,const color col)
-{
-   // PHASE 59 (D5): cap raised 44 -> 64. In DASH_FULL the worst case is
-   // ~21-23 base rows + up to ~20 EXPLANATION/RESEARCH/WALK-FORWARD rows,
-   // so the old 44-row cap could silently truncate the research tail.
-   if(ln>=64) return;
-   L[ln]=text;
-   C[ln]=col;
-   ln++;
-}
 
-void PMI_DrawPanel()
-{
-   string prefix=PFX+"PMI_";
-   if(InpDisplayMode==QSMC_MODE_MINIMAL || !InpShowPredictivePanel || !g_pmicfg.enabled || InpUltraCleanMode)
-   {
-      ObjectsDeleteAll(0,prefix);
-      return;
-   }
-   // v6.1.3 (L1): collapsed = no panel on the price pane at all (it used to
-   // stay docked bottom-left); the badge's [+] PMI button expands it.
-   if(InpPMIPanelCollapsible && !g_pmi_panel_expanded)
-   {
-      ObjectsDeleteAll(0,prefix);
-      g_pmi_panel_y=0; g_pmi_panel_height=0;
-      return;
-   }
-   string L[64]; color C[64];
-   int ln=0;
-   int closed=ArraySize(g_buf_c)-2;
-   double price=(closed>=0 ? g_buf_c[closed] : 0.0);
-
-   PMI_PanelLine(L,C,ln,"PREDICTIVE MARKET INTELLIGENCE "+QSMC_VERSION_TEXT+"  "+_Symbol+" "+TFName((ENUM_TIMEFRAMES)_Period),clrWhite);
-   PMI_PanelLine(L,C,ln,StringFormat("PRICE: %s   (UTC %s | ALGERIA %s)",DoubleToString(price,_Digits),
-                 g_pmi_session.utc_time_text,g_pmi_session.algeria_time_text),clrSilver);
-   PMI_PanelLine(L,C,ln,"HTF CONTEXT",clrDarkGray);
-   PMI_PanelLine(L,C,ln,StringFormat("  D1 %s | H4 %s | H1 %s | M15 %s | M5 %s",
-                 (g_pmi_tf[1].valid?g_pmi_tf[1].structure_state:"n/a"),
-                 (g_pmi_tf[2].valid?g_pmi_tf[2].structure_state:"n/a"),
-                 (g_pmi_tf[3].valid?g_pmi_tf[3].structure_state:"n/a"),
-                 (g_pmi_tf[5].valid?g_pmi_tf[5].structure_state:"n/a"),
-                 (g_pmi_tf[6].valid?g_pmi_tf[6].structure_state:"n/a")),
-                 (g_pmi_context_dir>0?clrLimeGreen:(g_pmi_context_dir<0?clrTomato:clrSilver)));
-   if(g_pmi_context_conflict)
-      PMI_PanelLine(L,C,ln,"  CONFLICT: lower timeframe opposes HTF context",clrOrange);
-   PMI_PanelLine(L,C,ln,"LOCATION",clrDarkGray);
-   PMI_PanelLine(L,C,ln,StringFormat("  D1 %s (%.2f) | H4 %s (%.2f) | H1 %s (%.2f)",
-                 g_pmi_loc.zone_d1,g_pmi_loc.pd_d1,g_pmi_loc.zone_h4,g_pmi_loc.pd_h4,
-                 g_pmi_loc.zone_h1,g_pmi_loc.pd_h1),clrSilver);
-   PMI_PanelLine(L,C,ln,"LIQUIDITY",clrDarkGray);
-   PMI_PanelLine(L,C,ln,StringFormat("  BSL %s | SSL %s",DoubleToString(g_pmi_loc.nearest_bsl,_Digits),
-                 DoubleToString(g_pmi_loc.nearest_ssl,_Digits)),clrSilver);
-   // v6.5.3: the REAL level prices from the canonical prior-period record
-   // (same numbers as the S/R layer, the ZRE candidates and every dashboard).
-   if(InpDashMode!=DASH_MINI)
-      PMI_PanelLine(L,C,ln,StringFormat("  PDH %s | PDL %s | PWH %s | PWL %s",
-                    (g_pmi_loc.pdh_price>0.0?DoubleToString(g_pmi_loc.pdh_price,_Digits):"n/a"),
-                    (g_pmi_loc.pdl_price>0.0?DoubleToString(g_pmi_loc.pdl_price,_Digits):"n/a"),
-                    (g_pmi_loc.pwh_price>0.0?DoubleToString(g_pmi_loc.pwh_price,_Digits):"n/a"),
-                    (g_pmi_loc.pwl_price>0.0?DoubleToString(g_pmi_loc.pwl_price,_Digits):"n/a")),clrSilver);
-   PMI_PanelLine(L,C,ln,"CAUSAL SEQUENCE",clrDarkGray);
-   PMI_PanelLine(L,C,ln,StringFormat("  Sweep %s  Displacement %s  %s %s",
-                 PMI_Mark(g_pmi_seq.hasSweep),PMI_Mark(g_pmi_seq.hasDisplacement),
-                 (g_pmi_seq.structureType!=""?g_pmi_seq.structureType:"STRUCTURE"),
-                 PMI_Mark(g_pmi_seq.hasStructure)),
-                 (g_pmi_seq.hasStructure?clrLimeGreen:clrSilver));
-   PMI_PanelLine(L,C,ln,StringFormat("  OB/FVG %s  Retest %s  LTF confirm %s  Entry %s",
-                 PMI_Mark(g_pmi_seq.hasZone),PMI_Mark(g_pmi_seq.hasRetest),
-                 PMI_Mark(g_pmi_seq.hasLTFConfirm),PMI_Mark(g_pmi_setup.entryReady)),
-                 (g_pmi_setup.entryReady?clrLime:(g_pmi_seq.hasRetest?clrAqua:clrSilver)));
-   PMI_PanelLine(L,C,ln,"MARKET REGIME: "+g_pmi_regime.label+" / "+g_pmi_regime.vol_label,clrSilver);
-   if(g_pmi_analogue_sufficient)
-      PMI_PanelLine(L,C,ln,StringFormat("HISTORICAL ANALOGUES: %d fully observed (%d censored) | target reached %.1f%%",
-                    g_pmi_stats[0].sample,g_pmi_stats[0].censored,g_pmi_stats[0].target_rate),clrSilver);
-   else
-      PMI_PanelLine(L,C,ln,StringFormat("HISTORICAL ANALOGUES: %d fully observed (%d censored) - INSUFFICIENT SAMPLE (min %d): rate withheld",
-                    g_pmi_stats[0].sample,g_pmi_stats[0].censored,g_pmicfg.min_samples),clrOrange);
-   PMI_PanelLine(L,C,ln,"PRICE PATHS",clrDarkGray);
-   for(int i=0;i<g_pmi_path_count;i++)
-      PMI_PanelLine(L,C,ln,StringFormat("  %s %s: %s | target %s | invalidation %s",
-                    g_pmi_paths[i].pathId,g_pmi_paths[i].label,
-                    PMI_PathStatusName(g_pmi_paths[i].status),
-                    (g_pmi_paths[i].targetLiquidity>0.0?DoubleToString(g_pmi_paths[i].targetLiquidity,_Digits):"n/a"),
-                    (g_pmi_paths[i].invalidation>0.0?DoubleToString(g_pmi_paths[i].invalidation,_Digits):"n/a")),
-                    (g_pmi_paths[i].status==PMI_PATH_ACTIVE?clrAqua:
-                    (g_pmi_paths[i].status==PMI_PATH_INVALIDATED?clrOrange:clrSilver)));
-   PMI_PanelLine(L,C,ln,"CURRENT STATE: "+g_pmi_seq.stateText,
-                 (g_pmi_setup.entryReady?clrLime:(g_pmi_seq.hasRetest?clrAqua:clrDimGray)));
-   if(g_pmi_seq.stageIndex>0)
-      PMI_PanelLine(L,C,ln,"MISSING: "+g_pmi_seq.missingCondition,clrOrange);
-   PMI_PanelLine(L,C,ln,"NO-TRADE: "+(g_pmi_notrade==PMI_NT_NONE?"none":g_pmi_notrade_text),
-                 (g_pmi_notrade==PMI_NT_NONE?clrLimeGreen:clrOrange));
-   PMI_PanelLine(L,C,ln,StringFormat("CONFLUENCE: %.0f / 100 (weighted evidence - NOT a probability)",g_pmi_confluence),clrSilver);
-
-   if(InpDashMode==DASH_FULL)
-   {
-      PMI_PanelLine(L,C,ln,"EXPLANATION",clrDarkGray);
-      for(int i=0;i<g_pmi_explanation_count;i++)
-         PMI_PanelLine(L,C,ln,"  - "+g_pmi_explanation[i],clrGray);
-      PMI_PanelLine(L,C,ln,"RESEARCH",clrDarkGray);
-      PMI_PanelLine(L,C,ln,StringFormat("  tree nodes %d leaves %d depth %d digest %I64u",
-                    g_pmi_tree_nodes,g_pmi_tree_leaves,g_pmi_tree_depth_reached,g_pmi_tree_digest),clrGray);
-      PMI_PanelLine(L,C,ln,"  replay: "+g_pmi_replay.last_report,clrGray);
-      PMI_PanelLine(L,C,ln,"  data: "+g_pmi_dq.detail,clrGray);
-      if(StringLen(g_pmi_walkforward_text)>0)
-      {
-         PMI_PanelLine(L,C,ln,"WALK-FORWARD (descriptive)",clrDarkGray);
-         PMI_PanelLine(L,C,ln,"  "+g_pmi_walkforward_text,clrGray);
-      }
-   }
-
-   if(InpPMIPanelCollapsible) L[0]+=" [-]";
-
-   // ---- render (docked width is constrained to leave the newest
-   // InpPanelReserveBars visible candles clear - v6.1.3, was 20 bars)
-   int font=(InpDockPMIPanel && InpDashMode==DASH_MINI?7:8);
-   int line_h=font+6;
-   int chart_w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS);
-   int chart_h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS);
-   int safe_w=(InpDockPMIPanel?SafeLeftPanelWidth():(int)MathMax(80,chart_w-16));
-   int dock_min_y=g_panel_stack_bottom+4;
-   if(InpDockPMIPanel && chart_h>0)
-   {
-      // v6.1.3: the docked panel may never climb over the badge/dashboard/
-      // MTF stack; rows that do not fit are dropped, never overlapped.
-      int max_rows=(chart_h-8-dock_min_y-10)/line_h;
-      if(max_rows<2)
-      {
-         ObjectsDeleteAll(0,prefix);
-         g_pmi_panel_y=0; g_pmi_panel_height=0;
-         return;
-      }
-      if(ln>max_rows)
-      {
-         ln=max_rows;
-         L[ln-1]="... more rows hidden (collapse DASH/MTF or enlarge the chart)";
-         C[ln-1]=clrGray;
-      }
-   }
-   // v6.5.3 (D3): measured, not estimated. The usable text box is the dock width
-   // minus the real padding, every row is fitted to it on a word boundary, and the
-   // background is sized from the measured pixel width of the rows that are
-   // actually drawn - so the box can never be narrower than its own text.
-   int text_box=(int)MathMax(40,safe_w-2*4-6);
-   int max_w=0;
-   for(int i=0;i<ln;i++)
-   {
-      if(InpDockPMIPanel) L[i]=QSMC_FitTextPx(L[i],"Consolas",font,text_box);
-      max_w=(int)PMI_IMax(max_w,TextWidthPx(L[i],"Consolas",font));
-   }
-   if(max_w>0) max_w=(int)MathCeil((double)max_w*1.04);
-   int x=(InpDockPMIPanel?8:PMI_IMax(2,InpPMIPanelX));
-   int y=PMI_IMax(2,InpPMIPanelY);
-   int panel_height=ln*line_h+10;
-   if(InpDockPMIPanel && chart_h>0)
-   {
-      y=MathMax(dock_min_y,chart_h-panel_height-8);
-      // v6.1.3 (L4): slide up out of a trade-level label band when there is
-      // room above; otherwise keep the dock (never over the panel stack).
-      int bg_y=AvoidTradeLevelKeepOut(y-4,panel_height,false);
-      if(bg_y+4>=dock_min_y) y=bg_y+4;
-   }
-   g_pmi_panel_y=y; g_pmi_panel_height=panel_height+8;
-
-   string bg=prefix+"BG";
-   if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
-   ObjectSetInteger(0,bg,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,x-4);
-   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,y-4);
-   ObjectSetInteger(0,bg,OBJPROP_XSIZE,MathMin(safe_w,(int)MathMax(64,max_w+16)));
-   ObjectSetInteger(0,bg,OBJPROP_YSIZE,ln*line_h+10);
-   ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,(color)0x0A0A10);
-   ObjectSetInteger(0,bg,OBJPROP_COLOR,(g_pmi_setup.entryReady?clrLime:
-                    (g_pmi_notrade==PMI_NT_NONE?clrDarkSlateGray:clrOrange)));
-   ObjectSetInteger(0,bg,OBJPROP_WIDTH,1);
-   ObjectSetInteger(0,bg,OBJPROP_BACK,false);
-   ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,bg,OBJPROP_ZORDER,0);
-
-   for(int i=0;i<ln;i++)
-   {
-      string name=prefix+IntegerToString(i);
-      if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
-      ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-      ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
-      ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+i*line_h);
-      ObjectSetString(0,name,OBJPROP_TEXT,L[i]);
-      ObjectSetString(0,name,OBJPROP_FONT,"Consolas");
-      ObjectSetInteger(0,name,OBJPROP_FONTSIZE,font);
-      ObjectSetInteger(0,name,OBJPROP_COLOR,C[i]);
-      ObjectSetInteger(0,name,OBJPROP_SELECTABLE,(i==0 && InpPMIPanelCollapsible));
-      ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
-      ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-      ObjectSetInteger(0,name,OBJPROP_ZORDER,10);
-   }
-   for(int i=ln;i<64;i++)
-   {
-      string name=prefix+IntegerToString(i);
-      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
-   }
-}
 
 //====================================================================
 // PMI — STATE DIGEST for the causal-fingerprint audit (finding W9)
@@ -15838,44 +15090,6 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       if(InpShowDebugAlerts) Print(">>> Custom event triggered - Will recalculate on next tick");
    }
 }
-void RepositionDashboard()
-{
-   // PHASE 59 fixes (D1/D2/D3): this routine must mirror DrawQuantumDashboard's
-   // layout EXACTLY, otherwise every CHARTEVENT_CHART_CHANGE visibly breaks the
-   // panel until the next full draw:
-   //   D1: legend labels were all stacked on the SAME x (they overlap into an
-   //       unreadable pile after a chart resize) - they must keep the same
-   //       accumulated offsets the draw uses.
-   //   D2: the accent strip DASH_STRIP was never repositioned - it stayed at
-   //       the old x, detached from the panel border.
-   //   D3: text offset was bg_x+8 while the draw uses bg_x+10 - a 2px jump.
-   int chart_w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS);
-   if(chart_w<=0) return;
-   int panel_font=(InpPanelFontSize>0 ? InpPanelFontSize : 9);
-   int bg_x=chart_w - InpPanelRightPad - g_dash_width;
-   if(bg_x<5) bg_x=5;
-   int txt_x=bg_x+10;                       // same pad as the draw body
-   string bg=PFX+"DASH_BG";
-   if(ObjectFind(0,bg)>=0) ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,bg_x);
-   string strip=PFX+"DASH_STRIP";           // D2: strip follows the panel
-   if(ObjectFind(0,strip)>=0) ObjectSetInteger(0,strip,OBJPROP_XDISTANCE,bg_x);
-   for(int i=0;i<g_dash_lines;i++)
-   {
-      string name=PFX+"DASH_"+IntegerToString(i);
-      if(ObjectFind(0,name)>=0) ObjectSetInteger(0,name,OBJPROP_XDISTANCE,txt_x);
-   }
-   // D1: rebuild the legend row layout with the draw's exact step formula.
-   // The legend text lives on the object itself, so read it back per label.
-   int lx=txt_x;
-   for(int k=0;k<5;k++)
-   {
-      string lname=PFX+"DASH_LEG"+IntegerToString(k);
-      if(ObjectFind(0,lname)<0) continue;
-      ObjectSetInteger(0,lname,OBJPROP_XDISTANCE,lx);
-      string leg_txt=ObjectGetString(0,lname,OBJPROP_TEXT);
-      lx+=(int)MathCeil(StringLen(leg_txt)*panel_font*0.62)+6;
-   }
-}
 
 //====================================================================
 // MAIN - OnCalculate with chronological enforcement & delta rendering
@@ -16803,20 +16017,6 @@ void BuildMarketGraph()
    for(int i=0;i<ArraySize(g_liquidity) && cnt<maxNodes;i++) if(g_liquidity[i].swept){ AddGraphNode("LIQ",g_liquidity[i].price,5); cnt++; if(cnt>=maxNodes) break; }
    // reduced connect radius and max links already limited to 6 via MAX_GRAPH_LINKS
    ConnectGraphNodes();
-}
-double GraphConfluenceScore(const double price)
-{
-   int n=ArraySize(g_market_graph);
-   if(n==0) return 0.0;
-   double band=(g_atr>0)? g_atr*2.0 : 300*_Point;
-   double best=0.0;
-   for(int i=0;i<n;i++)
-   {
-      if(MathAbs(g_market_graph[i].price-price)>band) continue;
-      double v=10.0*(1+g_market_graph[i].link_count)+g_market_graph[i].strength*4.0;
-      best=MathMax(best,v);
-   }
-   return MathMin(100.0,best);
 }
 string CausalTypeName(const ENUM_CAUSAL_EVENT_TYPE type)
 {
@@ -18442,16 +17642,6 @@ double ScoreHTF(const bool is_buy)
    if(g_htf_bias==0) return 50.0;
    return (g_htf_bias==(is_buy?1:-1))?100.0:0.0;
 }
-double ScoreAlgo(const int knap,const int dp,const int max_possible,const double price)
-{
-   if(InpInstitutionalSequence)
-      return g_trade_setup.causal_path_score;
-   double a=(max_possible>0)?100.0*knap/max_possible:0.0;
-   double b=(max_possible>0)?100.0*dp/max_possible:0.0;
-   double base=MathMax(a,b);
-   double conf=(InpUseGraphTheory && !InpInstitutionalSequence)?GraphConfluenceScore(price):0.0;
-   return MathMin(100.0,base*0.70+conf*0.30);
-}
 string DetectMarketRegime(const int closed,const double atr)
 {
    if(!InpUseRegimeAdaptiveScoring) return "NEUTRAL";
@@ -18629,17 +17819,6 @@ string CalculateRiskLevel(const double entry,const double sl,const double atr,co
    if(pts>=2) return "MEDIUM";
    return "HIGH";
 }
-string BuildConfidenceBar(const int pct,const int cells)
-{
-   int filled=(int)MathRound((double)pct/100.0*cells);
-   filled=MathMax(0,MathMin(cells,filled));
-   string full=InpASCIIBar?"#":"█";
-   string empt=InpASCIIBar?"-":"░";
-   string bar="";
-   for(int i=0;i<filled;i++) bar+=full;
-   for(int i=filled;i<cells;i++) bar+=empt;
-   return bar;
-}
 //--------------------------------------------------------------------
 int FindAlignedLiquiditySweep(const bool is_buy,const int structure_bar,const int max_bars,double &price_out)
 {
@@ -18669,99 +17848,7 @@ int FindAlignedLiquiditySweep(const bool is_buy,const int structure_bar,const in
    return best;
 }
 
-int SelectEntryOB(const double price,const bool is_buy,const double atr,const int anchor_bar,const int sweep_bar)
-{
-   int n=ArraySize(g_order_blocks);
-   if(n==0) return -1;
 
-   double a=(atr>0.0 ? atr : _Point*100.0);
-   double max_dist=a*(InpInstitutionalSequence ? InpMaxOBDistATR
-                                               : (InpRelaxedMode ? 12.0 : InpMaxOBDistATR));
-   int best=-1;
-   double best_score=-DBL_MAX;
-   string best_uid="";
-   int candidates=0;
-
-   for(int i=0;i<n;i++)
-   {
-      SOrderBlock ob=g_order_blocks[i];
-      if(ob.bullish!=is_buy) continue;
-      if(ob.state=="MITIGATED" || ob.closed_state=="MITIGATED") continue;
-      if(ob.state=="EXPIRED" || ob.closed_state=="EXPIRED") continue;   // AUDIT-OB1
-      if(ob.strength<InpMinEntryOBStrength) continue;
-
-      if(InpInstitutionalSequence)
-      {
-         if(anchor_bar>=0 && ob.origin_struct_bar!=anchor_bar) continue;
-         if(sweep_bar>=0 && ob.bar<sweep_bar-MathMax(0,InpOrderZonePreSweepBars)) continue;
-      }
-
-      double mid=(ob.top+ob.bottom)*0.5;
-      double dist=MathAbs(price-mid);
-      if(dist>max_dist) continue;
-      // A buy zone should normally be below price; a sell zone above it.
-      if(InpInstitutionalSequence)
-      {
-         if(is_buy && mid>price+a*0.25) continue;
-         if(!is_buy && mid<price-a*0.25) continue;
-      }
-      else if(!InpRelaxedMode)
-      {
-         if(is_buy && mid>price+a*0.5) continue;
-         if(!is_buy && mid<price-a*0.5) continue;
-      }
-
-      candidates++;
-      double distance_score=MathMax(0.0,100.0-(dist/a)*12.0);
-      double score=ob.strength*18.0+distance_score;
-      if(ob.closed_state=="TOUCHED" || ob.state=="TOUCHED") score*=0.82;
-      if(score>best_score+1e-9 ||
-         (MathAbs(score-best_score)<=1e-9 &&
-          (best_uid=="" || StringCompare(ob.id,best_uid)<0)))
-      {best_score=score; best_uid=ob.id; best=i;}
-   }
-
-   if(InpShowDebugAlerts || InpLogSignalDetails)
-      Print(StringFormat(">>> Institutional OB %s: candidates=%d selected=%d",
-                         is_buy?"BUY":"SELL",candidates,best));
-   return best;
-}
-
-int SelectEntryFVG(const double price,const bool is_buy,const double atr,const int anchor_bar,const int sweep_bar)
-{
-   if(!InpAllowFVGEntryZone) return -1;
-   double a=(atr>0.0 ? atr : _Point*100.0);
-   int best=-1;
-   double best_score=DBL_MAX;
-   string best_id="";
-   for(int i=0;i<ArraySize(g_fvgs);i++)
-   {
-      SFVG f=g_fvgs[i];
-      if(f.bullish!=is_buy || f.state=="FILLED") continue;
-      if(!InpAllowPartialFVG && f.state=="PARTIAL") continue;
-      if(InpInstitutionalSequence)
-      {
-         if(f.source_displacement_event_id=="" || f.source_structure_event_id=="") continue;
-         if(sweep_bar>=0 && f.source_displacement_bar<=sweep_bar) continue;
-         if(anchor_bar>=0 && f.source_structure_bar!=anchor_bar) continue;
-      }
-      double mid=(f.top+f.bottom)*0.5;
-      double dist=MathAbs(price-mid);
-      if(dist>a*InpMaxOBDistATR) continue;
-      if(InpInstitutionalSequence)
-      {
-         if(is_buy && mid>price+a*0.25) continue;
-         if(!is_buy && mid<price-a*0.25) continue;
-      }
-      double height=MathAbs(f.top-f.bottom);
-      double score=dist+height*0.35+(f.state=="PARTIAL" ? a*0.35 : 0.0);
-      if(score<best_score-1e-9 ||
-         (MathAbs(score-best_score)<=1e-9 &&
-          (best_id=="" || StringCompare(f.id,best_id)<0)))
-      {best_score=score; best_id=f.id; best=i;}
-   }
-   return best;
-}
 
 bool IsInstitutionalLocation(const bool is_buy,const double zone_top,const double zone_bottom,
                              const double atr,string &why)
@@ -18813,70 +17900,6 @@ bool GetClosedCurrentDayHighLow(double &day_high,double &day_low)
       found=true;
    }
    return (found && day_high>=day_low);
-}
-double GreedyFindBestTarget(const double from,const bool is_buy,const double min_dist,string &type_out)
-{
-   type_out="ATR Projection";
-   STarget tg[]; ArrayResize(tg,0,16);
-   for(int i=0;i<ArraySize(g_liquidity);i++)
-   {
-      // Targets are resting liquidity, never liquidity that was already taken.
-      if(g_liquidity[i].swept) continue;
-      if(is_buy && g_liquidity[i].type!="EQH") continue;
-      if(!is_buy && g_liquidity[i].type!="EQL") continue;
-      double p=g_liquidity[i].price;
-      if(!((is_buy && p>from+min_dist) || (!is_buy && p<from-min_dist))) continue;
-      STarget t; t.price=p; t.priority=10; t.type=g_liquidity[i].type+" Pool";
-      PushTarget(tg,t);
-   }
-   for(int i=0;i<ArraySize(g_order_blocks);i++)
-   {
-      if(g_order_blocks[i].bullish==is_buy) continue;
-      double p=is_buy?g_order_blocks[i].bottom:g_order_blocks[i].top;
-      if(!((is_buy && p>from+min_dist) || (!is_buy && p<from-min_dist))) continue;
-      STarget t; t.price=p; t.priority=7; t.type="Opposing OB"; PushTarget(tg,t);
-   }
-   for(int i=0;i<ArraySize(g_fvgs);i++)
-   {
-      if(g_fvgs[i].state=="FILLED") continue;
-      double p=is_buy?g_fvgs[i].bottom:g_fvgs[i].top;
-      if(!((is_buy && p>from+min_dist) || (!is_buy && p<from-min_dist))) continue;
-      STarget t; t.price=p; t.priority=6; t.type="FVG Edge"; PushTarget(tg,t);
-   }
-   double mag[4]; string mn[4];
-   // Previous-day values are closed shift 1. Current-day extrema are rebuilt
-   // only from chart bars through total-2, never from the forming D1 candle.
-   double closed_day_high=0.0,closed_day_low=0.0;
-   bool have_closed_day=GetClosedCurrentDayHighLow(closed_day_high,closed_day_low);
-   // v6.5.3: PDH/PDL from the canonical prior-period reference (identical on
-   // every timeframe); g_d1_high/g_d1_low are published from that same record.
-   // This helper has no closed-bar parameter, so it asks for the chart's own last
-   // closed bar (QSMC_ClosedBar is the single definition of that index).
-   SPriorPeriodRef dref;
-   bool dref_ok=QSMC_PriorDayRef(QSMC_ClosedBar(),dref);
-   mag[0]=(dref_ok && dref.high>0.0 ? dref.high : (g_d1_high>0.0?g_d1_high:0.0)); mn[0]="PDH";
-   mag[1]=(dref_ok && dref.low>0.0  ? dref.low  : (g_d1_low>0.0?g_d1_low:0.0));   mn[1]="PDL";
-   mag[2]=(have_closed_day?closed_day_high:0.0); mn[2]="Closed-day High";
-   mag[3]=(have_closed_day?closed_day_low:0.0); mn[3]="Closed-day Low";
-   for(int k=0;k<4;k++)
-   {
-      double p=mag[k]; if(p<=0) continue;
-      if(!((is_buy && p>from+min_dist) || (!is_buy && p<from-min_dist))) continue;
-      STarget t; t.price=p; t.priority=(k<2)?5:4; t.type=mn[k]; PushTarget(tg,t);
-   }
-   if(ArraySize(tg)==0) return 0.0;
-   int best=0;
-   for(int i=1;i<ArraySize(tg);i++)
-   {
-      if(tg[i].priority>tg[best].priority){best=i; continue;}
-      if(tg[i].priority==tg[best].priority)
-      {
-         if(is_buy && tg[i].price<tg[best].price) best=i;
-         if(!is_buy && tg[i].price>tg[best].price) best=i;
-      }
-   }
-   type_out=tg[best].type;
-   return tg[best].price;
 }
 
 double DirectionalRR(const bool is_buy,const double entry,const double sl,const double target)
@@ -19245,60 +18268,7 @@ void RecordCausalHop(const string hop_type,const string hop_id,const int hop_bar
    g_causal_diag.hop_count++;
 }
 
-void DashPushWrapped(string &L[],int &ln,const string s,const int width)
-{
-   // Pure text helper: word-wraps s into L[] at ln. The dashboard printer
-   // owns all object creation; this only prepares display lines.
-   int max_chars=MathMax(10,width);
-   int len=StringLen(s);
-   if(len<=max_chars)
-   {
-      int n=ArraySize(L);
-      ArrayResize(L,n+1,32);
-      L[n]=s;
-      ln++;
-      return;
-   }
-   string cur="";
-   string word="";
-   for(int i=0;i<=len;i++)
-   {
-      ushort ch=(i<len ? StringGetCharacter(s,i) : ' ');
-      if(ch==' ' || i==len)
-      {
-         string trial=(cur=="" ? word : cur+" "+word);
-         if(StringLen(trial)>max_chars && cur!="")
-         {
-            int n=ArraySize(L);
-            ArrayResize(L,n+1,32);
-            L[n]=cur;
-            ln++;
-            cur=word;
-         }
-         else
-            cur=trial;
-         word="";
-      }
-      else
-         word+=ShortToString(ch);
-   }
-   if(cur!="")
-   {
-      int n=ArraySize(L);
-      ArrayResize(L,n+1,32);
-      L[n]=cur;
-      ln++;
-   }
-}
 
-string GateTxt(const bool ok)
-{
-   return ok?"[v] ":"[ ] ";
-}
-string NormText(const string s)
-{
-   return s;
-}
 string TFName(const ENUM_TIMEFRAMES tf)
 {
    switch(tf)
@@ -19314,14 +18284,6 @@ string TFName(const ENUM_TIMEFRAMES tf)
       case PERIOD_MN1: return "MN1";
    }
    return EnumToString(tf);
-}
-string IntegerToBinary(const int num)
-{
-   // Compact mask visualisation: lowest 12 bits cover every defined BIT_*.
-   string s="";
-   for(int i=11;i>=0;i--)
-      s+=(((num>>i)&1)==1)?"1":"0";
-   return s;
 }
 color ColorLerp(const color c1,const color c2,const double t)
 {
@@ -19416,36 +18378,8 @@ int MTF_UpCount()
 // is now resolved as the SLOWEST configured timeframe that is above the chart
 // timeframe and has a reading; if there is none, the caller falls back to
 // g_htf_bias. Returns -1 when no row qualifies.
-int MTF_HTFRowIndex()
-{
-   ENUM_TIMEFRAMES tfs[MTF_TF_COUNT];
-   tfs[0]=InpMTF1; tfs[1]=InpMTF2; tfs[2]=InpMTF3; tfs[3]=InpMTF4; tfs[4]=InpMTF5;
-   int chart_sec=PeriodSeconds((ENUM_TIMEFRAMES)_Period);
-   int best=-1;
-   long best_sec=-1;
-   for(int i=0;i<MTF_TF_COUNT;i++)
-   {
-      long sec=PeriodSeconds(tfs[i]);
-      if(sec<=chart_sec) continue;        // not higher than the chart
-      if(g_mtf_aligned[i]==0) continue;   // no reading: cannot vouch for bias
-      if(sec>best_sec){ best_sec=sec; best=i; }
-   }
-   return best;
-}
 
 // "2/4 aligned (50%) + 1 NO DATA" - the honest form of the alignment reading.
-string MTF_AlignmentText()
-{
-   int pct=MTFAlignmentPercent();
-   if(pct<0) return "n/a (no MTF data)";
-   int known=MTF_KnownCount();
-   int up=MTF_UpCount();
-   int scored_rows=MTF_TF_COUNT-((g_mtf_self_index>=0 && g_mtf_self_index<MTF_TF_COUNT)?1:0);
-   int unknown=scored_rows-known;
-   string s=StringFormat("%d/%d aligned (%d%%)",up,known,pct);
-   if(unknown>0) s+=StringFormat(" + %d NO DATA",unknown);
-   return s;
-}
 
 // ---------------------------------------------------------------------------
 // v6.5.1 DATA HEALTH (F-06)
@@ -19535,21 +18469,7 @@ int QSMC_DataHealthLevel()
    return level;
 }
 
-string QSMC_DataHealthReason()
-{
-   QSMC_DataHealthLevel();
-   return g_dh_reason;
-}
 
-string QSMC_DataHealthLine()
-{
-   int lvl=QSMC_DataHealthLevel();
-   // v6.5.3: "FEED", not "DATA" - the same word the dashboard row uses, so the
-   // feed status cannot be confused with a metric that a plan row reports missing.
-   if(lvl==QSMC_DH_GOOD) return "FEED HEALTH: GOOD";
-   return "FEED HEALTH: "+(lvl==QSMC_DH_ERROR?"ERROR":"WARNING")+
-                 (g_dh_reason==""?"":" - "+g_dh_reason);
-}
 
 // The early-return path draws this instead of leaving a silent blank chart.
 void QSMC_DrawDataHealthBanner(const string reason)
@@ -19579,23 +18499,6 @@ void QSMC_ClearDataHealthBanner()
 }
 
 
-int OppositeBiasPotential(const bool is_buy,const double price,const double atr)
-{
-   // Measures how close the market is to the opposite branch's trigger, so
-   // the dashboard can warn when both branches are near-simultaneously valid.
-   if(atr<=0.0) return 0;
-   int n=ArraySize(g_structures);
-   if(n==0) return 0;
-   double last_level=g_structures[n-1].price;
-   double distance=MathAbs(price-last_level);
-   int proximity=(int)MathMax(0,MathMin(100,100.0*(1.0-MathMin(1.0,distance/(atr*4.0)))));
-   bool opposite_broken=false;
-   for(int i=n-1;i>=0 && i>=n-3;i--)
-      if(g_structures[i].bullish!=is_buy){opposite_broken=true; break;}
-   int potential=proximity;
-   if(opposite_broken) potential=MathMin(100,potential+25);
-   return potential;
-}
 
 int DirectionalWatchScore(const bool is_buy,const double price,const double atr)
 {
@@ -20288,23 +19191,6 @@ bool TryTransitionSignalState(const ENUM_SIGNAL_STATE next,const string setup_id
    return true;
 }
 
-string InstitutionalBehaviorName(const ENUM_INSTITUTIONAL_BEHAVIOR ib)
-{
-   switch(ib)
-   {
-      case IB_ACCUMULATION_LIKE:           return "ACCUMULATION-LIKE";
-      case IB_DISTRIBUTION_LIKE:           return "DISTRIBUTION-LIKE";
-      case IB_STOP_RUN_SWEEP:              return "STOP-RUN / LIQUIDITY SWEEP";
-      case IB_FAILED_BREAKOUT:             return "FAILED BREAKOUT";
-      case IB_DISPLACEMENT:                return "DISPLACEMENT";
-      case IB_REACCUMULATION_CONTINUATION: return "RE-ACCUMULATION / CONTINUATION";
-      case IB_REDISTRIBUTION_CONTINUATION: return "RE-DISTRIBUTION / CONTINUATION";
-      case IB_REJECTION_FROM_PREMIUM:      return "REJECTION FROM PREMIUM";
-      case IB_REJECTION_FROM_DISCOUNT:     return "REJECTION FROM DISCOUNT";
-      case IB_NONE:                        return "NEUTRAL / BALANCED";
-   }
-   return "NEUTRAL";
-}
 
 // Phase 2: Internal Market Data Layer builder
 BarData GetBarData(const int bar,const double &o[],const double &h[],const double &l[],const double &c[],
@@ -20637,257 +19523,11 @@ int BinarySearchNearestLiquidity(const double price,const bool find_above,const 
    return best_idx;
 }
 
-int BinarySearchNearestOB(const double price,const bool find_above,const bool unmitigated_only,const bool check_bullish=false,const bool bullish_val=false)
-{
-   int n=ArraySize(g_ob_price_idx);
-   if(n==0) return -1;
-   int lo=0, hi=n-1, best_idx=-1;
-   double best_dist=DBL_MAX;
-   
-   while(lo<=hi)
-   {
-      int mid=lo+(hi-lo)/2;
-      int obi=g_ob_price_idx[mid];
-      if(obi<0 || obi>=ArraySize(g_order_blocks)) { lo=mid+1; continue; }
-      double p=OBMid(obi);
-      
-      if(find_above)
-      {
-         if(p>price)
-         {
-            bool ok=(!unmitigated_only || g_order_blocks[obi].state!="MITIGATED");
-            if(ok && (!check_bullish || g_order_blocks[obi].bullish==bullish_val))
-            {
-               double d=p-price;
-               if(d<best_dist) { best_dist=d; best_idx=obi; }
-            }
-            hi=mid-1;
-         }
-         else lo=mid+1;
-      }
-      else
-      {
-         if(p<price)
-         {
-            bool ok=(!unmitigated_only || g_order_blocks[obi].state!="MITIGATED");
-            if(ok && (!check_bullish || g_order_blocks[obi].bullish==bullish_val))
-            {
-               double d=price-p;
-               if(d<best_dist) { best_dist=d; best_idx=obi; }
-            }
-            lo=mid+1;
-         }
-         else hi=mid-1;
-      }
-   }
-   return best_idx;
-}
 
-int BinarySearchNearestBarrier(const double from_price,const bool is_buy)
-{
-   if(is_buy)
-      return BinarySearchNearestOB(from_price, true, true, true, false);
-   else
-      return BinarySearchNearestOB(from_price, false, true, true, true);
-}
 
 // Phase 7: Dynamic Programming Structural Path Evaluation (S0-S8)
-double EvaluateStructuralPathDP(const int sw_event,const int dp_event,const int mss_event,
-                                const int zone_event,const int retest_bar,const bool is_buy)
-{
-   if(sw_event<0 || dp_event<0 || mss_event<0) return 0.0;
-   if(sw_event>=ArraySize(g_causal_events) || dp_event>=ArraySize(g_causal_events) || mss_event>=ArraySize(g_causal_events))
-      return 0.0;
-   
-   // Hard causal validation
-   if(g_causal_events[sw_event].invalidated ||
-      g_causal_events[dp_event].invalidated ||
-      g_causal_events[mss_event].invalidated) return 0.0;
-      
-   int sw_bar = g_causal_events[sw_event].event_bar;
-   int dp_bar = g_causal_events[dp_event].event_bar;
-   int ms_bar = g_causal_events[mss_event].event_bar;
-   
-   // Strict chronological ordering: Sweep < Displacement <= MSS
-   if(sw_bar >= dp_bar || dp_bar > ms_bar) return 0.0;
-   if(retest_bar > 0 && ms_bar > retest_bar) return 0.0;
-   
-   if(g_causal_events[dp_event].bullish != is_buy || g_causal_events[mss_event].bullish != is_buy)
-      return 0.0;
-      
-   // DP transition states (0..7)
-   double dp_table[8];
-   for(int i=0;i<8;i++) dp_table[i]=0.0;
-   
-   dp_table[0] = 10.0; // S0: Neutral base
-   
-   // S0 -> S1 (Liquidity Buildup)
-   int pool_ev = FindParentEventOfType(sw_event, CE_LIQ_POOL);
-   if(pool_ev >= 0 && pool_ev < ArraySize(g_causal_events) && g_causal_events[pool_ev].confirmed)
-      dp_table[1] = dp_table[0] + 10.0;
-   else
-      dp_table[1] = dp_table[0] + 5.0;
-      
-   // S1 -> S2 (Sweep)
-   if(g_causal_events[sw_event].confirmed && (pool_ev < 0 || IsCausallyConnected(pool_ev, sw_event)))
-   {
-      double sweep_q = g_causal_events[sw_event].strength;
-      dp_table[2] = dp_table[1] + MathMin(20.0, 10.0 + sweep_q * 2.0);
-   }
-   else return 0.0;
-   
-   // S2 -> S3 (Displacement)
-   if(IsCausallyConnected(sw_event, dp_event) && g_causal_events[dp_event].confirmed)
-   {
-      double disp_q = g_causal_events[dp_event].strength;
-      dp_table[3] = dp_table[2] + MathMin(15.0, 8.0 + disp_q * 1.5);
-   }
-   else return 0.0;
-   
-   // S3 -> S4 (MSS / Break)
-   if(IsCausallyConnected(dp_event, mss_event) && g_causal_events[mss_event].confirmed)
-   {
-      double mss_bonus = (g_causal_events[mss_event].type == CE_MSS ? 20.0 : 15.0);
-      dp_table[4] = dp_table[3] + mss_bonus;
-   }
-   else return 0.0;
-   
-   // S4 -> S5 (Causal Zone)
-   if(zone_event >= 0 && zone_event < ArraySize(g_causal_events) &&
-      g_causal_events[zone_event].confirmed && !g_causal_events[zone_event].invalidated)
-   {
-      bool conn = (IsCausallyConnected(mss_event, zone_event) || IsCausallyConnected(dp_event, zone_event));
-      if(conn) dp_table[5] = dp_table[4] + 15.0;
-      else dp_table[5] = dp_table[4] + 5.0;
-   }
-   else dp_table[5] = dp_table[4];
-   
-   // S5 -> S6 (Retest)
-   if(retest_bar > 0)
-      dp_table[6] = dp_table[5] + 10.0;
-   else
-      dp_table[6] = dp_table[5];
-      
-   // S6 -> S7 (Confirmed Entry)
-   dp_table[7] = MathMin(100.0, dp_table[6]);
-   
-   return dp_table[7];
-}
 
 // Phase 10 & 33: 10-Pillar Setup Quality Scoring Model
-void CalculateSetupQualityScore(SetupCandidate &cand,const int total,const double &o[],const double &h[],
-                                const double &l[],const double &c[],const double atr)
-{
-   cand.score_structure    = 0.0;
-   cand.score_liquidity    = 0.0;
-   cand.score_displacement = 0.0;
-   cand.score_causality    = 0.0;
-   cand.score_retest       = 0.0;
-   cand.score_candle       = 0.0;
-   cand.score_vwap         = 0.0;
-   cand.score_ema          = 0.0;
-   cand.score_volatility   = 0.0;
-   cand.total_score        = 0.0;
-   
-   if(!cand.valid) return;
-   
-   // 1. Structure Score (0-20)
-   if(cand.mss_event >= 0 && cand.mss_event < ArraySize(g_causal_events))
-   {
-      ENUM_CAUSAL_EVENT_TYPE st = g_causal_events[cand.mss_event].type;
-      if(st == CE_MSS)        cand.score_structure = 20.0;
-      else if(st == CE_CHOCH) cand.score_structure = 15.0;
-      else if(st == CE_BOS)   cand.score_structure = 10.0;
-   }
-   
-   // 2. Liquidity Score (0-20)
-   if(cand.sweep_event >= 0 && cand.sweep_event < ArraySize(g_causal_events))
-   {
-      if(g_causal_events[cand.sweep_event].confirmed)
-      {
-         cand.score_liquidity = 14.0;
-         if(g_causal_events[cand.sweep_event].strength >= 3.0) cand.score_liquidity += 6.0;
-         else if(g_causal_events[cand.sweep_event].strength >= 1.5) cand.score_liquidity += 3.0;
-      }
-   }
-   
-   // 3. Displacement Score (0-15)
-   if(cand.disp_event >= 0 && cand.disp_event < ArraySize(g_causal_events))
-   {
-      double dstr = g_causal_events[cand.disp_event].strength;
-      if(dstr >= 3.5)      cand.score_displacement = 15.0;
-      else if(dstr >= 2.0) cand.score_displacement = 12.0;
-      else if(dstr >= 1.0) cand.score_displacement = 8.0;
-      else                 cand.score_displacement = 4.0;
-   }
-   
-   // 4. Causality & Graph DP Score (0-15)
-   double dp_path = EvaluateStructuralPathDP(cand.sweep_event, cand.disp_event, cand.mss_event,
-                                           cand.zone_event, 0, cand.is_buy);
-   cand.score_causality = (dp_path / 100.0) * 15.0;
-   
-   // 5. Retest Score (0-15)
-   if(InpUseRetestLifecycle && g_active_setup.active)
-   {
-      if(IsConfirmedSignalState(g_active_setup.state))
-         cand.score_retest = 15.0;
-      else if(g_active_setup.state == STATE_PREVIEW)
-         cand.score_retest = 8.0;
-      else
-         cand.score_retest = 2.0;
-   }
-   else if(cand.zone_event >= 0)
-   {
-      cand.score_retest = 12.0;
-   }
-   
-   // 6. Candle Confirmation Score (0-7)
-   if(g_candle_intel.valid)
-   {
-      bool dir_ok = (cand.is_buy ? g_candle_intel.confirms_buy : g_candle_intel.confirms_sell);
-      if(dir_ok)
-         cand.score_candle = MathMin(7.0, (g_candle_intel.score / 100.0) * 7.0 + 2.0);
-      else
-         cand.score_candle = (g_candle_intel.score / 100.0) * 3.0;
-   }
-   
-   // 7. VWAP Context Score (0-3)
-   if(g_quant.vwap_state != 2)
-   {
-      if(cand.is_buy && g_quant.vwap_state == 1)       cand.score_vwap = 3.0;
-      else if(!cand.is_buy && g_quant.vwap_state == -1) cand.score_vwap = 3.0;
-      else if(g_quant.vwap_state == 0)                 cand.score_vwap = 1.5;
-   }
-   
-   // 8. EMA Context Score (0-3)
-   if(g_quant.ema_state != 2)
-   {
-      int ema_score_pts = 0;
-      if(cand.is_buy && g_quant.ema_state == 1)       ema_score_pts += 2;
-      else if(!cand.is_buy && g_quant.ema_state == -1) ema_score_pts += 2;
-      if(cand.is_buy && g_quant.ema_slope_state == 1)  ema_score_pts += 1;
-      else if(!cand.is_buy && g_quant.ema_slope_state == -1) ema_score_pts += 1;
-      cand.score_ema = (double)ema_score_pts;
-   }
-   
-   // 9. Volatility Score (0-2)
-   if(g_quant.vol_class == VOL_NORMAL || g_quant.vol_class == VOL_HIGH)
-      cand.score_volatility = 2.0;
-   else if(g_quant.vol_class == VOL_LOW)
-      cand.score_volatility = 1.0;
-      
-   cand.total_score = cand.score_structure + cand.score_liquidity + cand.score_displacement +
-                      cand.score_causality + cand.score_retest + cand.score_candle +
-                      cand.score_vwap + cand.score_ema + cand.score_volatility;
-   cand.total_score = MathMax(0.0, MathMin(100.0, cand.total_score));
-   
-   // Quality Grade (Phase 46)
-   if(cand.total_score >= InpQualityAPlusThreshold) cand.quality_grade = "A+";
-   else if(cand.total_score >= InpQualityHighThreshold) cand.quality_grade = "A";
-   else if(cand.total_score >= 60.0) cand.quality_grade = "B";
-   else if(cand.total_score >= 45.0) cand.quality_grade = "C";
-   else cand.quality_grade = "NO_TRADE";
-}
 
 // Phase 21: Setup Ranking & Dual-Direction Competition
 // DEAD CODE SCAFFOLD (review finding C1): this function has NO call sites
@@ -20895,44 +19535,6 @@ void CalculateSetupQualityScore(SetupCandidate &cand,const int total,const doubl
 // TryTransitionSignalState, i.e. it is entry-authority-capable if ever wired.
 // Preserved intentionally under R8 as the PRIMARY/SECONDARY scaffold until a
 // documented decision is made to revive or remove it. Do not enable silently.
-void RankSetupCandidates(SetupCandidate &primary_out,SetupCandidate &secondary_out)
-{
-   if(!primary_out.valid && !secondary_out.valid)
-   {
-      if(!g_active_setup.active && !g_trade_setup.confirmation_pending && !g_trade_setup.valid)
-         TryTransitionSignalState(STATE_NO_TRADE,"",(g_rates_total>1?g_rates_total-2:0));
-      return;
-   }
-   
-   if(primary_out.valid && secondary_out.valid)
-   {
-      if(secondary_out.total_score > primary_out.total_score + 2.0)
-      {
-         // Swap to promote higher score
-         SetupCandidate tmp = primary_out;
-         primary_out = secondary_out;
-         secondary_out = tmp;
-      }
-      primary_out.rank = RANK_PRIMARY;
-      secondary_out.rank = (secondary_out.total_score >= 50.0 ? RANK_SECONDARY : RANK_WEAK);
-   }
-   else if(primary_out.valid)
-   {
-      primary_out.rank = RANK_PRIMARY;
-      secondary_out.rank = RANK_NONE;
-   }
-   else if(secondary_out.valid)
-   {
-      primary_out = secondary_out;
-      primary_out.rank = RANK_PRIMARY;
-      secondary_out.valid = false;
-      secondary_out.rank = RANK_NONE;
-   }
-   
-   if((primary_out.total_score < 45.0 || primary_out.quality_grade == "NO_TRADE") &&
-      !g_active_setup.active && !g_trade_setup.confirmation_pending && !g_trade_setup.valid)
-      TryTransitionSignalState(STATE_NO_TRADE,"",(g_rates_total>1?g_rates_total-2:0));
-}
 
 // Append exactly one immutable confirmed-signal fact record per stable setup id.
 bool AppendConfirmedSignalJournal(const STradeSetup &setup,const string candle_conf)
@@ -21327,41 +19929,6 @@ void BuildSetupExplanation(const SetupCandidate &cand,string &reasons[],int &cou
 }
 
 // Phase 35: Standardized Final Output Format
-string FormatFinalEntryOutput(const SetupCandidate &cand)
-{
-   string out = "";
-   out += "---------------------------------------------\n";
-   out += "QUANTUM SMC INTELLIGENCE ENGINE\n";
-   out += "---------------------------------------------\n";
-   out += StringFormat("DIRECTION    : %s\n", (cand.is_buy?"BUY":"SELL"));
-   out += StringFormat("SETUP GRADE  : %s\n", cand.quality_grade);
-   out += StringFormat("QUALITY SCORE: %.0f / 100\n", cand.total_score);
-   out += StringFormat("MARKET REGIME: %s\n", g_quant.regime);
-   out += StringFormat("HTF BIAS     : %s\n", (g_htf_bias>0?"BULLISH":(g_htf_bias<0?"BEARISH":"NEUTRAL")));
-   out += StringFormat("LIQUIDITY    : %s SWEPT\n", (cand.is_buy?"SSL":"BSL"));
-   out += StringFormat("DISPLACEMENT : %s\n", QuantDisplacementClassLabel(g_quant.displacement_quality));
-   out += StringFormat("MSS          : %s\n", (cand.mss_event>=0?"CONFIRMED":"NONE"));
-   out += StringFormat("CAUSAL ZONE  : %s\n", cand.zone_source);
-   out += StringFormat("RETEST       : %s\n", g_quant.retest_quality);
-   out += StringFormat("CANDLE CONF  : %s\n", (g_candle_intel.valid?g_candle_intel.description:"STANDARD"));
-   out += StringFormat("VWAP         : %s\n", (g_quant.vwap_state==1?"ABOVE":(g_quant.vwap_state==-1?"BELOW":"AT VALUE")));
-   out += StringFormat("EMA 200      : %s / %s\n", (g_quant.ema_state==1?"ABOVE":"BELOW"), (g_quant.ema_slope_state==1?"RISING":(g_quant.ema_slope_state==-1?"FALLING":"FLAT")));
-   out += StringFormat("CONTEXT      : %s\n", g_quant.context_alignment);
-   out += "---------------------------------------------\n";
-   out += StringFormat("ENTRY        : %s\n", DoubleToString(cand.entry,_Digits));
-   out += StringFormat("SL           : %s\n", DoubleToString(cand.sl,_Digits));
-   out += StringFormat("TP1          : %s (RR %.2f)\n", DoubleToString(cand.tp1,_Digits), cand.rr1);
-   out += StringFormat("TP2          : %s (RR %.2f)\n", DoubleToString(cand.tp2,_Digits), cand.rr2);
-   out += StringFormat("TP3          : %s (RR %.2f)\n", DoubleToString(cand.tp3,_Digits), cand.rr3);
-   out += "---------------------------------------------\n";
-   out += StringFormat("SCALE 1      : %s\n", (g_scale.scale1_ready?"READY":"WAIT"));
-   out += StringFormat("SCALE 2      : %s\n", (g_scale.scale2_ready?"READY":"WAIT"));
-   out += StringFormat("TP EXITS     : TP1 %.0f%% | TP2 %.0f%% | TP3 %.0f%%\n", g_scale.tp_exit_pct[0], g_scale.tp_exit_pct[1], g_scale.tp_exit_pct[2]);
-   out += "---------------------------------------------\n";
-   out += StringFormat("INVALIDATION : %s\n", DoubleToString(cand.sl,_Digits));
-   out += "---------------------------------------------\n";
-   return out;
-}
 
 // AI TRADE SETUP - v5.7.3
 // Institutional pipeline (default): POOL -> SWEEP -> DISPLACEMENT ->
@@ -22889,16 +21456,6 @@ string QuantDisplacementClassLabel(const ENUM_DISP_QUALITY q)
    }
    return "NONE";
 }
-string QuantSweepClassLabel(const ENUM_SWEEP_QUALITY q)
-{
-   switch(q)
-   {
-      case SWEEP_WEAK:         return "WEAK";
-      case SWEEP_VALID:        return "VALID";
-      case SWEEP_HIGH_QUALITY: return "HIGH_QUALITY";
-   }
-   return "NONE";
-}
 
 //--------------------------------------------------------------------
 // Phase 12: last CLOSED higher-timeframe EMA candle that was actually
@@ -24034,9 +22591,9 @@ bool FireQuantAlert(const string event_id,const string message)
    {
       string pm=message;
       if(StringLen(pm)>240) pm=StringSubstr(pm,0,240);
-      SendNotification(pm);
+      if(!SendNotification(pm) && InpDebugLog) Print("[QuantAlert] push refused by the terminal (no MetaQuotes ID?)");
    }
-   if(sound) PlaySound("alert.wav");
+   if(sound && !PlaySound("alert.wav") && InpDebugLog) Print("[QuantAlert] sound refused - alert.wav is not in Sounds/");
    return true;
 }
 
@@ -28678,27 +27235,6 @@ bool DrawUniqueSMCZoneBox(const string name,const datetime t1,const double top,c
    DrawZoneBox(name,t1,top,t2,bottom,col,label,transparency);
    return true;
 }
-color GradeColor(const string g)
-{
-   if(g=="A+") return clrLime;
-   if(g=="A") return clrLimeGreen;
-   if(g=="B") return clrYellow;
-   if(g=="C") return clrOrange;
-   return clrTomato;
-}
-color PctColor(const int p)
-{
-   if(p>=80) return clrLime;
-   if(p>=60) return clrYellowGreen;
-   if(p>=40) return clrGoldenrod;
-   return clrTomato;
-}
-color BlendColor(const color col,const int pct)
-{
-   // blend toward gray as confidence drops
-   color gray=clrDimGray;
-   return ColorLerp(gray,col,MathMax(0.0,MathMin(1.0,pct/100.0)));
-}
 
 //====================================================================
 // DRAW: ZONES / OB / BREAKERS / FVG / LIQUIDITY / KILL ZONES
@@ -29429,42 +27965,7 @@ int TextWidthPx(const string text,const string font,const int size,const bool bo
 // style fragments are impossible because the cut is taken at the last separator
 // (' ', '|', ':', ',', '/') that still fits; only when a single unbreakable word
 // is itself wider than the box is a hard cut used.
-string QSMC_FitTextPx(const string text,const string font,const int size,
-                      const int max_w,const bool bold=false)
-{
-   if(max_w<=0) return "";
-   int len=StringLen(text);
-   if(len<=0) return text;
-   int full=TextWidthPx(text,font,size,bold);
-   if(full<=max_w) return text;
-   int ell=TextWidthPx("...",font,size,bold);
-   if(ell>max_w) return "";
-   // Proportional estimate (exact for the monospace font every panel uses), then
-   // a bounded walk so a proportional font is still handled correctly. Measuring
-   // every prefix would be quadratic in the row length, twice per redraw.
-   int est=(int)((double)len*(double)(max_w-ell)/(double)MathMax(1,full));
-   if(est>len) est=len;
-   if(est<1) est=1;
-   while(est>1 && TextWidthPx(StringSubstr(text,0,est)+"...",font,size,bold)>max_w)
-      est--;
-   int hard=est;
-   int cut=0;
-   for(int i=hard;i>=1;i--)
-   {
-      ushort ch=StringGetCharacter(text,i-1);
-      if(ch==' ' || ch=='|' || ch==':' || ch==',' || ch=='/' || ch=='(') { cut=i-1; break; }
-   }
-   int use=(cut>=8 ? cut : hard);            // a 1-2 char word is not a useful cut
-   string head=StringSubstr(text,0,use);
-   while(StringLen(head)>1 && StringGetCharacter(head,StringLen(head)-1)==' ')
-      head=StringSubstr(head,0,StringLen(head)-1);
-   return head+"...";
-}
 
-string TruncateToWidth(const string text,const string font,const int size,const int max_w,const bool bold=false)
-{
-   return QSMC_FitTextPx(text,font,size,max_w,bold);
-}
 
 // Character-budget clip for the few fixed-width diagnostic lines that are built
 // from a character count rather than a pixel width. Same rule as the pixel
@@ -29584,13 +28085,6 @@ int AvoidTradeLevelKeepOut(int y,const int h,const bool push_down)
 }
 
 //--- L1: collapsed badge -----------------------------------------------------
-bool BadgeTabDashEnabled() { return (InpShowAIDashboard && InpDashboardCollapsible); }
-bool BadgeTabMTFEnabled()  { return (InpDisplayMode!=QSMC_MODE_MINIMAL && InpShowMTFPanel && !InpUltraCleanMode); }
-bool BadgeTabPMIEnabled()  { return (InpDisplayMode!=QSMC_MODE_MINIMAL && InpShowPredictivePanel && g_pmi_enabled && InpPMIPanelCollapsible && !InpUltraCleanMode); }
-int  BadgeTabCount()
-{
-   return (BadgeTabDashEnabled()?1:0)+(BadgeTabMTFEnabled()?1:0)+(BadgeTabPMIEnabled()?1:0);
-}
 
 #define QSMC_BADGE_PAD      4
 #define QSMC_BADGE_TITLE_H 17
@@ -29600,48 +28094,7 @@ int  BadgeTabCount()
 // Pure geometry: decides how many badge rows fit the idle height budget and
 // where the badge sits (top-left, clear of trade-level labels). Every docked
 // panel then stacks from g_panel_stack_top downwards.
-void LayoutPanelBadge()
-{
-   int chart_h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   if(chart_h<=0) chart_h=600;
-   int pct=(int)MathMax(5,MathMin(40,InpPanelIdleMaxHeightPct));
-   int budget=(int)MathMax(QSMC_BADGE_TITLE_H+2*QSMC_BADGE_PAD,chart_h*pct/100);
-   int tabs=(BadgeTabCount()>0 ? QSMC_BADGE_TAB_H+2 : 0);
-   int h3=2*QSMC_BADGE_PAD+QSMC_BADGE_TITLE_H+QSMC_BADGE_REASON_H+tabs;
-   int h2=2*QSMC_BADGE_PAD+QSMC_BADGE_TITLE_H+tabs;
-   int h1=2*QSMC_BADGE_PAD+QSMC_BADGE_TITLE_H;
-   if(h3<=budget){g_badge_rows=3; g_badge_h=h3;}
-   else if(h2<=budget){g_badge_rows=2; g_badge_h=h2;}
-   else {g_badge_rows=1; g_badge_h=h1;}     // buttons move inline with the title
-   g_badge_x=8;
-   int y=AvoidTradeLevelKeepOut(8,g_badge_h,true);
-   if(y+g_badge_h>chart_h/2) y=8;           // never pushed into the lower half
-   g_badge_y=y;
-   g_panel_stack_top=g_badge_y+g_badge_h+6;
-   g_panel_stack_bottom=g_panel_stack_top;
-   g_dash_y=g_panel_stack_top; g_dash_h=0;
-}
 
-void DrawBadgeTab(const string name,const string text,const bool on,const int x,const int y,const int w)
-{
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,w);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,QSMC_BADGE_TAB_H);
-   ObjectSetString(0,name,OBJPROP_TEXT,text);
-   ObjectSetString(0,name,OBJPROP_FONT,"Consolas");
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,8);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,(on?clrWhite:clrSilver));
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,(on?(color)0x3A3A20:(color)0x1C1C26));
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,(on?clrAqua:clrDimGray));
-   ObjectSetInteger(0,name,OBJPROP_STATE,on);
-   ObjectSetInteger(0,name,OBJPROP_BACK,false);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,name,OBJPROP_ZORDER,22);
-}
 
 // One panel refresh path for chart events; MTF, TopDown, PMI and MVP details
 // are data sources/annotations, not separate decision panels.
@@ -29915,126 +28368,11 @@ void ResolveChartLabelCollisions()
    }
 }
 
-void BuildUnifiedEntryVerdict(string &verdict,string &reason,color &accent,double &blend_score)
-{
-   double classic=MathMax(0.0,MathMin(100.0,g_score.setup_quality_score));
-   double quality=MathMax(0.0,MathMin(100.0,g_quality.final_blend));
-   double pmi=MathMax(0.0,MathMin(100.0,g_pmi_confluence));
-   double mtf=MathMax(0.0,MathMin(100.0,(double)g_causal_diag.mtf_align_pct));
-   blend_score=0.35*classic+0.30*quality+0.20*pmi+0.15*mtf;
-
-   bool retest_confirmed=(g_active_setup.active &&
-                          IsConfirmedSignalState(g_active_setup.state) &&
-                          g_active_setup.confirmed_bar>g_active_setup.created_bar);
-   bool direct_confirmed=(!InpUseRetestLifecycle && g_trade_setup.valid &&
-                          !g_trade_setup.confirmation_pending &&
-                          IsConfirmedSignalState(g_current_signal_state) &&
-                          g_trade_setup.confirmation_bar>g_trade_setup.created_bar &&
-                          g_trade_setup.confirmation_time==g_trade_setup.availability_time);
-   bool setup_confirmed=(retest_confirmed || direct_confirmed);
-   bool causal_pass=(g_causal_diag.causal_valid && g_causal_diag.zone_valid &&
-                     g_causal_diag.hop_sweep_disp && g_causal_diag.hop_disp_mss &&
-                     g_causal_diag.hop_mss_zone);
-   bool not_invalidated=(!g_active_setup.active ||
-                         g_active_setup.state!=STATE_INVALIDATED);
-   bool confirmed=(g_decision_state=="CONFIRMED" && setup_confirmed &&
-                   causal_pass && not_invalidated);
-   if(confirmed)
-   {
-      // v6.4.0 TOP-DOWN overlay: publication is withheld while the closed-bar
-      // D1->M5 chain disagrees (display mirror of the Layer A candidate veto).
-      if(InpTopDownEnabled && TopDown_BlocksDirection(g_trade_setup.is_buy) && InpRequireInstitutionalConfirm)
-      {
-         verdict="WATCH";
-         accent=clrOrange;
-         reason=StringFormat("TOP-DOWN BLOCK: %s | core setup withheld until the closed-bar D1->M5 chain agrees.",g_td.blocker);
-         return;
-      }
-      // v6.4.1: with the veto off, an incomplete chain is a GRADE note, not a
-      // "blocked" verdict shown over a painted entry.
-      if(InpTopDownEnabled && TopDown_BlocksDirection(g_trade_setup.is_buy))
-         reason=StringFormat("top-down incomplete (chain: %s) - grade downgraded, entry not blocked",g_td.blocker);
-      verdict="CORE SIGNAL CONFIRMED";
-      accent=clrLimeGreen;
-      reason=StringFormat("Layer A causal and closed-bar confirmation gates passed; evidence blend %.0f/100 is heuristic, not probability.",blend_score);
-      return;
-   }
-
-   verdict="WATCH";
-   accent=clrAqua;
-   if(!g_causal_diag.sweep_event_ok)
-      reason="Waiting for a confirmed liquidity sweep.";
-   else if(!g_causal_diag.hop_sweep_disp)
-      reason="Liquidity swept; displacement link is not confirmed.";
-   else if(!g_causal_diag.hop_disp_mss)
-      reason="Displacement found; MSS link is not confirmed.";
-   else if(!g_causal_diag.hop_mss_zone || !g_causal_diag.zone_valid)
-      reason="Structure confirmed; waiting for a valid OB/FVG zone.";
-   else if(!setup_confirmed)
-      reason="Causal zone is valid; waiting for closed-bar retest confirmation.";
-   else if(g_causal_diag.causal_fail_reason!="")
-      reason=g_causal_diag.causal_fail_reason;
-   else
-      reason=StringFormat("Causal chain is developing; evidence blend %.0f/100 is heuristic, not probability.",blend_score);
-
-   if(!g_causal_diag.sweep_event_ok && !g_causal_diag.disp_event_ok &&
-      !g_causal_diag.mss_event_ok && g_causal_diag.candidate_structure_bar<0 &&
-      !g_causal_diag.directional_watch_available)
-   {
-      verdict="NO TRADE";
-      accent=clrDimGray;
-      reason="No closed-bar causal setup is active.";
-   }
-
-   // v6.5.0 (audit V-4) REACTION LAYER OVERLAY.
-   // The badge used to speak only Layer A's vocabulary, so it could read
-   // "NO TRADE - No closed-bar causal setup is active" while a major resistance
-   // was actively rejecting price. That is the exact silence this upgrade exists
-   // to remove.
-   //
-   // The overlay is strictly one-directional:
-   //   * it runs only when Layer A did NOT confirm (the confirmed branch above
-   //     has already returned), so it can never upgrade or replace a core signal;
-   //   * it fires only when the reaction layer actually reached LEVEL >= REACTION,
-   //     so it cannot manufacture a verdict out of nothing;
-   //   * it reports the reaction level, the evidence score AND the execution
-   //     state separately, which is the distinction the whole layer exists for:
-   //     "a reaction occurred" is not "enter now".
-   {
-      SRxnEvidence rx;
-      if(RXN_BestReaction(0,rx) && rx.level>=(int)RXN_LEVEL_REACTION)
-      {
-         string rx_dir=(rx.direction>0?"BUY":"SELL");
-         string rx_role=(rx.direction>0?"support":"resistance");
-         verdict=rx_dir+" "+RXN_LevelName(rx.level)+" (reaction layer)";
-         accent=RXN_LevelColor(rx.level,(rx.direction>0));
-         reason=StringFormat("%s at %s %s-%s | evidence %d/100 | execution %s",
-                             rx_dir,rx_role,
-                             DoubleToString(rx.zone_lo,_Digits),
-                             DoubleToString(rx.zone_hi,_Digits),
-                             rx.reaction_score,RXN_ExecReason(rx));
-         if(rx.suppression_reason!="") reason=reason+" | "+rx.suppression_reason;
-         reason=reason+" | evidence quality, not a forecast; non-authoritative";
-      }
-   }
-}
 
 // Compatibility helper for the dormant ZRE/RXN dashboard adapters. These
 // adapters are not called by the compact Core render path, but remain available
 // to source-level harnesses and can never create chart objects themselves.
-void DashLine(string &L[],color &C[],bool &H[],int &ln,const string text,
-              const color col,const bool is_header)
-{
-   if(ln>=80) return;
-   L[ln]=text; C[ln]=col; H[ln]=is_header; ln++;
-}
 
-void DrawUnifiedEntryPanel()
-{
-   // Compatibility alias retained for older internal call sites. It delegates
-   // to the single Core dashboard and never creates a second badge/panel.
-   if(g_rates_total>0) DrawQuantumDashboard(g_rates_total,g_buf_c);
-}
 
 void DrawBattleAnnotations(const int total,const datetime &t[],const double &o[],const double &h[],const double &l[],const double &c[],const long &tv[],const long &rv[])
 {
@@ -30199,14 +28537,6 @@ string CoreDashBlocker(const string state,const SResolvedCorePath &path)
    return "no Core candidate on the latest closed bar";
 }
 
-color CoreDashAccent(const string state,const int dir)
-{
-   if(state=="CONFIRMED") return (dir>0?clrLime:clrTomato);
-   if(state=="LIVE PREVIEW (NON-AUTH)") return clrAqua;
-   if(state=="BLOCKED") return clrOrange;
-   if(state=="NO TRADE" || state=="WAIT") return clrSilver;
-   return (dir>0?clrLimeGreen:(dir<0?clrTomato:clrAqua));
-}
 
 string CoreDashStructureType(const int event_index)
 {
@@ -30240,15 +28570,6 @@ string CoreDashChain(const SResolvedCorePath &path,const string state,const int 
    return "CHAIN: "+sw+" > "+dp+" > "+st+" > "+zn+" > "+rt+" > "+en;
 }
 
-string CoreDashBiasToken(const int tf_index,const datetime boundary)
-{
-   if(!g_pmi_enabled || tf_index<0 || tf_index>=PMI_TF_COUNT ||
-      !g_pmi_tf[tf_index].valid || g_pmi_tf[tf_index].available_time<=0 ||
-      g_pmi_tf[tf_index].available_time>boundary) return "?";
-   if(g_pmi_tf[tf_index].bias>0) return "B";
-   if(g_pmi_tf[tf_index].bias<0) return "S";
-   return "-";
-}
 
 // v6.5.3: this token describes the DATA FEED / history health only. It is
 // deliberately named FEED in the panel, because a plan row may still report an
@@ -30388,29 +28709,6 @@ bool CoreDashNearestRestingLevel(const double price,const bool above,const int c
    return true;
 }
 
-bool CoreDashZone(const SResolvedCorePath &path,double &top,double &bottom)
-{
-   top=0.0; bottom=0.0;
-   if(!path.valid || path.zone<0 || path.zone>=ArraySize(g_causal_events)) return false;
-   SCausalEvent zn=g_causal_events[path.zone];
-   if(zn.invalidated) return false;
-
-   // Prefer the immutable setup geometry only when its event ID is exactly the
-   // zone in this resolved path; otherwise use the causal event's own geometry.
-   if(InpUseRetestLifecycle && g_active_setup.active &&
-      g_active_setup.zone_event_id==zn.id &&
-      g_active_setup.state!=STATE_INVALIDATED && g_active_setup.state!=STATE_EXPIRED &&
-      g_active_setup.zone_top>g_active_setup.zone_bottom && g_active_setup.zone_bottom>0.0)
-   {top=g_active_setup.zone_top; bottom=g_active_setup.zone_bottom; return true;}
-   if((g_trade_setup.valid || g_trade_setup.confirmation_pending) &&
-      g_trade_setup.zone_event_id==zn.id &&
-      g_trade_setup.zone_top>g_trade_setup.zone_bottom && g_trade_setup.zone_bottom>0.0)
-   {top=g_trade_setup.zone_top; bottom=g_trade_setup.zone_bottom; return true;}
-
-   top=zn.top;
-   bottom=zn.bottom;
-   return (top>bottom && bottom>0.0);
-}
 
 string CoreDashVolumeLine(const int closed)
 {
@@ -30451,34 +28749,7 @@ string CoreDashLevelsLine(const int closed,const double price)
                        (s>0.0?DoubleToString(s,_Digits)+(st!=""?" "+st:""):"-"));
 }
 
-string CoreDashEventDetails(const SResolvedCorePath &path)
-{
-   if(!path.valid) return "EVENTS: no complete connected Core path";
-   SCausalEvent sw=g_causal_events[path.sweep];
-   SCausalEvent dp=g_causal_events[path.displacement];
-   SCausalEvent st=g_causal_events[path.structure];
-   string result="EVENTS: SW "+TimeToString(sw.event_time,TIME_DATE|TIME_MINUTES)+
-                 " > DP "+TimeToString(dp.event_time,TIME_DATE|TIME_MINUTES)+
-                 " > "+CoreDashStructureType(path.structure)+" "+
-                 TimeToString(st.event_time,TIME_DATE|TIME_MINUTES);
-   if(path.zone>=0 && path.zone<ArraySize(g_causal_events))
-      result+=" > ZONE "+(g_causal_events[path.zone].type==CE_ORDER_BLOCK?"OB":"FVG");
-   return result;
-}
 
-string CoreDashObservationsLine()
-{
-   string pmi=(g_pmi_enabled && g_pmi_seq.stateText!="" ?
-               g_pmi_seq.stateText : "PMI off/unavailable");
-   pmi=QSMC_ClipChars(pmi,38);   // v6.5.3 (D3): word boundary, never a fragment
-   string rxn="NONE";
-   if(g_rxn_live.valid && g_rxn_live.level>=(int)RXN_LEVEL_WATCH)
-      rxn=(g_rxn_live.direction>0?"BUY ":"SELL ")+RXN_LevelName(g_rxn_live.level)+
-          " "+IntegerToString(g_rxn_live.reaction_score)+"/100";
-   string health=QSMC_DataHealthLine();
-   health=QSMC_ClipChars(health,40);   // v6.5.3 (D3): word boundary
-   return "OBS ONLY: "+health+" | CLoc=close-location proxy, not bid/ask | PMI "+pmi+" | RXN "+rxn;
-}
 
 
 //====================================================================
@@ -30642,24 +28913,6 @@ bool ScenarioCopyClosedRates(const ENUM_TIMEFRAMES tf,const int requested_closed
    return true;
 }
 
-bool ScenarioPreviousClosedPeriod(const ENUM_TIMEFRAMES tf,const datetime boundary,
-                                  MqlRates &bar,string &reason)
-{
-   MqlRates rates[];
-   int last=-1;
-   if(!ScenarioCopyClosedRates(tf,1,boundary,rates,last,reason)) return false;
-   if(last<0 || last>=ArraySize(rates))
-   { reason="NO_DATA — no fully closed "+EnumToString(tf)+" period by ModelBoundary"; return false; }
-   bar.time=rates[last].time;
-   bar.open=rates[last].open;
-   bar.high=rates[last].high;
-   bar.low=rates[last].low;
-   bar.close=rates[last].close;
-   bar.tick_volume=rates[last].tick_volume;
-   bar.spread=rates[last].spread;
-   bar.real_volume=rates[last].real_volume;
-   return true;
-}
 
 void ScenarioPlanInit(SScenarioPlan &p,const bool is_buy)
 {
@@ -33349,92 +31602,11 @@ void ScenarioLead(SScenarioPlan &lead)
 
 // "M30: REACTION ..." -> "REACTION ..." so one leg string serves both the per-plan
 // row and the top-down ladder row.
-string ScenarioLegStrip(const string s)
-{
-   int c=StringFind(s,": ");
-   if(c==2 || c==3) return StringSubstr(s,c+2);
-   return s;
-}
 
 // v6.5.2 TOP-DOWN LADDER. One row per required timeframe, for the side the
 // comparison selected. Higher legs state context and location, lower legs state
 // execution; a leg with no closed-bar evidence says so instead of going quiet.
-void ScenarioDashLadder(string &L[],color &C[],int &ln,const int cap,const SScenarioPlan &p)
-{
-   string bias1=(g_scn_ctx.d1.known?(g_scn_ctx.d1.bias>0?"BULLISH":"BEARISH"):g_scn_ctx.d1.state);
-   if(g_scn_ctx.d1.known && g_d1_high>0.0)
-      bias1+=" | PDH "+DoubleToString(g_d1_high,_Digits)+" PDL "+DoubleToString(g_d1_low,_Digits);
-   if(g_scn_ctx.d1.equilibrium>0.0)
-      bias1+=" | eq "+DoubleToString(g_scn_ctx.d1.equilibrium,_Digits);
-   ScenarioDashAdd(L,C,ln,cap,"D1 BIAS: "+bias1,
-                   (g_scn_ctx.d1.bias>0?clrLimeGreen:(g_scn_ctx.d1.bias<0?clrTomato:clrSilver)));
-   string h4=(g_scn_ctx.h4.known?(g_scn_ctx.h4.bias>0?"BULLISH":"BEARISH")+" ("+g_scn_ctx.h4.state+")":"H4 "+g_scn_ctx.h4.state);
-   if(g_scn_ctx.d1.known && g_scn_ctx.h4.known)
-      h4+=(g_scn_ctx.h4.bias==g_scn_ctx.d1.bias?" confirms D1":" qualifies D1 (pullback/conflict)");
-   ScenarioDashAdd(L,C,ln,cap,"H4 CONTEXT: "+h4,
-                   (g_scn_ctx.h4.known?(g_scn_ctx.h4.bias==g_scn_ctx.d1.bias?clrSilver:clrOrange):clrDimGray));
-   ScenarioDashAdd(L,C,ln,cap,"H1 BEST ZONE: "+(p.valid?ScenarioPlanZoneText(p):"N/A — "+p.unavailable_reason)+
-                   (p.valid?" | strength "+IntegerToString(p.zone_strength)+"/100 (intrinsic "+
-                             IntegerToString(p.zone_intrinsic)+" + HTF/D1 context "+
-                             IntegerToString(p.zone_strength-p.zone_intrinsic)+") | "+
-                             DoubleToString(p.distance_atr,2)+" ATR away":""),
-                   (p.valid?clrWhite:clrDimGray));
-   ScenarioDashAdd(L,C,ln,cap,"M30 REACTION: "+ScenarioLegStrip(p.m30_state),
-                   (p.has_displacement?clrLimeGreen:(p.has_reaction?clrSilver:clrDimGray)));
-   ScenarioDashAdd(L,C,ln,cap,"M15 STRUCTURE: "+ScenarioLegStrip(p.m15_state),
-                   (p.has_structure?clrLimeGreen:clrDimGray));
-   ScenarioDashAdd(L,C,ln,cap,"M5 ENTRY: "+(p.execution_ready?
-                      DoubleToString(p.proposed_entry,_Digits)+" (CORE AUTHORIZED)":
-                      (p.has_proposed_entry?p.preferred_entry_area+" (CONDITIONAL)":
-                       "N/A — "+(p.entry_unavailable!=""?p.entry_unavailable:"no reference price is derivable")))+
-                   " | "+(p.has_retest?"closed-bar retest confirmed":"no valid retest yet"),
-                   (p.execution_ready?(p.is_buy?clrLime:clrTomato):(p.has_retest?clrDeepSkyBlue:clrSilver)));
-}
 
-void ScenarioDashCompact(string &L[],color &C[],int &ln,const int cap)
-{
-   if(!InpUseDirectionalScenarioEngine) return;
-   ScenarioDashAdd(L,C,ln,cap,"BUY PLAN: CONDITIONAL / NOT AUTHORIZED | "+
-                   ScenarioStateName(g_scn_buy.state)+" | "+ScenarioPlanZoneText(g_scn_buy),ScenarioStateColor(g_scn_buy));
-   ScenarioDashAdd(L,C,ln,cap,"SELL PLAN: CONDITIONAL / NOT AUTHORIZED | "+
-                   ScenarioStateName(g_scn_sell.state)+" | "+ScenarioPlanZoneText(g_scn_sell),ScenarioStateColor(g_scn_sell));
-   // v6.5.2 one condensed ladder line + the headline that says WHAT is missing,
-   // so a WAIT in mini mode is never an unexplained WAIT.
-   SScenarioPlan lead;
-   ScenarioLead(lead);
-   ScenarioDashAdd(L,C,ln,cap,"TOP-DOWN: D1 "+(g_scn_ctx.d1.known?(g_scn_ctx.d1.bias>0?"BULL":"BEAR"):"?")+
-                   " | H4 "+(g_scn_ctx.h4.known?(g_scn_ctx.h4.bias>0?"BULL":"BEAR"):"?")+
-                   " | H1 "+(g_scn_ctx.h1.known?(g_scn_ctx.h1.bias>0?"BULL":"BEAR"):"?")+
-                   " | M30 "+(lead.has_reaction?(lead.has_displacement?"DISP+":"REJ+"):"REJ-")+
-                   " | M15 "+(lead.has_structure?(lead.structure_type!=""?lead.structure_type+"+":"MSS+"):"MSS-")+
-                   " | M5 "+(lead.execution_ready?"READY":(lead.has_retest?"RETEST":"N/A")),clrSilver);
-   string pdh=(g_scn_ctx.pdh_ok?DoubleToString(g_scn_ctx.pdh,_Digits):"N/A + "+g_scn_ctx.pd_reason);
-   string pdl=(g_scn_ctx.pdl_ok?DoubleToString(g_scn_ctx.pdl,_Digits):"N/A + "+g_scn_ctx.pd_reason);
-   // v6.5.3 (D1): the row names the SAME canonical record the S/R cluster, the
-   // PMI ledger, the target engine and the ZRE candidates read, together with the
-   // chart bar it became available on. If the bounded window could not be served
-   // and the shift-1 fallback was used, that is stated here instead of hidden.
-   ScenarioDashAdd(L,C,ln,cap,"D1 REAL REFS: prior closed PDH "+pdh+" | PDL "+pdl+
-                   (g_d1_ref_avail_bar>=0?" | available on chart bar "+IntegerToString(g_d1_ref_avail_bar):"")+
-                   (g_d1_ref_via_shift1?" | SHIFT-1 FALLBACK (bounded window unavailable)":""),
-                   clrSilver);
-   ScenarioDashAdd(L,C,ln,cap,"ENTRY STATUS: "+g_scn_entry_status,
-                   (g_scn_verdict==SCV_BUY_EXECUTION_READY?clrLime:
-                    (g_scn_verdict==SCV_SELL_EXECUTION_READY?clrTomato:
-                     (lead.late?clrOrange:clrSilver))));
-   ScenarioDashAdd(L,C,ln,cap,"VERDICT: "+ScenarioVerdictName(g_scn_verdict)+" | "+g_scn_verdict_reason,
-                   (g_scn_verdict==SCV_BUY_EXECUTION_READY?clrLime:
-                    (g_scn_verdict==SCV_SELL_EXECUTION_READY?clrTomato:clrSilver)));
-   // v6.6.10 AUDIT-TAC2: the non-authoritative tactical preview and this card
-   // used to be able to disagree about the same side with nothing explaining it.
-   // One row now states the tactical verdict and its reason. It appears ONLY when
-   // there is something to explain (a suppression or a downgrade), so the compact
-   // card's normal row budget is unchanged.
-   if(g_mtf_entry_authority!="")
-      ScenarioDashAdd(L,C,ln,cap,"TACTICAL: "+(g_mtf_entry_blocked?"SUPPRESSED":"DOWNGRADED")+
-                      " | "+g_mtf_entry_authority,
-                      (g_mtf_entry_blocked?clrDarkGray:clrOrange));
-}
 
 string ScenarioPlanEntryText(const SScenarioPlan &p)
 {
@@ -34182,100 +32354,6 @@ void MTF_RefreshAlignment(const bool force)
    g_mtf_align_cache_seq=-1;   // the aggregate must be recomputed after a refresh
 }
 
-void DrawMTFPanel()
-{
-   if(InpDisplayMode==QSMC_MODE_MINIMAL)
-   { ObjectsDeleteAll(0,PFX+"MTFP_"); return; }
-   ENUM_TIMEFRAMES tfs[MTF_TF_COUNT];
-   tfs[0]=InpMTF1; tfs[1]=InpMTF2; tfs[2]=InpMTF3; tfs[3]=InpMTF4; tfs[4]=InpMTF5;
-   g_mtf_self_index=-1;
-   int self=(int)_Period;
-   for(int i=0;i<MTF_TF_COUNT;i++)
-      if((int)tfs[i]==self) g_mtf_self_index=i;
-
-   // v6.5.1 MTF AUDIT (F-02): the refresh moved OUT of the panel. It used to
-   // live here, so `InpShowMTFPanel=false` or `InpUltraCleanMode=true` froze
-   // g_mtf_aligned[] at its zero-initialised value for the whole session while
-   // PMI_BuildSweep() and the dashboard kept reading it as if it were a
-   // measurement. It is now called from the OnCalculate data path; the panel is
-   // a pure consumer.
-   MTF_RefreshAlignment(false);
-
-   if(!g_mtf_panel_expanded)
-   {
-      ObjectsDeleteAll(0,PFX+"MTFP_");
-      return;
-   }
-
-   // Expanded: an opaque boxed panel stacked under the badge / dashboard,
-   // width-capped away from the newest candles, clear of trade-level labels.
-   int line_h=16;
-   if(InpPanelFontSize>0) line_h=InpPanelFontSize+8;
-   const int pad=5,x=8;
-   int panel_h=(MTF_TF_COUNT+1)*line_h+2*pad;
-   int chart_h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int safe_w=SafeLeftPanelWidth();
-   int top=AvoidTradeLevelKeepOut(g_panel_stack_bottom,panel_h,true);
-   if((chart_h>0 && top+panel_h>chart_h-8) || safe_w<120)
-   {
-      ObjectsDeleteAll(0,PFX+"MTFP_");   // no room: stay expanded, draw nothing
-      return;
-   }
-
-   string rows[MTF_TF_COUNT+1];
-   color  cols[MTF_TF_COUNT+1];
-   rows[0]="EMA ALIGNMENT (closed candles; context only) [-]"; cols[0]=clrSilver;
-   for(int i=0;i<MTF_TF_COUNT;i++)
-   {
-      int aligned=g_mtf_aligned[i];
-      rows[i+1]=StringFormat("%-4s %s  %s",TFName(tfs[i]),
-                aligned>0?"ABOVE EMA":(aligned<0?"BELOW EMA":"N/A"),
-                g_mtf_note[i]+(i==g_mtf_self_index?"  <- chart TF":""));
-      cols[i+1]=(aligned>0?clrLimeGreen:(aligned<0?clrTomato:clrDarkGray));
-   }
-   int text_w=0;
-   for(int i=0;i<=MTF_TF_COUNT;i++)
-   {
-      rows[i]=TruncateToWidth(rows[i],"Consolas",8,safe_w-2*pad-6);
-      text_w=(int)MathMax(text_w,TextWidthPx(rows[i],"Consolas",8));
-   }
-   int width=(int)MathMin(safe_w,text_w+2*pad+6);
-
-   string bg=PFX+"MTFP_BG";
-   if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
-   ObjectSetInteger(0,bg,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,x);
-   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,top);
-   ObjectSetInteger(0,bg,OBJPROP_XSIZE,width);
-   ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_h);
-   ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,(color)0x0C0C12);
-   ObjectSetInteger(0,bg,OBJPROP_BORDER_TYPE,BORDER_FLAT);
-   ObjectSetInteger(0,bg,OBJPROP_COLOR,clrDarkSlateGray);
-   ObjectSetInteger(0,bg,OBJPROP_WIDTH,1);
-   ObjectSetInteger(0,bg,OBJPROP_BACK,false);
-   ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,bg,OBJPROP_ZORDER,0);
-
-   for(int i=0;i<=MTF_TF_COUNT;i++)
-   {
-      string name=(i==0 ? PFX+"MTFP_TITLE" : PFX+"MTFP_"+IntegerToString(i-1));
-      if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
-      ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-      ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+pad+3);
-      ObjectSetInteger(0,name,OBJPROP_YDISTANCE,top+pad+i*line_h);
-      ObjectSetString(0,name,OBJPROP_TEXT,rows[i]);
-      ObjectSetString(0,name,OBJPROP_FONT,(i==0?"Consolas Bold":"Consolas"));
-      ObjectSetInteger(0,name,OBJPROP_FONTSIZE,8);
-      ObjectSetInteger(0,name,OBJPROP_COLOR,cols[i]);
-      // the title row is the click target that collapses the panel
-      ObjectSetInteger(0,name,OBJPROP_SELECTABLE,(i==0));
-      ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
-      ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-      ObjectSetInteger(0,name,OBJPROP_ZORDER,10);
-   }
-   g_panel_stack_bottom=top+panel_h+6;
-}
 
 //====================================================================
 // v6.4.0 TOP-DOWN DECISION ENGINE (D1 -> H4 -> H1 -> M30 -> M15 -> M5)
@@ -34926,375 +33004,12 @@ string TopDown_GatingModeLine()
                        " - WAIT/DATA_UNAVAILABLE block BOTH directions",TopDown_VerdictState());
 }
 
-void DrawTopDownPanel()
-{
-   if(InpDisplayMode==QSMC_MODE_MINIMAL || !InpTopDownEnabled || !InpShowTopDownPanel || InpUltraCleanMode)
-   {
-      ObjectsDeleteAll(0,PFX+"TDP_");
-      return;
-   }
-   int line_h=16;
-   if(InpPanelFontSize>0) line_h=InpPanelFontSize+8;
-   const int pad=5,x=8;
-
-   string rows[12];
-   color  cols[12];
-   int rows_n=0;
-   string verdict_txt=TopDown_VerdictState();
-   rows[rows_n]=StringFormat("TOP-DOWN D1->M5 : %s  (%d/6)%s",
-                             verdict_txt,g_td.confluences,
-                             (InpTopDownGateCore ? (InpRequireInstitutionalConfirm?" [CORE GATED: HARD]"
-                                                                                     :" [CORE GATED: GRADE]")
-                                                : " [DIAGNOSTIC]"));
-   cols[rows_n]=(g_td.dir>0?clrLimeGreen:(g_td.dir<0?clrTomato:clrOrange));
-   rows_n++;
-
-   ENUM_TIMEFRAMES tfs[6];
-   tfs[0]=PERIOD_D1; tfs[1]=PERIOD_H4; tfs[2]=PERIOD_H1;
-   tfs[3]=PERIOD_M30; tfs[4]=PERIOD_M15; tfs[5]=PERIOD_M5;
-   bool chain_started=false;
-   for(int i=0;i<6;i++)
-   {
-      string note=g_td.tf_state[i];
-      // REVIEW-Q1: every unevaluated row downstream of an evaluated HTF leg was
-      // skipped by the first upstream return.  The old immediate-predecessor test
-      // marked only M30 after an H1 veto; M15/M5 fell back to the reset text
-      // "NO DATA" even though all six CopyRates loads had already succeeded.
-      if(g_td.tf_ok[i])
-         chain_started=true;
-      else if(chain_started && note=="NO DATA")
-         note="SKIPPED (HTF)";
-      if(g_td.tf_eq[i]>0.0) note=note+"  eq "+DoubleToString(g_td.tf_eq[i],_Digits);
-      if(i==0 && g_d1_high>0.0)
-         note=note+"  PDH "+DoubleToString(g_d1_high,_Digits)+" PDL "+DoubleToString(g_d1_low,_Digits);
-      if(i==2 && g_td.profile_ok)
-         note=note+StringFormat("  POC %.2f VA %.2f-%.2f",
-                                g_td.poc,g_td.val,g_td.vah);
-      rows[rows_n]=StringFormat("%-4s %s",TFName(tfs[i]),note);
-      cols[rows_n]=(!g_td.tf_ok[i]?clrRed:
-                    (StringFind(g_td.tf_state[i],"BULL")>=0?clrLimeGreen:
-                     (StringFind(g_td.tf_state[i],"BEAR")>=0?clrTomato:clrSilver)));
-      rows_n++;
-   }
-   if(g_td.dir!=0)
-   {
-      rows[rows_n]=StringFormat("PLAN %s  E %s  SL %s  TP1 %s  RR %.2f",
-                                (g_td.dir>0?"BUY":"SELL"),
-                                DoubleToString(g_td.entry,_Digits),
-                                DoubleToString(g_td.sl,_Digits),
-                                DoubleToString(g_td.tp1,_Digits),
-                                g_td.rr);
-      cols[rows_n]=(g_td.dir>0?clrLimeGreen:clrTomato);
-      rows_n++;
-      rows[rows_n]=StringFormat("INVALIDATION: close beyond SL %s (%s)",
-                                DoubleToString(g_td.sl,_Digits),g_td.tp_src);
-      cols[rows_n]=clrOrange;
-      rows_n++;
-   }
-   else
-   {
-      string why=(g_td.blocker=="" ? "evaluating closed bars..." : g_td.blocker);
-      rows[rows_n]="WAIT  "+why;
-      cols[rows_n]=clrOrange;
-      rows_n++;
-   }
-
-   if(InpShowPerfMeter)
-   {
-      rows[rows_n]="PERF  topdown "+IntegerToString(g_perf_td_us)+"us  tick "+IntegerToString(g_perf_calc_us)+"us";
-      cols[rows_n]=clrSilver;
-      rows_n++;
-   }
-   int panel_h=rows_n*line_h+2*pad;
-   int chart_h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int safe_w=SafeLeftPanelWidth();
-   int top=AvoidTradeLevelKeepOut(g_panel_stack_bottom,panel_h,true);
-   if((chart_h>0 && top+panel_h>chart_h-8) || safe_w<120)
-   {
-      ObjectsDeleteAll(0,PFX+"TDP_");
-      return;
-   }
-   int text_w=0;
-   for(int i=0;i<rows_n;i++)
-   {
-      rows[i]=TruncateToWidth(rows[i],"Consolas",8,safe_w-2*pad-6);
-      text_w=(int)MathMax(text_w,TextWidthPx(rows[i],"Consolas",8));
-   }
-   int width=(int)MathMin(safe_w,text_w+2*pad+6);
-
-   string bg=PFX+"TDP_BG";
-   if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
-   ObjectSetInteger(0,bg,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,x);
-   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,top);
-   ObjectSetInteger(0,bg,OBJPROP_XSIZE,width);
-   ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_h);
-   ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,(color)0x0C0C12);
-   ObjectSetInteger(0,bg,OBJPROP_BORDER_TYPE,BORDER_FLAT);
-   ObjectSetInteger(0,bg,OBJPROP_COLOR,clrDarkSlateGray);
-   ObjectSetInteger(0,bg,OBJPROP_WIDTH,1);
-   ObjectSetInteger(0,bg,OBJPROP_BACK,false);
-   ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,bg,OBJPROP_ZORDER,0);
-
-   for(int i=0;i<rows_n;i++)
-   {
-      string name=(i==0 ? PFX+"TDP_TITLE" : PFX+"TDP_"+IntegerToString(i-1));
-      if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
-      ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-      ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+pad+3);
-      ObjectSetInteger(0,name,OBJPROP_YDISTANCE,top+pad+i*line_h);
-      ObjectSetString(0,name,OBJPROP_TEXT,rows[i]);
-      ObjectSetString(0,name,OBJPROP_FONT,(i==0?"Consolas Bold":"Consolas"));
-      ObjectSetInteger(0,name,OBJPROP_FONTSIZE,8);
-      ObjectSetInteger(0,name,OBJPROP_COLOR,cols[i]);
-      ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-      ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-      ObjectSetInteger(0,name,OBJPROP_ZORDER,10);
-   }
-   g_panel_stack_bottom=top+panel_h+6;
-}
 
 //====================================================================
 // v5.6.9 CAUSAL GRAPH PATH OPTIMIZATION
 // Diagnostic ranking support for flexible mode. Deterministic;
 // reads the causal event store only.
 //====================================================================
-void ResetCausalPathResult(SCausalPathResult &r)
-{
-   r.valid=false;
-   r.negative_cycle=false;
-   r.cost=0.0;
-   r.score=0.0;
-   r.hops=0;
-   r.start_event=-1;
-   r.target_event=-1;
-   r.algorithm="";
-   r.agreement=false;
-   for(int i=0;i<16;i++) r.nodes[i]=-1;
-}
-double CausalEdgeSignedWeight(const int from,const int to)
-{
-   if(from<0 || to<0 || from>=ArraySize(g_causal_events) ||
-      to>=ArraySize(g_causal_events)) return 0.0;
-   SCausalEvent a=g_causal_events[from],b=g_causal_events[to];
-   if(a.availability_time<=0 || b.availability_time<=0) return 0.0;
-   // reward direct causal linkage, penalise temporal distance (ATR units)
-   double gap_bars=(double)MathMax(0,b.event_bar-a.event_bar);
-   double penalty=InpGraphTemporalPenaltyATR*g_atr*gap_bars/MathMax(1.0,g_atr);
-   double reward=(a.type==CE_DISPLACEMENT&&b.type==CE_MSS)?InpGraphCausalReward:0.0;
-   double w=b.strength/20.0-penalty+reward;
-   if((a.bullish!=b.bullish)) w-=InpGraphConflictPenalty;
-   return w;
-}
-double CausalEdgeCost(const int from,const int to)
-{
-   // Dijkstra/Bellman-Ford work on non-negative costs.
-   double w=CausalEdgeSignedWeight(from,to);
-   return MathMax(0.0,-w);
-}
-bool RunDijkstraCausalPath(const int start_event,const int target_event,SCausalPathResult &out)
-{
-   ResetCausalPathResult(out);
-   int n=ArraySize(g_causal_events);
-   if(start_event<0||target_event<0||start_event>=n||target_event>=n) return false;
-   out.algorithm="Dijkstra";
-   double dist[]; ArrayResize(dist,n);
-   int prev[]; ArrayResize(prev,n);
-   bool done[]; ArrayResize(done,n);
-   for(int i=0;i<n;i++){dist[i]=DBL_MAX; prev[i]=-1; done[i]=false;}
-   dist[start_event]=0.0;
-   for(int iter=0;iter<n;iter++)
-   {
-      int u=-1; double best=DBL_MAX;
-      for(int i=0;i<n;i++) if(!done[i] && dist[i]<best){best=dist[i]; u=i;}
-      if(u<0) break;
-      done[u]=true;
-      if(u==target_event) break;
-      for(int v=0;v<n;v++)
-      {
-         if(done[v]) continue;
-         // edge exists only via explicit parent links (child->parent walk)
-         double c=DBL_MAX;
-         if(g_causal_events[v].parent_primary==u || g_causal_events[v].parent_secondary==u)
-            c=CausalEdgeCost(u,v);
-         if(c<DBL_MAX && dist[u]+c<dist[v]){dist[v]=dist[u]+c; prev[v]=u;}
-      }
-   }
-   if(dist[target_event]>=DBL_MAX) return false;
-   out.valid=true;
-   out.cost=dist[target_event];
-   int hop=target_event;
-   while(hop>=0 && out.hops<16){out.nodes[out.hops++]=hop; if(hop==start_event) break; hop=prev[hop];}
-   // reverse path order
-   for(int i=0;i<out.hops/2;i++)
-   {
-      int tmp=out.nodes[i]; out.nodes[i]=out.nodes[out.hops-1-i]; out.nodes[out.hops-1-i]=tmp;
-   }
-   out.start_event=start_event; out.target_event=target_event;
-   out.score=MathMax(0.0,100.0-out.cost);
-   return true;
-}
-bool RunBellmanFordCausalPath(const int start_event,const int target_event,SCausalPathResult &out)
-{
-   ResetCausalPathResult(out);
-   int n=ArraySize(g_causal_events);
-   if(start_event<0||target_event<0||start_event>=n||target_event>=n) return false;
-   out.algorithm="BellmanFord";
-   double dist[]; ArrayResize(dist,n);
-   int prev[]; ArrayResize(prev,n);
-   for(int i=0;i<n;i++){dist[i]=DBL_MAX; prev[i]=-1;}
-   dist[start_event]=0.0;
-   // parent-direction edges with signed weights (can be negative)
-   for(int iter=0;iter<n-1;iter++)
-   {
-      bool changed=false;
-      for(int v=0;v<n;v++)
-      {
-         int ps[2]; ps[0]=g_causal_events[v].parent_primary; ps[1]=g_causal_events[v].parent_secondary;
-         for(int pi=0;pi<2;pi++)
-         {
-            int u=ps[pi];
-            if(u<0 || (pi==1 && u==ps[0])) continue;
-            if(dist[u]>=DBL_MAX) continue;
-            double w=CausalEdgeSignedWeight(u,v);
-            double nd=dist[u]-w; // negative weight reduces cost
-            if(nd<dist[v]){dist[v]=nd; prev[v]=u; changed=true;}
-         }
-      }
-      if(!changed) break;
-   }
-   // negative cycle detection
-   for(int v=0;v<n;v++)
-   {
-      int ps[2]; ps[0]=g_causal_events[v].parent_primary; ps[1]=g_causal_events[v].parent_secondary;
-      for(int pi=0;pi<2;pi++)
-      {
-         int u=ps[pi];
-         if(u<0 || dist[u]>=DBL_MAX) continue;
-         if(dist[u]-CausalEdgeSignedWeight(u,v)<dist[v]-1e-9)
-         {
-            out.negative_cycle=true;
-            if(InpRejectGraphNegativeCycle){out.valid=false; return false;}
-         }
-      }
-   }
-   if(dist[target_event]>=DBL_MAX) return false;
-   out.valid=true;
-   out.cost=dist[target_event];
-   int hop=target_event;
-   while(hop>=0 && out.hops<16){out.nodes[out.hops++]=hop; if(hop==start_event) break; hop=prev[hop];}
-   for(int i=0;i<out.hops/2;i++)
-   {
-      int tmp=out.nodes[i]; out.nodes[i]=out.nodes[out.hops-1-i]; out.nodes[out.hops-1-i]=tmp;
-   }
-   out.start_event=start_event; out.target_event=target_event;
-   out.score=MathMax(0.0,100.0+out.cost);
-   return true;
-}
-bool RunBeamCausalPath(const int start_event,const int target_event,SCausalPathResult &out)
-{
-   ResetCausalPathResult(out);
-   int n=ArraySize(g_causal_events);
-   if(start_event<0||target_event<0||start_event>=n||target_event>=n) return false;
-   out.algorithm="Beam";
-   // beam over child->parent chains from the target (bounded width)
-   int beam[]; ArrayResize(beam,InpBeamWidth*4);
-   int beam_score[]; ArrayResize(beam_score,InpBeamWidth*4);
-   int cnt=1; beam[0]=target_event; beam_score[0]=0;
-   for(int depth=0;depth<InpGraphMaxPathHops;depth++)
-   {
-      int next[]; ArrayResize(next,InpBeamWidth*16);
-      int nscore[]; ArrayResize(nscore,InpBeamWidth*16);
-      int ncnt=0;
-      for(int b=0;b<cnt;b++)
-      {
-         int cur=beam[b];
-         if(cur==start_event) continue;
-         int ps[2]; ps[0]=g_causal_events[cur].parent_primary; ps[1]=g_causal_events[cur].parent_secondary;
-         for(int pi=0;pi<2;pi++)
-         {
-            int p=ps[pi];
-            if(p<0 || (pi==1 && p==ps[0])) continue;
-            if(ncnt<InpBeamWidth*16)
-            {
-               next[ncnt]=p;
-               nscore[ncnt]=beam_score[b]+(g_causal_events[p].confirmed?1:0);
-               ncnt++;
-            }
-         }
-      }
-      if(ncnt==0) break;
-      // keep best InpBeamWidth by score (deterministic tiebreak: lower index)
-      for(int i=1;i<ncnt;i++)
-      {
-         int k=next[i],ks=nscore[i],j=i-1;
-         while(j>=0 && nscore[j]<ks){next[j+1]=next[j]; nscore[j+1]=nscore[j]; j--;}
-         next[j+1]=k; nscore[j+1]=ks;
-      }
-      cnt=MathMin(ncnt,InpBeamWidth);
-      for(int i=0;i<cnt;i++){beam[i]=next[i]; beam_score[i]=nscore[i];}
-      for(int i=0;i<cnt;i++)
-         if(beam[i]==start_event)
-         {
-            out.valid=true;
-            out.cost=MathMax(0.0,(double)-beam_score[i]);
-            out.score=(double)beam_score[i]*20.0;
-            out.hops=depth+2;
-            out.algorithm="Beam";
-            out.start_event=start_event; out.target_event=target_event;
-            return true;
-         }
-   }
-   return false;
-}
-bool OptimizeCausalGraphPath(const int start_event,const int target_event,SCausalPathResult &out)
-{
-   ResetCausalPathResult(out);
-   if(!InpUseCausalGraphOptimizer) return false;
-   SCausalPathResult best;
-   bool have=false;
-   if(InpUseDijkstraPathSearch && RunDijkstraCausalPath(start_event,target_event,out))
-   {best=out; have=true;}
-   SCausalPathResult bf;
-   if(InpUseBellmanFordValidation && RunBellmanFordCausalPath(start_event,target_event,bf))
-   {
-      if(!have || bf.cost<best.cost){best=bf; have=true;}
-      if(have) best.agreement=ValidateCausalPathAgreement(out,bf);
-   }
-   if(!have && InpUseBeamSearch && RunBeamCausalPath(start_event,target_event,out))
-   {best=out; have=true;}
-   if(!have){ResetCausalPathResult(out); return false;}
-   if(InpRequireGraphAgreement && !best.agreement &&
-      InpUseBellmanFordValidation && InpUseDijkstraPathSearch)
-   {ResetCausalPathResult(out); return false;}
-   out=best;
-   return true;
-}
-bool ValidateCausalPathAgreement(const SCausalPathResult &a,const SCausalPathResult &b)
-{
-   if(!a.valid || !b.valid) return false;
-   if(a.start_event!=b.start_event || a.target_event!=b.target_event) return false;
-   if(a.negative_cycle!=b.negative_cycle) return false;
-   // both algorithms must reach the target; hop counts may differ
-   return true;
-}
-int CausalEvidenceDP(SSignalFactor &factors[],const int max_weight)
-{
-   if(!InpUseCausalDPOptimizer || max_weight<=0) return 0;
-   int n=ArraySize(factors);
-   int dp[]; ArrayResize(dp,max_weight+1); ArrayInitialize(dp,0);
-   for(int i=0;i<n;i++)
-   {
-      if(!factors[i].active) continue;
-      int w=factors[i].weight;
-      if(w<=0 || w>max_weight) continue;
-      for(int cap=max_weight;cap>=w;cap--)
-         dp[cap]=MathMax(dp[cap],dp[cap-w]+factors[i].value);
-   }
-   return dp[max_weight];
-}
 //+------------------------------------------------------------------+
 //| END OF FILE                                                      |
 //+------------------------------------------------------------------+
@@ -35324,27 +33039,6 @@ bool IsFractalLow(const double &l[],const int i,const int n,const int total)
       if(k>i && l[k]<=l[i]) return false;
    }
    return true;
-}
-int FindLastBearishOB(const double &o[],const double &c[],const int from,const int lookback)
-{
-   for(int i=MathMin(from,ArraySize(g_order_blocks)-1);i>=0 && i>from-lookback;i--)
-      if(!g_order_blocks[i].bullish && g_order_blocks[i].state!="MITIGATED")
-         return i;
-   return -1;
-}
-int FindLastBullishOB(const double &o[],const double &c[],const int from,const int lookback)
-{
-   for(int i=MathMin(from,ArraySize(g_order_blocks)-1);i>=0 && i>from-lookback;i--)
-      if(g_order_blocks[i].bullish && g_order_blocks[i].state!="MITIGATED")
-         return i;
-   return -1;
-}
-string L_Trim(const string s)
-{
-   int a=0,b=StringLen(s)-1;
-   while(a<=b && (StringGetCharacter(s,a)==' '||StringGetCharacter(s,a)==9)) a++;
-   while(b>=a && (StringGetCharacter(s,b)==' '||StringGetCharacter(s,b)==9)) b--;
-   return StringSubstr(s,a,MathMax(0,b-a+1));
 }
 
 //===== v6.2.0 MASTER VOLUME PROFILE =====================================
@@ -36274,23 +33968,6 @@ void MVP_Tag(const string name, const datetime tm, const double price, const str
    ObjectSetInteger(0, name, OBJPROP_BACK, false);
 }
 
-void MVP_Label(const string name, const int x, const int y, const string text,
-               const color col, const int size)
-{
-   if(ObjectFind(0, name)<0)
-      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
-   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
-   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
-   ObjectSetString(0, name, OBJPROP_TEXT, text);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, col);
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, size);
-   ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, name, OBJPROP_BACK, false);
-   ObjectSetInteger(0, name, OBJPROP_ZORDER, 12);
-}
 
 color MVP_PocColor(const int color_id)
 {
@@ -37118,12 +34795,6 @@ int ZRE_ScoreZoneEx(const SZRECand &c,const ENUM_ZRE_SIDE side,const SZREContext
 
 // Unchanged signature and unchanged result: a thin wrapper over ZRE_ScoreZoneEx
 // so every existing caller (and the g++ self-test harness) sees identical values.
-int ZRE_ScoreZone(const SZRECand &c,const ENUM_ZRE_SIDE side,const SZREContext &ctx,
-                  const int touches,const int age,string &detail)
-{
-   int intrinsic=0,context=0;
-   return ZRE_ScoreZoneEx(c,side,ctx,touches,age,detail,intrinsic,context);
-}
 
 string ZRE_ZoneId(const ENUM_ZRE_SIDE side,const double lo,const double hi)
 {
@@ -37363,13 +35034,6 @@ void ZRE_StatusInit(SZREZoneStatus &s)
    s.note="";
 }
 
-string ZRE_LifecycleName(const ENUM_ZONE_LIFECYCLE state)
-{
-   if(state==ZL_TOUCHED) return "Touched";
-   if(state==ZL_USED) return "Used";
-   if(state==ZL_EXPIRED) return "Expired";
-   return "Active";
-}
 
 bool ZRE_LifecycleRetired(const string zone_id)
 {
@@ -39510,48 +37174,7 @@ void ZRE_Update(const int rates_total,const bool force_rebuild)
 //--------------------------------------------------------------------
 // Dashboard text (no new panel: lines are appended to the existing one)
 //--------------------------------------------------------------------
-void ZRE_DashMini(string &L[],color &C[],bool &H[],int &ln)
-{
-   if(!InpUseZRE) return;
-   color col=clrSilver;
-   if(g_zre_verdict.kind>0) col=clrLime;
-   else if(g_zre_verdict.kind<0) col=clrTomato;
-   DashLine(L,C,H,ln,"ZONE REACTION / NON-AUTHORITATIVE | "+
-            ZRE_VerdictMini(g_zre_verdict,_Digits)+
-            (g_zre_verdict.kind!=0 && g_zre_verdict.smc_confluence?" +SMC":""),col,false);
-}
 
-void ZRE_DashFull(string &L[],color &C[],bool &H[],int &ln)
-{
-   if(!InpUseZRE) return;
-   DashLine(L,C,H,ln,"- ZONE REACTION / NON-AUTHORITATIVE -",clrDarkSlateGray,true);
-   if(g_zre_verdict.kind!=0)
-   {
-      string dir=(g_zre_verdict.kind>0?"BUY":"SELL");
-      color col=(g_zre_verdict.kind>0?clrLime:clrTomato);
-      DashLine(L,C,H,ln,"  NON-AUTHORITATIVE | "+g_zre_verdict.label+" "+dir+
-               (g_zre_verdict.smc_confluence?"  | SMC CONFLUENCE":""),col,false);
-      DashLine(L,C,H,ln,StringFormat("  Entry %s  SL %s  RR1 %.2f",DoubleToString(g_zre_verdict.entry,_Digits),
-               DoubleToString(g_zre_verdict.sl,_Digits),g_zre_verdict.rr1),clrWhite,false);
-      DashLine(L,C,H,ln,StringFormat("  TP1 %s  TP2 %s  STOP ZONE %s",DoubleToString(g_zre_verdict.tp1,_Digits),
-               DoubleToString(g_zre_verdict.tp2,_Digits),DoubleToString(g_zre_verdict.tp3,_Digits)),clrLimeGreen,false);
-   }
-   else
-      DashLine(L,C,H,ln,"  NO TRADE: "+ZRE_Clip(g_zre_verdict.reason,52),clrSilver,false);
-   int shown=0;
-   for(int i=0;i<ArraySize(g_zre_zones) && i<ArraySize(g_zre_status) && shown<3;i++)
-   {
-      ENUM_ZRE_STATE st=g_zre_status[i].state;
-      if(st==ZRE_ST_IDLE) continue;
-      string sd=(g_zre_zones[i].side==ZRE_SUPPORT ? "S " : "R ");
-      DashLine(L,C,H,ln,"  "+sd+DoubleToString((g_zre_zones[i].lo+g_zre_zones[i].hi)*0.5,_Digits)+
-               " ("+IntegerToString(g_zre_zones[i].strength)+") "+ZRE_Clip(ZRE_StateName(st),26)+
-               (g_zre_status[i].flipped?" flipped":""),(st==ZRE_ST_REACTION_CONFIRMED?clrLime:clrDarkGray),false);
-      shown++;
-   }
-   DashLine(L,C,H,ln,"  "+ZRE_Clip(ZRE_StatsText(g_zre_stats,(int)MathMax(1,InpMinHistoricalSampleSize)),74),clrDarkGray,false);
-   DashLine(L,C,H,ln,"  score = evidence quality, closed-bar, not a forecast",clrDimGray,false);
-}
 //====================================================================
 // ZRE_ADAPTERS_END
 //====================================================================
@@ -39826,17 +37449,6 @@ string RXN_PhaseName(const int phase)
    return "P0 NO_RELEVANT_ZONE";
 }
 
-string RXN_ExecName(const int st)
-{
-   if(st==(int)RXN_EXEC_READY)             return "core confirmed (observational)";
-   if(st==(int)RXN_EXEC_BLOCKED_SPREAD)    return "blocked by spread";
-   if(st==(int)RXN_EXEC_BLOCKED_GEOMETRY)  return "blocked by geometry";
-   if(st==(int)RXN_EXEC_BLOCKED_RR)        return "blocked by RR floor";
-   if(st==(int)RXN_EXEC_BLOCKED_TOPDOWN)   return "blocked by top-down";
-   if(st==(int)RXN_EXEC_BLOCKED_OWNERSHIP) return "blocked by ownership";
-   if(st==(int)RXN_EXEC_WAITING_RETEST)    return "waiting for retest";
-   return "waiting for structure";
-}
 
 string RXN_OutcomeName(const int oc)
 {
@@ -41493,11 +39105,6 @@ bool RXN_SelfTestRun(string &where)
    return (where=="");
 }
 
-bool RXN_SelfTest()
-{
-   string where="";
-   return RXN_SelfTestRun(where);
-}
 
 // RXN_ADAPTERS_BEGIN - chart-state code. Reads g_buf_*, g_zre_*, g_liquidity,
 // g_structures, g_causal_events and g_quant; writes only RXN state, RXN chart
@@ -42622,8 +40229,8 @@ void AlertDispatcherFinalize(const int rates_total)
             " ATR | level=",selected.level," | HTF/D1=",selected.alignment,
             " | opposing room=",DoubleToString(selected.opposing_room_atr,2)," ATR");
    if(popup) Alert(message);
-   if(push) SendNotification(message);
-   if(sound) PlaySound("alert.wav");
+   if(push && !SendNotification(message) && InpAlertDispatcherLog) Print("[ALERT DISPATCH] push refused by the terminal (MetaQuotes ID not set?)");
+   if(sound && !PlaySound("alert.wav") && InpAlertDispatcherLog) Print("[ALERT DISPATCH] sound refused - alert.wav is not in Sounds/");
    AlertCooldownCommit(selected,exact);
    if(selected.source==3)
    {
@@ -43338,13 +40945,6 @@ bool RXN_BestReaction(const int dir,SRxnEvidence &out)
    return (out.valid && out.level>=(int)RXN_LEVEL_WATCH);
 }
 
-int RXN_LevelFor(const int dir)
-{
-   if(!InpUseRXN) return (int)RXN_LEVEL_NONE;
-   if(dir>0) return g_rxn_level_buy;
-   if(dir<0) return g_rxn_level_sell;
-   return (g_rxn_level_sell>g_rxn_level_buy?g_rxn_level_sell:g_rxn_level_buy);
-}
 
 // Ownership reconciliation. Called from OnCalculate BEFORE the ownership check in
 // CalculateAITradeSetup, so an armed setup can no longer blind the opposite
@@ -43660,56 +41260,7 @@ void RXN_Draw()
 // score shown here is the same reaction_score the level gate uses, so the display
 // can never disagree with the decision.
 //--------------------------------------------------------------------
-void RXN_DashMini(string &L[],color &C[],bool &H[],int &ln)
-{
-   if(!InpUseRXN || !InpUseZRE) return;
-   if(!g_rxn_live.valid || g_rxn_live.level<(int)RXN_LEVEL_WATCH)
-   {
-      if(InpRXNShowSuppression && g_rxn_suppression!="")
-         DashLine(L,C,H,ln,"RXN: "+ZRE_Clip(g_rxn_suppression,58),clrDimGray,false);
-      return;
-   }
-   color col=RXN_LevelColor(g_rxn_live.level,(g_rxn_live.direction>0));
-   DashLine(L,C,H,ln,"RXN "+(g_rxn_live.direction>0?"BUY":"SELL")+" "+
-            RXN_LevelName(g_rxn_live.level)+" "+
-            IntegerToString(g_rxn_live.reaction_score)+"/100 | "+
-            RXN_ExecName(g_rxn_live.exec_state),col,false);
-}
 
-void RXN_DashFull(string &L[],color &C[],bool &H[],int &ln)
-{
-   if(!InpUseRXN || !InpUseZRE) return;
-   DashLine(L,C,H,ln,"- REACTION SIGNAL LAYER / NON-AUTHORITATIVE -",clrDarkSlateGray,true);
-   for(int pass=0;pass<2;pass++)
-   {
-      SRxnEvidence e;
-      if(pass==0) e=g_rxn_best_sell;
-      else        e=g_rxn_best_buy;
-      if(!e.valid || e.level<(int)RXN_LEVEL_WATCH) continue;
-      color col=RXN_LevelColor(e.level,(pass==1));
-      DashLine(L,C,H,ln,StringFormat("  %s %s  %d/100 evidence  |  %s",
-               (pass==1?"BUY":"SELL"),RXN_LevelName(e.level),e.reaction_score,
-               RXN_PhaseName(e.phase)),col,false);
-      DashLine(L,C,H,ln,StringFormat("    zone %s-%s  strength %d (intrinsic %d + context %d)",
-               DoubleToString(e.zone_lo,_Digits),DoubleToString(e.zone_hi,_Digits),
-               e.zone_strength,e.zone_intrinsic,e.zone_context),clrWhite,false);
-      DashLine(L,C,H,ln,"    "+ZRE_Clip(e.path_text,68),clrSilver,false);
-      DashLine(L,C,H,ln,"    EXECUTION: "+RXN_ExecName(e.exec_state),
-               (e.exec_state==(int)RXN_EXEC_READY?clrGold:clrDarkGray),false);
-      if(InpRXNShowSuppression && e.suppression_reason!="")
-         DashLine(L,C,H,ln,"    "+ZRE_Clip(e.suppression_reason,68),clrDimGray,false);
-   }
-   if(g_rxn_level_sell<(int)RXN_LEVEL_WATCH && g_rxn_level_buy<(int)RXN_LEVEL_WATCH)
-   {
-      DashLine(L,C,H,ln,"  "+ZRE_Clip((g_rxn_suppression!=""?g_rxn_suppression
-                                       :"no zone interaction on the last closed bar"),70),
-               clrDimGray,false);
-   }
-   DashLine(L,C,H,ln,StringFormat("  zones evaluated %d (recovered %d) | records %d | vol regime %s",
-            g_rxn_evaluated,g_rxn_recovered,ArraySize(g_rxn_rec),
-            QuantVolClassLabel((g_quant.computed?g_quant.vol_class:VOL_UNKNOWN))),clrDarkGray,false);
-   DashLine(L,C,H,ln,"  reaction score = evidence quality, closed-bar, not a forecast",clrDimGray,false);
-}
 //====================================================================
 // RXN_ADAPTERS_END
 //====================================================================
@@ -43742,10 +41293,6 @@ void PMI_Update()
    }
 }
 
-bool PMI_SelfTest()
-{
-   return (PMI_RunSelfTests()==0);
-}
 
 //--------------------------------------------------------------------
 // Phase 1 & Phase 2: Timeframe Mapping and Scoring Sub-Weights
@@ -45448,39 +42995,6 @@ void MTF_SniperZone_OnChartChange()
 //--------------------------------------------------------------------
 // Phase 6.4: Dashboard Panel "SNIPER ENTRY" Row
 //--------------------------------------------------------------------
-string MTF_SniperDashboardLine(const double current_price,const double chart_atr,color &col_out)
-{
-   col_out=clrSilver;
-   if(!InpUseSniperZoneEngine)
-      return "SNIPER ENTRY: OFF";
-   if(g_sniper_best.level.strength<=0.0 || g_sniper_best.level.direction==0)
-   {
-      col_out=clrDimGray;
-      return "SNIPER ENTRY: NONE (awaiting validated MTF confluence >= 0.50)";
-   }
-   double safe_atr=MathMax(chart_atr,_Point);
-   double mid=0.5*(g_sniper_best.level.price_high+g_sniper_best.level.price_low);
-   double dist_atr=0.0;
-   if(current_price>g_sniper_best.level.price_high)
-      dist_atr=(current_price-g_sniper_best.level.price_high)/safe_atr;
-   else if(current_price<g_sniper_best.level.price_low)
-      dist_atr=(g_sniper_best.level.price_low-current_price)/safe_atr;
-
-   string side=(g_sniper_best.level.direction>0 ? "SUP" : "RES");
-   if(g_sniper_best.entry_triggered)
-      col_out=(g_sniper_best.level.direction>0 ? clrLime : clrTomato);
-   else if(g_sniper_best.level.strength>=0.80)
-      col_out=(g_sniper_best.level.direction>0 ? clrMediumSeaGreen : clrLightCoral);
-
-   return StringFormat("SNIPER ENTRY: %s [%s] STR:%.2f TYPE:%s | %.2f ATR | %s (%d/5)",
-                       side,
-                       g_sniper_best.tf_label,
-                       g_sniper_best.level.strength,
-                       g_sniper_best.type_label,
-                       dist_atr,
-                       g_sniper_best.entry_grade,
-                       g_sniper_best.conds_met);
-}
 
 //--------------------------------------------------------------------
 // Phase 6.5: 8th Scoring Pillar Integration (25% Weight)

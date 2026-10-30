@@ -187,7 +187,7 @@ check(re.search(r"#property indicator_buffers\s+19", RAW) is not None,
       "H indicator_buffers is still 19 - the master switch adds no buffer")
 check(re.search(r"#property indicator_plots\s+7", RAW) is not None,
       "H indicator_plots is still 7")
-check(re.search(r'QSMC_VERSION_TEXT\s+"v6\.6\.9"', RAW) is not None,
+check(re.search(r'QSMC_VERSION_TEXT\s+"v6\.6\.13"', RAW) is not None,
       "H the version triple is unchanged by a UX switch")
 check(RAW.count("\n") - RAW.count("\r\n") == 0, "H the file is still pure CRLF")
 

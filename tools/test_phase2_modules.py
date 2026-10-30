@@ -504,7 +504,9 @@ check("SBP3-" + "1" in st_body and "SBP3-9" in st_body,
 NEW_STATE = ["g_p3_phase", "g_p3_dir", "g_p3_score", "g_p3_reason", "g_p3_invalidation",
              "g_sb_active", "g_sb_window", "g_sb_dir", "g_sb_fvg", "g_sb_entry_high",
              "g_sb_entry_low", "g_sb_reason", "g_sb_score", "g_sb_invalidation"]
-CONSUMERS = ["QSMC_ArbiterFeedAndFinalize", "UpdateSignalMask", "GraphConfluenceScore",
+CONSUMERS = ["QSMC_ArbiterFeedAndFinalize", "UpdateSignalMask",
+             # GraphConfluenceScore was unreachable and was deleted (doc 11.14):
+             # a function that no longer exists cannot be a consumer.
              "PMI_ComputeConfluence", "ScenarioUpdate", "ScenarioDashFull",
              "ScoreOrderBlock", "PMI_BuildLocation", "CoreDashChain",
              "TacticalAuthorityDecide", "ValidateCausalGraphInvariants",
