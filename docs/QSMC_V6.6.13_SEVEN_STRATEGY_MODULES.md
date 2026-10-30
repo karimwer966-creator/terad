@@ -1593,17 +1593,32 @@ plus comment-only lines) and on check 2 (no surviving reference to anything dele
 not on a test run — a dead function by definition has no effect, but the *set* being
 dead is a measurement, and the measurement was wrong once already this session.
 
-**What is deliberately left.** The purge stops at functions. Fourteen file-scope
-variables lost their last reader with the code that used them —
+**The second purge: fourteen globals, done without moving a single line.** Fourteen
+file-scope variables lost their last reader when the dead functions went:
 `g_memo_hit` (L2137), `g_ui_last_panel_ms` (L2149), `g_pmi_panel_y` (L2151),
-`g_pmi_panel_height` (L2152), `g_badge_x` (L2164), `g_panel_stack_top` (L2165),
-`g_panel_stack_bottom` (L2166), `g_last_mtf_entry_id` (L2246), `g_mtf_last_confirm_bar`
-(L2253), `g_last_mtf_preview_bar` (L2255), `g_mtf_event_time` (L3711),
-`g_mtf_avail_time` (L3712), `g_pmi_panel_ticks` (L12715), `g_pmi_panel_last_closed`
-(L12716). They are inert, they cost nothing at run time, and deleting them would move
-every citation below them — 213 in this document and 132 in the tools — for fourteen
-lines of noise. That trade is not worth a second repin wave tonight; say the word and
-they go with it.
+`g_pmi_panel_height` (L2152), the five badge/stack integers at L2164–L2166,
+`g_last_mtf_entry_id` (L2246), `g_mtf_last_confirm_bar` (L2253),
+`g_last_mtf_preview_bar` (L2255), `g_mtf_event_time` (L3711 as `[]`),
+`g_mtf_avail_time` (L3712 as `[]`), `g_pmi_panel_ticks` (L12715) and
+`g_pmi_panel_last_closed` (L12716). `g_last_mtf_*` had already been recorded as dead
+in `docs/QSMC_V6.6.10_TACTICAL_AUTHORITY.md` §7 and were never removed.
+
+**Deleting the lines was the wrong move, and the measurement said so.** A 14-line
+deletion in the middle of a 43 000-line file moves every citation below it — 213 in
+this document and 132 in the tools — and re-pinning them means rewriting numbers by
+shape (`line_at(N)`, `(N, r"...")`, `"name": N`, `body(N, M)`). A first attempt at
+that rewrite produced 325 failures across seven suites, because a test tool contains
+many integers that are **not** line numbers: prices (`9999`), object counts
+(`5000`), brace totals (`3593`) and historical line references kept on purpose
+(`3740`, `24912`). A blind shift corrupts them; a shape-by-shape shift is 260
+distinct integers of judgement for fourteen lines of dead weight.
+
+So each of the fourteen declarations is **neutralised in place** — replaced, on the
+same line, by `// PURGED (doc 11.14): <name> had no reader and no writer.` The
+variables no longer exist for the compiler, every citation keeps its line, and the
+diff is exactly 14 lines. Verified: zero live references to any of the eighteen
+names after comment-stripping, 43 352 lines, 583 inputs, braces 3 593/3 593, and all
+29 suites still at zero failures.
 
 ## 12. Known risks and what is NOT implemented
 

@@ -2134,7 +2134,7 @@ bool     g_rm_size_available=false;
 string   g_rm_size_text="";             // TEXT ONLY - the entire output of the sizing step
 datetime g_htf_cache_time = 0;
 datetime g_d1_cache_time = 0;
-bool g_memo_hit = false;
+   // PURGED (doc 11.14): g_memo_hit had no reader and no writer.
 datetime g_last_alert_bar = 0;
 string g_last_confirmed_alert_id = "";
 int g_dash_lines = 0;
@@ -2146,10 +2146,10 @@ int g_dash_h=110;
 // pacing; signal logic never reads these). GetTickCount() ms; 0 = draw now.
 uint g_ui_last_dash_ms=0;
 uint g_ui_last_lbl_ms=0;
-uint g_ui_last_panel_ms=0;
+   // PURGED (doc 11.14): g_ui_last_panel_ms had no reader and no writer.
 #define QSMC_UI_COALESCE_MS 300
-int g_pmi_panel_y=0;
-int g_pmi_panel_height=0;
+   // PURGED (doc 11.14): g_pmi_panel_y had no reader and no writer.
+   // PURGED (doc 11.14): g_pmi_panel_height had no reader and no writer.
 datetime g_visual_audit_last_time=0;
 int g_visual_audit_runs=0;
 int g_visual_audit_failures=0;
@@ -2161,9 +2161,9 @@ bool g_pmi_panel_expanded=true;
 // v6.1.3 (L1): panel layout state. The badge geometry is computed once per
 // panel refresh (LayoutPanelBadge) and every expanded panel stacks below it.
 bool g_mtf_panel_expanded=true;
-int  g_badge_x=8,g_badge_y=8,g_badge_w=0,g_badge_h=0,g_badge_rows=3;
-int  g_panel_stack_top=64;      // first free y below the badge
-int  g_panel_stack_bottom=64;   // first free y below the last docked panel
+   // PURGED (doc 11.14): g_badge_x/y/w/h/rows had no reader and no writer.
+   // PURGED (doc 11.14): g_panel_stack_top had no reader and no writer.
+   // PURGED (doc 11.14): g_panel_stack_bottom had no reader and no writer.
 // v6.1.3 (L4): pixel bands occupied by the terminal's own trade-level labels
 #define QSMC_KEEPOUT_MAX 48
 int  g_keepout_count=0;
@@ -2243,16 +2243,16 @@ string g_mtf_entry_state="";
 double g_mtf_entry_price=0.0;
 datetime g_mtf_entry_time=0;
 ENUM_TIMEFRAMES g_mtf_entry_tf=PERIOD_M5;
-string g_last_mtf_entry_id="";
+   // PURGED (doc 11.14): g_last_mtf_entry_id had no reader and no writer.
 //--- v6.4.1 SIGNAL VISIBILITY: dedup store + tactical state
 string   g_entry_keys[];            // dedup keys of every CONFIRMED signal this attach
 datetime g_entry_key_bar[];         // the (immutable) chart bar each key was painted on
 bool     g_entry_key_buy[];         // v6.4.1: direction of that signal (for the redraw pass)
 int      g_entry_key_src[];         // v6.4.1: 0=CORE, 1=ZRE
 double   g_entry_key_price[];       // v6.4.1: entry price (replay after a full rebuild)
-datetime g_mtf_last_confirm_bar=0;  // one CONFIRMED mark/alert per execution bar
+   // PURGED (doc 11.14): g_mtf_last_confirm_bar had no reader and no writer.
 string   g_last_mtf_entry_key="";    // one CONFIRMED alert/mark per signal (permanent dedup)
-datetime g_last_mtf_preview_bar=0;   // PREVIEW alerts: at most once per execution bar
+   // PURGED (doc 11.14): g_last_mtf_preview_bar had no reader and no writer.
 bool     g_mtf_entry_late=false;    // chase filter tripped (display + journal only)
 datetime g_mtf_sig_time=0;           // v6.4.1: signal bar of the CONFIRMED tactical entry (InpAlertOnSignalBar)
 //--- v6.6.10 AUDIT-TAC: the authoritative-state verdict behind the tactical
@@ -3708,8 +3708,8 @@ int g_liq_priority_idx[];
 #define MTF_TF_COUNT 5
 int      g_mtf_aligned[MTF_TF_COUNT];     // +1 bull, -1 bear, 0 unknown
 int      g_mtf_self_index=-1;             // row matching chart TF (if any)
-datetime g_mtf_event_time[MTF_TF_COUNT];  // last confirmed HTF structure event
-datetime g_mtf_avail_time[MTF_TF_COUNT];  // when that event became known
+   // PURGED (doc 11.14): g_mtf_event_time[] had no reader and no writer.
+   // PURGED (doc 11.14): g_mtf_avail_time[] had no reader and no writer.
 string   g_mtf_note[MTF_TF_COUNT];        // "EMA200 x" style note per row
 int      g_mtf_panel_tick=0;              // per-tick fetch throttle for the panel
 //--- blacklist for terminal setups
@@ -12712,8 +12712,8 @@ void PMI_BuildWalkForwardReport(const int closed)
 
 // Panel redraw is throttled: once per closed bar, plus at most one refresh
 // every InpPMIPanelRefreshTicks ticks, so intra-bar ticks stay cheap.
-int g_pmi_panel_ticks=0;
-int g_pmi_panel_last_closed=-2;
+   // PURGED (doc 11.14): g_pmi_panel_ticks had no reader and no writer.
+   // PURGED (doc 11.14): g_pmi_panel_last_closed had no reader and no writer.
 
 
 //====================================================================
