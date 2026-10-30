@@ -871,7 +871,7 @@ input int    InpWGMinEvidenceScore   = 68;    // evidence floor for the evidence
 input double InpWGMinRoomATR         = 1.0;   // room to the opposing zone, in ATR units
 input group "====== Scalping Strategies (AUDIT-SC1, M1-M5, display only, advisory) ======"
 input bool   InpEnableScalping           = false; // overlay switch: six scalping strategies
-input bool   InpScalpShowOnDashboard     = false; // RESERVED: no scalping row exists in the tooltip yet (doc 11.12)
+input bool   InpScalpShowOnDashboard     = false; // INERT - this input changes NOTHING: RESERVED: no scalping row exists in the tooltip yet (doc 11.12)
 input int    InpScalpWeightMomentum      = 20;    // SC-MOM  closed-bar displacement burst
 input int    InpScalpWeightEdge          = 20;    // SC-EDGE zone-edge fade with MR stretch
 input int    InpScalpWeightSilverBullet  = 15;    // SC-SB   inside a resolved SB window
@@ -1166,12 +1166,12 @@ input bool InpShowAIDashboard = true;
 input bool InpDashboardFullWidth = false;      // v6.6.8: OFF = compact card (does not cover the chart); ON = wide strip
 input int  InpDashboardMaxRows   = 6;          // Rows drawn on the card (3-10); everything else stays in the hover tooltip
 input int  InpDashboardMaxWidthPx= 430;        // Pixel width cap for the compact card; the wide mode is capped at 900
-input bool InpDockDashboard = true;            // Legacy positioning setting; compact Core panel is left-docked
+input bool InpDockDashboard = true;            // INERT - this input changes NOTHING: Legacy positioning setting; compact Core panel is left-docked
 input bool InpDashboardCollapsible = true;     // Click Core title row to show/hide the three detail rows
 input bool InpShowMTFPanel = true;   // INERT: nothing reads it (doc 11.14)
 input bool InpShowTradeBox = true;
 input group "====== v6.1.3 Chart Layout (panels / labels) ======"
-input bool   InpPanelsStartCollapsed   = true;  // Legacy setting; Core details always start collapsed
+input bool   InpPanelsStartCollapsed   = true;  // INERT - this input changes NOTHING: Legacy setting; Core details always start collapsed
 input int    InpPanelReserveBars       = 30;    // Newest visible candles no panel may ever cover
 input int    InpPanelIdleMaxHeightPct  = 15;   // INERT: nothing reads it (doc 11.14)
 input bool   InpPanelsAvoidTradeLevels = true;  // Keep panels clear of the terminal's order/position labels
@@ -1233,7 +1233,7 @@ input group "====== DEBUGGING ======"
 input bool InpShowDebugAlerts = false;
 input bool InpLogSignalDetails = true;
 input group "====== SIGNAL GATE AUDIT (why is there no signal?) ======"
-input bool InpShowGateAudit = true;        // RESERVED: no dashboard row yet; the audit prints via InpGateAuditLogEveryBars (doc 11.12)
+input bool InpShowGateAudit = true;        // INERT - this input changes NOTHING: RESERVED: no dashboard row yet; the audit prints via InpGateAuditLogEveryBars (doc 11.12)
 input int  InpGateAuditLogEveryBars = 0;   // log the audit every N closed bars (0 = off)
 input group "====== REAL-TIME MODE ======"
 input bool InpRealTimeZones = true;
@@ -1250,7 +1250,7 @@ input bool InpUseRetestLifecycle = true;
 input double InpInvalidateBufferATR = 0.3;
 input bool InpAlertOnSetupReady = false;
 input bool InpShowEntryPreview = true; // live entry preview on retest; non-authoritative
-input bool InpAlertOnEntryPreview = true; // legacy template field; live PREVIEW is chart-only (closed-bar alerts only)
+input bool InpAlertOnEntryPreview = true; // INERT - this input changes NOTHING: legacy template field; live PREVIEW is chart-only (closed-bar alerts only)
 input bool InpInvalidateOnOppositeMSS = true; // closed opposite MSS cancels active setup and releases opposite scan
 input group "====== MTF EXECUTION ENTRY (TACTICAL, NON-AUTHORITATIVE) ======"
 input bool InpUseMTFExecutionEntry = true;
@@ -1413,7 +1413,7 @@ input group "====== v5.8.0 ENTRY QUALITY ENGINE ======"
 // Transparent soft-score model (Phase 21). The hard gates remain the
 // existing causal/retest/confirmation architecture and are mirrored,
 // never duplicated. Soft scores only RANK valid candidates.
-input bool   InpShowEntryQualityPanel = true;   // RESERVED: those rows are not built yet (doc 11.12)
+input bool   InpShowEntryQualityPanel = true;   // INERT - this input changes NOTHING: RESERVED: those rows are not built yet (doc 11.12)
 input double InpQualityHighThreshold  = 75.0;   // final blend >= this  -> HIGH_QUALITY
 input double InpQualityAPlusThreshold = 88.0;   // final blend >= this  -> A_PLUS
 
@@ -14997,8 +14997,8 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    SigLog_Init();
    if(InpSigLogCSV)
       Print(">>> ",QSMC_VERSION_TEXT," Signal outcome log: ON | file ",SigLog_FileName(),
-            (InpSigLogCommonFolder?" (Common\\Files)":" (MQL5\\Files)"),
-            " | outcomes from later closed bars only | observed results, not a forecast");
+            (InpSigLogCommonFolder?" (Common\\Files)":" (MQL5\\Files)")," | entry model: ",
+            (InpSigLogEntryRef==SIGLOG_ENTRY_PUBLISHED?"LIMIT at the published zone edge - these rows canNOT describe a market-execution EA":"MARKET at the signal bar close")," | outcomes from later closed bars only | observed results, not a forecast");
    if(InpSigLogRunSelfTest)
    {
       if(SigLog_SelfTest())

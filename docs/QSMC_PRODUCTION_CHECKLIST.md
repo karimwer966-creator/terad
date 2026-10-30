@@ -4,6 +4,13 @@ This is the operational document. `docs/QSMC_BUILD_AND_RUN.md` says **how to
 install**; this one says **when it is allowed to run next to money, what to watch
 in the first 24 hours, and how to back out in under a minute**.
 
+> **Companion runbook (EX1):** `docs/QSMC_GO_LIVE_RUNBOOK.md` is the step-by-step
+> version for the execution companion: the INERT → DRY RUN → demo → real ladder,
+> the operational envelope printed at attach, the persisted daily-loss block, the
+> kill switches in order of speed, incident triage, and the one rule that costs the
+> most when it is ignored (the EA reads a PRIVATE indicator instance that runs the
+> indicator's DEFAULTS, not the inputs you set on the chart).
+
 One sentence about scope, because it decides every threshold below:
 
 > **This layer never places, modifies or closes an order.** It arbitrates signals,

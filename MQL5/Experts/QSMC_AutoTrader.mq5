@@ -42,7 +42,9 @@
 //|  - It refuses to exceed InpMaxRiskPercent (hard ceiling = 1% of    |
 //|    equity) or InpMaxOpenPositions.                                |
 //|  - It stops opening trades for the rest of the day after a        |
-//|    InpMaxDailyLossPercent drawdown on equity.                     |
+//|    InpMaxDailyLossPercent drawdown on equity, and that block is   |
+//|    PERSISTED: a chart reload in the middle of the day cannot      |
+//|    re-base the baseline and start again from zero.                     |
 //|  - It ignores every signal older than InpMaxSignalAgeBars and     |
 //|    every signal that existed before the EA was attached.          |
 //|  - It never averages down, never martingales, never widens a stop,|
@@ -193,6 +195,11 @@ input double InpBreakEvenAtR         = 1.00;   // move the stop to entry after +
 
 //--- 4. filters ------------------------------------------------------
 input int    InpMaxSpreadPoints      = 30;     // refuse a signal while the spread is wider
+// Slippage tolerance for a MARKET order. It used to be a hard-coded 10 points,
+// which is under one pip on a 5-digit FX pair and well under a normal gold
+// spread: the server answered "requote" and the operator had no input to widen
+// it. 0 = fill at any price (NOT recommended; the broker decides the fill).
+input int    InpDeviationPoints      = 20;     // max slippage accepted on a market order, in points
 input int    InpMaxOpenPositions     = 1;      // positions of this magic and symbol
 input double InpMaxDailyLossPercent  = 3.00;   // stop for the day after this equity drawdown; 0 = off
 input int    InpMaxSignalAgeBars     = 2;      // ignore a signal older than this many closed bars
@@ -282,6 +289,26 @@ string SignalKey(const datetime bar_time,const int dir)
    return (IntegerToString((long)bar_time)+"|"+DirText(dir));
   }
 
+// Terminal global names are stored in a terminal-wide file, and broker symbols
+// carry suffix characters that are not safe there ("XAUUSD.m", "EURUSD#",
+// "US500-CFD"). A rejected name would make GlobalVariableSet() fail SILENTLY -
+// and with it the reload guard and the cross-chart key D2 fixed. So this EA's
+// own namespace is built from a sanitised symbol; the DIAG_* names it only
+// READS are left byte-identical to the indicator's.
+string KeySafe(const string s)
+  {
+   string out="";
+   int n=StringLen(s);
+   for(int i=0;i<n;i++)
+     {
+      ushort c=StringGetCharacter(s,i);
+      string ch=StringSubstr(s,i,1);
+      bool keep=((c>='0' && c<='9')||(c>='A' && c<='Z')||(c>='a' && c<='z'));
+      out+=(keep ? ch : "_");
+     }
+   return out;
+  }
+
 string GlobName(const datetime bar_time,const int dir)
   {
    // The SYMBOL is part of the name, and that is a defect fix, not decoration.
@@ -290,8 +317,8 @@ string GlobName(const datetime bar_time,const int dir)
    // across symbols, so two charts could produce the same bar time and the same
    // direction - and a name without the symbol made the second chart read the
    // first chart's signal as "already seen" and silently drop a real trade.
-   return ("QSMC_AT_"+IntegerToString(InpMagic)+"_"+_Symbol+"_"+IntegerToString((long)bar_time)+"_"+
-           (dir>0 ? "B" : "S"));
+   return ("QSMC_AT_"+IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_"+
+           IntegerToString((long)bar_time)+"_"+(dir>0 ? "B" : "S"));
   }
 
 // A transient retcode means the REQUEST never became an ORDER (requote, price
@@ -513,18 +540,56 @@ double CalcLots(const string sym,const double entry,const double sl,const bool b
   }
 
 //+------------------------------------------------------------------+
-//| Day guard: a new equity high-water day resets it; a drawdown      |
-//| beyond InpMaxDailyLossPercent blocks new entries until tomorrow.  |
+//| Day guard: one baseline per SERVER day, one block per day.        |
+//|                                                                   |
+//| PERSISTED ON PURPOSE. The baseline used to live only in memory,   |
+//| so a chart reload / settings change / terminal restart in the     |
+//| middle of the day silently re-based "today's opening equity" to   |
+//| the CURRENT, already-drawn-down equity - and the daily loss cap   |
+//| started again from there. The keys carry the account login and    |
+//| the magic, so two EAs on two charts never share a baseline.       |
 //+------------------------------------------------------------------+
+string DayGuardKey(const string leaf)
+  {
+   return ("QSMC_AT_DAY_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
+           "_"+IntegerToString(InpMagic)+"_"+leaf);
+  }
+
+void DayGuardLoad(const int day)
+  {
+   string kd=DayGuardKey("DAY");
+   if(!GlobalVariableCheck(kd) || (int)GlobalVariableGet(kd)!=day)
+     {
+      // New server day (or first run): freeze the baseline NOW and write it.
+      g_day_index=day;
+      g_day_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
+      g_day_blocked=false;
+      GlobalVariableSet(kd,(double)day);
+      GlobalVariableSet(DayGuardKey("EQ"),g_day_start_equity);
+      GlobalVariableSet(DayGuardKey("BLOCKED"),0.0);
+      GlobalVariablesFlush();
+      Print("[QSMC_AT] day guard: new baseline ",
+            DoubleToString(g_day_start_equity,2)," for server day ",
+            TimeToString((datetime)((long)day*86400),TIME_DATE));
+      return;
+     }
+   // Same day, restored from the terminal: the baseline and the block survive
+   // a reload, which is the whole point of persisting them.
+   g_day_index=day;
+   double eq0=GlobalVariableGet(DayGuardKey("EQ"));
+   g_day_start_equity=(eq0>0.0 ? eq0 : AccountInfoDouble(ACCOUNT_EQUITY));
+   g_day_blocked=(GlobalVariableGet(DayGuardKey("BLOCKED"))>0.5);
+   if(g_day_blocked)
+      Print("[QSMC_AT] day guard RESTORED: this server day is already blocked at ",
+            DoubleToString(g_day_start_equity*(1.0-MathMax(0.0,InpMaxDailyLossPercent)/100.0),2),
+            " (a reload does not reset it)");
+  }
+
 void DayGuardUpdate()
   {
    int day=(int)(TimeCurrent()/86400);
    if(day!=g_day_index)
-     {
-      g_day_index=day;
-      g_day_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
-      g_day_blocked=false;
-     }
+      DayGuardLoad(day);
    if(InpMaxDailyLossPercent>0.0 && g_day_start_equity>0.0)
      {
       double floor_eq=g_day_start_equity*(1.0-InpMaxDailyLossPercent/100.0);
@@ -532,8 +597,10 @@ void DayGuardUpdate()
       if(eq<=floor_eq && !g_day_blocked)
         {
          g_day_blocked=true;
+         GlobalVariableSet(DayGuardKey("BLOCKED"),1.0);
+         GlobalVariablesFlush();
          Print("[QSMC_AT] daily loss guard: equity ",DoubleToString(eq,2),
-               " <= ",DoubleToString(floor_eq,2)," - no new entries today");
+               " <= ",DoubleToString(floor_eq,2)," - no new entries today (persisted)");
         }
      }
   }
@@ -929,9 +996,13 @@ string GateProfileSuffix()
    if(DiagRead("GP_CONF",conf) && conf>=0.0) peaks+="conf "+DoubleToString(conf,0);
    if(DiagRead("GP_REL",rel) && rel>=0.0)    peaks+=(peaks==""?"":", ")+"reliability "+DoubleToString(rel,0);
    if(DiagRead("GP_RR",rr) && rr>=0.0)       peaks+=(peaks==""?"":", ")+"RR1 "+DoubleToString(rr,2);
-   if(DiagRead("GP_ANCH",anch) && anch>=0.0)  peaks+=(peaks==""?"":", ")+"anchors "+IntegerToString((long)anch);
+   // GP_ANCH is a COUNT of candidates that reached the anchor gate, not an
+   // anchor measurement: it must never be printed next to a threshold as if the
+   // two were comparable. It is reported separately and labelled as a count.
+   if(DiagRead("GP_ANCH",anch) && anch>=0.0)
+      peaks+=(peaks==""?"":"; ")+"candidates that reached the anchor gate: "+IntegerToString((long)anch);
    if(peaks!="")
-      out+=" | best reached: "+peaks+" (compare with the indicator's own minimum inputs)";
+      out+=" | best values seen: "+peaks+" (compare the scores and the RR with the indicator's minimums)";
    return out;
   }
 
@@ -1172,6 +1243,41 @@ void ManageOpenPositions()
   }
 
 //+------------------------------------------------------------------+
+//| Housekeeping for the terminal globals this EA owns.               |
+//|                                                                   |
+//| The "seen" key is one terminal global per signal, written forever |
+//| and (before this) never deleted: a terminal that trades for a year |
+//| accumulated thousands of them and the Globals list became un-     |
+//| readable. Keys older than one day are removed on init and deinit. |
+//| Keys of the CURRENT day are KEPT: they are exactly what stops a   |
+//| reload from re-firing today's signals. The day-guard keys carry a |
+//| different prefix and are never touched here.                      |
+//+------------------------------------------------------------------+
+void PurgeStaleSignalGlobals()
+  {
+   string pfx="QSMC_AT_"+IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_";
+   long cutoff=(long)TimeCurrent()-86400;
+   int removed=0;
+   for(int i=GlobalVariablesTotal()-1;i>=0;i--)
+     {
+      string name=GlobalVariableName(i);
+      if(StringFind(name,pfx)!=0) continue;
+      string rest=StringSubstr(name,StringLen(pfx));
+      int us=StringFind(rest,"_");
+      if(us<=0) continue;
+      long bt=(long)StringToInteger(StringSubstr(rest,0,us));
+      if(bt>0 && bt<cutoff)
+        {
+         GlobalVariableDel(name);
+         removed++;
+        }
+     }
+   if(removed>0)
+      Print("[QSMC_AT] housekeeping: removed ",IntegerToString(removed),
+            " seen-key(s) older than one day");
+  }
+
+//+------------------------------------------------------------------+
 //| Init / deinit                                                    |
 //+------------------------------------------------------------------+
 int OnInit()
@@ -1207,13 +1313,21 @@ int OnInit()
       Print("[QSMC_AT] InpMinRRAtFill must be >= 0 (0 = off) and InpOrderRetryMax >= 1");
       return INIT_PARAMETERS_INCORRECT;
      }
+   if(InpDeviationPoints<0)
+     {
+      Print("[QSMC_AT] InpDeviationPoints must be >= 0 (0 = no slippage control at all)");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpDeviationPoints>0 && InpDeviationPoints<10)
+      Print("[QSMC_AT] WARNING: InpDeviationPoints=",IntegerToString(InpDeviationPoints),
+            " is under 10 points - on a fast bar the server will answer requote more often than it fills");
 
    g_seen_n=0;
    g_last_note="";
    g_note_count=0;
 
    g_trade.SetExpertMagicNumber((ulong)InpMagic);
-   g_trade.SetDeviationInPoints(10);
+   g_trade.SetDeviationInPoints((ulong)MathMax(0,InpDeviationPoints));
    g_trade.SetAsyncMode(false);
    long fill=SymbolInfoInteger(_Symbol,SYMBOL_FILLING_MODE);
    if((fill&SYMBOL_FILLING_FOK)!=0)      g_trade.SetTypeFilling(ORDER_FILLING_FOK);
@@ -1260,6 +1374,19 @@ int OnInit()
             " | risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),
             "% of equity, max ",IntegerToString(InpMaxOpenPositions)," position(s)");
 
+   // One line the operator can paste into a change ticket: every number that
+   // bounds a loss, in the units the broker uses. If a value here is not the
+   // value in the ticket, the chart is running a different preset.
+   Print("[QSMC_AT] envelope: risk<= ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),
+         "% of equity | max ",IntegerToString(InpMaxOpenPositions)," position(s)",
+         " | daily loss stop ",DoubleToString(InpMaxDailyLossPercent,2),"% (persisted)",
+         " | spread<= ",IntegerToString(InpMaxSpreadPoints)," pts",
+         " | slippage<= ",IntegerToString(InpDeviationPoints)," pts",
+         " | RR at fill>= ",DoubleToString(InpMinRRAtFill,2),
+         " | stop ",IntegerToString(InpMinStopPoints),"..",IntegerToString(InpMaxStopPoints)," pts",
+         " | signal age<= ",IntegerToString(InpMaxSignalAgeBars)," closed bar(s)");
+   PurgeStaleSignalGlobals();
+
    EventSetTimer(InpPollSeconds);
    return INIT_SUCCEEDED;
   }
@@ -1267,6 +1394,7 @@ int OnInit()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   PurgeStaleSignalGlobals();   // do not leave a year of seen-keys behind
    if(g_handle!=INVALID_HANDLE)
      {
       IndicatorRelease(g_handle);

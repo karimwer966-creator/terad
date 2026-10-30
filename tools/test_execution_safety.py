@@ -85,6 +85,12 @@ check("_Symbol" in glob,
 check("GlobalVariableCheck(GlobName(bar_time,dir))" in code,
       "D2 the reload guard still reads the same key (no second, symbol-less key survives)")
 
+check("string KeySafe(const string s)" in code,
+      "D2b this EA's own global-variable namespace sanitises the symbol (a suffix "
+      "character would make GlobalVariableSet fail silently)")
+check("KeySafe(_Symbol)" in code and code.count("KeySafe(_Symbol)") >= 2,
+      "D2b both the writer and the housekeeping sweep use the sanitised symbol")
+
 # ------------------------------------------------------------- D3 RR at the fill price
 m = re.search(r"input\s+double\s+InpMinRRAtFill\s*=\s*([0-9.]+)\s*;", ea)
 check(m is not None, "D3 InpMinRRAtFill is an input (the check can be argued with, or off)")
@@ -138,6 +144,76 @@ check(re.search(r"input\s+bool\s+InpDryRun\s*=\s*true", ea) is not None,
       "the companion still ships in DRY RUN after these fixes")
 check("InpMinRRAtFill<0.0 || InpOrderRetryMax<1" in code,
       "both new inputs are validated at init instead of failing at the first signal")
+
+# ------------------------------------------------ D6 production hardening
+# The review found four more things that are fine while a chart is untouched and
+# wrong the moment an operator reloads, restarts or widens a preset. They are
+# pinned here because each one failed SILENTLY before.
+
+# D6a the daily-loss baseline must survive a reload
+check("string DayGuardKey(const string leaf)" in code,
+      "D6a the day guard key carries the account login and the magic")
+check("GlobalVariableSet(DayGuardKey(\"EQ\"),g_day_start_equity)" in noc,
+      "D6a the baseline is written to the terminal, not kept only in memory")
+check("GlobalVariableSet(DayGuardKey(\"BLOCKED\"),1.0)" in noc and
+      "GlobalVariablesFlush()" in noc,
+      "D6a the block is persisted and flushed, so a reload cannot re-base the day")
+check("g_day_start_equity=(eq0>0.0 ? eq0 : AccountInfoDouble(ACCOUNT_EQUITY))" in code,
+      "D6a a restart restores the SAME baseline for the same server day")
+check("DayGuardLoad(day)" in code and "(int)GlobalVariableGet(kd)!=day" in code,
+      "D6a a new server day is the only thing that creates a new baseline")
+
+# D6b slippage must be an input, not a constant
+m = re.search(r"input\s+int\s+InpDeviationPoints\s*=\s*(\d+)\s*;", ea)
+check(m is not None, "D6b InpDeviationPoints is an input")
+check(m is not None and 10 <= int(m.group(1)) <= 30,
+      "D6b the default is inside the range where a normal broker actually fills")
+check("SetDeviationInPoints((ulong)MathMax(0,InpDeviationPoints))" in code,
+      "D6b the trade object uses the input, not a hard-coded 10")
+check("SetDeviationInPoints(10)" not in code,
+      "D6b the hard-coded 10-point slippage is gone")
+check("InpDeviationPoints<0" in code, "D6b a negative slippage is refused at init")
+
+# D6c housekeeping for the terminal globals this EA owns
+check("void PurgeStaleSignalGlobals()" in code,
+      "D6c there is one housekeeping function for the EA's own terminal globals")
+purge = code[code.index("void PurgeStaleSignalGlobals()"):code.index("int OnInit()")]
+check("StringFind(name,pfx)!=0" in purge,
+      "D6c it only touches keys this EA wrote (prefix = magic + symbol)")
+check("86400" in purge and "GlobalVariableDel(name)" in purge,
+      "D6c keys older than one day are deleted; today's are kept (they stop a re-fire)")
+check(code.count("PurgeStaleSignalGlobals();") >= 2,
+      "D6c it runs at init AND at deinit, so a crash-load does not leak them either")
+
+# D6d the diagnostic line must not present a COUNT as a measurement
+check('"anchors "' not in code,
+      "D6d GP_ANCH is no longer printed as an 'anchors' value to compare with a threshold")
+check("candidates that reached the anchor gate" in noc,
+      "D6d it is labelled as a count, in words")
+
+# D6e dead indicator inputs are labelled dead in the dialog
+host = (ROOT / "nadir2.mq5").read_text(encoding="utf-8", errors="replace")
+host_lines = [l for l in host.replace("\r\n", "\n").split("\n") if re.match(r"^\s*(sinput|input)\s", l)]
+labelled = [l for l in host_lines if "INERT" in l]
+check(len(labelled) >= 41,
+      "D6e every input that nothing reads says INERT in its own label (%d found)" % len(labelled))
+check("Signal outcome log: ON" in host and "entry model:" in host,
+      "D6f the signal-log banner names its entry model (a limit entry cannot describe the EA)")
+
+# D6g the production runbook exists and covers the four human gates
+runbook = ROOT / "docs" / "QSMC_GO_LIVE_RUNBOOK.md"
+check(runbook.is_file(), "D6g there is a go-live runbook, not only a code contract")
+if runbook.is_file():
+    rb = runbook.read_text(encoding="utf-8")
+    for needle, label in (
+        ("F7", "the runbook names F7 as a human gate"),
+        ("InpRealAccountConfirm", "the runbook explains arming a real account"),
+        ("Kill switches", "the runbook lists the kill switches, fastest first"),
+        ("نسختان من المؤشر", "the runbook warns that the EA runs the indicator's DEFAULTS"),
+        ("Rollback", "the runbook has a rollback procedure"),
+        ("InpSigLogEntryRef", "the runbook states what the evidence log measures"),
+    ):
+        check(needle in rb, "D6g " + label)
 
 print("=" * 60)
 TOTAL = ea.count("\n")
