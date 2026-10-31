@@ -133,7 +133,7 @@ else:
 NEEDED = (["QSMC_%s.mqh" % n for n in
             ("Types", "Structure", "EarlyBreakDetector", "MarketData", "Zones", "ZoneScorer",
              "Reaction", "Bias", "Preset", "Gates", "AlertManager", "Arbiter",
-             "Stats", "Renderer", "Root", "Selftest", "Scanners", "DataProvider")],
+             "Stats", "Renderer", "Root", "Selftest", "Scanners", "DataProvider", "LiquidityValue", "UnifiedDecision")],
           [os.path.join("MQL5", "Indicators", "QSMC_ScannerProbe.mq5"),
            os.path.join("MQL5", "Scripts", "QSMC_ArbiterTest.mq5"),
            os.path.join("MQL5", "Experts", "KLJ_DataFeeder.mq5"),
@@ -149,7 +149,7 @@ extra = sorted(set(x for x in os.listdir(INC) if x.endswith(".mqh")) - set(NEEDE
 if extra:
     warn("G2 headers present but not in the documented layout: %s" % ", ".join(extra))
 else:
-    NOTES.append("G2 layout complete: 18 headers + 1 indicator + 1 probe + 1 script + 1 feeder EA "
+    NOTES.append("G2 layout complete: 20 headers + 1 indicator + 1 probe + 1 script + 1 feeder EA "
                  "+ 1 execution EA")
 
 # ------------------------------------------------------------- G3 inputs

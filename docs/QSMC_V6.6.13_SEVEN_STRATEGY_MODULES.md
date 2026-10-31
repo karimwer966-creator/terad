@@ -1693,3 +1693,8 @@ building a second SL/TP model beside `MTF_SniperComputeTradeManagement`.
 - Production checklist: `docs/QSMC_PRODUCTION_CHECKLIST.md`
 - Execution companion (the only file permitted to reach the trade API):
   `MQL5/Experts/QSMC_AutoTrader.mq5`
+
+
+## Unified authority migration addendum (2026-10-31)
+
+The current host, including the optional UnifiedDecision adapter, has braces **3594/3594** and 43,355 lines. Earlier counts above are historical audit snapshots. `InpUnifiedDecision=false` retains the legacy path. See `PRODUCTION_PHASE2B_AR.md` for activation, scope and remaining terminal gates.

@@ -512,7 +512,7 @@ J_EXACT = {
     40031: '      why="HARD VETO: invalid candidate data (no direction or no closed bar) - WAIT";',
     40044: '      why="HARD VETO: high-impact news blackout (Golden Rule 6) - WAIT";',
     5829: '   w[1]=InpResWeightZone; nm[1]="zone";',
-    5832: "   vote[3]=g_tac_dir;",
+    5832: "   vote[3]=(g_tac_closed?g_tac_dir:0);",
 }
 for ln, want in sorted(J_EXACT.items()):
     check(line_at(ln) == want, "J L%d is unchanged: %r" % (ln, want.strip()[:64]),
@@ -524,12 +524,12 @@ check("OBS" not in line_at(898) and "journal" not in line_at(898).lower(),
 check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "J 583 input lines: the 574 already there plus the journal's own nine",
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
-check(TEXT.count("{") == TEXT.count("}") == 3593, "J braces balance at 3593",
+check(TEXT.count("{") == TEXT.count("}") == 3594, "J braces balance at 3594",
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(TEXT.split("\n")) - 1 == 43352, "J the file is 43352 lines",
+check(len(TEXT.split("\n")) - 1 == 43355, "J the file is 43355 lines",
       "got %d" % (len(TEXT.split("\n")) - 1))
 check(RAW.replace("\r\n", "").count("\n") == 0, "J every line still ends CRLF: no bare LF was introduced")
-check(TEXT.count("#include") == 1, "J still exactly one #include", "got %d" % TEXT.count("#include"))
+check(TEXT.count("#include") == 3 and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LiquidityValue + UnifiedDecision includes", "got %d" % TEXT.count("#include"))
 check(TEXT.count("PA_ZoneAt(") == 11,
       "J the journal adds no zone scan: PA_ZoneAt( is still at its pre-OBS1 count of 11",
       "got %d" % TEXT.count("PA_ZoneAt("))

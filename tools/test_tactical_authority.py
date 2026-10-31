@@ -1078,7 +1078,7 @@ check("if(n==0) return false;" in bl,
 # this check exists so that picking the other one is a deliberate, reviewed act.
 res = def_body("int ResolveFinalSignal(const int closed,string &why)")
 check(res != "", "C5 located ResolveFinalSignal's definition")
-check("vote[3]=g_tac_dir;" in res, "C5 the tactical leg reads g_tac_dir (L5832)")
+check("vote[3]=(g_tac_closed?g_tac_dir:0);" in res, "C5 the tactical leg rejects previews (L5832)")
 check("w[3]=InpResWeightTactical;" in res and 'nm[3]="tactical";' in res,
       "C5 weighted InpResWeightTactical and named tactical")
 for absent in ("g_mtf_entry_authority", "g_mtf_entry_blocked", "TAC_AUTH"):

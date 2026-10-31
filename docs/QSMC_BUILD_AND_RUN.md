@@ -77,11 +77,11 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 
 ```
 <Data Folder>\MQL5\
-├─ Include\QSMC\QSMC_Types.mqh          <- all 18 headers go here, flat
+├─ Include\QSMC\QSMC_Types.mqh          <- all 20 headers go here, flat
 ├─ Include\QSMC\QSMC_MarketData.mqh
 ├─ Include\QSMC\…  (QSMC_Zones, _Reaction, _Bias, _Preset, _Gates,
 │                   _AlertManager, _Arbiter, _Stats, _Renderer, _Root,
-│                   _Selftest, _Scanners, _DataProvider)
+│                   _Selftest, _Scanners, _DataProvider, _LiquidityValue, _UnifiedDecision)
 ├─ Indicators\nadir2.mq5                <- the indicator itself (repo root)
 ├─ Indicators\QSMC_ScannerProbe.mq5      <- PART C Phase 7 scanner host (v6.6.3)
 ├─ Scripts\QSMC_ArbiterTest.mq5         <- deterministic self-test harness
@@ -91,7 +91,7 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 
 The two `Experts` files are separate programs, and only one of them can trade:
 `QSMC_AutoTrader.mq5` is the single file on the release gate's G4 allowlist.
-`KLJ_DataFeeder.mq5` still contains no trade API, and the indicator and the 18
+`KLJ_DataFeeder.mq5` still contains no trade API, and the indicator and the 20
 headers still contain none at all — that is what makes the dashboard safe to leave
 on a chart.
 

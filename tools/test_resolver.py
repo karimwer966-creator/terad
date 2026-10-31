@@ -197,12 +197,12 @@ check(len(callsites) == 5,
       "each reuses the one zone scan", str(callsites))
 check(5827 in callsites, "C the resolver's zone leg is one of them (L5798)",
       str(callsites))
-check("vote[2]=g_rxn_best_buy.valid?1:(g_rxn_best_sell.valid?-1:0)" in RB,
-      "C the reaction leg reads the published RXN snapshots, not raw buffers")
-check("vote[3]=g_tac_dir;" in RB and "w[3]=InpResWeightTactical;" in RB,
-      "C the tactical leg reads g_tac_dir, published by the execution entry")
+check("vote[2]=(rb?1:0)-(rs?1:0)" in RB,
+      "C the reaction leg is symmetric; two-sided reactions veto below")
+check("vote[3]=(g_tac_closed?g_tac_dir:0);" in RB and "w[3]=InpResWeightTactical;" in RB,
+      "C the tactical leg requires closed confirmation before voting")
 
-check("if(buy>0 && sell>0)" in RB and "return 2;" in RB,
+check("if((buy>0 && sell>0) || (rb && rs))" in RB and "return 2;" in RB,
       "C both sides voting returns 2 = CONFLICT, never a coin flip")
 CONFLICT_WHY = find_line(r'why="CONFLICT: BUY "', DEF)
 check(CONFLICT_WHY > DEF and "disagreeing layers mean stand aside" in line_at(CONFLICT_WHY + 1),
@@ -226,17 +226,23 @@ check("a weighted confluence count, not a probability" in line_at(CONF + 1),
       "L%d is %r" % (CONF + 1, line_at(CONF + 1).strip()[:90]))
 check("return side;" in body(CONF, END),
       "C the winning side is what gets returned")
-check(RB.count("return ") == 5,
-      "C five exits, no fall-through verdict", "got %d" % RB.count("return "))
+check(RB.count("return ") == 6,
+      "C six exits including unified adapter, no fall-through verdict", "got %d" % RB.count("return "))
+
+check("g_rxn_built_time==g_buf_t[closed]" in RB,
+      "C reaction snapshots must belong to this closed bar")
+check("g_rxn_best_buy.level>=(int)RXN_LEVEL_REACTION" in RB
+      and "g_rxn_best_sell.level>=(int)RXN_LEVEL_REACTION" in RB,
+      "C WATCH-only snapshots cannot vote as a reaction")
 
 # ------------------------------------------------------------- D. causality
-check("rates_total" not in RB,
-      "D the resolver never touches rates_total: no forming-bar access")
+check("closed>=g_rates_total-1" in RB,
+      "D the resolver explicitly rejects the forming bar")
 check("iClose(" not in RB and "iTime(" not in RB and "CopyClose(" not in RB,
       "D no series re-read inside the resolver (it reads published globals only)")
 check(not re.search(r"for\(int i=0;i<(rates_total|Bars)", RB),
       "D no full-history loop: one call per closed bar, bounded work")
-check("g_buf_c[closed]" in RB and "if(closed<0 || closed>=ArraySize(g_buf_c)) return 0;" in RB,
+check("g_buf_c[closed]" in RB and "closed>=ArraySize(g_buf_c)" in RB and "closed>=ArraySize(g_buf_t)" in RB,
       "D the one price it reads is the closed bar's, and the index is bounds-checked")
 check("ObjectCreate" not in RB and "DrawTradeBox" not in RB,
       "D the resolver draws nothing: it decides, the surfaces render")
@@ -262,7 +268,7 @@ CALL_GATE = 15739
 check("AlertDispatcherFinalize(rates_total);" in line_at(FINALIZE),
       "E AlertDispatcherFinalize is called at L%d" % FINALIZE,
       "L%d is %r" % (FINALIZE, line_at(FINALIZE).strip()[:70]))
-check(re.search(r"if\(InpUseFinalResolver && \(is_new_bar \|\| detection_updated "
+check(re.search(r"if\(\(InpUseFinalResolver \|\| InpUnifiedDecision\) && \(is_new_bar \|\| detection_updated "
                 r"\|\| prev_calculated==0\)\)", line_at(CALL_GATE)),
       "E the resolver runs at L%d, after the dispatcher, only on a closed-bar or "
       "detection event - never per tick" % CALL_GATE,
@@ -294,7 +300,7 @@ check(PUB < DEF,
 
 # -------------------------------------------------------------- F. surfaces
 DASH = 31855
-check(line_at(DASH).strip() == "if(InpUseFinalResolver)",
+check(line_at(DASH).strip() == "if(InpUseFinalResolver || InpUnifiedDecision)",
       "F the dashboard override starts at L%d" % DASH,
       "L%d is %r" % (DASH, line_at(DASH).strip()[:70]))
 db = body(DASH, DASH + 7)
@@ -311,17 +317,17 @@ TIP = 32023
 check('"Resolver: "+(g_final_why==""?"none":g_final_why)' in line_at(TIP),
       "F the tooltip carries the resolver's own why-text at L%d" % TIP,
       "L%d is %r" % (TIP, line_at(TIP).strip()[:90]))
-check("InpUseFinalResolver?" in line_at(TIP - 1),
+check("InpUseFinalResolver || InpUnifiedDecision" in line_at(TIP - 1),
       "F that line only appears when the flag is on (off = byte-identical tooltip)",
       "L%d is %r" % (TIP - 1, line_at(TIP - 1).strip()[:80]))
 
 STATE = 5694
-check('string state=closed_confirm?(InpUseFinalResolver?"INFO":"CONFIRMED"):"PREVIEW";'
+check('string state=closed_confirm?((InpUseFinalResolver || InpUnifiedDecision)?"INFO":"CONFIRMED"):"PREVIEW";'
       in line_at(STATE),
       "F the tactical word is demoted CONFIRMED -> INFO when the resolver is on "
       "(L%d)" % STATE,
       "L%d is %r" % (STATE, line_at(STATE).strip()[:90]))
-check(TEXT.count('InpUseFinalResolver?"INFO":"CONFIRMED"') == 1,
+check(TEXT.count('(InpUseFinalResolver || InpUnifiedDecision)?"INFO":"CONFIRMED"') == 1,
       "F the demotion happens at the single place that built the word")
 check(TEXT.count("InpUseFinalResolver") == 9,
       "F exactly nine references: the declaration, the OnInit refusal, the call "
@@ -355,16 +361,18 @@ check(inputs == 583, "G nadir2.mq5 has 583 input lines (538 + 10 RS1 + 10 GS1 + 
       "got %d" % inputs)
 check(TEXT.count("{") == TEXT.count("}"),
       "G braces balance (%d/%d)" % (TEXT.count("{"), TEXT.count("}")))
-check(TEXT.count("{") == 3593, "G brace count is the pinned 3593",
+check(TEXT.count("{") == 3594, "G brace count is the pinned 3594",
       "got %d" % TEXT.count("{"))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43352,
-      "G the file is 43352 lines - no scratch rewrite, only the RS1 + GS1 insertions",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43355,
+      "G the file is 43355 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
-check(len(re.findall(r"(?m)^#include", TEXT)) == 1
+check(len(re.findall(r"(?m)^#include", TEXT)) == 3
+      and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
+      and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT
       and "#include <QSMC/QSMC_Root.mqh>" in line_at(639),
-      "G still exactly one #include (L639, QSMC_Root.mqh): no new header, no "
+      "G exactly root + LiquidityValue + UnifiedDecision includes, root remains L639; no "
       "duplicated logic", str(re.findall(r"(?m)^#include.*", TEXT)))
 check(len(re.findall(r"(?m)^#property indicator_buffers", TEXT)) == 1,
       "G the resolver added no buffers, so no existing plot index moved "

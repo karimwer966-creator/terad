@@ -5691,7 +5691,7 @@ void UpdateMTFExecutionEntry()
    if(!closed_confirm && !show_preview){ ClearMTFExecutionEntry(); return; }
    // AUDIT-RS1: CONFIRMED is the resolver's word. With the resolver on this
    // layer says INFO - a closed execution bar is a fact, not a passed gate.
-   string state=closed_confirm?(InpUseFinalResolver?"INFO":"CONFIRMED"):"PREVIEW";
+   string state=closed_confirm?((InpUseFinalResolver || InpUnifiedDecision)?"INFO":"CONFIRMED"):"PREVIEW";
    double ep=closed_confirm?cc:lc; datetime et=closed_confirm?ct:lt;
    string id=StringFormat("%s|%d|%I64d|%s|%.5f",_Symbol,(int)etf,(long)trigger_time,bull?"B":"S",trigger);
    // v6.4.1 DEDUP: a signal that already fired CONFIRMED never re-alerts as a
@@ -5816,8 +5816,8 @@ void UpdateEarlyBreakPreview(const int total,const datetime &t[],const double &h
 // g_tac_dir/g_tac_closed (Tactical). Writes g_final_* and nothing else.
 int ResolveFinalSignal(const int closed,string &why)
   {
-   why="";
-   if(closed<0 || closed>=ArraySize(g_buf_c)) return 0;
+   why=""; if(InpUnifiedDecision) return UD_Verdict(closed,why);
+   g_res_score=0; if(closed<0 || closed>=g_rates_total-1 || closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_t)) return 0;
    double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
               ?g_atr_buf[closed]:g_atr;
    int vote[4]; int w[4]; string nm[4];
@@ -5827,9 +5827,9 @@ int ResolveFinalSignal(const int closed,string &why)
    vote[1]=PA_ZoneAt(g_buf_c[closed],closed,atr,zn,zt,zb,zd)
            ?(zd>0?1:(zd<0?-1:0)):0;
    w[1]=InpResWeightZone; nm[1]="zone";
-   vote[2]=g_rxn_best_buy.valid?1:(g_rxn_best_sell.valid?-1:0);
+   bool rb=(g_rxn_built_time==g_buf_t[closed] && g_rxn_best_buy.valid && g_rxn_best_buy.level>=(int)RXN_LEVEL_REACTION); bool rs=(g_rxn_built_time==g_buf_t[closed] && g_rxn_best_sell.valid && g_rxn_best_sell.level>=(int)RXN_LEVEL_REACTION); vote[2]=(rb?1:0)-(rs?1:0);
    w[2]=InpResWeightReaction; nm[2]="reaction";
-   vote[3]=g_tac_dir;
+   vote[3]=(g_tac_closed?g_tac_dir:0);
    w[3]=InpResWeightTactical; nm[3]="tactical";
    int buy=0,sell=0; string vb="",vs="";
    for(int k=0;k<4;k++)
@@ -5838,9 +5838,9 @@ int ResolveFinalSignal(const int closed,string &why)
       if(vote[k]<0){ sell+=w[k]; if(vs!="") vs+="+"; vs+=nm[k]; }
      }
    g_res_score=buy>0?buy:sell;
-   if(buy>0 && sell>0)
+   if((buy>0 && sell>0) || (rb && rs))
      {
-      why="CONFLICT: BUY "+vb+" ("+IntegerToString(buy)+") vs SELL "+vs+" ("+
+      why="CONFLICT: BUY "+vb+(rb && rs?"reaction(two-sided)+":"")+" ("+IntegerToString(buy)+") vs SELL "+(rb && rs?"reaction(two-sided)+":"")+vs+" ("+
           IntegerToString(sell)+") - disagreeing layers mean stand aside";
       return 2;
      }
@@ -6847,7 +6847,7 @@ void BlacklistSetup(const string id,const datetime t)
 //--- v5.4.0 helpers
 void LogLifecycle(const string msg)
 {
-   if(!InpLogLifecycleTransitions) return;
+   if(!InpLogLifecycleTransitions || !UD_LogAllows("Lifecycle|"+msg)) return;
    Print("[Lifecycle] ",msg);
 }
 bool IsSameIdeaAsBlacklisted(const bool is_buy, const double zt, const double zb)
@@ -7349,7 +7349,7 @@ void DebugLogSignal(const string site,const string phase,const int dir,
                     const double o,const double h,const double l,const double c,
                     const string wick,const string why)
 {
-   if(!InpDebugLog) return;
+   if(!InpDebugLog || !UD_LogAllows("SignalDebug|"+site+"|"+phase+"|"+IntegerToString(dir)+"|"+DoubleToString(zone_lo,_Digits)+"|"+DoubleToString(zone_hi,_Digits)+"|"+DoubleToString(entry,_Digits)+"|"+DoubleToString(sl,_Digits)+"|"+role+"|"+state+"|"+DoubleToString(o,_Digits)+"|"+DoubleToString(h,_Digits)+"|"+DoubleToString(l,_Digits)+"|"+DoubleToString(c,_Digits)+"|"+wick+"|"+why)) return;
    Print("[SignalDebug] ",_Symbol," ",TFName((ENUM_TIMEFRAMES)_Period)," | ",site," | ",phase,
          " | dir ",(dir>0?"BUY":(dir<0?"SELL":"NONE")),
          " | zone ",role," ",DoubleToString(zone_lo,_Digits),"-",DoubleToString(zone_hi,_Digits),
@@ -12585,7 +12585,7 @@ void PMI_LogEvent(const string kind,const string text)
       g_pmi_log[g_pmi_log_count].text=text;
       g_pmi_log_count++;
    }
-   if(InpPMILogEvents) Print("[PMI] ",kind," | ",text);
+   if(InpPMILogEvents && UD_LogAllows("PMI|"+kind+"|"+text)) Print("[PMI] ",kind," | ",text);
 }
 
 void PMI_OpenCSVIfNeeded()
@@ -14444,7 +14444,7 @@ arb.SetZones(zs,written);
 //    true when ZRE/RXN/Core already submitted a candidate, in which
 //    case the tactical path is suppressed outright and can never steal
 //    the one-alert-per-bar slot.
-arb.FinalizeBar(authoritative_pending);
+arb.FinalizeBar(authoritative_pending || InpUnifiedDecision);
 }
 
 int OnInit()
@@ -15021,7 +15021,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    return INIT_SUCCEEDED;
 }
 void OnDeinit(const int reason)
-{
+{ LV_Hide(); // Liquidity + Value owns only its label
 QSMC_RootDestroy();   // v6.6.0: the arbitration root (RAII + leak report)
 IndicatorRelease(h_ema_fast); IndicatorRelease(h_ema_slow);
    IndicatorRelease(h_atr); IndicatorRelease(h_adx); IndicatorRelease(h_rsi);
@@ -15685,7 +15685,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // kept behind the Core panel toggle / existing research logs.
    PMI_UpdateAll(rates_total,is_new_bar || detection_updated);
    // v6.2.0 Master Volume Profile: closed-bar, observational, no entry authority.
-   MVP_Update(rates_total, is_new_bar || prev_calculated==0, is_new_bar || prev_calculated==0);
+   MVP_Update(rates_total, is_new_bar || prev_calculated==0, is_new_bar || prev_calculated==0); LV_Update(closed,prev_calculated==0); // closed-bar observer
    // AUDIT-PA1 Pure Price Action: closed-bar, observational, no entry authority.
    // It runs HERE and not at the detection convergence point above, for the same
    // reason the next block states for ZRE_Update: PA_ZoneAt() reads the active
@@ -15736,7 +15736,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    AlertDispatcherFinalize(rates_total);
    // AUDIT-RS1: one verdict for every surface. Reads only the closed-bar
    // globals published above; writes g_final_*. Nothing else observes it.
-   if(InpUseFinalResolver && (is_new_bar || detection_updated || prev_calculated==0))
+   if((InpUseFinalResolver || InpUnifiedDecision) && (is_new_bar || detection_updated || prev_calculated==0))
      {
       string rs_why="";
       g_final_signal=ResolveFinalSignal(closed,rs_why);
@@ -31852,7 +31852,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    color status_col=(primary_dir>0?clrLimeGreen:(primary_dir<0?clrLightCoral:clrOrange));
    // AUDIT-RS1: with the resolver on, the card STATUS is the resolver verdict
    // - one verdict on every surface instead of four separate opinions.
-   if(InpUseFinalResolver)
+   if(InpUseFinalResolver || InpUnifiedDecision)
      {
       status=(g_final_signal==1?"BUY":(g_final_signal==-1?"SELL":
               (g_final_signal==2?"CONFLICT - WAIT":"WAIT")));
@@ -31870,7 +31870,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
                            level_tag,(primary_dir>0?"S":"R"),
                            DoubleToString(g_alert_primary.zone_lo,_Digits),
                            DoubleToString(g_alert_primary.zone_hi,_Digits),
-                           g_alert_primary.score);
+                           (InpUnifiedDecision?g_ud.score:g_alert_primary.score));
       needs="NEEDS: "+(g_alert_primary.needs==""?"none":g_alert_primary.needs);
       invalid="INVALIDATION: "+AlertInvalidationText(g_alert_primary);
    }
@@ -32019,7 +32019,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
                   "Why no alert this bar: "+AlertWhyNoPopup(closed,g_buf_t[closed])+"\n"+
                   "Direction consensus: "+market_direction+" (context only)\n"+
                   "Primary: "+(g_alert_primary_tooltip==""?"none":g_alert_primary_tooltip)+"\n"+
-                  (InpUseFinalResolver?
+                  ((InpUseFinalResolver || InpUnifiedDecision)?
                    "Resolver: "+(g_final_why==""?"none":g_final_why)+"\n":"")+
                   (InpUseWeightedGates?
                    "Weighted gate: "+(g_wgate_why==""?"none":g_wgate_why)+"\n":"")+
@@ -34940,7 +34940,7 @@ int ZRE_BuildZonesEx(SZRECand &cands[],const SZREContext &ctx,const double &h[],
       for(int i=0;i<ntail;i++) tail[i]=scored[keep+i];
    if(rd>0 && ArrayResize(dropped,rd)==rd)
       for(int i=0;i<rd;i++) dropped[i]=rejected[i];
-   return ArraySize(out);
+   UD_MergeZones(out,dropped,tail,ctx,h,l); return ArraySize(out);
 }
 
 // Unchanged signature and unchanged result: a thin wrapper over ZRE_BuildZonesEx
@@ -36717,10 +36717,10 @@ void ZRE_DrawPaths()
    ZRE_ParamsFromInputs(p);
    int idx[ZRE_MAX_PATHS];
    int cnt=0;
-   for(int i=ArraySize(g_zre_sig)-1;i>=0 && cnt<ZRE_MAX_PATHS;i--)
+   for(int i=ArraySize(g_zre_sig)-1;i>=0 && (cnt<ZRE_MAX_PATHS || InpUnifiedDecision);i--)
    {
       if(g_zre_out[i].end_reason!=ZRE_END_OPEN) continue;
-      idx[cnt]=i;
+      int duplicate=UD_PathDuplicate(i,idx,cnt); if(duplicate>=0) { if(g_zre_sig[i].score>g_zre_sig[idx[duplicate]].score) idx[duplicate]=i; continue; } if(cnt>=ZRE_MAX_PATHS) continue; idx[cnt]=i;
       cnt++;
    }
    int smc=ZRE_SmcDirection();
@@ -40082,7 +40082,7 @@ void AlertDispatcherFinalize(const int rates_total)
    int closed=rates_total-2;
    datetime bar_time=g_buf_t[closed];
    if(bar_time<=0 || g_alert_finalized_bar_time==bar_time) return;
-   g_alert_finalized_bar_time=bar_time;
+   g_alert_finalized_bar_time=bar_time; if(InpUnifiedDecision) UD_Update(closed);
    // v6.6.0: the arbitration layer runs HERE, after ZRE_Update() and
    // RXN_Update() have refreshed g_zre_zones / g_zre_status, and BEFORE
    // the ZRE/RXN selection below, so an authoritative candidate always
@@ -40107,7 +40107,7 @@ void AlertDispatcherFinalize(const int rates_total)
    string gs_why="";
    for(int i=0;i<g_alert_candidate_count;i++)
    {
-      SAlertCandidate c=g_alert_candidates[i];
+      SAlertCandidate c=g_alert_candidates[i]; if(!UD_AlertAllows(c.source,c.direction)) continue;
       if(!c.scenario_candidate || c.direction==0) continue;
       if(AlertCandidateBetter(c,best_any)) best_any=c;
       if(c.distance_atr<=maxd && AlertCandidateBetter(c,best_near)) best_near=c;
@@ -40144,7 +40144,7 @@ void AlertDispatcherFinalize(const int rates_total)
    {
       for(int i=0;i<g_alert_candidate_count;i++)
       {
-         SAlertCandidate c=g_alert_candidates[i];
+         SAlertCandidate c=g_alert_candidates[i]; if(!UD_AlertAllows(c.source,c.direction)) continue;
          if(!c.scenario_candidate || c.direction==0 || c.direction==g_alert_primary.direction) continue;
          if(AlertCandidateBetter(c,best_other)) best_other=c;
       }
@@ -40186,7 +40186,7 @@ void AlertDispatcherFinalize(const int rates_total)
    AlertCandidateInit(selected_info);
    for(int i=0;i<g_alert_candidate_count;i++)
    {
-      SAlertCandidate c=g_alert_candidates[i];
+      SAlertCandidate c=g_alert_candidates[i]; if(!UD_AlertAllows(c.source,c.direction)) continue;
       if(!c.alert_eligible || !AlertWithinMaxDistance(c)) continue;
       bool cp=false,cs=false,cn=false;
       if(!AlertChannelsFor(c,cp,cs,cn)) continue;
@@ -41149,7 +41149,7 @@ void RXN_DrawOne(const SRxnEvidence &e,const string suffix)
    // the level, the score or the execution state, all of which are closed-bar facts.
    if(g_rxn_live_at_zone && e.zone_id==g_rxn_live.zone_id)
       head=head+"  |  live candle back at the zone (PREVIEW - unconfirmed)";
-   DrawTextLabel(base+"LVL",t0,anchor,head,col,!buy,9);
+   if(InpUnifiedDecision) head="CONTEXT / "+head; DrawTextLabel(base+"LVL",t0,anchor,head,col,!buy,9);
    // Evidence checklist and the causal path live in the tooltip, so the chart is
    // not flooded but every fact is one hover away.
    string lines[];
@@ -43350,3 +43350,6 @@ bool MTF_SniperZone_SelfTest()
    }
    return true;
 }
+
+#include <QSMC/QSMC_LiquidityValue.mqh>
+#include <QSMC/QSMC_UnifiedDecision.mqh>
