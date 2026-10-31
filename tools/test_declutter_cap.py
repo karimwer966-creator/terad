@@ -338,14 +338,14 @@ check("tk[1]=true;" in ST, "I DC-9 pins that a taken slot is skipped")
 check("QSMC_OldestSlot(notime,none)!=-1" in ST, "I DC-11 pins the empty list")
 
 # ------------------------------------------------------- J. counts and nothing weakened
-check(len(TEXT.split("\n")) - 1 == 43352, "J the file is 43352 lines",
+check(len(TEXT.split("\n")) - 1 == 43355, "J the file is 43355 lines",
       "got %d" % (len(TEXT.split("\n")) - 1))
-check(TEXT.count("{") == TEXT.count("}") == 3593, "J braces balance at 3593",
+check(TEXT.count("{") == TEXT.count("}") == 3594, "J braces balance at 3594",
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
 check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44, "J still 44 enums",
       "got %d" % len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)))
 check(RAW.replace("\r\n", "").count("\n") == 0, "J every line still ends CRLF")
-check(TEXT.count("#include") == 1, "J still exactly one #include")
+check(TEXT.count("#include") == 3 and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LiquidityValue + UnifiedDecision includes")
 check(TEXT.count("ObjectsDeleteAll(") == 41,
       "J ObjectsDeleteAll( is at 41: 50 before the purge, minus the 9 calls that lived in dead code, "
       "the two comments that name the old API so the next reader knows what changed",

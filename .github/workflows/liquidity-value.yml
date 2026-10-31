@@ -1,0 +1,27 @@
+name: Liquidity Value safety checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  monitor-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Monitor source safety contract
+        run: python tools/test_liquidity_value.py
+      - name: Execute actual header with stubbed MT5 I/O and sanitizers
+        run: python tools/test_liquidity_value_runtime.py
+      - name: Actual resolver regressions and exhaustive direction symmetry
+        run: python tools/test_resolver_runtime.py
+      - name: Unified authority integration contracts
+        run: python tools/test_unified_decision_contract.py
+      - name: Unified authority merge and diagnostic cooldown runtime
+        run: python tools/test_unified_decision_runtime.py
+      - name: Manual terminal gate remains required
+        run: echo 'These tests are not an MQL5 compile or terminal replay. F7 and MT5 demo acceptance remain required.'

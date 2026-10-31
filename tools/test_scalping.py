@@ -421,15 +421,17 @@ check("InpEnableAllModules" not in body(GRP, SESS + 1),
 check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "J 583 input lines (574 + the 9 OBS1 lines)",
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
-check(TEXT.count("{") == TEXT.count("}") == 3593, "J braces balance at 3593",
+check(TEXT.count("{") == TEXT.count("}") == 3594, "J braces balance at 3594",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43352,
-      "J the file is 43352 lines: insertions only, no scratch rewrite",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43355,
+      "J the file is 43355 lines: insertions only, no scratch rewrite",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""), "J no bare LF: CRLF everywhere")
 check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,
       "J no enum added or removed (still 44)")
-check(len(re.findall(r"(?m)^#include", TEXT)) == 1, "J still exactly one #include")
+check(len(re.findall(r"(?m)^#include", TEXT)) == 3
+      and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
+      and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LiquidityValue + UnifiedDecision includes")
 check(len(re.findall(r"(?m)^#property indicator_buffers", TEXT)) == 1,
       "J no buffers added, so no plot index moved (the EA reads 7-12)")
 cs = [i + 1 for i, l in enumerate(LINES) if "PA_ZoneAt(" in l
