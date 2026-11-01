@@ -64,6 +64,28 @@ string QA_CoreStatus()
    return (g_qa_core.direction==1?"BUY":(g_qa_core.direction==-1?"SELL":"WAIT"));
 }
 
+// Snapshot metadata only: quote is never substituted for the closed decision price.
+string QA_PriceDescription()
+{
+   string text="symbol="+_Symbol+" tf="+EnumToString((ENUM_TIMEFRAMES)_Period)+
+               " rendered_server="+TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS);
+   MqlTick tick;
+   if(SymbolInfoTick(_Symbol,tick) && tick.time_msc>0)
+   {
+      datetime now=TimeTradeServer();
+      long age=(now>0?(long)now-(long)(tick.time_msc/1000):-1);
+      text+="\nQUOTE BID="+DoubleToString(tick.bid,_Digits)+" ASK="+DoubleToString(tick.ask,_Digits)+
+            " tick_ms="+IntegerToString(tick.time_msc)+" quote_age_s="+IntegerToString(age)+
+            (age<0?" (clock unknown)":(age>300?" STALE":" (at render)"));
+   }
+   else text+="\nQUOTE unavailable / STALE";
+   int closed=g_rates_total-2;
+   if(closed>=0 && closed<ArraySize(g_buf_c) && closed<ArraySize(g_buf_t))
+      text+="\nCLOSED[1]="+DoubleToString(g_buf_c[closed],_Digits)+" bar_open="+
+            TimeToString(g_buf_t[closed],TIME_DATE|TIME_SECONDS)+" (decision source, NOT live bid/ask)";
+   return text;
+}
+
 void QA_DrawCoreStatus()
 {
    string name=PFX+"CORE_CURRENT_STATE";
@@ -74,7 +96,7 @@ void QA_DrawCoreStatus()
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
    ObjectSetInteger(0,name,OBJPROP_COLOR,(g_qa_core.direction==0?clrSilver:clrGold));
    ObjectSetString(0,name,OBJPROP_TEXT,"CORE "+QA_CoreStatus()+(g_qa_core.direction!=0?" ENTRY CONFIRMED":" - no current entry"));
-   ObjectSetString(0,name,OBJPROP_TOOLTIP,g_qa_core.reason+"\n"+QA_InstanceDescription());
+   ObjectSetString(0,name,OBJPROP_TOOLTIP,g_qa_core.reason+"\n"+QA_InstanceDescription()+"\n"+QA_PriceDescription());
 }
 
 bool QA_LabelAlive(const double lo,const double hi,const datetime born,const bool invalid)
