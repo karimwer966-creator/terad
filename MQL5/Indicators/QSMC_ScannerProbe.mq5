@@ -297,7 +297,6 @@ void OnTimer()
    string txt="";
    RenderSetupTable(txt);
    RenderHeatmaps(txt);
-   g_setup.BeginPass();
 
    txt+="\nprobe "+IntegerToString(g_passes)+" pass(es) | universe "+
         IntegerToString(g_uni.Count())+" | rows "+IntegerToString(g_setup.Rows())+
@@ -306,5 +305,6 @@ void OnTimer()
         "\n"+(g_note!=""?("note: "+g_note+"\n"):"")+
         "OBSERVATIONAL ONLY: not a signal, not a probability, not an order.";
    Comment(txt);
+   g_setup.BeginPass(); // reset only after table and counters consumed the same snapshot
   }
 //+------------------------------------------------------------------+
