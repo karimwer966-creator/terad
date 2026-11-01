@@ -5753,7 +5753,7 @@ void UpdateMTFExecutionEntry()
    }
    // v6.4.1: the tactical entry is now an arrow + a graded label, not only an
    // HLINE plus a text label that the collision resolver could hide outright.
-   if(InpShowMTFExecutionEntry)
+   if(InpShowMTFExecutionEntry && QA_LabelAlive(trigger,trigger,trigger_time,auth==TAC_AUTH_BLOCKED || auth==TAC_AUTH_STALE))
    {
       string exect=TimeToString(et,TIME_MINUTES);
       string line=PFX+"MTF_ENTRY";
@@ -5776,11 +5776,11 @@ void UpdateMTFExecutionEntry()
       // module still owns a live scenario on this side. "TACTICAL / PREVIEW MTF
       // BUY ENTRY PREVIEW" can therefore no longer appear over a side the
       // Directional Scenario Engine has retired or never had a plan for.
-      string verb=(auth==TAC_AUTH_CONTEXT?"CONTEXT":"ENTRY");
+      string verb="TACTICAL TOUCH (not an entry)";
       DrawTextLabel(PFX+"MTF_ENTRY_TX",g_mtf_sig_time,ep,
                     StringFormat("%s MTF %s %s %s @ %.2f | exec %s | grade %s%s",
                                  (closed_confirm?"TACTICAL-INFO (exec bar closed)":"TACTICAL / PREVIEW"),
-                                 bull?"BUY":"SELL",verb,state,ep,TFName(etf),
+                                 bull?"BUY":"SELL",verb,(closed_confirm?"CLOSED":"PREVIEW"),ep,TFName(etf),
                                  MTFEntryGrade(closed_confirm,core_owned),chase),
                     (g_mtf_entry_late?clrOrange:(closed_confirm?(bull?clrLime:clrTomato):clrAqua)),!bull,9);
       // v6.6.10: a CONTEXT verdict keeps its level line but never paints an entry
@@ -5792,7 +5792,7 @@ void UpdateMTFExecutionEntry()
             EntryMarkObjectsFor(g_buf_t[ArraySize(g_buf_t)-1],2,bull,closed_confirm);   // tactical buffer slot stays on the last bar
       }
    }
-   else ClearMTFExecutionEntry();
+   else QA_ClearTacticalPaint();
    // v6.6.0: this block USED to call FireQuantAlert() directly. That was
    // the source of the reported alert storm: no zone, no reaction, no
    // room, no session and no data-quality check, plus a dedupe key that
@@ -15021,7 +15021,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    return INIT_SUCCEEDED;
 }
 void OnDeinit(const int reason)
-{ LV_Hide(); // Liquidity + Value owns only its label
+{ LV_Hide(); ObjectDelete(0,PFX+"CORE_CURRENT_STATE"); // owned display only
 QSMC_RootDestroy();   // v6.6.0: the arbitration root (RAII + leak report)
 IndicatorRelease(h_ema_fast); IndicatorRelease(h_ema_slow);
    IndicatorRelease(h_atr); IndicatorRelease(h_adx); IndicatorRelease(h_rsi);
@@ -15753,7 +15753,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    ScenarioUpdate(rates_total, is_new_bar || detection_updated || prev_calculated==0);
    // Phase 1 signal outcome log + hidden signal buffers: reads published
    // facts after the fact; never alters a setup, a journal or ZRE state.
-   SigLog_Update(rates_total,prev_calculated);
+   SigLog_Update(rates_total,prev_calculated); QA_CoreDisplayRefresh(closed); QA_DrawCoreStatus();
    // v6.6.10: publish the verdict of this closed bar for QSMC_AutoTrader.
    DiagPublishCoreState(closed);
    GateProfilePublish(closed);
@@ -31859,7 +31859,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
       status_col=(g_final_signal==1?clrLimeGreen:
                   (g_final_signal==-1?clrLightCoral:clrOrange));
      }
-   string source=(g_alert_primary.source==3?"CORE":(g_alert_primary.source==2?"RXN":"ZRE"));
+   status=QA_CoreStatus(); status_col=(g_qa_core.direction==0?clrOrange:(g_qa_core.direction>0?clrLimeGreen:clrLightCoral)); string source=(g_alert_primary.source==3?"CORE":(g_alert_primary.source==2?"RXN":"ZRE"));
    string primary="PRIMARY: none (closed-bar only)";
    string needs="NEEDS: wait for a closed-bar reaction";
    string invalid="INVALIDATION: n/a";
@@ -41128,7 +41128,7 @@ color RXN_LevelColor(const int level,const bool buy)
 void RXN_DrawOne(const SRxnEvidence &e,const string suffix)
 {
    if(!e.valid || e.level<(int)RXN_LEVEL_REACTION) return;
-   if(ZRE_LifecycleRetired(e.zone_id)) return;
+   if(ZRE_LifecycleRetired(e.zone_id) || !QA_LabelAlive(e.zone_lo,e.zone_hi,e.rejection_time,e.conflicted)) return;
    if(g_alert_primary.valid && g_alert_primary.direction!=0 && e.direction!=g_alert_primary.direction) return;
    if(!QSMC_InVisualDistance((e.zone_lo+e.zone_hi)*0.5)) return;
    if(e.rejection_bar<0 || e.rejection_bar>=ArraySize(g_buf_t)) return;
@@ -41149,7 +41149,7 @@ void RXN_DrawOne(const SRxnEvidence &e,const string suffix)
    // the level, the score or the execution state, all of which are closed-bar facts.
    if(g_rxn_live_at_zone && e.zone_id==g_rxn_live.zone_id)
       head=head+"  |  live candle back at the zone (PREVIEW - unconfirmed)";
-   if(InpUnifiedDecision) head="CONTEXT / "+head; DrawTextLabel(base+"LVL",t0,anchor,head,col,!buy,9);
+   if(e.level>=(int)RXN_LEVEL_CONFIRMED) head=(buy?"BUY ":"SELL ")+string("REACTION CONFIRMED (not an entry) | ")+IntegerToString(e.reaction_score)+"/100 evidence"; DrawTextLabel(base+"LVL",t0,anchor,head,col,!buy,9);
    // Evidence checklist and the causal path live in the tooltip, so the chart is
    // not flooded but every fact is one hover away.
    string lines[];
@@ -41218,7 +41218,7 @@ void RXN_Draw()
       show=g_rxn_live;
       have=true;
    }
-   string sig=StringFormat("%s|%d|%d|%s|%d|%d|%d",
+   if(have && !QA_LabelAlive(show.zone_lo,show.zone_hi,show.rejection_time,show.conflicted || ZRE_LifecycleRetired(show.zone_id))) have=false; string sig=StringFormat("%s|%d|%d|%s|%d|%d|%d",
                            (have?show.zone_id:""),
                            g_rxn_level_sell,g_rxn_level_buy,
                            (g_rxn_suppression==""?"-":g_rxn_suppression),
