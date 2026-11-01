@@ -1,0 +1,65 @@
+PASS  nadir2.mq5 is still pure CRLF (the profile did not rewrite the file)
+PASS  the profile is an enum: ENUM_QSMC_GATE_PROFILE
+PASS  QSMC_GATE_STRICT is 0, so the default cannot drift to a relaxed value
+PASS  QSMC_GATE_PRACTICAL is 1 and is opt-in by name
+PASS  the profile is one input: InpGateProfile
+PASS  the shipped default is STRICT: an existing installation behaves exactly as before
+PASS  EffMinConfidenceScore() exists
+PASS  EffMinConfidenceScore() returns InpMinConfidenceScore untouched in STRICT (no hidden arithmetic)
+PASS  EffMinConfidenceScore() relaxes with MathMin(InpMinConfidenceScore, 60) - only in the permissive direction
+PASS  EffMinConfidenceScore() never tightens: MathMax would raise a threshold the operator asked for
+PASS  EffMinReliability() exists
+PASS  EffMinReliability() returns InpMinReliability untouched in STRICT (no hidden arithmetic)
+PASS  EffMinReliability() relaxes with MathMin(InpMinReliability, 60) - only in the permissive direction
+PASS  EffMinReliability() never tightens: MathMax would raise a threshold the operator asked for
+PASS  EffMinRR1() exists
+PASS  EffMinRR1() returns InpMinRR1 untouched in STRICT (no hidden arithmetic)
+PASS  EffMinRR1() relaxes with MathMin(InpMinRR1, 1.20) - only in the permissive direction
+PASS  EffMinRR1() never tightens: MathMax would raise a threshold the operator asked for
+PASS  EffMaxStopATR() exists
+PASS  EffMaxStopATR() returns InpMaxStopATR untouched in STRICT (no hidden arithmetic)
+PASS  EffMaxStopATR() relaxes with MathMax(InpMaxStopATR, 6.0) - only in the permissive direction
+PASS  EffMaxStopATR() never tightens: MathMin would lower a ceiling the operator asked for
+PASS  EffAnchorSearchBars() exists
+PASS  EffAnchorSearchBars() returns InpAnchorSearchBars untouched in STRICT (no hidden arithmetic)
+PASS  EffAnchorSearchBars() relaxes with MathMax(InpAnchorSearchBars, 120) - only in the permissive direction
+PASS  EffAnchorSearchBars() never tightens: MathMin would lower a ceiling the operator asked for
+PASS  only the five helpers, the banner and the publisher may read InpGateProfile (unexpected: [])
+PASS  the profile is read by its helpers and reported by its banner
+PASS  the confidence gate reads the effective value, not the raw input (a stale `if\(conf<InpMinConfidenceScore\)` would silently ignore the profile)
+PASS  the reliability gate reads the effective value, not the raw input (a stale `if\(reliability<InpMinReliability\)` would silently ignore the profile)
+PASS  the RR1 gate reads the effective value, not the raw input (a stale `if\(rr1<InpMinRR1\)` would silently ignore the profile)
+PASS  the stop ceiling gate reads the effective value, not the raw input (a stale `risk>atr\*InpMaxStopATR` would silently ignore the profile)
+PASS  the anchor window gate reads the effective value, not the raw input (a stale `age>InpAnchorSearchBars` would silently ignore the profile)
+PASS  the gate uses EffMinConfidenceScore()
+PASS  the gate uses EffMinReliability()
+PASS  the gate uses EffMinRR1()
+PASS  the gate uses EffMaxStopATR()
+PASS  the anchor window uses EffAnchorSearchBars()
+PASS  the location re-check is never routed through an Eff*() helper (the profile cannot reach it)
+PASS  the blacklist is never routed through an Eff*() helper (the profile cannot reach it)
+PASS  the top-down switch is never routed through an Eff*() helper (the profile cannot reach it)
+PASS  the immutable journal gate is never routed through an Eff*() helper (the profile cannot reach it)
+PASS  the companion cannot set the profile: it only reads the published value
+PASS  the companion has no copy of the profile switch to drift from
+PASS  PrintGateProfileBanner() exists
+PASS  the banner names InpMinConfidenceScore as the input behind the change
+PASS  the banner names InpMinReliability as the input behind the change
+PASS  the banner names InpMinRR1 as the input behind the change
+PASS  the banner names InpMaxStopATR as the input behind the change
+PASS  the banner names InpAnchorSearchBars as the input behind the change
+PASS  the banner prints old -> new for each relaxed threshold
+PASS  the banner states what the profile does NOT touch
+PASS  the banner refuses to sell the change as an improvement
+PASS  the banner is actually printed at init
+PASS  it is printed during OnInit, before the first closed bar
+PASS  the active profile is published to the companion (not only printed once)
+PASS  the companion reads it
+PASS  the heartbeat names a relaxed profile instead of leaving it implicit
+PASS  the 1% risk ceiling is unchanged by this work
+PASS  the ceiling still cannot be raised by the operator
+PASS  the companion still ships inert
+--------------------------------------------------------------------------
+Gate-profile contracts passed: default STRICT, five numeric thresholds only,
+every change printed, protected gates unreachable, risk rules untouched.
+This is a source contract - F7 and a demo run remain yours.

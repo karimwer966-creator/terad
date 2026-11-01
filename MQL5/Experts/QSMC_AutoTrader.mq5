@@ -1055,13 +1055,14 @@ void ProcessSignals()
 //+------------------------------------------------------------------+
 string DiagVarName(const string leaf)
   {
-   return ("QSMC_DIAG_"+_Symbol+"_"+IntegerToString((long)_Period)+"_"+leaf);
+   string prefix=QSMC_DefaultDiagPrefix();
+   return (prefix==""?"":prefix+leaf);
   }
 
 bool DiagRead(const string leaf,double &value)
   {
    string name=DiagVarName(leaf);
-   if(!GlobalVariableCheck(name)) return false;
+   if(name=="" || !GlobalVariableCheck(name)) return false;
    value=GlobalVariableGet(name);
    return true;
   }
@@ -1590,6 +1591,7 @@ int OnInit()
             "` (error ",IntegerToString(GetLastError()),"). Copy nadir2.mq5 to MQL5\\Indicators and press F7.");
       return INIT_FAILED;
      }
+   Print("[QSMC_AT INSTANCE] authority=private iCustom DEFAULT inputs; visible Inputs NOT inherited. Default input hash and diagnostics: [QSMC_INSTANCE], ABI v2, no legacy fallback.");
    g_start_bar=iTime(_Symbol,_Period,0);
    if(g_start_bar<=0) g_start_bar=(datetime)TimeCurrent();
    g_day_index=-1;
@@ -1680,3 +1682,5 @@ void OnTimer()
    DiagnosticHeartbeat();
   }
 //+------------------------------------------------------------------+
+
+#include <QSMC/QSMC_InstanceIdentity.mqh>

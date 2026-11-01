@@ -31,7 +31,7 @@ class UnifiedContract(unittest.TestCase):
         self.assertIn('arb.FinalizeBar(authoritative_pending || InpUnifiedDecision)',MAIN)
         self.assertIn('if(InpUseFinalResolver || InpUnifiedDecision)',MAIN)
         self.assertIn('(InpUnifiedDecision?g_ud.score:g_alert_primary.score)',MAIN)
-        self.assertIn('if(InpUnifiedDecision) head="CONTEXT / "+head',MAIN)
+        self.assertIn('REACTION CONFIRMED (not an entry)',MAIN)
 
     def test_merges_and_render_budget(self):
         self.assertIn('UD_MergeZones(out,dropped,tail,ctx,h,l)',MAIN)

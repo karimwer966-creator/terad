@@ -1,0 +1,183 @@
+==========================================================================
+ TACTICAL AUTHORITY / SINGLE AUTHORITATIVE SCENARIO STATE - CONTRACTS
+==========================================================================
+PASS  A1 bullish HTF bias alone is CONTEXT, never an ENTRY
+PASS  A1 the CONTEXT reason names the missing location fact
+PASS  A1 a bullish bias-only preview paints no entry mark
+PASS  A1 the side that DOES have a live scenario is unaffected
+PASS  A1 the live SELL scenario keeps the ENTRY wording and its mark
+PASS  A2 bearish HTF bias alone is CONTEXT (symmetric, no side is favoured)
+PASS  A2 the live BUY scenario is unaffected by the bearish bias
+PASS  A1b a Core-owned tactical direction is not downgraded to CONTEXT
+PASS  A3 an INVALIDATED BUY scenario blocks the BUY tactical preview
+PASS  A3 the block reason names the authoritative state, not a generic refusal
+PASS  A3 the block reason carries the invalidation level that killed the plan
+PASS  A3 nothing at all is drawn for the blocked side
+PASS  A3 plan_dead reaches SCN_INVALIDATED without setting `invalidated`
+PASS  A3 the LATE SELL side is not blocked, but it is not an ENTRY either
+PASS  A3 the CONTEXT reason quotes the DSE's own state name, not a guess
+PASS  A3 the LATE side keeps its level line and paints no entry mark
+PASS  A3 a CURRENT scenario on that side keeps the ENTRY wording and its mark
+PASS  A4 a chased plan reports LATE_WAIT_RETEST
+PASS  A4 the lifecycle state is LATE - WAIT FOR RETEST
+PASS  A4 a LATE plan is never a qualified candidate
+PASS  A4 invalidation outranks lateness in the status token
+PASS  A4/A7 the LATE SELL leads the INVALIDATED BUY (correct total order)
+PASS  A5 a close INSIDE the band is not a break
+PASS  A5 a wick 0.1 below the edge, inside the break buffer, is not a break
+PASS  A5 a close more than break_atr*ATR below the edge IS a break
+PASS  A5 no earlier CLOSED bar beyond the buffer -> not flipped
+PASS  A5 the role stays SUPPORT: a wick never reverses it
+PASS  A5 a wick 0.5 above a resistance edge, inside the buffer, is not a break
+PASS  A5 the resistance role survives an intra-bar spike through it
+PASS  A6 an earlier CLOSED bar beyond the buffer flips the level
+PASS  A6 a broken support is retested as RESISTANCE
+PASS  A6 the BUY plan built on that broken level is terminal
+PASS  A6 no BUY preview survives a confirmed break + failed retest
+PASS  A6 the flipped-level SELL stays alive and says WAITING FOR RETEST
+PASS  A7 Priority A validity outranks a raw score of 100
+PASS  A7 an unqualified candidate says NO_QUALIFIED_CANDIDATE, not WATCH
+PASS  A7 equal alignment is separated by evidence quality, deterministically
+PASS  A7 a tie is broken by stable zone_id ordering, not by evaluation order
+PASS  A8 a plan with no data is not a candidate
+PASS  A8 with no data on either side there is no lead at all
+PASS  A8 missing history downgrades a bias-only preview to CONTEXT, it never invents one
+PASS  A8 with the DSE off a bias-only preview is still CONTEXT
+PASS  A9 a trigger newer than the last closed execution bar clears the display
+PASS  A9 a trigger already available at the closed execution bar is allowed
+PASS  A9 an unknown trigger time does not trip the alignment guard
+PASS  A9 a chronological M5 tape is accepted
+PASS  A9 duplicate M5 timestamps are refused, not silently re-used
+PASS  A9 a reversed M5 tape is refused
+PASS  A10 a trigger 180 bars old is STALE against InpRetestTimeoutBars 40
+PASS  A10 a STALE trigger paints nothing, even on a closed confirming bar
+PASS  A10 a 10-bar-old trigger is inside the window (it is then judged on live state)
+PASS  A10 an idea inside the Core blacklist horizon is blocked
+PASS  A10 once the blacklist horizon expires the same side can be a fresh setup again
+PASS  A10 a Core-owned direction is never blocked by the blacklist veto
+PASS  A10 an aged-out zone is EXPIRED and equally terminal
+PASS  A11 the gate is deterministic: an identical published state gives an identical verdict
+PASS  A11 only a NEW published fact changes the verdict; the old one is never rewritten
+PASS  A12 a closed confirming execution bar is CONFIRMED
+PASS  A12 the same signal re-arming as a live PREVIEW is suppressed
+PASS  A12 a later closed confirming bar of the same signal is still CONFIRMED
+PASS  A12 a different signal is unaffected by the first one's dedup
+PASS  A12 reproduces the pre-fix behaviour: the preview re-armed forever
+--------------------------------------------------------------------------
+PASS  B1 g_last_mtf_entry_key has a writer again (the v6.6.0 patch orphaned it)
+PASS  B1 every reader of g_last_mtf_entry_key is backed by a writer (2 write, 2 read)
+PASS  B2 the authority gate is called inside UpdateMTFExecutionEntry
+PASS  B2 the gate runs BEFORE the arbiter is fed
+PASS  B2 the gate runs BEFORE the label is drawn
+PASS  B2 the gate runs BEFORE the entry mark is painted
+PASS  B3 a BLOCKED/STALE verdict clears the display and returns
+PASS  B3 the reason survives the clear, so the panel can state it
+FAIL  B4 the label verb is chosen from the authority verdict
+FAIL  B4 the format string and its arguments still match (verb is passed)
+PASS  B4 a CONTEXT verdict paints no entry mark or arrow
+PASS  B5 the direction source is tracked
+PASS  B5 all three direction sources are labelled 0 / 1 / 2
+PASS  B5 the bias-only branch records the trigger's chart bar for the age bound
+PASS  B6 the total order is DSE-terminal -> Core-blacklist -> stale -> context
+PASS  B6 all four verdicts are reachable from the pure order
+PASS  B6 the pure order reads no mutable global (so the MQL5 self-test can exercise it)
+PASS  B6 the pure order reads no forming-bar value and no trade API (iClose()
+PASS  B6 the pure order reads no forming-bar value and no trade API (iHigh()
+PASS  B6 the pure order reads no forming-bar value and no trade API (iLow()
+PASS  B6 the pure order reads no forming-bar value and no trade API (iOpen()
+PASS  B6 the pure order reads no forming-bar value and no trade API (iTime()
+PASS  B6 the pure order reads no forming-bar value and no trade API (rates_total)
+PASS  B6 the pure order reads no forming-bar value and no trade API (CopyRates()
+PASS  B6 the pure order reads no forming-bar value and no trade API (OrderSend)
+PASS  B6 the pure order reads no forming-bar value and no trade API (PositionOpen)
+PASS  B6 the pure order reads no forming-bar value and no trade API (ArraySize()
+PASS  B6 the adapter gathers InpUseDirectionalScenarioEngine
+PASS  B6 the adapter gathers g_scn_built_time
+PASS  B6 the adapter gathers TacticalScenarioTerminal(bull,terminal_state,terminal_why)
+PASS  B6 the adapter gathers TacticalScenarioLive(bull,live_state)
+PASS  B6 the adapter gathers IsSameIdeaAsBlacklisted(bull,trigger,trigger)
+PASS  B6 the adapter gathers ArraySize(g_buf_t)-2
+PASS  B6 the adapter gathers InpRetestTimeoutBars
+PASS  B6 the adapter delegates to the pure order instead of re-deriving it
+PASS  B6 an unknown trigger age is passed as -1, never guessed
+PASS  B6 the gate reads no forming-bar value and no trade API (iClose()
+PASS  B6 the gate reads no forming-bar value and no trade API (iHigh()
+PASS  B6 the gate reads no forming-bar value and no trade API (iLow()
+PASS  B6 the gate reads no forming-bar value and no trade API (iOpen()
+PASS  B6 the gate reads no forming-bar value and no trade API (iTime()
+PASS  B6 the gate reads no forming-bar value and no trade API (CopyRates()
+PASS  B6 the gate reads no forming-bar value and no trade API (OrderSend)
+PASS  B6 the gate reads no forming-bar value and no trade API (PositionOpen)
+PASS  B6b the MQL5 self-test covers all seven groups TAC-1..TAC-7
+PASS  B6b the seven groups exercise the pure order directly in 16 calls (not a wrapper)
+PASS  B6b the MQL5 self-test touches no global, so it cannot change a decision
+PASS  B6b the MQL5 self-test exercises the pure order and draws nothing
+PASS  B6b OnInit runs the self-test and prints its verdict
+PASS  B7 both terminal facts (zone invalidation and closed-M5 breach) are read
+PASS  B7 liveness is the DSE's own Priority-A verdict, not a re-derived one
+PASS  B7 both predicates mirror the two sides explicitly (no struct pointer, no alias)
+PASS  B7 the CONTEXT reason is built from the DSE's own state name
+PASS  B8 ScenarioDrawOne no longer drops a terminal plan silently
+PASS  B8 a single terminal predicate covers both invalidation paths
+PASS  B8 a terminal plan is drawn in the terminal colour; live colours are unchanged
+PASS  B8 the tag never says CONDITIONAL about a terminal plan
+PASS  B8 the tooltip distinguishes a retired plan from a plan to monitor
+PASS  B8 the redraw expectation matches ScenarioDrawOne's own guard
+PASS  B9 the full card states the tactical source, state and the authority reason
+PASS  B10 OnCalculate still runs the tactical path before ScenarioUpdate
+PASS  B10 the one-tick staleness at bar open is documented where it happens
+PASS  B10 the comment states the causality claim explicitly
+PASS  B11 nadir2.mq5 still cannot reach OrderSend
+PASS  B11 nadir2.mq5 still cannot reach OrderSendAsync
+PASS  B11 nadir2.mq5 still cannot reach CTrade
+PASS  B11 nadir2.mq5 still cannot reach PositionOpen
+PASS  B11 nadir2.mq5 still cannot reach PositionModify
+PASS  B11 nadir2.mq5 still cannot reach OrderCheck
+PASS  B11 nadir2.mq5 still cannot reach WebRequest
+PASS  B11 the arbitration root is still included exactly once
+PASS  C1 the indicator builds exactly one tactical fact
+PASS  C1 and feeds the arbiter exactly once
+PASS  C1 the fact is built at L5741
+PASS  C1 and fed at L5752
+PASS  C1 both happen after the gate (L5642) and before the entry line is drawn (L5760)
+PASS  C1 the fact carries '_tf.valid=true;'
+PASS  C1 the fact carries '_tf.bull=bull;'
+PASS  C1 the fact carries '_tf.closed_confirm=closed_confirm;'
+PASS  C1 the fact carries '_tf.entry_price=ep;'
+PASS  C1 the fact carries '_tf.exec_bar_time=et;'
+PASS  C1 the fact carries '_tf.exec_tf=etf;'
+PASS  C1 the fact carries '_tf.trigger=trigger;'
+PASS  C1 the fact carries '_tf.trigger_time=trigger_time;'
+PASS  C1 the fact carries '_tf.core_owned=core_owned;'
+PASS  C1 the fact carries '_tf.chase_atr=dist_close_atr;'
+PASS  C1 and carries no authority verdict - which costs nothing, per C2
+PASS  C2 the arbiter enforces LOCATION FIRST (R1): direction comes from the zone
+PASS  C2 a zone out of reach is refused by the arbiter's own ATR limit
+PASS  C2 and the refusal states how far away the nearest zone was
+PASS  C2 a trigger with no closed-bar reaction at the zone is refused in those words
+PASS  C2 direction comes from the closed-bar reaction fact, not from the hint
+PASS  C2 the hint may agree with the zone's direction but can never set it
+PASS  C2 and nadir2.mq5 documents that the arbitration layer already refuses such a hint (L30341)
+PASS  C2 and documents the hand-over as deliberate (L30343-L30344), so it cannot be read as an oversight
+PASS  C3 g_mtf_entry_blocked=true has exactly one writer (L5648, the refusal branch)
+PASS  C3 and the resolver's tactical leg has exactly one publisher (L5687)
+PASS  C3 that publisher is the line Part B's ordering proof depends on
+PASS  C3 clearing zeroes the resolver's tactical leg, so a refused side stops voting
+PASS  C3 and it clears the verdict together with the display it belongs to
+PASS  C4 located the definition (not the forward declaration) of IsSameIdeaAsBlacklisted
+PASS  C4 the blacklist probe turns the side into a direction word
+PASS  C4 and skips every retired idea that is not about this side
+PASS  C4 the centre-price match must also agree on the side
+PASS  C4 the veto stays inside the Core lifecycle's own horizon
+PASS  C4 and an empty blacklist costs nothing, as the adapter's comment claims
+PASS  C5 located ResolveFinalSignal's definition
+PASS  C5 the tactical leg rejects previews (L5832)
+PASS  C5 weighted InpResWeightTactical and named tactical
+PASS  C5 and consults no g_mtf_entry_authority: OK and CONTEXT vote identically today
+PASS  C5 and consults no g_mtf_entry_blocked: OK and CONTEXT vote identically today
+PASS  C5 and consults no TAC_AUTH: OK and CONTEXT vote identically today
+PASS  C5 the gate decides nothing about the resolver's leg; only the display update writes it
+--------------------------------------------------------------------------
+RESULT: 2 contract(s) FAILED
+   - B4 the label verb is chosen from the authority verdict
+   - B4 the format string and its arguments still match (verb is passed)

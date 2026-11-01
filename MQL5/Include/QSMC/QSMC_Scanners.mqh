@@ -264,6 +264,9 @@ private:
    CAssetScanner    *m_universe;   // not owned
    CMarketData      *m_md;         // owned; REUSED for every symbol
    CZoneRegistry     m_zones;
+   double            m_guard_distance;
+   int               m_guard_age;
+   datetime          m_guard_logged[QSC_MAX_ROWS];
    CReactionDetector m_react;
    CBiasProvider     m_bias;
    SQsmcArbConfig    m_cfg;
@@ -344,6 +347,7 @@ public:
        m_atr_period=14; m_pivot_left=3; m_pivot_right=3;
        m_zone_half_atr=0.25; m_use_bias=false;
        m_rows_n=0; m_cursor=0; m_pass_done=false;
+       m_guard_distance=12.0; m_guard_age=120; ArrayInitialize(m_guard_logged,0);
        m_alloc_calls=0; m_free_calls=0; }
 
                     ~CTopSetupsScanner() { Shutdown(); }
@@ -368,6 +372,8 @@ public:
 
    int               AllocCalls() const { return m_alloc_calls; }
    int               FreeCalls()  const { return m_free_calls; }
+   void ConfigureZoneGuard(const double distance,const int age)
+     { m_guard_distance=(MathIsValidNumber(distance) && distance>=1.0?distance:12.0); m_guard_age=(age>0?age:120); }
    int               Rows() const { return m_rows_n; }
    bool              PassDone() const { return m_pass_done; }
 
@@ -466,6 +472,20 @@ public:
            { r.status=QSS_NO_SETUP; r.note="zone vanished between rebuild and read";
              Push(r); continue; }
 
+         string guard=QSMC_ZoneRangeReason(z.lo,z.hi,price,ch.LowestLow(0,ci),ch.HighestHigh(0,ci),atr,
+                                          (z.birth_bar>=0?ci-z.birth_bar:-1),m_guard_age,m_guard_distance);
+         if(guard!="")
+           {
+            // Once per symbol/closed bar, even across repeated scanner passes.
+            if(i<QSC_MAX_ROWS && m_guard_logged[i]!=ch.T(ci))
+              {
+               m_guard_logged[i]=ch.T(ci);
+               Print("[QSMC_ZONE_REJECT] symbol=",r.symbol," tf=",EnumToString(m_tf)," created=",TimeToString(z.birth_time),
+                     " source=SCAN-SWING OHLC raw prices lo=",z.lo," hi=",z.hi," closed=",price," ATR=",atr,
+                     " point=",SymbolInfoDouble(r.symbol,SYMBOL_POINT)," digits=",SymbolInfoInteger(r.symbol,SYMBOL_DIGITS)," reason=",guard);
+              }
+            r.status=QSS_NO_SETUP; r.note="ZONE REJECTED: "+guard; Push(r); continue;
+           }
          //--- Reaction on the CLOSED bar only. Shift 0 is refused by the
          //--- detector itself; this is the read-only use of PART A.
          SReactionFacts f;
@@ -682,31 +702,42 @@ class CVolatilityHeatmap
 private:
    SVolatilityRow    m_rows[QSC_MAX_ROWS];
    int               m_rows_n;
+   datetime          m_dump100;
+   datetime          m_dump250;
 
    double            Percentile(const CBarSeries &bars,const int ci,
                                 const int window,const double value) const
      {
-      int from=(int)MathMax(1,ci-window+1);
-      int n=ci-from+1;
-      if(n<10 || !(value>0.0)) return -1.0;
+      // Compare against exactly window PRIOR closed ATRs, never the current
+      // sample or a partial warm-up window. Zero is valid only if none is lower.
+      int from=ci-window;
+      if(window<1 || from<1 || !MathIsValidNumber(value) || value<=0.0 || value==EMPTY_VALUE) return -1.0;
       int below=0, valid=0;
-      for(int i=from;i<=ci;i++)
+      for(int i=from;i<ci;i++)
         {
          double a=bars.ATRAt(i);
-         if(!(a>0.0)) continue;
+         if(!MathIsValidNumber(a) || a<=0.0 || a==EMPTY_VALUE) return -1.0;
          valid++;
          if(a<value) below++;
         }
-      //--- Divide by the ATRs actually compared, not by the window. Counting
-      //--- the bars where ATR is not defined yet in the denominator diluted the
-      //--- result toward zero (a 100-bar window with 20 warm-up bars reported a
-      //--- true 80th percentile as 64th - still plausible, still wrong).
-      if(valid<10) return -1.0;
+      if(valid!=window) return -1.0;
       return (double)below/(double)valid*100.0;
      }
 
 public:
-                     CVolatilityHeatmap() { m_rows_n=0; }
+                     CVolatilityHeatmap() { m_rows_n=0; m_dump100=0; m_dump250=0; }
+   // Explicit debug-only audit; once per completed bar and requested window.
+   void DumpSample(const CBarSeries &bars,const int window)
+     {
+      int ci=bars.ClosedIndex(); if(ci<1 || (window!=100 && window!=250)) return;
+      datetime now=bars.T(ci);
+      if(window==100) { if(m_dump100==now) return; m_dump100=now; }
+      else { if(m_dump250==now) return; m_dump250=now; }
+      double current=bars.ATRAt(ci);
+      Print("[QSMC_ATR_SAMPLE] ",bars.Symbol()," ",EnumToString(bars.Timeframe())," window=",window," current=",current," pct=",Percentile(bars,ci,window,current)," from=",ci-window," to=",ci-1);
+      for(int i=(int)MathMax(1,ci-window);i<ci;i++)
+         Print("[QSMC_ATR_SAMPLE] i=",i," time=",TimeToString(bars.T(i))," ATR=",bars.ATRAt(i));
+     }
    int               Rows() const { return m_rows_n; }
    //--- No pointer to a struct in MQL5: reference-out (see D12).
    //--- No pointer to a struct in MQL5: reference-out (see D12).
@@ -727,7 +758,7 @@ public:
       int ci=bars.ClosedIndex();
       if(ci<20) { r.note="not enough bars"; m_rows[m_rows_n]=r; m_rows_n++;
                   return false; }
-      double atr=bars.ATR();
+      double atr=bars.ATRAt(ci); // same Wilder series as percentile history
       double px=bars.C(ci);
       if(!(atr>0.0) || !(px>0.0))
         { r.note="no ATR/price"; m_rows[m_rows_n]=r; m_rows_n++; return false; }
@@ -743,7 +774,9 @@ public:
       else if(p<90.0)    { r.regime="HIGH"; }
       else               { r.regime="EXTREME"; }
 
-      if(r.pct250<0.0) r.note="pct250 needs 250 bars; pct100 shown";
+      if(r.pct250<0.0) r.note="pct250 needs 250 valid prior ATRs; pct100 may be unavailable";
+      if(p<0.0) { r.note="insufficient/invalid full ATR windows"; m_rows[m_rows_n]=r; m_rows_n++; return false; }
+      if(r.pct100==0.0 && r.pct250==0.0) r.note="verified minimum/tie: all 100/250 prior valid ATRs >= current";
       r.valid=true;
       m_rows[m_rows_n]=r; m_rows_n++;
       return true;

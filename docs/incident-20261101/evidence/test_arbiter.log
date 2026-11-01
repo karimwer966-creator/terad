@@ -1,0 +1,33 @@
+PASS  T01a rejection detected at resistance, direction SELL  [rejection at RESISTANCE ev=wick+candle+volume+displacement+sweep]
+PASS  T01b SELL published as CONFIRMED (non-tactical source)  [CONFIRMED]
+PASS  T01c same bar cannot publish twice  [cooldown 0/20]
+PASS  T01d no repeat over the next 20 bars  [extra=0]
+PASS  T02a closed bar accepted above resistance -> BUY  [acceptance at RESISTANCE]
+PASS  T02b BUY continuation published
+PASS  T02c a SELL at the same accepted zone is refused  [flip-flop guard 0/10]
+PASS  T03a no SELL alert inside a SUPPORT zone  [state WATCH is not alertable]
+PASS  T03b the silence carries a reason  [state WATCH is not alertable]
+PASS  T04a no zone within reach  [nearest gap 3.60 ATR > 1.50]
+PASS  T04b no signal between zones  [LOCATION: BETWEEN ZONES - nearest zone is 3.60 ATR away, limit is 1.50 ATR]
+PASS  T04c reason names BETWEEN ZONES  [LOCATION: BETWEEN ZONES - nearest zone is 3.60 ATR away, limit is 1.50 ATR]
+PASS  T05a a forming-bar fact never publishes CONFIRMED  [PREVIEW state PREVIEW is not alertable]
+PASS  T06a the 30 bars really are 30 valid rejections (not a trivial pass)  [valid=30/30]
+PASS  T06b 30 M1 fires inside one zone collapse to <= 1 alert  [published=1 suppressed=29 first-suppression=cooldown 1/10]
+PASS  T07a the second bar is a genuine BUY acceptance  [acceptance at RESISTANCE]
+PASS  T07b the opposite direction on the same zone is suppressed  [before=1 after=1 why=flip-flop guard 1/10]
+PASS  T07c the suppression is the flip-flop guard, not something else  [flip-flop guard 1/10]
+PASS  T08 two charts of one symbol publish at most one alert  [published=1]
+PASS  T09a an opposed candidate is never published as CONFIRMED  [HTF_BIAS: COUNTER-TREND: only 0 evidence groups, 3 required]
+PASS  T09b the counter-trend is named in the reason  [HTF_BIAS: COUNTER-TREND: only 0 evidence groups, 3 required / only 0/6 evidence groups, 2 required; missing: wick+candle+volume+displacement+sweep+ltf-MSS]
+PASS  T11a a broken support is published as RESISTANCE  [role=1]
+PASS  T11b a broken resistance is published as SUPPORT  [role=0]
+PASS  T11c SELL in the CAUSAL role at a broken support is published  [CONFIRMED]
+PASS  T11d a BUY in the BIRTH role at that zone is refused by LOCATION  [LOCATION: BUY at RESISTANCE Z|S|100.00000000|101.00000000 without a closed-bar breakout (forbidden by R1)]
+PASS  T11e the mirror: BUY in the CAUSAL role at a broken resistance is published  [CONFIRMED]
+PASS  T10 no signal without data (series empty -> no closed bar)  [closed_index=0]
+------------------------------------------------------------------------
+RESULT: 27 passed, 0 failed
+------------------------------------------------------------------------
+This is an independent reference implementation of the v6.6.0 gates.
+It is NOT a backtest and produces NO win rate. A disagreement with
+MQL5/Include/QSMC/QSMC_Selftest.mqh means one of the two is wrong.

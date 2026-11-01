@@ -1,0 +1,138 @@
+PASS  A the weighted gates have their own input group at L861
+PASS  A InpUseWeightedGates is declared at L862 and defaults to false
+PASS  A the flag's own comment states what OFF means
+PASS  A InpWGWeightLevel = 25 at L863
+PASS  A InpWGWeightLevel keeps its shipped default 25 (never silently retuned)
+PASS  A InpWGWeightEvidence = 25 at L864
+PASS  A InpWGWeightEvidence keeps its shipped default 25 (never silently retuned)
+PASS  A InpWGWeightProximity = 20 at L865
+PASS  A InpWGWeightProximity keeps its shipped default 20 (never silently retuned)
+PASS  A InpWGWeightAlignment = 15 at L866
+PASS  A InpWGWeightAlignment keeps its shipped default 15 (never silently retuned)
+PASS  A InpWGWeightRoom = 15 at L867
+PASS  A InpWGWeightRoom keeps its shipped default 15 (never silently retuned)
+PASS  A the five shipped weights sum to exactly 100 (100)
+PASS  A InpWGMinScore = 60 at L868
+PASS  A InpWGMinEvidenceScore = 68 at L869
+PASS  A InpWGMinRoomATR = 1.0 at L871, in ATR units (symbol-agnostic, no price)
+PASS  A the evidence floor says it MIRRORS the existing 68 rather than changing it
+PASS  A the flag is declared exactly once (no shadow copy)
+PASS  B g_wgate_score is declared at L4472
+PASS  B g_wgate_score has exactly one global declaration
+PASS  B g_wgate_why is declared at L4473
+PASS  B g_wgate_why has exactly one global declaration
+PASS  B g_wgate_veto is declared at L4474
+PASS  B g_wgate_veto has exactly one global declaration
+PASS  B the veto flag's comment states it is only ever data/spread/news
+PASS  B the ownership comment names the single writer
+PASS  C WeightedGateAllows is defined at L40023
+PASS  C it is defined exactly once
+PASS  C the gate is one small function (L40023-L40077, 54 lines)
+PASS  C veto 1 is invalid candidate data (L40029)
+PASS  C veto 2 is spread above InpMaxSpreadPts (L40035)
+PASS  C the spread veto keeps the documented backtest exemption instead of re-deciding it
+PASS  C veto 3 REUSES MTF_SniperIsNewsBlackout - one news rule, not a second implementation (L40042)
+PASS  C the data veto sets the veto flag and returns false
+PASS  C the data veto says HARD VETO in the why-text
+PASS  C the spread veto sets the veto flag and returns false
+PASS  C the spread veto says HARD VETO in the why-text
+PASS  C the news veto sets the veto flag and returns false
+PASS  C the news veto says HARD VETO in the why-text
+PASS  C the data veto's condition is exactly that - no extra operand can disable it
+PASS  C the spread veto's condition is exactly that - unconditional apart from the documented backtest exemption
+PASS  C the news veto's condition is exactly the reused rule - nothing can gate it
+PASS  C the data veto has exactly one unconditional `return false;`
+PASS  C the spread veto has exactly one unconditional `return false;`
+PASS  C the news veto has exactly one unconditional `return false;`
+PASS  C no veto is itself behind the feature flag: with the flag OFF the vetoes are simply not reached, and with it ON they cannot be turned off
+PASS  C all three vetoes are tested BEFORE the first weighted leg (L40029 < L40035 < L40042 < L40053), so no weight can outvote a veto
+PASS  C no weight is accumulated anywhere above the news veto
+PASS  C the state is reset on entry, so a stale veto can never survive to the next candidate
+PASS  D the level leg tests 'c.level>=min_level' at L40053
+PASS  D the level leg adds exactly InpWGWeightLevel, no other weight
+PASS  D an earned level leg is named in the why-text
+PASS  D a missed level leg is also named, so the reason is written down
+PASS  D the evidence leg tests 'c.score>=InpWGMinEvidenceScore' at L40055
+PASS  D the evidence leg adds exactly InpWGWeightEvidence, no other weight
+PASS  D an earned evidence leg is named in the why-text
+PASS  D a missed evidence leg is also named, so the reason is written down
+PASS  D the proximity leg tests 'c.distance_atr<=maxd' at L40058
+PASS  D the proximity leg adds exactly InpWGWeightProximity, no other weight
+PASS  D an earned proximity leg is named in the why-text
+PASS  D a missed proximity leg is also named, so the reason is written down
+PASS  D the alignment leg tests 'c.alignment>0' at L40061
+PASS  D the alignment leg adds exactly InpWGWeightAlignment, no other weight
+PASS  D an earned alignment leg is named in the why-text
+PASS  D a missed alignment leg is also named, so the reason is written down
+PASS  D the room leg tests 'c.opposing_room_atr<0.0 || c.opposing_room_a' at L40063
+PASS  D the room leg adds exactly InpWGWeightRoom, no other weight
+PASS  D an earned room leg is named in the why-text
+PASS  D a missed room leg is also named, so the reason is written down
+PASS  D the level leg reuses the SAME clamp as the existing eligibility rule
+PASS  D the proximity leg reuses InpAlertMaxDistanceATR with its documented fallback, not a new distance rule
+PASS  D the weighted total is published for display at L39634
+PASS  D the minimum-score decision is at L39635
+PASS  D a candidate below the minimum is reported as WAIT with the threshold named
+PASS  D the WAIT text lists what was missed
+PASS  D the success text says PUBLISH and states the score is a confluence count, not a probability
+PASS  D five exits: three vetoes, below-minimum, publish - no fall-through
+PASS  E the gate never touches rates_total: no forming bar
+PASS  E no series re-read: it reads the candidate record the dispatcher already built
+PASS  E no full-history loop: bounded work per candidate
+PASS  E the gate draws nothing: it decides, the surfaces render
+PASS  E no hard-coded price literal in the gate (ATR units only)
+PASS  E no wall-clock read: the decision is bar-bound
+PASS  E OnInit checks the five-weight sum at L14521-L14523
+PASS  E a bad weight sum REFUSES to initialise and names the rule
+PASS  E the comment above says why: refuse rather than renormalise
+PASS  E an out-of-range InpWGMinScore also refuses (L14528)
+PASS  F the why-buffer is declared once before the candidate loop (L40107)
+PASS  F the selection reads the flag at L40121
+PASS  F the ON branch calls the weighted gate
+PASS  F the OFF branch is the ORIGINAL conjunction, token for token, so off means unchanged behaviour
+PASS  F channels, cooldown and ranking stay HARD either way: they are delivery and de-duplication, not evidence
+PASS  F the hard gates are not inside the flag's scope
+PASS  F the why-text kept for display is recomputed for the candidate that WON, not whichever the loop tested last (L40134)
+PASS  F when nothing published, the display says so instead of showing a stale reason
+PASS  F the tooltip carries the gate's own why-text at L32025
+PASS  F that tooltip line only appears when the flag is on (off = identical tooltip)
+PASS  F one definition and two call sites plus the ownership comment: no third opinion about publication
+PASS  F exactly seven references to the flag: declaration, two OnInit refusals, tooltip, selection, winner block
+PASS  G InpRXNMinConfirmedScore is still 68
+PASS  G InpGateProfile still defaults to QSMC_GATE_STRICT
+PASS  G InpAlertCooldownBars is still 5
+PASS  G InpCFMinDisplayScore is still 60
+PASS  G the resolver's InpResMinScore is still 60
+PASS  G RXN_LevelEx still exists (its 1:1 self-tests are untouched)
+PASS  G the pinned level promotion still requires phase AND score, with the countertrend margin
+PASS  G no weighted-gate input leaked into RXN_LevelEx: the scorer wraps the decision, it does not rewrite the pinned level function
+PASS  G no OrderSend call anywhere: indicator only
+PASS  G no OrderSendAsync call anywhere: indicator only
+PASS  G no CTrade call anywhere: indicator only
+PASS  G no PositionOpen call anywhere: indicator only
+PASS  G no PositionClose call anywhere: indicator only
+PASS  G no PositionModify call anywhere: indicator only
+PASS  G the gate body never mentions an order API
+PASS  G every remaining OrderSend mention is prose in a comment
+PASS  G nadir2.mq5 has 583 input lines (548 + 10 GS1 + 16 SC1 + 9 OBS1)
+PASS  G braces balance at the pinned 3594
+PASS  G the file is 43359 lines: insertions only, no scratch rewrite
+PASS  G no bare LF: every line ends CRLF as .gitattributes requires
+PASS  G exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes, root remains L639
+PASS  G no buffers added, so no existing plot index moved (the EA reads 7-12)
+PASS  G no enum added or removed by this phase (still 44)
+PASS  H the doc states '## 11.4 AUDIT-GS1'
+PASS  H the doc states 'WeightedGateAllows()'
+PASS  H the doc states 'InpUseWeightedGates'
+PASS  H the doc states '25 / 25 / 20 / 15 / 15 = 100'
+PASS  H the doc states 'HARD VETO'
+PASS  H the doc states 'confluence count, not a probability'
+PASS  H the doc states 'tools/test_weighted_gates.py'
+PASS  H the doc states 'CI step 33'
+PASS  H the doc states '583'
+PASS  H the doc cites the gate's definition line (L40023)
+PASS  H the doc cites the flag's declaration line (L862)
+PASS  H CI runs tools/test_weighted_gates.py
+PASS  H the workflow has 37 named steps (32 + execution safety + this suite + scalping + journal + declutter)
+PASS  H the CI step names the audit it enforces
+AUDIT-GS1 weighted-gate checks: 137   failures: 0

@@ -412,5 +412,22 @@ string QSMC_MissingEvidence(const int mask)
    return (out==""?"none":out);
   }
 
+// Pure, symbol-specific historical range invariant. Raw prices, never points.
+string QSMC_ZoneRangeReason(const double lo,const double hi,const double price,
+                           const double history_low,const double history_high,
+                           const double atr,const int age,const int lifetime,
+                           const double max_distance_atr)
+  {
+   if(!MathIsValidNumber(lo) || !MathIsValidNumber(hi) || lo<=0.0 || hi<lo || hi==EMPTY_VALUE) return "invalid band";
+   if(!MathIsValidNumber(history_low) || !MathIsValidNumber(history_high) || history_low<=0.0 || history_high<history_low) return "history unavailable";
+   double mid=lo+(hi-lo)*0.5;
+   if(mid<history_low || mid>history_high) return "outside symbol closed history range";
+   if(!MathIsValidNumber(atr) || atr<=0.0 || atr==EMPTY_VALUE || !MathIsValidNumber(price) || price<=0.0) return "invalid ATR/price";
+   double gap=MathMax(0.0,MathMax(lo-price,price-hi));
+   if(gap>max_distance_atr*atr && (age<0 || age>lifetime)) return "expired distant zone";
+   return "";
+  }
+// ZONE_RANGE_END
+
 #endif
 //+------------------------------------------------------------------+

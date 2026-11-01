@@ -1,0 +1,17 @@
+PASS  EW recurrence yields mean 11 and weighted population variance 1
+PASS  EW remains finite/nonnegative around a large offset
+PASS  EW rejects invalid observations and alpha
+PASS  EW reset restores pristine state
+PASS  CUSUM detects positive mean shift
+PASS  CUSUM detects negative mean shift
+PASS  CUSUM reset clears accumulated evidence and latch
+PASS  CUSUM rejects zero scale
+PASS  Wilson all-failure boundary is bounded
+PASS  Wilson all-success boundary is bounded
+PASS  Wilson interior result matches reference
+PASS  Wilson rejects empty sample, impossible counts and overflow parameters
+PASS  Volume profile has deterministic POC and value-area expansion
+PASS  Volume profile reports tick-volume sum, coverage and attained value fraction
+PASS  Zero-volume bars do not distort profile range and reduce coverage
+PASS  Volume profile rejects invalid binning and oversized ranges
+All quantitative-statistics checks passed; Wilson is rate uncertainty, not profitability.

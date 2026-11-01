@@ -1,0 +1,208 @@
+PASS  A the overlay has its own input group at L872
+PASS  A the group heading itself says display only and advisory
+PASS  A InpEnableScalping defaults to false at L873
+PASS  A the display opt-in is separate and also false at L874
+PASS  A InpScalpWeightMomentum = 20 at L875
+PASS  A InpScalpWeightEdge = 20 at L876
+PASS  A InpScalpWeightSilverBullet = 15 at L877
+PASS  A InpScalpWeightPowerOf3 = 15 at L878
+PASS  A InpScalpWeightWyckoff = 15 at L879
+PASS  A InpScalpWeightConfluence = 15 at L880
+PASS  A the six shipped weights sum to exactly 100 (100)
+PASS  A InpScalpMinScore = 60 at L881
+PASS  A InpScalpDispATR = 0.4 at L882
+PASS  A InpScalpStopATR = 0.8 at L883
+PASS  A InpScalpTargetATR = 1.2 at L884
+PASS  A InpScalpMinRR = 1.2 at L885
+PASS  A InpScalpMaxSpreadATR = 0.1 at L886
+PASS  A InpScalpRequireSession defaults to true at L887: a scalp outside the kill zones is vetoed unless the operator says otherwise
+PASS  A every distance is in ATR units - symbol-agnostic, no hard-coded price
+PASS  A the 0.40 ATR displacement is QSMC_PRESET_SCALPER's own p_disp
+PASS  A the 1.20 RR floor is QSMC_PRESET_SCALPER's own p_minrr
+PASS  A the preset already auto-selects SCALPER on M1-M5, which is the overlay's target timeframe - so no second timeframe rule was needed
+PASS  A the overlay flag is declared exactly once
+PASS  B g_sc_dir is declared at L4478
+PASS  B g_sc_dir has exactly one declaration
+PASS  B g_sc_score is declared at L4479
+PASS  B g_sc_score has exactly one declaration
+PASS  B g_sc_legs is declared at L4480
+PASS  B g_sc_legs has exactly one declaration
+PASS  B g_sc_why is declared at L4481
+PASS  B g_sc_why has exactly one declaration
+PASS  B g_sc_veto is declared at L4482
+PASS  B g_sc_veto has exactly one declaration
+PASS  B g_sc_stop is declared at L4483
+PASS  B g_sc_stop has exactly one declaration
+PASS  B g_sc_target is declared at L4484
+PASS  B g_sc_target has exactly one declaration
+PASS  B g_sc_rr is declared at L4485
+PASS  B g_sc_rr has exactly one declaration
+PASS  B g_sc_bar is declared at L4486
+PASS  B g_sc_bar has exactly one declaration
+PASS  B the ownership comment names the single writer and says it only advises
+PASS  B the score's own comment says it is a confluence count, not a probability
+PASS  B the veto flag's comment says it is only data/spread/session/news
+PASS  B g_sc_bar's comment states the anti-repaint rule
+PASS  C SCALP_SpreadRatio is defined at L5887
+PASS  C SCALP_SpreadRatio is defined exactly once
+PASS  C SCALP_SpreadRatio is pure: it writes no global, so the self-test can call it without a chart
+PASS  C SCALP_SpreadVeto is defined at L5894
+PASS  C SCALP_SpreadVeto is defined exactly once
+PASS  C SCALP_SpreadVeto is pure: it writes no global, so the self-test can call it without a chart
+PASS  C SCALP_RR is defined at L5902
+PASS  C SCALP_RR is defined exactly once
+PASS  C SCALP_RR is pure: it writes no global, so the self-test can call it without a chart
+PASS  C SCALP_WeightsSum is defined at L5909
+PASS  C SCALP_WeightsSum is defined exactly once
+PASS  C SCALP_WeightsSum is pure: it writes no global, so the self-test can call it without a chart
+PASS  C SCALP_ScoreSide is defined at L5916
+PASS  C SCALP_ScoreSide is defined exactly once
+PASS  C SCALP_ScoreSide is pure: it writes no global, so the self-test can call it without a chart
+PASS  C SCALP_Decide is defined at L5936
+PASS  C SCALP_Decide is defined exactly once
+PASS  C SCALP_Decide is pure: it writes no global, so the self-test can call it without a chart
+PASS  C SCALP_Votes is defined at L5948
+PASS  C SCALP_Votes is defined exactly once
+PASS  C SCALP_Update is defined at L5981
+PASS  C SCALP_Update is defined exactly once
+PASS  C SCALP_SelfTest is defined at L6079
+PASS  C SCALP_SelfTest is defined exactly once
+PASS  C no ATR returns DBL_MAX, so missing data vetoes instead of dividing by zero
+PASS  C spread cost is spread in price over ATR - a ratio, not a points threshold
+PASS  C a non-positive cap vetoes everything rather than allowing everything
+PASS  C the veto is strictly greater, so the cap itself is allowed (documented boundary)
+PASS  C RR is target/stop, and 0 without a usable stop
+PASS  C the weight sum adds exactly the six weight inputs
+PASS  C a side counts only its own votes, and side 0 can never score
+PASS  C earned legs are named with a separator, so the why-text is readable
+PASS  C the decide rule is the resolver's rule: both sides = CONFLICT(2), silence = WAIT(0), a lone side below the minimum = WAIT(0)
+PASS  C the resolver it mirrors really does use the same three outcomes
+PASS  D leg 0 is named MOM
+PASS  D leg 0 writes its own vote
+PASS  D leg 1 is named EDGE
+PASS  D leg 1 writes its own vote
+PASS  D leg 2 is named SB
+PASS  D leg 2 writes its own vote
+PASS  D leg 3 is named P3
+PASS  D leg 3 writes its own vote
+PASS  D leg 4 is named WY
+PASS  D leg 4 writes its own vote
+PASS  D leg 5 is named CF
+PASS  D leg 5 writes its own vote
+PASS  D every vote starts as an abstain, so a missing leg invents nothing
+PASS  D MOM reads the closed bar's displacement from the mirrored buffer and compares it in ATR units
+PASS  D MOM bounds-checks before reading closed-1
+PASS  D EDGE fades a mean-reversion stretch only into a zone whose role opposes it - both facts come from MR and PA, not from a new rule
+PASS  D EDGE reuses PA_ZoneAt, the one zone scan, instead of building a second
+PASS  D SB reads the Silver Bullet module's own resolved window
+PASS  D P3 reads the Power-of-3 Judas verdict
+PASS  D WY reads the Wyckoff spring/upthrust verdict
+PASS  D CF uses the Confluence Engine's own scores at its OWN display threshold - no second confluence rule and no new number to drift
+PASS  D the overlay never calls SB_Update(: it reads published state, it does not re-run a module
+PASS  D the overlay never calls P3_Update(: it reads published state, it does not re-run a module
+PASS  D the overlay never calls WY_Update(: it reads published state, it does not re-run a module
+PASS  D the overlay never calls MR_Update(: it reads published state, it does not re-run a module
+PASS  D the overlay never calls CF_Update(: it reads published state, it does not re-run a module
+PASS  D the overlay never calls PA_Update(: it reads published state, it does not re-run a module
+PASS  D the overlay never calls RXN_Update(: it reads published state, it does not re-run a module
+PASS  D the overlay never calls ZRE_Update(: it reads published state, it does not re-run a module
+PASS  D no second scoring function was added beside the pure cores
+PASS  E veto 1 is missing ATR - no cost model, no scalp (L5990)
+PASS  E veto 2 is the spread-cost ratio (L5996)
+PASS  E veto 3 is the session window, behind its own input (L6005)
+PASS  E the session veto REUSES IsInSession on the CLOSED bar's time - one session rule, no wall clock
+PASS  E veto 4 REUSES MTF_SniperIsNewsBlackout - one news rule (L6013)
+PASS  E the no-data veto sets the veto flag and returns immediately
+PASS  E the no-data veto says HARD VETO in the why-text
+PASS  E the spread veto sets the veto flag and returns immediately
+PASS  E the spread veto says HARD VETO in the why-text
+PASS  E the session veto sets the veto flag and returns immediately
+PASS  E the session veto says HARD VETO in the why-text
+PASS  E the news veto sets the veto flag and returns immediately
+PASS  E the news veto says HARD VETO in the why-text
+PASS  E all four vetoes sit above the first verdict line (L5990 < L5996 < L6005 < L6013 < L6029), so no weight can outvote one
+PASS  E no evidence is scored anywhere above the news veto
+PASS  E the spread veto explains itself in trader terms, not just numbers
+PASS  E no wall-clock read: every veto is bound to the closed bar's own time
+PASS  F the verdict comes from the pure decide rule at L6029
+PASS  F a conflict zeroes the score and says stand aside
+PASS  F a WAIT names the legs that abstained - the observability Phase 1 asked for
+PASS  F total silence is reported differently from a weak side
+PASS  F a scalp whose advisory RR is below the floor is refused, not published with a bad shape
+PASS  F the published line starts at L6067
+PASS  F the why-text carries "/100 from "
+PASS  F the why-text carries " ATR @ "
+PASS  F the why-text carries " | RR "
+PASS  F the why-text carries " - a weighted confluence count, not a probability"
+PASS  F stop and target are mirrored by side, in ATR distances from the closed price
+PASS  F the verdict records the closed bar it belongs to, so it cannot be read as live on the next tick
+PASS  F the geometry is ATR-scaled at publish time, never a fixed price distance
+PASS  G the overlay refuses the forming bar and any index the mirror does not hold
+PASS  G no series re-read: it uses the mirrored arrays the pipeline already filled
+PASS  G no full-history loop: bounded work per closed bar
+PASS  G the overlay draws nothing, so it adds no chart clutter and no object churn
+PASS  G the overlay never writes g_final_signal= - it advises, another layer decides
+PASS  G the overlay never writes g_final_why= - it advises, another layer decides
+PASS  G the overlay never writes g_alert_primary= - it advises, another layer decides
+PASS  G the overlay never writes g_active_setup. - it advises, another layer decides
+PASS  G the overlay never writes g_trade_setup. - it advises, another layer decides
+PASS  G the overlay never writes g_res_score= - it advises, another layer decides
+PASS  G the overlay never writes g_wgate_score= - it advises, another layer decides
+PASS  G no order API in the overlay
+PASS  G every OrderSend mention in the file is still prose in a comment
+PASS  G the overlay writes its own state (49 g_sc_ references)
+PASS  H OnInit refuses a weight sum that is not 100 (L14537)
+PASS  H the refusal names the rule instead of renormalising
+PASS  H OnInit also refuses inconsistent geometry: a non-positive stop or spread cap, an out-of-range minimum, or a target that cannot clear the RR floor
+PASS  H the comment above says why it refuses rather than clamps
+PASS  H enabling the overlay announces itself as advisory and display only
+PASS  H the self-test is wired into the file's existing InpMTEERunSelfTest block and reports like the six modules before it
+PASS  H OnCalculate calls it at L15720, behind the flag and the closed-bar/detection gate - never per tick
+PASS  H the call sits AFTER the module updates, so it reads state published for this same closed bar
+PASS  H exactly one call site
+PASS  H the tooltip line is guarded by the flag, so off means an identical tooltip
+PASS  I the self-test has ten numbered checks SC-1..SC-10
+PASS  I each check can fail with its own reason, and success is explicit
+PASS  I every failure sets a `where` message, like MR_SelfTest before it
+PASS  I the self-test exercises the pure cores, not the chart state
+PASS  I its numbers are relative to _Point, so the same assertions hold on XAUUSD and on any FX pair
+PASS  I the self-test touches no mirrored series and no overlay state
+PASS  J 68 is unchanged
+PASS  J STRICT is unchanged
+PASS  J cooldown 5 is unchanged
+PASS  J CF 60 is unchanged
+PASS  J resolver 60 is unchanged
+PASS  J weighted gate 60 is unchanged
+PASS  J resolver off is unchanged
+PASS  J weighted gates off is unchanged
+PASS  J the overlay is NOT folded into InpEnableAllModules: that switch is pinned to the seven strategy modules, and an advisory overlay is not an eighth one
+PASS  J 583 input lines (574 + the 9 OBS1 lines)
+PASS  J braces balance at 3594
+FAIL  J the file is 43355 lines: insertions only, no scratch rewrite  [got 43359]
+PASS  J no bare LF: CRLF everywhere
+PASS  J no enum added or removed (still 44)
+FAIL  J exactly root + LiquidityValue + UnifiedDecision includes  []
+PASS  J no buffers added, so no plot index moved (the EA reads 7-12)
+PASS  J PA_ZoneAt still has 5 call sites (the overlay reuses it)
+PASS  K the doc states '## 11.5 AUDIT-SC1'
+PASS  K the doc states 'InpEnableScalping'
+PASS  K the doc states 'SCALP_'
+PASS  K the doc states 'MOM'
+PASS  K the doc states 'EDGE'
+PASS  K the doc states 'Silver Bullet'
+PASS  K the doc states 'Power of 3'
+PASS  K the doc states 'Wyckoff'
+PASS  K the doc states 'Confluence'
+PASS  K the doc states '20 / 20 / 15 / 15 / 15 / 15 = 100'
+PASS  K the doc states 'HARD VETO'
+PASS  K the doc states 'confluence count, not a probability'
+PASS  K the doc states 'tools/test_scalping.py'
+PASS  K the doc states 'CI step 34'
+PASS  K the doc states '583'
+PASS  K the doc states 'QSMC_PRESET_SCALPER'
+PASS  K the doc cites SCALP_Update's definition line (L5981)
+PASS  K the doc cites the overlay flag's line (L873)
+PASS  K CI runs tools/test_scalping.py
+PASS  K the workflow has 37 named steps
+PASS  K the CI step names the audit it enforces
+AUDIT-SC1 scalping checks: 207   failures: 2

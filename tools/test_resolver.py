@@ -365,14 +365,14 @@ check(TEXT.count("{") == 3594, "G brace count is the pinned 3594",
       "got %d" % TEXT.count("{"))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43355,
-      "G the file is 43355 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43359,
+      "G the file is 43359 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
-check(len(re.findall(r"(?m)^#include", TEXT)) == 3
+check(len(re.findall(r"(?m)^#include", TEXT)) == 6
       and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
       and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT
       and "#include <QSMC/QSMC_Root.mqh>" in line_at(639),
-      "G exactly root + LiquidityValue + UnifiedDecision includes, root remains L639; no "
+      "G exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes, root remains L639; no "
       "duplicated logic", str(re.findall(r"(?m)^#include.*", TEXT)))
 check(len(re.findall(r"(?m)^#property indicator_buffers", TEXT)) == 1,
       "G the resolver added no buffers, so no existing plot index moved "

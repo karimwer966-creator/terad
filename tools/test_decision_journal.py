@@ -526,10 +526,10 @@ check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
 check(TEXT.count("{") == TEXT.count("}") == 3594, "J braces balance at 3594",
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(TEXT.split("\n")) - 1 == 43355, "J the file is 43355 lines",
+check(len(TEXT.split("\n")) - 1 == 43359, "J the file is 43359 lines",
       "got %d" % (len(TEXT.split("\n")) - 1))
 check(RAW.replace("\r\n", "").count("\n") == 0, "J every line still ends CRLF: no bare LF was introduced")
-check(TEXT.count("#include") == 3 and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LiquidityValue + UnifiedDecision includes", "got %d" % TEXT.count("#include"))
+check(TEXT.count("#include") == 6 and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes", "got %d" % TEXT.count("#include"))
 check(TEXT.count("PA_ZoneAt(") == 11,
       "J the journal adds no zone scan: PA_ZoneAt( is still at its pre-OBS1 count of 11",
       "got %d" % TEXT.count("PA_ZoneAt("))

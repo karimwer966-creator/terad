@@ -1,0 +1,138 @@
+PASS  nadir2.mq5 is still a CRLF file (.gitattributes pins it as -text)
+PASS  nadir2.mq5 has no LF-only line (a mixed file turns every later diff into noise)
+PASS  the indicator carries a // DIAG_TABLE_BEGIN .. // DIAG_TABLE_END block
+PASS  the indicator table parses into a usable code map (29 codes)
+PASS  the companion carries a // DIAG_TABLE_BEGIN .. // DIAG_TABLE_END block
+PASS  the companion table parses into a usable code map (29 codes)
+PASS  the indicator and the companion decode the same codes to the same names (indicator-only [], companion-only [])
+PASS  the DIAG_TABLE block is byte-identical in both programs (one table, two copies)
+PASS  code 0 (NO_DATA) is documented identically on both sides
+PASS  code 1 (CORE_PUBLISHED) is documented identically on both sides
+PASS  code 2 (SETUP_ARMED) is documented identically on both sides
+PASS  code 3 (SETUP_PENDING) is documented identically on both sides
+PASS  code 10 (NO_STRUCTURE_ANCHOR) is documented identically on both sides
+PASS  code 11 (INCOMPLETE_CHAIN) is documented identically on both sides
+PASS  code 12 (NO_SWEEP) is documented identically on both sides
+PASS  code 13 (NO_DISPLACEMENT) is documented identically on both sides
+PASS  code 14 (NO_STRUCTURE_EVENT) is documented identically on both sides
+PASS  code 15 (NO_CAUSAL_ZONE) is documented identically on both sides
+PASS  code 16 (SWEEP_NO_POOL) is documented identically on both sides
+PASS  code 17 (LOCATION) is documented identically on both sides
+PASS  code 18 (ANCHOR_RECHECK) is documented identically on both sides
+PASS  code 19 (LEG_GEOMETRY) is documented identically on both sides
+PASS  code 20 (RR_TOO_LOW) is documented identically on both sides
+PASS  code 21 (STOP_TOO_WIDE) is documented identically on both sides
+PASS  code 22 (TARGET_ORDER) is documented identically on both sides
+PASS  code 23 (CONFIDENCE) is documented identically on both sides
+PASS  code 24 (RELIABILITY) is documented identically on both sides
+PASS  code 25 (GRADE) is documented identically on both sides
+PASS  code 26 (EMA_VWAP_OPPOSE) is documented identically on both sides
+PASS  code 27 (SPREAD) is documented identically on both sides
+PASS  code 28 (TOPDOWN) is documented identically on both sides
+PASS  code 29 (OWNERSHIP) is documented identically on both sides
+PASS  code 30 (DIRECTION_VETO) is documented identically on both sides
+PASS  code 31 (BLACKLIST) is documented identically on both sides
+PASS  code 32 (LIFECYCLE) is documented identically on both sides
+PASS  code 33 (BRANCH_ROLLBACK) is documented identically on both sides
+PASS  code 34 (OTHER) is documented identically on both sides
+PASS  the companion has a DiagCodeText() decoder
+PASS  DiagCodeText() decodes every published code (missing: [])
+PASS  an unmapped code is reported as UNKNOWN with the number, never as a silent success
+PASS  the indicator has DiagPublishCoreState()
+PASS  the verdict and its bar time are published (CORE + TIME)
+PASS  the funnel counter BARS is published too (so 'never armed' and 'always rejected' cannot look the same)
+PASS  the funnel counter ARMED is published too (so 'never armed' and 'always rejected' cannot look the same)
+PASS  the funnel counter CONF is published too (so 'never armed' and 'always rejected' cannot look the same)
+PASS  indicator diagnostic ABI v2 uses actual input identity
+PASS  private default-iCustom reader uses only default configuration identity
+PASS  publisher and default reader share the same v2 diagnostic namespace
+PASS  missing identity yields no record, never cross-instance legacy fallback
+PASS  the indicator has DiagBlockerCode()
+PASS  every code DiagBlockerCode() can return is in the table (unknown: [])
+PASS  an unmapped gate-audit key falls back to OTHER instead of reading as 'no blocker'
+PASS  the indicator publishes once per pass from inside OnCalculate()
+PASS  the verdict is computed after SigLog_Update(), i.e. from a finished decision pass
+PASS  it refuses an out-of-range closed-bar index instead of publishing a guess
+PASS  it publishes once per closed bar, not once per tick (no per-tick global churn)
+PASS  the bridge does not reach the trade API (OrderSend absent)
+PASS  the bridge does not reach the trade API (CTrade absent)
+PASS  the bridge does not reach the trade API (OrderCalcMargin absent)
+PASS  the bridge does not reach the trade API (PositionOpen absent)
+PASS  the companion never writes the indicator's diagnostic variables
+PASS  the companion reads them defensively (missing variable -> 'no record')
+PASS  the decoder returns text for the journal only
+--------------------------------------------------------------------------
+Diagnostic-bridge contract checks passed. This is a source contract, not an
+MT5 run: the line only becomes evidence after F7 and one closed bar.
+PASS  the indicator carries a // GP_TABLE_BEGIN .. // GP_TABLE_END block
+PASS  the indicator GP table parses into a usable slot map (20 slots)
+PASS  the companion carries a // GP_TABLE_BEGIN .. // GP_TABLE_END block
+PASS  the companion GP table parses into a usable slot map (20 slots)
+PASS  the GP_TABLE block is byte-identical in both programs (one map, two copies)
+PASS  both sides describe the same slots (indicator-only [], companion-only [])
+PASS  the indicator measures `confidence` at the gate that uses it
+PASS  the indicator measures `reliability` at the gate that uses it
+PASS  the indicator measures `rr1` at the gate that uses it
+PASS  the indicator measures `stopatr` at the gate that uses it
+PASS  the indicator measures `spread` at the gate that uses it
+PASS  the indicator measures `location` at the gate that uses it
+PASS  the indicator measures `anchorage` at the gate that uses it
+PASS  the indicator measures `path` at the gate that uses it
+PASS  the indicator measures `sweepdisp` at the gate that uses it
+PASS  the indicator measures `dispbreak` at the gate that uses it
+PASS  a shortfall is recorded ONLY for threshold gates, never for the causal chain (found ['confneed', 'relneed', 'rrneed', 'stopneed']): 'you are 3 points short' must not be said about a pattern the market never produced
+PASS  the `confneed` shortfall is computed
+PASS  the `confneed` shortfall is measured against EffMinConfidenceScore(), the value the gate compares
+PASS  the `relneed` shortfall is computed
+PASS  the `relneed` shortfall is measured against EffMinReliability(), the value the gate compares
+PASS  the `rrneed` shortfall is computed
+PASS  the `rrneed` shortfall is measured against EffMinRR1(), the value the gate compares
+PASS  the `stopneed` shortfall is computed
+PASS  the `stopneed` shortfall is measured against EffMaxStopATR(), the value the gate compares
+PASS  the indicator has a GateProfileSlot() router
+PASS  every measured name has a slot (unrouted: [])
+PASS  the companion names every slot the indicator can publish (missing: [])
+PASS  an unmapped slot is reported as UNKNOWN, never silently as a gate
+PASS  the profiler window is reset at init (since this attach)
+PASS  the reset happens during OnInit, before the first calculation
+PASS  the profile is published once per closed bar
+PASS  the profile is published next to the verdict, from the same finished pass
+PASS  it refuses an out-of-range bar instead of publishing a guess
+PASS  the sample size travels with the peak (a peak without a window is not evidence)
+PASS  the companion never writes a profile value back
+PASS  the profile rides on every heartbeat exit, not only the complete one
+PASS  the companion has a GateProfileSuffix()
+PASS  the profile is text only, it cannot reach the trade API (OrderSend absent)
+PASS  the profile is text only, it cannot reach the trade API (CTrade absent)
+PASS  the profile is text only, it cannot reach the trade API (OrderCalcMargin absent)
+PASS  the profile is text only, it cannot reach the trade API (PositionOpen absent)
+PASS  when no candidate reached a scoring gate, the line says so instead of inventing a threshold to blame
+PASS  AUDIT-E the dispatcher consumes SendNotification's answer instead of discarding it
+PASS  AUDIT-E the dispatcher consumes PlaySound's answer instead of discarding it
+PASS  AUDIT-E the quant alert path consumes SendNotification's answer too
+PASS  AUDIT-E and PlaySound's answer on that path as well
+PASS  AUDIT-E no path discards the channel result any more (if(push) SendNotification(message);)
+PASS  AUDIT-E no path discards the channel result any more (if(sound) PlaySound("alert.wav");)
+PASS  AUDIT-E no path discards the channel result any more (SendNotification(pm);)
+PASS  AUDIT-E both paths still call Alert() as a plain popup (it returns void)
+PASS  AUDIT-E and nothing pretends Alert() has a return value
+PASS  AUDIT-E the quant-path diagnostic uses the existing InpDebugLog switch
+PASS  AUDIT-E the dispatcher diagnostic uses the existing InpAlertDispatcherLog switch
+PASS  AUDIT-E and the file still declares 583 inputs (no new one was added)
+PASS  AUDIT-E located string RXN_ExecReason(
+PASS  AUDIT-E string RXN_ExecReason( closes
+PASS  AUDIT-E every reason string RXN_ExecReason(... can emit stays <= 40 chars (longest 37)
+PASS  AUDIT-E located string RXN_NeedsText(
+PASS  AUDIT-E string RXN_NeedsText( closes
+PASS  AUDIT-E every reason string RXN_NeedsText(... can emit stays <= 40 chars (longest 20)
+PASS  AUDIT-E located string AlertInvalidationText(
+PASS  AUDIT-E string AlertInvalidationText( closes
+PASS  AUDIT-E every reason string AlertInvalidationTe... can emit stays <= 40 chars (longest 12)
+PASS  AUDIT-E located string AlertCompactLine(
+PASS  AUDIT-E string AlertCompactLine( closes
+PASS  AUDIT-E AlertCompactLine still composes one StringFormat
+PASS  AUDIT-E and its literal skeleton stays <= 60 chars (37)
+PASS  AUDIT-E the quant path still clamps its arbitrary caller string to 240
+--------------------------------------------------------------------------
+Gate-profiler checks passed. The distance is measured, not inferred;
+acting on it is a policy decision that still needs F7 and a demo run.

@@ -1,0 +1,111 @@
+PASS  A1 with InpOBUseAgeExpiry=false nothing ever expires (today's behaviour)
+PASS  A1 a 9 900-bar-old block is still live when the switch is off
+PASS  A1 age 200 == limit is still live (the bound is exclusive)
+PASS  A1 age 201 > limit expires
+PASS  A1 an ancient block expires once the switch is on
+PASS  A1 InpOBMaxAgeBars<=0 disables the rule even with the switch on
+PASS  A1 a negative limit disables rather than expiring everything
+PASS  A1 an unknown as-of bar is skipped, never guessed
+PASS  A1 expiry is monotonic in closed bars (it can never un-expire)
+PASS  A2 label(ACTIVE/ACTIVE) == FRESH
+PASS  A2 label(TOUCHED/TOUCHED) == MITIGATED
+PASS  A2 label(MITIGATED/MITIGATED) == BROKEN
+PASS  A2 label(EXPIRED/EXPIRED) == EXPIRED
+PASS  A2 label(ACTIVE/TOUCHED) == MITIGATED
+PASS  A2 label(TOUCHED/MITIGATED) == BROKEN
+PASS  A2 an empty state maps to UNKNOWN
+PASS  A2 an unrecognised state is passed through, never silently relabelled
+PASS  A2 the mapping is read-only: it does not rewrite the engine's own states
+PASS  A3 break and expiry on the same bar resolves to MITIGATED, not EXPIRED
+PASS  A3 the breaker block was still generated on that bar
+PASS  A3 a block that broke first never becomes EXPIRED
+PASS  A3 the earlier break still generated its breaker block
+PASS  A3 a block that expired first stays EXPIRED (sticky)
+PASS  A3 an expired block generates no breaker block afterwards
+PASS  A4 bullish mirror: a body close through the zone breaks it
+PASS  A4 bullish mirror: aging out is direction-symmetric
+PASS  A4 bearish mirror: a body close through the zone breaks it
+PASS  A4 bearish mirror: aging out is direction-symmetric
+PASS  A5 incremental and ReplayClosedBarStates agree on every scenario (63 combos)
+PASS  A5 with InpOBUseAgeExpiry=false neither path can produce EXPIRED
+PASS  A6 default bullish zone is max(o,c) -> candle-low (unchanged hybrid)
+PASS  A6 default bearish zone is candle-high -> min(o,c) (unchanged hybrid)
+PASS  A6 opt-in body-only zone is the pure body (4052 -> 4044)
+PASS  A6 body-only is direction-symmetric: the body is the same either way
+PASS  A6 a doji body is rejected in body-only mode, not published as zero height
+PASS  A6 a doji still yields a zone in the default hybrid (the wick gives it height)
+PASS  B0 the DetectOrderBlocks region is the body, not the forward declaration (5008 chars)
+PASS  B1 input InpOBUseAgeExpiry is declared
+PASS  B1 input InpOBUseAgeExpiry defaults to false (found false)
+PASS  B1 input InpOBMaxAgeBars is declared
+PASS  B1 input InpOBMaxAgeBars defaults to 200 (found 200)
+PASS  B1 input InpOBZoneBodyOnly is declared
+PASS  B1 input InpOBZoneBodyOnly defaults to false (found false)
+PASS  B1 input InpOBShowLifecycleLabel is declared
+PASS  B1 input InpOBShowLifecycleLabel defaults to false (found false)
+PASS  B1 pre-existing input InpMaxStrongOB still defaults to 3 (added, not substituted)
+PASS  B1 pre-existing input InpOBTransparency still defaults to 88 (added, not substituted)
+PASS  B1 pre-existing input InpOBMaxHeightATR still defaults to 3.0 (added, not substituted)
+PASS  B1 the four new inputs sit inside the existing Order Blocks input group
+PASS  B2 OBIsExpired has exactly one body
+PASS  B2 OBIsExpired is declared once and defined once (2 anchored lines)
+PASS  B2 the incremental path calls OBIsExpired with the newest CLOSED bar
+PASS  B2 the replay path calls OBIsExpired with the bar being replayed
+PASS  B2 both paths retire through the same OBMarkExpired helper
+PASS  B3 incremental: the age check sits AFTER the body-close-through break test
+PASS  B3 incremental: expiry is skipped when the bar already broke the block
+PASS  B3 replay: the age check sits AFTER the body-close-through break test
+PASS  B3 replay: expiry is skipped when the bar already broke the block
+PASS  B3 the incremental path treats EXPIRED as sticky
+PASS  B3 the replay path treats EXPIRED as sticky
+PASS  B4 EXPIRED is honoured at every eligibility site (16 comparisons; 5 loops + 2 scoring/draw pairs + the helpers)
+PASS  B4 PMI_BuildLocation skips EXPIRED
+PASS  B4 PMI_BuildLocation body was located and is substantial (2479 chars)
+PASS  B4 ScoreOrderBlock skips EXPIRED
+PASS  B4 ScoreOrderBlock body was located and is substantial (1100 chars)
+PASS  B4 DrawStructureAndOB skips EXPIRED
+PASS  B4 DrawStructureAndOB body was located and is substantial (1649 chars)
+PASS  B5 indicator_buffers is still 19
+PASS  B5 indicator_plots is still 7
+PASS  B5 SetIndexBuffer indices are exactly 0-18, unmoved (19 calls)
+PASS  B5 Phase 1 adds no buffer, so the EA's 7-12 contract is untouched
+PASS  B6 nadir2.mq5 still cannot reach OrderSend
+PASS  B6 nadir2.mq5 still cannot reach OrderSendAsync
+PASS  B6 nadir2.mq5 still cannot reach CTrade
+PASS  B6 nadir2.mq5 still cannot reach PositionOpen
+PASS  B6 nadir2.mq5 still cannot reach PositionClose
+PASS  B6 nadir2.mq5 still cannot reach OrderCheck
+PASS  B6 still a chart-window indicator
+PASS  B7 OBStateLabel is declared and defined
+PASS  B7 the only consumer of OBStateLabel is DrawStructureAndOB
+PASS  B7 no decision helper above OBStateLabel reads it
+PASS  B7 neither state machine reads the display vocabulary
+PASS  B8 the body-only branch is opt-in
+PASS  B8 the default hybrid geometry survives as the else branch, unchanged
+PASS  B8 the bearish default is unchanged
+PASS  B8 a zero-height body is rejected rather than published
+PASS  B8 the existing height trim was left in place
+PASS  B9 the expiry log line was located
+PASS  B9 StringFormat has 5 specifiers and 5 arguments (MQL5 D7)
+PASS  B9 the format uses %s/%d only (no %f mismatch)
+PASS  B9 expiry logs through the existing lifecycle channel, under its existing switch
+PASS  B10 the internal state ACTIVE is still used unchanged
+PASS  B10 the internal state TOUCHED is still used unchanged
+PASS  B10 the internal state MITIGATED is still used unchanged
+PASS  B10 all four MITIGATED assignments survive (2 incremental + 2 replay)
+PASS  B10 breaker-block generation is intact in both paths
+PASS  B11 the age rule reads no terminal price function - bars only
+PASS  B11 DetectOrderBlocks still refuses a not-yet-closed origin
+PASS  B11 no wall-clock and no forming-bar time in the age rule
+PASS  B11 the previously dead SOrderBlock.age field is now maintained
+PASS  B12 no hard-coded symbol or price in the new CODE (comments stripped: the prose that asserts symbol-agnosticism must not be what trips this)
+PASS  B12 no literal price level anywhere in the new code
+PASS  B12 the age bound is measured in bars, so it is symbol- and TF-agnostic
+------------------------------------------------------------------------
+order-block lifecycle contracts: 103 checked, 0 failed
+------------------------------------------------------------------------
+RESULT: all order-block lifecycle contracts hold
+InpOBUseAgeExpiry defaults to false: with it off, no order block is
+created, sized, scored, drawn or retired any differently than before.
+This is a transcription contract, not a backtest and not a win rate.
+It does NOT prove MetaEditor compilation. Press F7.

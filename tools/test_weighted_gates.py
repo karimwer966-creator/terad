@@ -354,16 +354,16 @@ check(inputs == 583, "G nadir2.mq5 has 583 input lines (548 + 10 GS1 + 16 SC1 + 
 check(TEXT.count("{") == TEXT.count("}") == 3594,
       "G braces balance at the pinned 3594",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43355,
-      "G the file is 43355 lines: insertions only, no scratch rewrite",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43359,
+      "G the file is 43359 lines: insertions only, no scratch rewrite",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
-check(len(re.findall(r"(?m)^#include", TEXT)) == 3
+check(len(re.findall(r"(?m)^#include", TEXT)) == 6
       and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
       and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT
       and "#include <QSMC/QSMC_Root.mqh>" in line_at(639),
-      "G exactly root + LiquidityValue + UnifiedDecision includes, root remains L639")
+      "G exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes, root remains L639")
 check(len(re.findall(r"(?m)^#property indicator_buffers", TEXT)) == 1,
       "G no buffers added, so no existing plot index moved (the EA reads 7-12)")
 check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,

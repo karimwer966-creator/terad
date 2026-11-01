@@ -1,0 +1,302 @@
+PASS  A OnCalculate starts at L14396
+PASS  A #property indicator_buffers 19 at L627
+PASS  A #property indicator_plots 7 at L628
+PASS  A enum ENUM_P3_PHASE at L747
+PASS  A enum ENUM_WYCKOFF_EVENT at L757
+PASS  A struct STopDownState at L1904
+PASS  A SNIPER_SL_BUFFER_ATR 0.30 at L1870
+PASS  A SNIPER_SL_HARD_MAX_H1_ATR 2.00 at L1871
+PASS  A SNIPER_BE_DISP_ATR 2.00 at L1872
+PASS  A SNIPER_TRAIL_M15_ATR 0.50 at L1873
+PASS  A InpUseHTFBias declared at L1162
+PASS  A InpTopDownMinRR = 2.0 declared at L1177
+PASS  A InpMTEERunSelfTest declared at L1816
+PASS  A InpSniperMaxRiskPct = 1.50 declared at L1851
+PASS  A InpLogLifecycleTransitions declared at L1273
+PASS  A InpCFWeightStructure declared at L972
+PASS  A InpCFMinDisplayScore = 60 declared at L978
+PASS  A SB1 input group at L881
+PASS  A WY1 input group at L903
+PASS  A PA1 input group at L924
+PASS  A MR1 input group at L944
+PASS  A CF1 input group at L969
+PASS  A RM1 input group at L981
+PASS  A OB1 opt-in inputs at L808
+PASS  A OB1 age-bound banner at L16771
+PASS  A SB1 section at L23176
+PASS  A WY1 section at L23755
+PASS  A PA1 section at L24194
+PASS  A MR1 section at L24617
+PASS  A CF1 section at L25218
+PASS  A RM1 section at L25714
+PASS  A P3_Update defined at L23304
+PASS  A SB_Update defined at L23480
+PASS  A WY_Update defined at L23944
+PASS  A PA_Update defined at L24420
+PASS  A MR_Update defined at L24875
+PASS  A CF_Update defined at L25383
+PASS  A RM_Update defined at L25940
+PASS  A RM self-test at L26137
+PASS  A AnalyzeClosedCandle defined at L5269
+PASS  A AnalyzeCandleIntelligence defined at L18508
+PASS  A MTF_SniperEvaluateEntryTriggers defined at L41894
+PASS  A MTF_SniperComputeTradeManagement defined at L42047
+PASS  A IsFractalHigh defined at L32632
+PASS  A IsFractalLow defined at L32643
+PASS  A FractalRightBars defined at L22163
+PASS  A ScoreStructure defined at L16730
+PASS  A ScoreLiquidity defined at L16751
+PASS  A ScoreSession defined at L16882
+PASS  A ScoreHTF defined at L16891
+PASS  A PA_ZoneAt defined at L24350
+PASS  A SigLog_BufWrite defined at L13240
+PASS  A CalculateAITradeSetup defined at L19510
+PASS  A TheoreticalRiskMoney defined at L21434
+PASS  A TopDown_Evaluate defined at L32003
+PASS  A TopDown_Update defined at L32234
+PASS  A existing R:R gate at L32195
+PASS  A existing R:R failure message at L32197
+PASS  A final_score assignments begin at L19690
+PASS  A OBIsExpired called at L14645
+PASS  A OB1 age-bound comment at L14640
+PASS  A RM_Clear() in OnInit at L14191
+PASS  A SB self-test PASS (9/9) at L14204
+PASS  A WY self-test PASS (9/9) at L14208
+PASS  A PA self-test PASS (9/9) at L14212
+PASS  A MR self-test PASS (9/9) at L14216
+PASS  A CF self-test PASS (10/10) at L14220
+PASS  A RM self-test PASS (10/10) at L14224
+PASS  A2 P3_Update definition really is at L24052 (not a declaration)
+PASS  A2 SB_Update definition really is at L24228 (not a declaration)
+PASS  A2 WY_Update definition really is at L24692 (not a declaration)
+PASS  A2 PA_Update definition really is at L25168 (not a declaration)
+PASS  A2 MR_Update definition really is at L25623 (not a declaration)
+PASS  A2 CF_Update definition really is at L26131 (not a declaration)
+PASS  A2 RM_Update definition really is at L26688 (not a declaration)
+PASS  A2 AnalyzeClosedCandle definition really is at L5321 (not a declaration)
+PASS  A2 AnalyzeCandleIntelligence definition really is at L19239 (not a declaration)
+PASS  A2 MTF_SniperEvaluateEntryTriggers definition really is at L42644 (not a declaration)
+PASS  A2 MTF_SniperComputeTradeManagement definition really is at L42797 (not a declaration)
+PASS  A2 IsFractalHigh definition really is at L33021 (not a declaration)
+PASS  A2 IsFractalLow definition really is at L33032 (not a declaration)
+PASS  A2 FractalRightBars definition really is at L22911 (not a declaration)
+PASS  A2 ScoreStructure definition really is at L17478 (not a declaration)
+PASS  A2 ScoreLiquidity definition really is at L17499 (not a declaration)
+PASS  A2 ScoreSession definition really is at L17630 (not a declaration)
+PASS  A2 ScoreHTF definition really is at L17639 (not a declaration)
+PASS  A2 PA_ZoneAt definition really is at L25098 (not a declaration)
+PASS  A2 SigLog_BufWrite definition really is at L13934 (not a declaration)
+PASS  A2 CalculateAITradeSetup definition really is at L19939 (not a declaration)
+PASS  A2 TheoreticalRiskMoney definition really is at L22172 (not a declaration)
+PASS  A2 TopDown_Evaluate definition really is at L32661 (not a declaration)
+PASS  A2 TopDown_Update definition really is at L32892 (not a declaration)
+PASS  B OB age bound     called at L15341
+PASS  B P3_Update        called at L15455
+PASS  B SB_Update        called at L15456
+PASS  B WY_Update        called at L15460
+PASS  B TopDown_Update   called at L15516
+PASS  B PMI_Update       called at L15538
+PASS  B MVP_Update       called at L15688
+PASS  B PA_Update        called at L15697
+PASS  B MR_Update        called at L15705
+PASS  B CF_Update        called at L15711
+PASS  B RM_Update        called at L15716
+PASS  B ZRE_Update       called at L15723
+PASS  B the documented call order is strictly ascending
+PASS  B every module call sits inside OnCalculate (which starts at L15097)
+PASS  B RM_Update runs after CF_Update (it attaches to CF's verdict)
+PASS  B RM_Update runs after TopDown_Update (it may adopt TopDown's plan)
+PASS  B PA/MR/CF/RM are all gated by `is_new_bar || detection_updated` - no per-tick recompute
+PASS  B RM_Update refuses the forming bar (L25945) before reading any series
+PASS  B that guard sits inside RM_Update (defined at L25940), i.e. before its work
+PASS  C CF  tooltip guard at L32050 is `InpEnable... && Inp...ShowOnDashboard`
+PASS  C RM  tooltip guard at L32081 is `InpEnable... && Inp...ShowOnDashboard`
+PASS  C P3  tooltip guard at L32109 is `InpEnable... && Inp...ShowOnDashboard`
+PASS  C SB  tooltip guard at L32121 is `InpEnable... && Inp...ShowOnDashboard`
+PASS  C WY  tooltip guard at L32138 is `InpEnable... && Inp...ShowOnDashboard`
+PASS  C PA  tooltip guard at L32158 is `InpEnable... && Inp...ShowOnDashboard`
+PASS  C MR  tooltip guard at L32176 is `InpEnable... && Inp...ShowOnDashboard`
+PASS  C the tooltip blocks appear in the documented order (CF summary first)
+PASS  C all seven guards live in one contiguous tooltip region, so none can be reordered without this test noticing
+PASS  D Silver Bullet / Power of 3 group declares 14 inputs
+PASS  D Wyckoff                    group declares 10 inputs
+PASS  D Pure Price Action          group declares  7 inputs
+PASS  D Mean Reversion             group declares 13 inputs
+PASS  D Confluence Engine          group declares 11 inputs
+PASS  D Risk Model                 group declares  8 inputs
+PASS  D Phase 1 declares its 4 opt-ins inside the existing OB group
+PASS  D the seven phases add 67 new inputs in total
+PASS  D the doc states 67 new inputs
+PASS  D nadir2.mq5 declares 583 `input` lines in total
+PASS  D the doc states 583 total `input` lines
+PASS  D the file has 44 top-level enums (all new ones appended)
+PASS  D the doc states 43 enums
+PASS  D indicator_buffers is still 19 and indicator_plots still 7 - zero new buffers
+PASS  D the doc states buffers 19 / plots 7
+PASS  D AUDIT-G1 moved QSMC_VERSION_TEXT to v6.6.13 and no later pass silently changed it
+PASS  D #property version is "6.613" - the X.(Y+Z) form G1 requires
+PASS  D the doc reports the moved triple v6.6.13 / "6.613"
+PASS  D exactly six module self-tests exist
+PASS  D their counts are 9/9, 9/9, 9/9, 9/9, 10/10, 10/10
+PASS  D the six self-tests total 56 in-file checks
+PASS  D the doc states 56 in-file checks
+PASS  D zero `OrderSend` in the indicator's code (comments/strings stripped)
+PASS  D zero `OrderSendAsync` in the indicator's code (comments/strings stripped)
+PASS  D zero `PositionOpen` in the indicator's code (comments/strings stripped)
+PASS  D zero `CTrade` in the indicator's code (comments/strings stripped)
+PASS  D the doc states the indicator contains no trade API
+PASS  D braces balance (3594/3594)
+PASS  D the doc reports the real brace count 3594/3594
+PASS  D nadir2.mq5 is pure CRLF with zero bare LF
+PASS  E every `L####` citation in the doc is inside the file (210 citations, file has 43360 lines)
+PASS  E the doc still carries its full citation set (210 found)
+PASS  E none of the nine known-stale citations remain in the doc
+PASS  E no hedged `L#### region` citation survives - every citation is exact
+PASS  E the doc still disclaims compilation: 'F7 has now been run'
+PASS  E the doc still disclaims compilation: 'never a claim of my own'
+PASS  E the doc still disclaims compilation: 'A second F7 is still required to confirm the build is clean'
+PASS  E the doc still disclaims compilation: 'do not** prove the code compiles'
+PASS  E the doc still disclaims compilation: 'remain invisible here'
+PASS  E the doc never claims a clean build: 'compiles cleanly'
+PASS  E the doc never claims a clean build: 'compilation succeeded'
+PASS  E the doc never claims a clean build: '0 errors, 0 warnings after the fix'
+PASS  E the doc never claims a clean build: 'build is verified'
+PASS  E section 11.1 exists and carries the F7 report
+PASS  E section 11.1 itself reports the real F7 result (42 errors, 0 warnings)
+PASS  E section 11.1 names the exact line that broke (24912)
+PASS  E section 11.1 quotes the exact prose the compiler was fed
+PASS  E section 11.1 cites line 24912 in the code block, the error list and the cascade description (4 times)
+PASS  E section 11.1 names the function whose body mis-parsed
+PASS  E section 11.2 exists and documents the new guard
+PASS  E section 11.2 names tools/test_comment_integrity.py
+PASS  E section 11.2 states the guard's mutation result (8/8) - an unstated mutation count is an unverified claim (mutation N12)
+PASS  E section 11.2 states the guard's check count (19)
+PASS  E the doc records that a single missing comment marker caused all 42
+PASS  E the doc still disclaims any backtest result
+PASS  E the doc names its branch and pull request
+PASS  E source still declares InpSniperMaxRiskPct = 1.50 at L1851
+PASS  E the doc states the risk % the module REPORTS defaults to 1.50, not 1.0
+PASS  E the conflict section repeats that deviation (1.50, not 1.0)
+PASS  E the reuse table cites InpSniperMaxRiskPct at L1851 with default 1.50
+PASS  E the doc still records that the brief's named inputs do not exist
+PASS  E the doc reports the verified PR figure +3983/-1 for nadir2.mq5
+PASS  E the doc explains the misleading cumulative diffstat rather than quoting it
+PASS  E the doc states the PR-wide multiset result
+PASS  E the doc still has section '## 1. What was added'
+PASS  E the doc still has section '## 2. Activation guide'
+PASS  E the doc still has section '## 3. Complete input reference'
+PASS  E the doc still has section '## 4. Where each module lives'
+PASS  E the doc still has section '## 5. The causal order inside `OnCalculate`'
+PASS  E the doc still has section '## 6. What you see on the dashboard'
+PASS  E the doc still has section "## 7. The Risk Model's output"
+PASS  E the doc still has section '## 8. The nine conflicts'
+PASS  E the doc still has section '## 9. Invariants guaranteed'
+PASS  E the doc still has section '## 10. Verification evidence'
+PASS  E the doc still has section '## 11. F7 checklist'
+PASS  E the doc still has section '## 12. Known risks'
+PASS  E the doc still has section '## 13. Open decisions'
+PASS  D2 all six confluence weights are declared in source
+PASS  D2 the six weights sum to exactly 100 (the doc's claim)
+PASS  D2 without the candle leg the reachable maximum is 85
+PASS  D2 the candle leg weighs 15, and is the leg guarded by InpEnablePriceAction
+PASS  D2 the doc states the reachable maximum is 85, not 100
+PASS  D2 CF's candle leg is guarded by `InpEnablePriceAction &&` in source - the dependency the guide describes is real, not asserted
+PASS  D2 InpCFMinDisplayScore (60) is still reachable without the candle leg, so the engine can name a side
+PASS  D2 InpCFMinDisplayScore is 60 as the doc states
+PASS  F the doc also cites L15097 (L14396)
+PASS  F the doc also cites L627 (L627)
+PASS  F the doc also cites L628 (L628)
+PASS  F the doc also cites L747 (L747)
+PASS  F the doc also cites L757 (L757)
+PASS  F the doc also cites L1929 (L1904)
+PASS  F the doc also cites L1895 (L1870)
+PASS  F the doc also cites L1896 (L1871)
+PASS  F the doc also cites L1897 (L1872)
+PASS  F the doc also cites L1898 (L1873)
+PASS  F the doc also cites L1187 (L1162)
+PASS  F the doc also cites L1202 (L1177)
+PASS  F the doc also cites L1841 (L1816)
+PASS  F the doc also cites L1851 (L1851)
+PASS  F the doc also cites L1298 (L1273)
+PASS  F the doc also cites L997 (L972)
+PASS  F the doc also cites L1003 (L978)
+PASS  F the doc also cites L906 (L881)
+PASS  F the doc also cites L928 (L903)
+PASS  F the doc also cites L949 (L924)
+PASS  F the doc also cites L969 (L944)
+PASS  F the doc also cites L994 (L969)
+PASS  F the doc also cites L1006 (L981)
+PASS  F the doc also cites L808 (L808)
+PASS  F the doc also cites L17519 (L16771)
+PASS  F the doc also cites L23924 (L23176)
+PASS  F the doc also cites L24503 (L23755)
+PASS  F the doc also cites L24942 (L24194)
+PASS  F the doc also cites L25365 (L24617)
+PASS  F the doc also cites L25966 (L25218)
+PASS  F the doc also cites L26462 (L25714)
+PASS  F the doc also cites L24052 (L23304)
+PASS  F the doc also cites L24228 (L23480)
+PASS  F the doc also cites L24692 (L23944)
+PASS  F the doc also cites L25168 (L24420)
+PASS  F the doc also cites L25623 (L24875)
+PASS  F the doc also cites L26131 (L25383)
+PASS  F the doc also cites L26688 (L25940)
+PASS  F the doc also cites L26885 (L26137)
+PASS  F the doc also cites L5321 (L5269)
+PASS  F the doc also cites L19239 (L18508)
+PASS  F the doc also cites L42644 (L41894)
+PASS  F the doc also cites L42797 (L42047)
+PASS  F the doc also cites L33021 (L32632)
+PASS  F the doc also cites L33032 (L32643)
+PASS  F the doc also cites L22911 (L22163)
+PASS  F the doc also cites L17478 (L16730)
+PASS  F the doc also cites L17499 (L16751)
+PASS  F the doc also cites L17630 (L16882)
+PASS  F the doc also cites L17639 (L16891)
+PASS  F the doc also cites L25098 (L24350)
+PASS  F the doc also cites L13934 (L13240)
+PASS  F the doc also cites L19939 (L19510)
+PASS  F the doc also cites L22172 (L21434)
+PASS  F the doc also cites L32661 (L32003)
+PASS  F the doc also cites L32892 (L32234)
+PASS  F the doc also cites L32853 (L32195)
+PASS  F the doc also cites L32855 (L32197)
+PASS  F the doc also cites L20403 (L19690)
+PASS  F the doc also cites L15346 (L14645)
+PASS  F the doc also cites L15341 (L14640)
+PASS  F the doc also cites L14918 (L14191)
+PASS  F the doc also cites L14931 (L14204)
+PASS  F the doc also cites L14935 (L14208)
+PASS  F the doc also cites L14939 (L14212)
+PASS  F the doc also cites L14943 (L14216)
+PASS  F the doc also cites L14947 (L14220)
+PASS  F the doc also cites L14951 (L14224)
+PASS  F the doc also cites the CF tooltip guard L32050
+PASS  F the doc also cites the RM tooltip guard L32081
+PASS  F the doc also cites the P3 tooltip guard L32109
+PASS  F the doc also cites the SB tooltip guard L32121
+PASS  F the doc also cites the WY tooltip guard L32138
+PASS  F the doc also cites the PA tooltip guard L32158
+PASS  F the doc also cites the MR tooltip guard L32176
+PASS  F the doc also cites the OB age bound call site L15341
+PASS  F the doc also cites the P3_Update call site L15455
+PASS  F the doc also cites the SB_Update call site L15456
+PASS  F the doc also cites the WY_Update call site L15460
+PASS  F the doc also cites the TopDown_Update call site L15516
+PASS  F the doc also cites the PMI_Update call site L15538
+PASS  F the doc also cites the MVP_Update call site L15688
+PASS  F the doc also cites the PA_Update call site L15697
+PASS  F the doc also cites the MR_Update call site L15705
+PASS  F the doc also cites the CF_Update call site L15711
+PASS  F the doc also cites the RM_Update call site L15716
+PASS  F the doc also cites the ZRE_Update call site L15723
+PASS  F every one of the 87 pinned citations was cross-checked against the doc
+PASS  F at most 2 pins are allowed to be test-only (holes in the binding)
+
+==========================================================================
+DOC-FRESHNESS checks: 294   failures: 0
+Binding is two-way: source lines are checked against this test's pins (A-C),
+and every pin is checked against what the doc actually cites (F).
+This is a citation + countable-fact contract. It is not a compiler, not a
+backtest, and it does not judge whether a claim is true in a trading sense.
+==========================================================================

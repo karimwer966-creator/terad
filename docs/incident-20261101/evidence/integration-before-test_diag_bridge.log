@@ -1,0 +1,51 @@
+PASS  nadir2.mq5 is still a CRLF file (.gitattributes pins it as -text)
+PASS  nadir2.mq5 has no LF-only line (a mixed file turns every later diff into noise)
+PASS  the indicator carries a // DIAG_TABLE_BEGIN .. // DIAG_TABLE_END block
+PASS  the indicator table parses into a usable code map (29 codes)
+PASS  the companion carries a // DIAG_TABLE_BEGIN .. // DIAG_TABLE_END block
+PASS  the companion table parses into a usable code map (29 codes)
+PASS  the indicator and the companion decode the same codes to the same names (indicator-only [], companion-only [])
+PASS  the DIAG_TABLE block is byte-identical in both programs (one table, two copies)
+PASS  code 0 (NO_DATA) is documented identically on both sides
+PASS  code 1 (CORE_PUBLISHED) is documented identically on both sides
+PASS  code 2 (SETUP_ARMED) is documented identically on both sides
+PASS  code 3 (SETUP_PENDING) is documented identically on both sides
+PASS  code 10 (NO_STRUCTURE_ANCHOR) is documented identically on both sides
+PASS  code 11 (INCOMPLETE_CHAIN) is documented identically on both sides
+PASS  code 12 (NO_SWEEP) is documented identically on both sides
+PASS  code 13 (NO_DISPLACEMENT) is documented identically on both sides
+PASS  code 14 (NO_STRUCTURE_EVENT) is documented identically on both sides
+PASS  code 15 (NO_CAUSAL_ZONE) is documented identically on both sides
+PASS  code 16 (SWEEP_NO_POOL) is documented identically on both sides
+PASS  code 17 (LOCATION) is documented identically on both sides
+PASS  code 18 (ANCHOR_RECHECK) is documented identically on both sides
+PASS  code 19 (LEG_GEOMETRY) is documented identically on both sides
+PASS  code 20 (RR_TOO_LOW) is documented identically on both sides
+PASS  code 21 (STOP_TOO_WIDE) is documented identically on both sides
+PASS  code 22 (TARGET_ORDER) is documented identically on both sides
+PASS  code 23 (CONFIDENCE) is documented identically on both sides
+PASS  code 24 (RELIABILITY) is documented identically on both sides
+PASS  code 25 (GRADE) is documented identically on both sides
+PASS  code 26 (EMA_VWAP_OPPOSE) is documented identically on both sides
+PASS  code 27 (SPREAD) is documented identically on both sides
+PASS  code 28 (TOPDOWN) is documented identically on both sides
+PASS  code 29 (OWNERSHIP) is documented identically on both sides
+PASS  code 30 (DIRECTION_VETO) is documented identically on both sides
+PASS  code 31 (BLACKLIST) is documented identically on both sides
+PASS  code 32 (LIFECYCLE) is documented identically on both sides
+PASS  code 33 (BRANCH_ROLLBACK) is documented identically on both sides
+PASS  code 34 (OTHER) is documented identically on both sides
+PASS  the companion has a DiagCodeText() decoder
+PASS  DiagCodeText() decodes every published code (missing: [])
+PASS  an unmapped code is reported as UNKNOWN with the number, never as a silent success
+PASS  the indicator has DiagPublishCoreState()
+PASS  the verdict and its bar time are published (CORE + TIME)
+PASS  the funnel counter BARS is published too (so 'never armed' and 'always rejected' cannot look the same)
+PASS  the funnel counter ARMED is published too (so 'never armed' and 'always rejected' cannot look the same)
+PASS  the funnel counter CONF is published too (so 'never armed' and 'always rejected' cannot look the same)
+Traceback (most recent call last):
+  File "/home/user/terad/tools/test_diag_bridge.py", line 95, in <module>
+    require('"QSMC_DIAG_"+_Symbol+"_"+IntegerToString((long)_Period)+"_"' in host,
+  File "/home/user/terad/tools/test_diag_bridge.py", line 34, in require
+    raise AssertionError(message)
+AssertionError: the indicator names the variables with the same prefix the companion reads

@@ -131,6 +131,7 @@ int OnInit()
      }
 
    g_setup.Init(&g_uni,g_cfg,g_tf,InpProbeBars,InpProbeAtr,InpProbeUseBias);
+   g_setup.ConfigureZoneGuard(InpProbeZoneMaxDistanceATR,InpProbeZoneLifetimeBars);
    g_setup.BeginPass();
    g_mom.SetLookback(InpProbeMomLB);
    g_mom.SetHistory(InpProbeMomHist);
@@ -185,6 +186,7 @@ void RenderSetupTable(string &txt)
       SSetupRow r;
       if(!g_setup.Row(i,r)) continue;
       if(r.status!=QSS_OK) continue;
+      txt+="      SOURCE: "+r.symbol+" "+EnumToString(g_tf)+" | raw quote prices (not chart-symbol levels)\n";
       txt+=StringFormat("  %2d. %-12s %s  score %3d  %s  RR %.2f  n=%s\n",
                          shown+1,r.symbol,QScanGroupName(r.group),r.score,
                          (r.dir>0?"BUY-side":"SELL-side"),r.rr,r.zone_id);
@@ -231,6 +233,7 @@ void RenderHeatmaps(string &txt)
    g_mom.BeginPass();
    g_mom.Evaluate(_Symbol,QGRP_OTHER,*ch);
    g_vol.BeginPass();
+   if(InpProbeDumpATR) { g_vol.DumpSample(*ch,100); g_vol.DumpSample(*ch,250); }
    g_vol.Evaluate(_Symbol,QGRP_OTHER,*ch);
 
    txt+="\nmomentum ("+IntegerToString(g_mom.Lookback())+"-bar ROC, z-scored vs its own "
@@ -297,7 +300,6 @@ void OnTimer()
    string txt="";
    RenderSetupTable(txt);
    RenderHeatmaps(txt);
-   g_setup.BeginPass();
 
    txt+="\nprobe "+IntegerToString(g_passes)+" pass(es) | universe "+
         IntegerToString(g_uni.Count())+" | rows "+IntegerToString(g_setup.Rows())+
@@ -306,5 +308,10 @@ void OnTimer()
         "\n"+(g_note!=""?("note: "+g_note+"\n"):"")+
         "OBSERVATIONAL ONLY: not a signal, not a probability, not an order.";
    Comment(txt);
+   g_setup.BeginPass(); // reset only after table and counters consumed the same snapshot
   }
 //+------------------------------------------------------------------+
+
+input bool InpProbeDumpATR = false; // dump full prior ATR windows once per closed bar
+input double InpProbeZoneMaxDistanceATR = 12.0; // expire only when also older than lifetime
+input int InpProbeZoneLifetimeBars = 120;

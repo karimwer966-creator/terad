@@ -1,0 +1,198 @@
+PASS  A the four new functions close where this suite says
+PASS  A the self-test, SmartObjectCleanup and the hook block close where expected
+PASS  A L1285 is unchanged: 'input int    InpMaxChartObjects         = 0;      // hard cap on Q'
+PASS  A L1287 is unchanged: 'input bool   InpDeclutterMode           = true;   // Clean preset:'
+PASS  A L1297 is unchanged: 'input bool   InpSmartObjectManagement  = true;'
+PASS  A L7675 is unchanged: 'int cap=(InpMaxChartObjects>0 ? InpMaxChartObjects : (InpDeclutter'
+PASS  A the fix adds no input: the count is still 583
+PASS  A and no new declutter input was introduced behind the operator's back (InpDeclutterMode and InpMaxChartObjects are the pre-existing two)
+PASS  B the excess core takes two ints and nothing else
+PASS  B the excess core contains 'if(cap<=0) return 0;'
+PASS  B the excess core contains 'if(owned<=0) return 0;'
+PASS  B the excess core contains 'if(owned<=cap) return 0;'
+PASS  B the excess core contains 'return owned-cap;'
+PASS  B a non-positive cap is refused before any subtraction
+PASS  B the cap is inclusive: at the cap nothing is pruned
+PASS  B the excess core touches no g_: it is pure
+PASS  B the excess core touches no Object: it is pure
+PASS  B the excess core touches no Print: it is pure
+PASS  B the excess core touches no ArraySize: it is pure
+PASS  B the excess core touches no iTime: it is pure
+PASS  B the oldest-slot core takes two arrays by reference
+PASS  B the oldest-slot core contains 'int n=ArraySize(times);'
+PASS  B the oldest-slot core contains 'int m=ArraySize(taken);'
+PASS  B the oldest-slot core contains 'if(m<n) n=m;'
+PASS  B the oldest-slot core contains 'int best=-1;'
+PASS  B the oldest-slot core contains 'if(taken[i]) continue;'
+PASS  B the oldest-slot core contains 'if(best<0 || times[i]<times[best]) best=i;'
+PASS  B the oldest-slot core contains 'return best;'
+PASS  B a shorter mask bounds the scan, so a size mismatch cannot read past either array
+PASS  B ties go to the lower index: a strict < keeps one pass reproducible
+PASS  B the answer starts at -1, so an empty or fully taken list returns -1
+PASS  B the oldest-slot core touches no g_: it is pure
+PASS  B the oldest-slot core touches no Object: it is pure
+PASS  B the oldest-slot core touches no Print: it is pure
+PASS  B the oldest-slot core touches no datetime t[: it is pure
+PASS  B the owned count takes no argument
+PASS  C the owned count contains 'int total=ObjectsTotal(0,-1,-1);'
+PASS  C the owned count contains 'for(int i=total-1;i>=0;i--)'
+PASS  C the owned count contains 'string name=ObjectName(0,i,-1,-1);'
+PASS  C the owned count contains 'if(name!="" && StringFind(name,PFX)==0) owned++;'
+PASS  C the owned count contains 'return owned;'
+PASS  C counting never creates or deletes anything
+PASS  C one enumeration per call, not one per object
+PASS  C QSMC_ApplyVisualPolicy (L39686) already enumerates the chart the same way
+PASS  C the policy filters by the same prefix, testing it the other way round
+PASS  C counting is not display policy: the count must be the truth, not the wish
+PASS  D the family pruner takes a prefix and a budget
+PASS  D a non-positive budget or an empty prefix prunes nothing
+PASS  D the family pruner contains 'int found=0;'
+PASS  D the family pruner contains 'if(name!="" && StringFind(name,prefix)==0) found++;'
+PASS  D the family pruner contains 'if(found<=0) return 0;'
+PASS  D the family pruner contains 'ArrayResize(names,found);'
+PASS  D the family pruner contains 'ArrayResize(times,found);'
+PASS  D the family pruner contains 'ArrayResize(taken,found);'
+PASS  D the family pruner contains 'int n=MathMin(want,k);'
+PASS  D the family pruner contains 'int slot=QSMC_OldestSlot(times,taken);'
+PASS  D the family pruner contains 'if(slot<0) break;'
+PASS  D the family pruner contains 'taken[slot]=true;'
+PASS  D the family pruner contains 'if(ObjectDelete(0,names[slot])) removed++;'
+PASS  D the family pruner contains 'return removed;'
+PASS  D no type filter: a family drawn as text is pruned like a family drawn as boxes
+PASS  D the family pruner never deletes a whole family at once
+PASS  D the three arrays are sized once each, outside any loop
+PASS  D and they are sized after the count is known, so nothing grows inside a loop
+PASS  D two passes over the object list: one to count, one to fill
+PASS  D the budget is clamped to what the family actually holds
+PASS  D age is the object's own anchor time: no price, no history, no symbol assumption
+PASS  D a slot is marked taken before it is deleted, so it can never be chosen twice
+PASS  D the count returned is the objects that really went, not the ones attempted
+PASS  D the family pruner reads no global state
+PASS  E the cap block measures OUR objects, not the whole chart
+PASS  E and turns that measurement into a budget through the pure core
+PASS  E owned is measured before the budget is computed
+PASS  E the cap block no longer measures with ObjectsTotal: that counted other indicators' and the operator's own objects against our cap
+PASS  E the cap block no longer calls ObjectsDeleteAll: that deleted whole families
+PASS  E and no longer filters on OBJ_RECTANGLE, which made STRUCT_ unprunable
+PASS  E the four families and their priority order are exactly as before
+PASS  E the loop still stops the moment the budget is spent
+PASS  E each family is handed the REMAINING budget, so no family can over-delete
+PASS  E and the budget is spent down by what really went
+PASS  E the leftover report comes after the loop
+PASS  E if the decorations cannot cover the excess, that is reported
+PASS  E in words an operator can find in the log
+PASS  E and the report states what was deliberately left alone
+PASS  E no cap path deletes an entry mark, a trade level or the dashboard
+PASS  E the per-family log still starts with [Objects] and now says oldest first
+PASS  E the v6.4.2 promise is still written above the block - and now the code keeps it
+PASS  F structure marks are named STRUCT_<bar>_<type> (L27275)
+PASS  F and are drawn by DrawTextLabel (L27277), which creates OBJ_TEXT
+PASS  F DrawTextLabel's object type is OBJ_TEXT, so the old OBJ_RECTANGLE filter could never match a structure mark
+PASS  F the ZONE_ family has exactly one creation site (L27257)
+PASS  F the STRUCT_ family has exactly one creation site (L27275)
+PASS  F the OB_ family has exactly one creation site (L27289)
+PASS  F the FVG_ family has exactly one creation site (L27322)
+PASS  F zone boxes are OBJ_RECTANGLE, so widening the type adds STRUCT_ and no bystander
+PASS  G the whole cleanup still sits behind InpSmartObjectManagement
+PASS  G the cap runs once per NEW BAR, never per tick
+PASS  G and the pruning is entered only when the budget is actually over zero
+PASS  G the enumeration walks the chart's object list, not the price history
+PASS  G nothing in the new region loops over the price series
+PASS  G the new region forces no redraw of its own
+PASS  H the self-test hook lives inside the file's general self-test switch (L14919)
+PASS  H both hook branches are inside that block, which closes at L14966
+PASS  H the declutter hook runs after the journal's (L14959)
+PASS  H the hook calls QSMC_DeclutterSelfTest with the shared failure string
+PASS  H the pass line states the number of checks it runs
+PASS  H the fail line reports the reason, like every other self-test hook here
+PASS  H OnCalculate still calls SmartObjectCleanup(is_new_bar) at L15570
+PASS  H that call is inside OnCalculate, which starts at L15097
+PASS  H PrepareDynamicRedraw is still defined once
+PASS  H the rebuild sweep still clears ZRE_ wholesale, as it always has
+PASS  H the rebuild sweep still clears RXN_ wholesale, as it always has
+PASS  H the rebuild sweep still clears SNIPER_ wholesale, as it always has
+PASS  H the rebuild sweep still clears SBP3_ wholesale, as it always has
+PASS  H the rebuild sweep still clears WY_ wholesale, as it always has
+PASS  H the rebuild sweep still clears STRUCT_ wholesale, as it always has
+PASS  H the rebuild sweep still clears ZONE_ wholesale, as it always has
+PASS  H the rebuild sweep still clears PD_ wholesale, as it always has
+PASS  H the rebuild sweep still clears OB_ wholesale, as it always has
+PASS  H the rebuild sweep still clears FVG wholesale, as it always has
+PASS  H the rebuild sweep was not switched to the budgeted pruner: it is a redraw, not a cap, and those families are rebuilt in the same pass
+PASS  I the self-test reports through the shared where-string
+PASS  I and clears it first, so a stale reason is never reported
+PASS  I DC-1 appears twice: as the comment and as the failure reason
+PASS  I DC-2 appears twice: as the comment and as the failure reason
+PASS  I DC-3 appears twice: as the comment and as the failure reason
+PASS  I DC-4 appears twice: as the comment and as the failure reason
+PASS  I DC-5 appears twice: as the comment and as the failure reason
+PASS  I DC-6 appears twice: as the comment and as the failure reason
+PASS  I DC-7 appears twice: as the comment and as the failure reason
+PASS  I DC-8 appears twice: as the comment and as the failure reason
+PASS  I DC-9 appears twice: as the comment and as the failure reason
+PASS  I DC-10 appears twice: as the comment and as the failure reason
+PASS  I DC-11 appears twice: as the comment and as the failure reason
+PASS  I all eleven checks can fail the self-test
+PASS  I the self-test ends by passing
+PASS  I the self-test touches no Object: it is deterministic and chart-free
+PASS  I the self-test touches no g_: it is deterministic and chart-free
+PASS  I the self-test touches no Print(: it is deterministic and chart-free
+PASS  I the self-test touches no Chart: it is deterministic and chart-free
+PASS  I the self-test touches no iTime(: it is deterministic and chart-free
+PASS  I the self-test touches no Symbol(: it is deterministic and chart-free
+PASS  I DC-3 pins the exact defect: one over the cap costs ONE object
+PASS  I DC-4 pins that the excess is the difference, so the chart lands on the cap
+PASS  I DC-5 pins that a non-positive cap prunes nothing
+PASS  I DC-7/DC-8 pin the age order with a deliberate tie
+PASS  I DC-9 pins that a taken slot is skipped
+PASS  I DC-11 pins the empty list
+FAIL  J the file is 43355 lines  [got 43359]
+PASS  J braces balance at 3594
+PASS  J still 44 enums
+PASS  J every line still ends CRLF
+FAIL  J exactly root + LiquidityValue + UnifiedDecision includes
+PASS  J ObjectsDeleteAll( is at 41: 50 before the purge, minus the 9 calls that lived in dead code, the two comments that name the old API so the next reader knows what changed
+PASS  J DrawTextLabel( is untouched at 32
+PASS  J OBJ_HLINE is untouched at 6
+PASS  J ObjectCreate( fell 24 -> 16 with the dead renderers
+PASS  J PA_ZoneAt( is untouched at 11
+PASS  J L853 is unchanged: 'input bool   InpUseFinalResolver     = false; // ONE verdict f'
+PASS  J L868 is unchanged: 'input int    InpWGMinScore           = 60;    // weighted poin'
+PASS  J L881 is unchanged: 'input int    InpScalpMinScore            = 60;    // weighted '
+PASS  J L889 is unchanged: 'input bool   InpEnableDecisionJournal  = false; // record one '
+PASS  J L7713 is unchanged: 'ObjectDelete(0,PFX+"SETUPZONE");'
+PASS  J L7720 is unchanged: 'ObjectDelete(0,PFX+"ENTRY");'
+PASS  J L7728 is unchanged: 'for(int i=0;i<10;i++) ObjectDelete(0,PFX+"TBOX_"+IntegerToStri'
+PASS  J L15749 is unchanged: 'OBS_Record(closed,rates_total);'
+PASS  J QSMC_DeclutterExcess is defined exactly once
+PASS  J QSMC_DeclutterExcess is used as well as defined (10 occurrences)
+PASS  J QSMC_OldestSlot is defined exactly once
+PASS  J QSMC_OldestSlot is used as well as defined (7 occurrences)
+PASS  J QSMC_CountOwnedObjects is defined exactly once
+PASS  J QSMC_CountOwnedObjects is used as well as defined (2 occurrences)
+PASS  J QSMC_DeleteOldestFamily is defined exactly once
+PASS  J QSMC_DeleteOldestFamily is used as well as defined (2 occurrences)
+PASS  J QSMC_DeclutterSelfTest is defined exactly once
+PASS  J QSMC_DeclutterSelfTest is used as well as defined (2 occurrences)
+PASS  K the doc states '## 11.7 AUDIT-D1'
+PASS  K the doc states 'InpMaxChartObjects'
+PASS  K the doc states 'QSMC_DeclutterExcess'
+PASS  K the doc states 'QSMC_OldestSlot'
+PASS  K the doc states 'QSMC_DeleteOldestFamily'
+PASS  K the doc states 'oldest first'
+PASS  K the doc states 'ObjectsDeleteAll'
+PASS  K the doc states 'OBJ_RECTANGLE'
+PASS  K the doc states 'STRUCT_'
+PASS  K the doc states 'tools/test_declutter_cap.py'
+PASS  K the doc states 'CI step 36'
+PASS  K the doc states '583'
+PASS  K the doc states 'one object over the cap'
+PASS  K the doc states 'never pruned'
+PASS  K the doc cites SmartObjectCleanup's definition line (L7666)
+PASS  K the doc cites the excess core's line (L7535)
+PASS  K the doc cites the cap value's line (L7675)
+PASS  K the doc cites the cap input's line (L1285)
+PASS  K CI runs tools/test_declutter_cap.py
+PASS  K the workflow has 37 named steps
+PASS  K the CI step names the audit it enforces
+AUDIT-D1 declutter cap checks: 197   failures: 2

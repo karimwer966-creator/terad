@@ -1,0 +1,62 @@
+PASS  A InpEnableAllModules is declared exactly once
+PASS  A InpEnableAllModules defaults to false
+PASS  A InpRedrawTradeBoxOnNewBarOnly is declared exactly once
+PASS  A InpRedrawTradeBoxOnNewBarOnly defaults to false
+PASS  A the two inputs sit in their own AUDIT-UX1 group, not smuggled into a module's group
+PASS  B the PowerOf3 gate carries the master-switch OR, exactly once
+PASS  B no bare PowerOf3 gate survives anywhere
+PASS  B the SilverBullet gate carries the master-switch OR, exactly once
+PASS  B no bare SilverBullet gate survives anywhere
+PASS  B the Wyckoff gate carries the master-switch OR, exactly once
+PASS  B no bare Wyckoff gate survives anywhere
+PASS  B the PriceAction gate carries the master-switch OR, exactly once
+PASS  B no bare PriceAction gate survives anywhere
+PASS  B the MeanReversion gate carries the master-switch OR, exactly once
+PASS  B no bare MeanReversion gate survives anywhere
+PASS  B the Confluence gate carries the master-switch OR, exactly once
+PASS  B no bare Confluence gate survives anywhere
+PASS  B the RiskModel gate carries the master-switch OR, exactly once
+PASS  B no bare RiskModel gate survives anywhere
+PASS  C the PowerOf3 tooltip guard ORs the module switch AND the show switch
+PASS  C no un-ORed PowerOf3 tooltip guard survives
+PASS  C the SilverBullet tooltip guard ORs the module switch AND the show switch
+PASS  C no un-ORed SilverBullet tooltip guard survives
+PASS  C the Wyckoff tooltip guard ORs the module switch AND the show switch
+PASS  C no un-ORed Wyckoff tooltip guard survives
+PASS  C the PriceAction tooltip guard ORs the module switch AND the show switch
+PASS  C no un-ORed PriceAction tooltip guard survives
+PASS  C the MeanReversion tooltip guard ORs the module switch AND the show switch
+PASS  C no un-ORed MeanReversion tooltip guard survives
+PASS  C the Confluence tooltip guard ORs the module switch AND the show switch
+PASS  C no un-ORed Confluence tooltip guard survives
+PASS  C the RiskModel tooltip guard ORs the module switch AND the show switch
+PASS  C no un-ORed RiskModel tooltip guard survives
+PASS  D the Confluence candle leg carries the OR, so the master switch feeds the 15-weight candle pillar
+PASS  E the master switch does NOT enable InpSBShowEntryZone - boxes on the chart are the clutter, not the feature
+PASS  E the master switch does NOT enable InpWyckoffShowRange - boxes on the chart are the clutter, not the feature
+PASS  E the master switch does NOT enable InpOBShowLifecycleLabel - boxes on the chart are the clutter, not the feature
+PASS  F DrawTradeBox() is called from exactly one site
+PASS  F the DrawTradeBox() call site carries the redraw gate
+PASS  F DrawTradeLevels(rates_total,g_buf_t) is called from exactly one site
+PASS  F the DrawTradeLevels(rates_total,g_buf_t) call site carries the redraw gate
+PASS  F the redraw switch is read at both call sites and declared once
+PASS  G DrawZoneBox is still defined
+PASS  G DrawZoneBox still creates only when the object is missing (update in place, no delete+create flicker)
+PASS  G DrawZoneBox still repositions in place
+PASS  G DrawFibLine is still defined
+PASS  G DrawFibLine still creates only when the object is missing (update in place, no delete+create flicker)
+PASS  G DrawFibLine still repositions in place
+PASS  H still zero OrderSend in the indicator's code
+PASS  H still zero OrderSendAsync in the indicator's code
+PASS  H still zero PositionOpen in the indicator's code
+PASS  H still zero CTrade in the indicator's code
+PASS  H indicator_buffers is still 19 - the master switch adds no buffer
+PASS  H indicator_plots is still 7
+PASS  H the version triple is unchanged by a UX switch
+PASS  H the file is still pure CRLF
+
+==========================================================================
+AUDIT-UX1 checks: 56   failures: 0
+One switch for all seven modules, and no per-tick object churn. Both opt-in,
+both default false. Not a compiler, not a backtest. Press F7.
+==========================================================================
