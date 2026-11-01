@@ -34835,7 +34835,7 @@ int ZRE_BuildZonesEx(SZRECand &cands[],const SZREContext &ctx,const double &h[],
    ArrayResize(out,0);
    ArrayResize(dropped,0);
    ArrayResize(tail,0);
-   if(!(ctx.atr>0.0) || ctx.closed<1) return 0;
+   if(!(ctx.atr>0.0) || ctx.closed<1) return 0; QA_FilterCandidates(cands,ctx);
    // Assign a causal role before consolidation. This makes the merge side-aware
    // while preserving the later closed-bar flip state as a separate lifecycle fact.
    for(int ci=0;ci<ArraySize(cands);ci++)
@@ -43353,3 +43353,4 @@ bool MTF_SniperZone_SelfTest()
 
 #include <QSMC/QSMC_LiquidityValue.mqh>
 #include <QSMC/QSMC_UnifiedDecision.mqh>
+#include <QSMC/QSMC_IncidentSafety.mqh>

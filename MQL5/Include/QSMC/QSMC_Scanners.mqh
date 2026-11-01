@@ -264,6 +264,9 @@ private:
    CAssetScanner    *m_universe;   // not owned
    CMarketData      *m_md;         // owned; REUSED for every symbol
    CZoneRegistry     m_zones;
+   double            m_guard_distance;
+   int               m_guard_age;
+   datetime          m_guard_logged[QSC_MAX_ROWS];
    CReactionDetector m_react;
    CBiasProvider     m_bias;
    SQsmcArbConfig    m_cfg;
@@ -344,6 +347,7 @@ public:
        m_atr_period=14; m_pivot_left=3; m_pivot_right=3;
        m_zone_half_atr=0.25; m_use_bias=false;
        m_rows_n=0; m_cursor=0; m_pass_done=false;
+       m_guard_distance=12.0; m_guard_age=120; ArrayInitialize(m_guard_logged,0);
        m_alloc_calls=0; m_free_calls=0; }
 
                     ~CTopSetupsScanner() { Shutdown(); }
@@ -368,6 +372,8 @@ public:
 
    int               AllocCalls() const { return m_alloc_calls; }
    int               FreeCalls()  const { return m_free_calls; }
+   void ConfigureZoneGuard(const double distance,const int age)
+     { m_guard_distance=(MathIsValidNumber(distance) && distance>=1.0?distance:12.0); m_guard_age=(age>0?age:120); }
    int               Rows() const { return m_rows_n; }
    bool              PassDone() const { return m_pass_done; }
 
@@ -466,6 +472,20 @@ public:
            { r.status=QSS_NO_SETUP; r.note="zone vanished between rebuild and read";
              Push(r); continue; }
 
+         string guard=QSMC_ZoneRangeReason(z.lo,z.hi,price,ch.LowestLow(0,ci),ch.HighestHigh(0,ci),atr,
+                                          (z.birth_bar>=0?ci-z.birth_bar:-1),m_guard_age,m_guard_distance);
+         if(guard!="")
+           {
+            // Once per symbol/closed bar, even across repeated scanner passes.
+            if(i<QSC_MAX_ROWS && m_guard_logged[i]!=ch.T(ci))
+              {
+               m_guard_logged[i]=ch.T(ci);
+               Print("[QSMC_ZONE_REJECT] symbol=",r.symbol," tf=",EnumToString(m_tf)," created=",TimeToString(z.birth_time),
+                     " source=SCAN-SWING OHLC raw prices lo=",z.lo," hi=",z.hi," closed=",price," ATR=",atr,
+                     " point=",SymbolInfoDouble(r.symbol,SYMBOL_POINT)," digits=",SymbolInfoInteger(r.symbol,SYMBOL_DIGITS)," reason=",guard);
+              }
+            r.status=QSS_NO_SETUP; r.note="ZONE REJECTED: "+guard; Push(r); continue;
+           }
          //--- Reaction on the CLOSED bar only. Shift 0 is refused by the
          //--- detector itself; this is the read-only use of PART A.
          SReactionFacts f;
