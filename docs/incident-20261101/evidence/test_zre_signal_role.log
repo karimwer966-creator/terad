@@ -1,0 +1,31 @@
+PASS  source: nadir2.mq5 is readable next to tools/
+PASS  source: ZRE_EffectiveSide() exists in nadir2.mq5
+PASS  source: ZRE_EffectiveSide() takes the EARLIER-closed-bar flip into account
+PASS  source: the closed-bar flip is resolved BEFORE the traded side in ZRE_ProcessClosedBar() (flip@1256 side@1320)
+PASS  source: st.flipped reuses that ONE fact, it is not recomputed
+PASS  source: ZRE_AlertState() uses the same resolver, it does not re-derive the direction from `flipped` on its own
+PASS  support rejection -> BUY
+PASS  resistance rejection -> SELL
+PASS  a close through a support band is a break, never a buy
+PASS  a close through a resistance band is a break, never a sell
+PASS  FLIPPED trades the CURRENT role, not the birth role
+PASS  both scenarios are genuinely 'broken on an EARLIER closed bar'
+PASS  SELL scenario: the traded role equals the role the registry publishes
+PASS  BUY scenario: the traded role equals the role the registry publishes
+PASS  R2 SELL: a broken support retested from below publishes SELL (got True/-1)
+PASS  R2 BUY: a broken resistance retested from above publishes BUY (got True/1)
+PASS  BUY and SELL are exact mirrors of each other
+PASS  R3 a BUY is never published at a support that already broke down
+PASS  R4 ZRE_ST_FLIPPED is reachable on a level broken by an EARLIER bar (state=7)
+PASS  R4b the role is reversed off the break bar (today=0 fixed=1)
+PASS  R5 the chart/alert direction agrees with the published signal
+PASS  R6 SELL: the published direction survives LOCATION gate 3.4
+PASS  R6 BUY: the published direction survives LOCATION gate 3.4
+------------------------------------------------------------------------
+pre-fix path, for the record (not asserted):
+  SELL retest  birth role=0 published=no dir=+0  | registry role=1
+  BUY retest   birth role=1 published=no dir=+0  | registry role=0
+  BUY at a broken support: published=no dir=+0 (a BUY into the level's underside)
+------------------------------------------------------------------------
+RESULT: all role/direction contracts hold
+This is a transcription contract, not a backtest and not a win rate.

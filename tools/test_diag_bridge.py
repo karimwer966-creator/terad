@@ -7,11 +7,15 @@ The companion can only see the indicator's hidden buffers. When those buffers
 are empty, the operator used to read "CORE signals: 0" and had no cause. The
 indicator now publishes its own gate verdict as terminal globals:
 
-    QSMC_DIAG_<symbol>_<period>_CORE    blocker code (see the table)
-    QSMC_DIAG_<symbol>_<period>_BARS    closed bars audited this session
-    QSMC_DIAG_<symbol>_<period>_ARMED   setups armed this session
-    QSMC_DIAG_<symbol>_<period>_CONF    setups confirmed this session
-    QSMC_DIAG_<symbol>_<period>_TIME    time of the closed bar it describes
+    <v2-prefix>_CORE    blocker code (see the table)
+    <v2-prefix>_BARS    closed bars audited this session
+    <v2-prefix>_ARMED   setups armed this session
+    <v2-prefix>_CONF    setups confirmed this session
+    <v2-prefix>_TIME    time of the closed bar it describes
+
+ABI v2 prefix includes account/server/symbol/timeframe and input fingerprint.
+The default iCustom reader discovers only a fresh default-equivalent identity;
+no legacy fallback is allowed. See docs/incident-20261101/REPORT.md.
 
 Two programs, two hand-written copies of one code table: that is exactly the
 kind of pair that drifts. Everything below is a source contract, not an MT5
@@ -92,10 +96,16 @@ for leaf in ("BARS", "ARMED", "CONF"):
     require(f'GlobalVariableSet(p+"{leaf}"' in body,
             f"the funnel counter {leaf} is published too (so 'never armed' and 'always rejected' "
             "cannot look the same)")
-require('"QSMC_DIAG_"+_Symbol+"_"+IntegerToString((long)_Period)+"_"' in host,
-        "the indicator names the variables with the same prefix the companion reads")
-require('"QSMC_DIAG_"+_Symbol+"_"+IntegerToString((long)_Period)+"_"+leaf' in ea,
-        "the companion builds the identical variable name")
+identity=(ROOT / "MQL5/Include/QSMC/QSMC_InstanceIdentity.mqh").read_text()
+require('g_diag_prefix=QA_InstanceDiagPrefix();' in host,
+        "indicator diagnostic ABI v2 uses actual input identity")
+require('string prefix=QSMC_DefaultDiagPrefix();' in ea,
+        "private default-iCustom reader uses only default configuration identity")
+require('QSMC_InstanceBase()+"D"+IntegerToString((long)actual)+"_"' in identity and
+        'base+"D"+IntegerToString((long)GlobalVariableGet(base+"DEFAULT_HASH"))+"_"' in identity,
+        "publisher and default reader share the same v2 diagnostic namespace")
+require('name=="" || !GlobalVariableCheck(name)' in ea and 'QSMC_DIAG_' not in identity,
+        "missing identity yields no record, never cross-instance legacy fallback")
 
 # ------------------------------------------------------------- every code mapped
 mapper = re.search(r"int DiagBlockerCode\(const string key\)\s*\{(.*?)\n\}", host, re.S)

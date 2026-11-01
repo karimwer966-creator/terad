@@ -1,0 +1,22 @@
+========================================================================
+ QSMC RELEASE GATE  (go / no-go for a live chart)
+========================================================================
+  ok    G1 host version triple: v6.6.13 / "6.613"
+  ok    G1 no in-code marker is ahead of v6.6.13 (newest seen v6.6.13)
+  ok    G3 every one of the 40 inputs appears in the docs
+  ok    G3 verbose log + CSV logging default to false
+  ok    G3 519 inputs parsed; 41 read by nothing, every one of them listed with a reason
+  ok    G3 no unreachable free functions and no input read only from dead code - the purge in doc 11.14 is still complete
+  ok    G4 no trade API in the layer (headers + indicator + probe) and none in the feeder; Alert/push/sound only in CAlertManager; QSMC CSV writes only in QSMC_Stats; the only trade API in the repository is the execution companion's
+  ok    G8 execution companion ships INERT + DRY RUN + demo-only, risk clamped to 1% of equity, no martingale
+  ok    G5 31 log call sites in the headers checked against the per-bar path
+  ok    G5b InpApiKey defaults empty: the feeder does nothing until configured
+  ok    G5b InpUrl1 defaults empty: the feeder does nothing until configured
+  ok    G5b InpUrl2 defaults empty: the feeder does nothing until configured
+  ok    G5b InpUrl3 defaults empty: the feeder does nothing until configured
+  ok    G7 CI runs the release gate
+  WARN  G2 headers present but not in the documented layout: QSMC_IncidentSafety.mqh, QSMC_InputFingerprint.mqh, QSMC_InstanceIdentity.mqh
+------------------------------------------------------------------------
+  GO (with 1 warning(s)) - mechanical invariants hold.
+  This gate is not a compiler and not a backtest. F7 in MetaEditor and a
+  24-hour paper run are still the two things that cannot be automated here.

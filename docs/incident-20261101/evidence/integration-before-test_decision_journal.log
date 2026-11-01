@@ -1,0 +1,325 @@
+PASS  A the module region closes after the self-test
+PASS  A L888 is exactly 'input group "====== Decision Journal (AUDIT-OBS1, per-ba'
+PASS  A L889 is exactly 'input bool   InpEnableDecisionJournal  = false; // recor'
+PASS  A L890 is exactly 'input int    InpObsJournalBars         = 60;    // rows '
+PASS  A L891 is exactly 'input int    InpObsTooltipBars         = 8;     // rows '
+PASS  A L892 is exactly 'input bool   InpObsLogEvents           = false; // Print'
+PASS  A L893 is exactly 'input bool   InpObsShowResolver        = true;  // colum'
+PASS  A L894 is exactly 'input bool   InpObsShowGate            = true;  // colum'
+PASS  A L895 is exactly 'input bool   InpObsShowScalp           = true;  // colum'
+PASS  A L896 is exactly 'input bool   InpObsShowPrimary         = true;  // colum'
+PASS  A the journal defaults OFF, as every new module in this file must
+PASS  A the event log defaults OFF too: printing is the operator's choice
+PASS  A the group header sits directly above the flag
+PASS  A the eight inputs are contiguous, so none can be reordered unnoticed
+PASS  A the block ends where the AUDIT-UX1 group begins (L897)
+PASS  A the journal is NOT folded into InpEnableAllModules: that switch is pinned to the seven strategy modules, and a transcript is not an eighth one
+PASS  A InpObsJournalBars is declared exactly once
+PASS  A InpObsTooltipBars is declared exactly once
+PASS  A InpObsLogEvents is declared exactly once
+PASS  A InpObsShowResolver is declared exactly once
+PASS  A InpObsShowGate is declared exactly once
+PASS  A InpObsShowScalp is declared exactly once
+PASS  A InpObsShowPrimary is declared exactly once
+PASS  A InpEnableDecisionJournal is declared exactly once
+PASS  A the kept-rows label states its own bounds
+PASS  A the shown-rows label states the order
+PASS  B L4503 declares SObsJournalRow g_obs_rows[];
+PASS  B L4504 declares int      g_obs_filled=0;
+PASS  B L4505 declares int      g_obs_next=0;
+PASS  B L4506 declares datetime g_obs_last_bar_time=0;
+PASS  B g_obs_rows is declared exactly once
+PASS  B g_obs_filled is declared exactly once
+PASS  B g_obs_next is declared exactly once
+PASS  B g_obs_last_bar_time is declared exactly once
+PASS  B the row struct is L4490
+PASS  B the struct declares all ten columns
+PASS  B the columns are declared in the order the tooltip prints them
+PASS  B a row holds verdicts and text, never a price: no double field
+PASS  B a row holds no array: the ring buffer is the only collection
+PASS  B the gate_state encoding is written down where the struct is declared
+PASS  B the ownership comment says the row belongs to a CLOSED bar
+PASS  B the primary_src comment names every value OBS_SourceName can return
+PASS  B the journal adds no plot buffer: the file still declares one
+PASS  B the journal adds no enum: gate_state stays an int with a named mapping
+PASS  C OBS_NextIndex takes only its two arguments
+PASS  C the ring core contains 'if(cap<=0) return 0;'
+PASS  C the ring core contains 'int n=current+1;'
+PASS  C the ring core contains 'if(n>=cap) n=0;'
+PASS  C the ring core contains 'return n;'
+PASS  C the ring core reads no global state at all
+PASS  C OBS_GateStateName takes only the state
+PASS  C state 1 is named PUBLISHED
+PASS  C state 2 is named BELOW-MIN
+PASS  C state 3 is named HARD-VETO
+PASS  C an unrecognised state falls through to not-run, never to a blank cell
+PASS  C the state-name core reads no global state
+PASS  C OBS_GateState takes facts, not globals
+PASS  C the gate-state core has all four outcomes
+PASS  C and tests them in this order: not-run, veto, below-minimum, published
+PASS  C a veto outranks a strong evidence score, on purpose
+PASS  C the minimum is inclusive: score==min publishes, exactly like every other floor here
+PASS  C the gate-state core reads no global state
+PASS  C OBS_Reason is declared at L6178
+PASS  C the reason core has all eight branches
+PASS  C and ranks them: veto, thin evidence, resolver conflict, scalp conflict, resolver, scalp, published gate, silence
+PASS  C a veto is reported before any side is named
+PASS  C a resolver conflict is labelled as a conflict
+PASS  C a scalping conflict is labelled as a conflict
+PASS  C silence is reported as silence instead of an empty cell
+PASS  C the reason core reads no global state
+PASS  C OBS_SourceName takes only the source int
+PASS  C source 3 is named CORE, matching the dispatcher's own field comment
+PASS  C source 2 is named RXN, matching the dispatcher's own field comment
+PASS  C source 1 is named ZRE, matching the dispatcher's own field comment
+PASS  C an unexpected source is named unset rather than relabelled as one of the three
+PASS  C the mapping cites the encoding it was read from
+PASS  C the source-name core reads no global state
+PASS  C that encoding is declared once in the file (L[3928])
+PASS  D the record reads g_final_signal, which a layer already published
+PASS  D the record reads g_res_score, which a layer already published
+PASS  D the record reads g_wgate_veto, which a layer already published
+PASS  D the record reads g_wgate_score, which a layer already published
+PASS  D the record reads g_wgate_why, which a layer already published
+PASS  D the record reads g_sc_dir, which a layer already published
+PASS  D the record reads g_sc_score, which a layer already published
+PASS  D the record reads g_sc_why, which a layer already published
+PASS  D the record reads g_alert_primary.valid, which a layer already published
+PASS  D the record reads g_alert_primary.direction, which a layer already published
+PASS  D the record reads g_alert_primary.source, which a layer already published
+PASS  D the record reads g_buf_t[closed], which a layer already published
+PASS  D 'int gs=OBS_GateState(InpUseWeightedGates,g_wgate_veto,g_wgate_score,InpWGM'
+PASS  D 'r.final_signal=(InpUseFinalResolver?g_final_signal:0);'
+PASS  D 'r.res_score=(InpUseFinalResolver?g_res_score:0);'
+PASS  D 'r.scalp_dir=(InpEnableScalping?g_sc_dir:0);'
+PASS  D 'r.scalp_score=(InpEnableScalping?g_sc_score:0);'
+PASS  D 'r.primary_dir=(g_alert_primary.valid?g_alert_primary.direction:0);'
+PASS  D 'r.primary_src=(g_alert_primary.valid?OBS_SourceName(g_alert_primary.source'
+PASS  D a layer that is switched off contributes 0, not a stale verdict
+PASS  D the scalping column is gated by the scalping overlay's own flag
+PASS  D whether the gate ran is the gate's own flag, passed into the pure core
+PASS  D the minimum comes from InpWGMinScore, never from a number typed in the journal
+PASS  D the record never calls or reads PA_ZoneAt(: it re-derives nothing
+PASS  D the record never calls or reads IsInSession(: it re-derives nothing
+PASS  D the record never calls or reads MTF_SniperIsNewsBlackout(: it re-derives nothing
+PASS  D the record never calls or reads ResolveFinalSignal(: it re-derives nothing
+PASS  D the record never calls or reads WeightedGateAllows(: it re-derives nothing
+PASS  D the record never calls or reads SCALP_ScoreSide(: it re-derives nothing
+PASS  D the record never calls or reads SCALP_Decide(: it re-derives nothing
+PASS  D the record never calls or reads SCALP_Votes(: it re-derives nothing
+PASS  D the record never calls or reads CopyBuffer(: it re-derives nothing
+PASS  D the record never calls or reads iCustom(: it re-derives nothing
+PASS  D the record never calls or reads iBarShift(: it re-derives nothing
+PASS  D the record never calls or reads g_atr_buf: it re-derives nothing
+PASS  D the record never calls or reads g_spread: it re-derives nothing
+PASS  D the record calls each of its own pure cores exactly once
+PASS  E 'if(closed<1 || closed>rates_total-2 || closed>=ArraySize(g_buf_t)) return;'
+PASS  E 'datetime bt=g_buf_t[closed];'
+PASS  E 'if(bt<=0 || bt==g_obs_last_bar_time) return;'
+PASS  E 'int cap=(int)MathMax(10,MathMin(500,InpObsJournalBars));'
+PASS  E 'if(ArraySize(g_obs_rows)!=cap)'
+PASS  E 'ArrayResize(g_obs_rows,cap);'
+PASS  E 'g_obs_filled=0; g_obs_next=0; g_obs_last_bar_time=0;'
+PASS  E 'g_obs_rows[g_obs_next]=r;'
+PASS  E 'g_obs_next=OBS_NextIndex(g_obs_next,cap);'
+PASS  E 'if(g_obs_filled<cap) g_obs_filled++;'
+PASS  E 'g_obs_last_bar_time=bt;'
+PASS  E the closed-bar guard is the first statement, before anything is read
+PASS  E the one-row-per-bar guard precedes any resize
+PASS  E the ring is clamped to 10..500 rows, so memory cannot grow with history
+PASS  E the write slot advances through the pure core, never by a bare ++
+PASS  E the row count saturates at the cap instead of overflowing it
+PASS  E the bar stamp is written last, so a refused bar cannot block the next one
+PASS  E the log is opt-in AND event-driven, character for character
+PASS  E the record prints at most once per bar
+PASS  E the journal is written before the optional log, so a log line is never the only record
+PASS  E the log line is prefixed, so it can be filtered out of a tester log
+PASS  E the log line carries the published= column
+PASS  E the log line carries the resolver= column
+PASS  E the log line carries the gate= column
+PASS  E the log line carries the scalp= column
+PASS  E the log names the gate state instead of printing a bare int
+PASS  F the module never touches ObjectCreate
+PASS  F the module never touches ObjectSetText
+PASS  F the module never touches ObjectDelete
+PASS  F the module never touches ObjectSetString
+PASS  F the module never touches ObjectSetInteger
+PASS  F the module never touches ObjectSetDouble
+PASS  F the module never touches DrawTextLabel
+PASS  F the module never touches DrawZoneBox
+PASS  F the module never touches Comment
+PASS  F the module never touches SetIndexBuffer
+PASS  F the module never touches ArraySetAsSeries
+PASS  F the module never touches OrderSend
+PASS  F the module never touches OrderSendAsync
+PASS  F the module never touches CTrade
+PASS  F the module never touches PlotIndexSet
+PASS  F the module never touches Alert
+PASS  F the module never touches SendNotification
+PASS  F the module never touches PlaySound
+PASS  F the module never touches MessageBox
+PASS  F the whole indicator still calls no order API: the five OrderSend mentions in
+this file are the comments that forbid it, and execution lives in the EA
+PASS  F the module assigns only its own four globals
+PASS  F no other layer's verdict is written here: the journal is a transcript, not a voter
+PASS  F the module reads the closed-bar time only, and never a price buffer
+PASS  F no series is written by the module
+PASS  G the forming bar is refused: rates_total-2 is the last closed bar
+PASS  G the index is bounds-checked against the series it is read from
+PASS  G no loop walks the whole history: the journal is written once per closed bar
+PASS  G the tooltip loop is bounded by the rows it is allowed to show
+PASS  G that bound is clamped to what the ring actually holds
+PASS  G an empty journal renders as nothing, not as a header with no rows
+PASS  G the tooltip walks backwards from the newest row and wraps like the ring does
+PASS  G and steps one row at a time, newest first
+PASS  G the block says how many rows it shows and in which order
+PASS  G the InpObsShowPrimary column can be switched off
+PASS  G the InpObsShowResolver column can be switched off
+PASS  G the InpObsShowGate column can be switched off
+PASS  G the InpObsShowScalp column can be switched off
+PASS  G every row carries its reason, indented under the columns
+PASS  G a row is labelled with its own bar time, so it cannot be mistaken for now
+PASS  H OnInit refuses an impossible journal size with a message an operator can act on
+PASS  H and refuses to initialise rather than clamping silently
+PASS  H that refusal sits above the v5.8.0 quant/scaling validation (L14567)
+PASS  H the refusal is gated by the journal's own flag, so a disabled journal cannot block OnInit
+PASS  H showing more rows than are kept is refused: that would display rows that do not exist
+PASS  H enabling it announces itself, including that it is display and audit only
+PASS  H the announcement states the sizes actually in force
+PASS  H the self-test hook lives inside the file's general self-test switch (L14919)
+PASS  H both hook branches are inside that guarded block, which closes at L14966
+PASS  H the journal's hook runs after the scalping overlay's (L14955)
+PASS  H the hook calls OBS_SelfTest with the file's shared failure string
+PASS  H the pass line states the number of checks it runs
+PASS  H the fail line reports the reason, like every other self-test hook here
+PASS  H OnCalculate still begins at L15097
+PASS  H in OnCalculate the confluence (L15711) runs before the risk model (L15716)
+PASS  H in OnCalculate the risk model (L15716) runs before the scalping overlay (L15720)
+PASS  H in OnCalculate the scalping overlay (L15720) runs before the alert dispatcher (L15736)
+PASS  H in OnCalculate the alert dispatcher (L15736) runs before the resolver verdict (L15742)
+PASS  H in OnCalculate the resolver verdict (L15742) runs before the resolver why-text (L15743)
+PASS  H in OnCalculate the resolver why-text (L15743) runs before the journal record (L15749)
+PASS  H THE LOAD-BEARING ORDER: OBS_Record runs after the resolver has published, so the journal never transcribes the previous bar's verdict
+PASS  H and after the alert dispatcher, so the published column is this bar's
+PASS  H and after the scalping overlay
+PASS  H the record is still adjacent to the resolver block, not buried further down OnCalculate
+PASS  H OnCalculate still encloses the record call
+PASS  H OnCalculate contains exactly one confluence call
+PASS  H OnCalculate contains exactly one risk model call
+PASS  H OnCalculate contains exactly one scalping overlay call
+PASS  H OnCalculate contains exactly one alert dispatcher call
+PASS  H OnCalculate contains exactly one resolver verdict call
+PASS  H OnCalculate contains exactly one resolver why-text call
+PASS  H OnCalculate contains exactly one journal record call
+PASS  H the confluence call is where this suite says it is (L15711)
+PASS  H the risk model call is where this suite says it is (L15716)
+PASS  H the scalping overlay call is where this suite says it is (L15720)
+PASS  H the alert dispatcher call is where this suite says it is (L15736)
+PASS  H the resolver verdict call is where this suite says it is (L15742)
+PASS  H the resolver why-text call is where this suite says it is (L15743)
+PASS  H the journal record call is where this suite says it is (L15749)
+PASS  H MEASURED ORDER: the confluence (L15711) runs before the risk model (L15716)
+PASS  H MEASURED ORDER: the risk model (L15716) runs before the scalping overlay (L15720)
+PASS  H MEASURED ORDER: the scalping overlay (L15720) runs before the alert dispatcher (L15736)
+PASS  H MEASURED ORDER: the alert dispatcher (L15736) runs before the resolver verdict (L15742)
+PASS  H MEASURED ORDER: the resolver verdict (L15742) runs before the resolver why-text (L15743)
+PASS  H MEASURED ORDER: the resolver why-text (L15743) runs before the journal record (L15749)
+PASS  H MEASURED, not pinned: the journal is written after the resolver publishes, so no row can carry the previous bar's verdict
+PASS  H MEASURED: and after the dispatcher, so the published column is this bar's
+PASS  H the call passes the same closed index and total every other layer gets
+PASS  H the call is gated by the journal flag and by the file's own closed-bar condition, mirroring the resolver's
+PASS  H the call site says out loud why it is last
+PASS  H and says what it does and does not touch
+PASS  H the tooltip block is gated by the journal's own flag
+PASS  H and shows exactly InpObsTooltipBars rows
+PASS  H the journal is appended after the scalping line (L32027), not before it
+PASS  H the existing tooltip lines below are untouched
+PASS  I OBS-1 appears twice: as the comment and as the failure reason
+PASS  I OBS-2 appears twice: as the comment and as the failure reason
+PASS  I OBS-3 appears twice: as the comment and as the failure reason
+PASS  I OBS-4 appears twice: as the comment and as the failure reason
+PASS  I OBS-5 appears twice: as the comment and as the failure reason
+PASS  I OBS-6 appears twice: as the comment and as the failure reason
+PASS  I OBS-7 appears twice: as the comment and as the failure reason
+PASS  I OBS-8 appears twice: as the comment and as the failure reason
+PASS  I OBS-9 appears twice: as the comment and as the failure reason
+PASS  I OBS-10 appears twice: as the comment and as the failure reason
+PASS  I OBS-11 appears twice: as the comment and as the failure reason
+PASS  I all eleven checks can fail the self-test
+PASS  I the self-test ends by passing
+PASS  I the self-test reports its failure through the shared where-string
+PASS  I and clears it first, so a stale reason is never reported
+PASS  I the self-test touches no g_buf_: it is deterministic and chart-free
+PASS  I the self-test touches no g_obs_: it is deterministic and chart-free
+PASS  I the self-test touches no ObjectCreate: it is deterministic and chart-free
+PASS  I the self-test touches no Print(: it is deterministic and chart-free
+PASS  I the self-test touches no iTime(: it is deterministic and chart-free
+PASS  I the self-test touches no CopyBuffer(: it is deterministic and chart-free
+PASS  I the self-test touches no g_final_signal: it is deterministic and chart-free
+PASS  I the self-test touches no g_wgate_: it is deterministic and chart-free
+PASS  I the self-test touches no g_sc_: it is deterministic and chart-free
+PASS  I the self-test touches no g_alert_primary: it is deterministic and chart-free
+PASS  I OBS-1 pins the wrap at the cap
+PASS  I OBS-2 pins a negative cap
+PASS  I OBS-3 pins an unknown state name
+PASS  I OBS-4 pins that an unused gate claims no verdict even at 95 points
+PASS  I OBS-5 pins that a veto outranks 95 points
+PASS  I OBS-6 pins the inclusive minimum from both sides
+PASS  I OBS-7 pins that a veto outranks a resolver verdict in the reason text
+PASS  I OBS-8 pins the resolver-conflict label
+PASS  I OBS-9 pins the scalping-conflict label
+PASS  I OBS-10 pins that silence is reported as silence
+PASS  I OBS-11 pins that an unknown source is never relabelled
+PASS  J L853 is unchanged: 'input bool   InpUseFinalResolver     = false; // ONE verdict for'
+PASS  J L862 is unchanged: 'input bool   InpUseWeightedGates     = false; // OFF = the exist'
+PASS  J L868 is unchanged: 'input int    InpWGMinScore           = 60;    // weighted points'
+PASS  J L873 is unchanged: 'input bool   InpEnableScalping           = false; // overlay swi'
+PASS  J L881 is unchanged: 'input int    InpScalpMinScore            = 60;    // weighted po'
+PASS  J L885 is unchanged: 'input double InpScalpMinRR               = 1.20;  // refuse belo'
+PASS  J L5829 is unchanged: 'w[1]=InpResWeightZone; nm[1]="zone";'
+PASS  J L5832 is unchanged: 'vote[3]=(g_tac_closed?g_tac_dir:0);'
+PASS  J L5993 is unchanged: 'g_sc_why="HARD VETO: no ATR for this closed bar - a scalp has no'
+PASS  J L6010 is unchanged: 'g_sc_why="HARD VETO: outside the London/New York kill zones - WA'
+PASS  J L6016 is unchanged: 'g_sc_why="HARD VETO: high-impact news blackout (Golden Rule 6) -'
+PASS  J L40031 is unchanged: 'why="HARD VETO: invalid candidate data (no direction or no close'
+PASS  J L40044 is unchanged: 'why="HARD VETO: high-impact news blackout (Golden Rule 6) - WAIT'
+PASS  J the master switch still defaults false and still covers seven modules
+PASS  J the master switch was not widened to include the journal
+PASS  J 583 input lines: the 574 already there plus the journal's own nine
+PASS  J braces balance at 3594
+FAIL  J the file is 43355 lines  [got 43359]
+PASS  J every line still ends CRLF: no bare LF was introduced
+FAIL  J exactly root + LiquidityValue + UnifiedDecision includes  [got 6]
+PASS  J the journal adds no zone scan: PA_ZoneAt( is still at its pre-OBS1 count of 11
+PASS  J the gate still has one definition and its own call sites: no third opinion
+PASS  J the resolver is still one definition, one call, one forward declaration and
+one comment: the journal adds no fourth opinion
+PASS  J OBS_NextIndex is defined exactly once
+PASS  J OBS_GateStateName is defined exactly once
+PASS  J OBS_GateState is defined exactly once
+PASS  J OBS_Reason is defined exactly once
+PASS  J OBS_SourceName is defined exactly once
+PASS  J OBS_Record is defined exactly once
+PASS  J OBS_JournalText is defined exactly once
+PASS  J OBS_SelfTest is defined exactly once
+PASS  K the doc states '## 11.6 AUDIT-OBS1'
+PASS  K the doc states 'InpEnableDecisionJournal'
+PASS  K the doc states 'OBS_Record'
+PASS  K the doc states 'OBS_Reason'
+PASS  K the doc states 'OBS_SourceName'
+PASS  K the doc states 'ring buffer'
+PASS  K the doc states 'recorded LAST'
+PASS  K the doc states '1=ZRE, 2=RXN, 3=CORE legacy'
+PASS  K the doc states 'tools/test_decision_journal.py'
+PASS  K the doc states 'CI step 35'
+PASS  K the doc states '583'
+PASS  K the doc states 'transcript, not a voter'
+PASS  K the doc states 'no layer produced a verdict this bar'
+PASS  K the doc cites OBS_Record's definition line (L6205)
+PASS  K the doc cites the journal flag's line (L889)
+PASS  K the doc cites the row struct's line (L4490)
+PASS  K the doc cites the OnCalculate record call (L15749)
+PASS  K CI runs tools/test_decision_journal.py
+PASS  K the workflow has 37 named steps
+PASS  K the CI step names the audit it enforces
+AUDIT-OBS1 decision journal checks: 322   failures: 2

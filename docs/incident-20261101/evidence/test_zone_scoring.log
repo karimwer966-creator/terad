@@ -1,0 +1,9 @@
+PASS  aligned zone score matches factor table
+PASS  distance penalty is monotonic
+PASS  limited room reduces rank
+PASS  wide spread reduces rank
+PASS  missing inputs are explicit
+PASS  role mismatch is hard rejection
+PASS  closed invalidation requires a confirmed flip/retest
+PASS  out-of-reach zone fails hard gate
+Zone-scoring checks passed; rank is not probability.

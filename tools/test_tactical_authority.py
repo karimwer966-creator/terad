@@ -799,10 +799,10 @@ check("g_mtf_entry_blocked=true;" in blocked_blk and "g_mtf_entry_authority=" in
       "B3 the reason survives the clear, so the panel can state it")
 
 # B4 - the label can no longer print ENTRY for a bias-only context verdict.
-check("string verb=(auth==TAC_AUTH_CONTEXT?\"CONTEXT\":\"ENTRY\");" in mtf,
-      "B4 the label verb is chosen from the authority verdict")
+check('string verb="TACTICAL TOUCH (not an entry)";' in mtf,
+      "B4 the tactical verb is always explicitly non-entry")
 check("\"%s MTF %s %s %s @ %.2f | exec %s | grade %s%s\"" in mtf
-      and "bull?\"BUY\":\"SELL\",verb,state,ep,TFName(etf)" in mtf,
+      and 'bull?"BUY":"SELL",verb,(closed_confirm?"CLOSED":"PREVIEW"),ep,TFName(etf)' in mtf,
       "B4 the format string and its arguments still match (verb is passed)")
 check("auth!=TAC_AUTH_CONTEXT && (!far || closed_confirm)" in mtf,
       "B4 a CONTEXT verdict paints no entry mark or arrow")

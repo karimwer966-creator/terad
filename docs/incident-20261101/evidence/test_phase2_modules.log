@@ -1,0 +1,213 @@
+PASS  A1 no Asia range means no phase, and the reason says so
+PASS  A1 an unswept range is ACCUMULATION
+PASS  A1 a sweep short of the distribution threshold is MANIPULATION
+PASS  A1 a qualifying follow-through is DISTRIBUTION
+PASS  A1 the bearish side reaches DISTRIBUTION by the same rule
+PASS  A1 the distribution threshold is inclusive (move == min confirms)
+PASS  A1b an invalidated manipulation ends the sequence
+PASS  A1b the invalidation carries the reason it ended
+PASS  A1b invalidation outranks distribution and accumulation alike
+PASS  A2 a zero distribution threshold must not confirm distribution
+PASS  A2 a negative distribution threshold must not confirm distribution
+PASS  A2 a move away from the expected side must not confirm distribution
+PASS  A2 distribution requires a sweep first - an unswept range cannot distribute
+PASS  A2 distribution requires a range - no range, no distribution
+PASS  A3 no evidence scores 0
+PASS  A3 the range leg is worth 25
+PASS  A3 range + manipulation is worth 60
+PASS  A3 the full sequence is worth exactly 100
+PASS  A3 an invalidated sequence scores 0 - it does not keep credit it lost
+PASS  A3 invalidation zeroes a partial sequence too
+PASS  A3 every P3 score is inside 0..100
+PASS  A4 the window start is inclusive
+PASS  A4 the window end is EXCLUSIVE, so consecutive windows cannot both claim a minute
+PASS  A4 the minute before the window is outside
+PASS  A4 an empty window (start == end) matches nothing rather than everything
+PASS  A4 an overnight window wraps past midnight
+PASS  A4 an overnight window still excludes the hours between
+PASS  A4 a minute outside 0..1439 matches nothing
+PASS  A4 a wrapping window excludes the hours inside its own gap [180,240)
+PASS  A4 a wrapping window includes both sides of midnight
+PASS  A5 no evidence scores 0
+PASS  A5 the window leg alone is worth 20
+PASS  A5 a complete chain without its retrace is worth 80, not 100
+PASS  A5 the full Silver Bullet chain is worth exactly 100
+PASS  A5 legs outside the window do not make it a Silver Bullet
+PASS  A5 every Silver Bullet score is inside 0..100
+PASS  A6 all four phases have a distinct non-empty name
+PASS  A6 an out-of-range phase is labelled UNKNOWN, not guessed
+PASS  A6 a negative phase is labelled UNKNOWN, not guessed
+PASS  A7 window precedence is first-match for all 1440 minutes
+PASS  A7 three 60-minute default windows cover exactly 180 minutes (180)
+PASS  A7 the minutes either side of window 1 are outside every window
+PASS  A8 adding Silver Bullet evidence never lowers the score
+PASS  A8 adding a valid range never lowers the P3 score
+PASS  A9 the source's P3_Decide branch order matches the transcription exactly
+PASS  A9 the source's P3 leg weights are 25/35/40 as transcribed
+PASS  A9 the source zeroes an invalidated P3 sequence before counting legs
+PASS  A9 the source's Silver Bullet has exactly five legs of 20 as transcribed
+PASS  A9 the source treats an empty window as matching nothing
+PASS  A9 the source's window end is exclusive as transcribed
+PASS  A9 the source wraps an overnight window as transcribed
+PASS  A9 the source's phase names match the transcribed vocabulary
+PASS  B1 indicator_buffers is still 19 - no buffer was added
+PASS  B1 indicator_plots is still 7
+PASS  B1 the 19 buffer indices are still exactly 0..18
+PASS  B1 the pinned 11-row dashboard card is untouched
+PASS  B1 the card's row clamp is untouched
+PASS  B1 existing input InpDetectJudas still defaults to true
+PASS  B1 existing input InpUseDSTSessions still defaults to true
+PASS  B1 existing input InpAsianStart still defaults to 9
+PASS  B1 existing input InpAsianEnd still defaults to 18
+PASS  B1 existing input InpLondonStart still defaults to 8
+PASS  B1 existing input InpNewYorkStart still defaults to 8
+PASS  B1 existing input InpDisplacementATR still defaults to 0.9
+PASS  B1 existing input InpOBMaxHeightATR still defaults to 3.0
+PASS  B1b new switch InpEnablePowerOf3 defaults to false
+PASS  B1b new switch InpP3ShowOnDashboard defaults to false
+PASS  B1b new switch InpEnableSilverBullet defaults to false
+PASS  B1b new switch InpSBShowOnDashboard defaults to false
+PASS  B1b new switch InpSBShowEntryZone defaults to false
+PASS  B1b new input InpP3DistributionMinATR defaults to 1.00
+PASS  B1b new input InpSBUseNYLocalTime defaults to true
+PASS  B1b new input InpSBWin1Start defaults to 180
+PASS  B1b new input InpSBWin1End defaults to 240
+PASS  B1b new input InpSBWin2Start defaults to 600
+PASS  B1b new input InpSBWin2End defaults to 660
+PASS  B1b new input InpSBWin3Start defaults to 840
+PASS  B1b new input InpSBWin3End defaults to 900
+PASS  B1b new input InpSBChainMaxAgeBars defaults to 240
+PASS  B1b the three default windows do not overlap
+PASS  B2 P3_PhaseName is declared exactly once
+PASS  B2 P3_PhaseName is defined exactly once
+PASS  B2 P3_PhaseName declaration and definition agree
+PASS  B2 P3_Decide is declared exactly once
+PASS  B2 P3_Decide is defined exactly once
+PASS  B2 P3_Decide declaration and definition agree
+PASS  B2 P3_Score is declared exactly once
+PASS  B2 P3_Score is defined exactly once
+PASS  B2 P3_Score declaration and definition agree
+PASS  B2 P3_Update is declared exactly once
+PASS  B2 P3_Update is defined exactly once
+PASS  B2 P3_Update declaration and definition agree
+PASS  B2 SB_LocalTime is declared exactly once
+PASS  B2 SB_LocalTime is defined exactly once
+PASS  B2 SB_LocalTime declaration and definition agree
+PASS  B2 SB_MinuteOfDay is declared exactly once
+PASS  B2 SB_MinuteOfDay is defined exactly once
+PASS  B2 SB_MinuteOfDay declaration and definition agree
+PASS  B2 SB_DayKey is declared exactly once
+PASS  B2 SB_DayKey is defined exactly once
+PASS  B2 SB_DayKey declaration and definition agree
+PASS  B2 SB_MinuteInWindow is declared exactly once
+PASS  B2 SB_MinuteInWindow is defined exactly once
+PASS  B2 SB_MinuteInWindow declaration and definition agree
+PASS  B2 SB_WindowAtMinute is declared exactly once
+PASS  B2 SB_WindowAtMinute is defined exactly once
+PASS  B2 SB_WindowAtMinute declaration and definition agree
+PASS  B2 SB_WindowName is declared exactly once
+PASS  B2 SB_WindowName is defined exactly once
+PASS  B2 SB_WindowName declaration and definition agree
+PASS  B2 SB_InWindow is declared exactly once
+PASS  B2 SB_InWindow is defined exactly once
+PASS  B2 SB_InWindow declaration and definition agree
+PASS  B2 SB_ChainComplete is declared exactly once
+PASS  B2 SB_ChainComplete is defined exactly once
+PASS  B2 SB_ChainComplete declaration and definition agree
+PASS  B2 SB_Score is declared exactly once
+PASS  B2 SB_Score is defined exactly once
+PASS  B2 SB_Score declaration and definition agree
+PASS  B2 SB_Update is declared exactly once
+PASS  B2 SB_Update is defined exactly once
+PASS  B2 SB_Update declaration and definition agree
+PASS  B2 SB_DrawEntryZone is declared exactly once
+PASS  B2 SB_DrawEntryZone is defined exactly once
+PASS  B2 SB_DrawEntryZone declaration and definition agree
+PASS  B2 SBP3_Clear is declared exactly once
+PASS  B2 SBP3_Clear is defined exactly once
+PASS  B2 SBP3_Clear declaration and definition agree
+PASS  B2 SBP3_SelfTest is declared exactly once
+PASS  B2 SBP3_SelfTest is defined exactly once
+PASS  B2 SBP3_SelfTest declaration and definition agree
+PASS  B3 P3_Update is called exactly once in OnCalculate
+PASS  B3 SB_Update is called exactly once in OnCalculate
+PASS  B3 both adapters are gated on detection_updated (zero per-tick cost)
+PASS  B3 the adapters run AFTER EnforceArrayLimits and BuildCausalEventGraph
+PASS  B3 DetectJudasSwing still has its two original call sites
+PASS  B4 SBP3_Clear is called from OnInit
+PASS  B4 SBP3_Clear sits beside the other module resets
+PASS  B4 the self-test is invoked from OnInit
+PASS  B4 the self-test is inside the existing InpMTEERunSelfTest gate
+PASS  B4 the self-test covers 9 groups
+PASS  B4 the self-test groups are numbered SBP3-1..SBP3-9
+PASS  B5 QSMC_ArbiterFeedAndFinalize cannot read the new display-only state
+PASS  B5 UpdateSignalMask cannot read the new display-only state
+PASS  B5 PMI_ComputeConfluence cannot read the new display-only state
+PASS  B5 ScenarioUpdate cannot read the new display-only state
+PASS  B5 ScenarioDashFull cannot read the new display-only state
+PASS  B5 ScoreOrderBlock cannot read the new display-only state
+PASS  B5 PMI_BuildLocation cannot read the new display-only state
+PASS  B5 CoreDashChain cannot read the new display-only state
+PASS  B5 TacticalAuthorityDecide cannot read the new display-only state
+PASS  B5 ValidateCausalGraphInvariants cannot read the new display-only state
+PASS  B5 ReplayClosedBarStates cannot read the new display-only state
+PASS  B5 BuildCausalEventGraph cannot read the new display-only state
+PASS  B5 DetectOrderBlocks cannot read the new display-only state
+PASS  B5 the display-only claim was checked against 13 real function bodies
+PASS  B the SB1 engine section was located
+PASS  B the SB1 section slice is substantial (29005 chars)
+PASS  B5 the new module writes no buffer
+PASS  B5 the new module cannot reach OrderSend
+PASS  B5 the new module cannot reach OrderSendAsync
+PASS  B5 the new module cannot reach CTrade
+PASS  B5 the new module cannot reach PositionOpen
+PASS  B5 the new module cannot reach PositionModify
+PASS  B5 the new module cannot reach OrderCheck
+PASS  B5 the new module cannot reach WebRequest
+PASS  B6 no hard-coded symbol in the new code
+PASS  B6 no literal price level in the new code
+PASS  B6 distances are expressed in ATR units
+PASS  B6 the ATR read reuses the file's per-bar buffer with its scalar fallback
+PASS  B7 the Power of 3 row is merged into the tooltip
+PASS  B7 the Silver Bullet row is merged into the tooltip
+PASS  B7 neither module writes a card row
+PASS  B7 the optional entry zone is drawn from the dashboard pass
+PASS  B7 the dashboard (which draws the zone) runs AFTER the object sweep
+PASS  B8 the module names its objects with the SBP3_ prefix
+PASS  B8 PrepareDynamicRedraw sweeps the SBP3_ prefix
+PASS  B8 object SBP3_ENTRY is covered by the SBP3_ sweep
+PASS  B8 the module creates no object directly - it reuses DrawZoneBox
+PASS  B8 the zone reuses the existing DrawZoneBox helper
+PASS  B9 no wall-clock time in the new code
+PASS  B9 no forming-bar index in the new code
+PASS  B9 the Silver Bullet filters on the graph's closed decision bar/time
+PASS  B9 P3/SB read the CLOSED bar's close
+PASS  B9 the manipulation extreme comes from a closed bar index, not the live one
+PASS  B9 an element not yet available is skipped rather than read
+PASS  B9 the causality claim is documented where the module is defined
+PASS  B10 the new dashboard rows disclaim probability
+PASS  B10 the score is labelled a confluence count
+PASS  B10 a Silver Bullet stand-aside is labelled as one
+PASS  B10 no direction is printed unless the setup is ACTIVE
+PASS  B10 a MANIPULATION direction is labelled prospective, not confirmed
+PASS  B10 the drawn zone says it is conditional and not an entry
+PASS  B11 P3 states its dependency on the existing Judas detector
+PASS  B11 P3_Update exits immediately while its switch is off
+PASS  B11 SB_Update exits immediately while its switch is off
+PASS  B11 the chain reuses the existing ancestry walk instead of a parallel one
+PASS  B11 all three existing break names and the sweep are accepted as the chain
+PASS  B11 an unconfirmed gap is not a Silver Bullet gap
+PASS  B11 the Asia range DetectJudasSwing already computed is now retained
+PASS  B11 DetectJudasSwing publishes the range it already computed
+PASS  B11 the range is reset on every early return path, so no stale range survives
+PASS  B11 the Silver Bullet clock reuses the existing session clock (one DST resolution)
+--------------------------------------------------------------------------
+Power of 3 / Silver Bullet contracts: 203 checked, 0 failed
+--------------------------------------------------------------------------
+RESULT: all Power-of-3 / Silver-Bullet contracts hold
+--------------------------------------------------------------------------
+Both modules default to OFF, are display only, and add no buffer, so with
+their switches off nothing is created, sized, scored, drawn or retired any
+differently than before. This is a transcription + wiring contract. It is
+NOT a backtest, it produces no win rate, and it does NOT prove MetaEditor
+compilation. Press F7.

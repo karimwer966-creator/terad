@@ -1,0 +1,7 @@
+test: /tmp/tmpkzfsns_f/test.cpp:34: int main(): Assertion `Percentile(b,300,100,b.ATRAt(300))==100' failed.
+Traceback (most recent call last):
+  File "/home/user/terad/tools/test_volatility_window.py", line 34, in <module>
+    subprocess.run([str(exe)],check=True)
+  File "/usr/lib/python3.11/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/tmpkzfsns_f/test']' died with <Signals.SIGABRT: 6>.

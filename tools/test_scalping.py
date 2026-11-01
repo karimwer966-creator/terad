@@ -423,15 +423,15 @@ check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
 check(TEXT.count("{") == TEXT.count("}") == 3594, "J braces balance at 3594",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43355,
-      "J the file is 43355 lines: insertions only, no scratch rewrite",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43359,
+      "J the file is 43359 lines: insertions only, no scratch rewrite",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""), "J no bare LF: CRLF everywhere")
 check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,
       "J no enum added or removed (still 44)")
-check(len(re.findall(r"(?m)^#include", TEXT)) == 3
+check(len(re.findall(r"(?m)^#include", TEXT)) == 6
       and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
-      and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LiquidityValue + UnifiedDecision includes")
+      and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes")
 check(len(re.findall(r"(?m)^#property indicator_buffers", TEXT)) == 1,
       "J no buffers added, so no plot index moved (the EA reads 7-12)")
 cs = [i + 1 for i, l in enumerate(LINES) if "PA_ZoneAt(" in l

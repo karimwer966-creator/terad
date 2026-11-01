@@ -1,0 +1,20 @@
+PASS  EdgeBook V1 header contains all 17 ordered fields
+PASS  EdgeBook filename and rows carry an explicit schema version
+PASS  existing EdgeBook header is validated before append
+PASS  each completed outcome is flushed before it is counted
+PASS  duplicate IDs from both persisted rows and runtime events are rejected
+PASS  published setups are journaled as pending before outcome
+PASS  restart restores pending setups by replaying available closed bars
+PASS  missing replay history is recorded ambiguous, never invented as a win/loss
+PASS  EdgeBook defaults to terminal-local Files; Common storage is opt-in
+PASS  signal CSV uses a versioned append-only filename
+PASS  signal journal validates schema header and every appended row
+PASS  signal rows persist deterministic setup identifiers
+PASS  outcome tracking runs even when CSV persistence is disabled
+PASS  same-bar stop/target ambiguity resolves conservatively to stop
+PASS  short same-bar stop/target ambiguity also resolves conservatively
+PASS  bar advancement is idempotent and records the ambiguity policy
+PASS  restarted pending setup transitions once to a completed outcome
+PASS  a second completed row for the same ID is rejected
+PASS  exit-bar excursion extremes are excluded when intrabar order is unknown
+EdgeBook contract checks passed; this is not an MT5 file-I/O test.

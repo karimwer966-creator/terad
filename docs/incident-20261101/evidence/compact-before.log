@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/home/user/terad/tools/test_incident_compact.py", line 5, in <module>
+    assert 'void QA_LayoutBadge(' in h,'current-state badge uses a fixed overlapping anchor'
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: current-state badge uses a fixed overlapping anchor
