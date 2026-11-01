@@ -28566,7 +28566,7 @@ string CoreDashChain(const SResolvedCorePath &path,const string state,const int 
               (g_causal_events[path.zone].type==CE_ORDER_BLOCK?"OB+":"FVG+") : "ZONE-");
    string rt=(CoreDashClosedRetest(closed)?"RET+":
               (state=="LIVE PREVIEW (NON-AUTH)"?"RET-LIVE":"RET-"));
-   string en=(state=="CONFIRMED"?"ENTRY+":"ENTRY-");
+   string en=(state=="CONFIRMED" && g_qa_core.direction!=0?"ENTRY+":"ENTRY-");
    return "CHAIN: "+sw+" > "+dp+" > "+st+" > "+zn+" > "+rt+" > "+en;
 }
 
@@ -31881,7 +31881,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    // replaces a row rather than adding one, so the ten-row cap still holds.
    if(!g_alert_primary.valid)
       needs="NEEDS: "+AlertWhyNoPopup(closed,g_buf_t[closed]);
-   string opposing="OPPOSING: none";
+   string opposing="OPPOSING: none"; primary="CONTEXT (NOT ENTRY) | "+primary;
    if(g_alert_opposite.valid)
       opposing=StringFormat("OPPOSING: %s %s-%s | %d/100 | %.2f ATR",
                             (g_alert_opposite.direction>0?"BUY S":"SELL R"),

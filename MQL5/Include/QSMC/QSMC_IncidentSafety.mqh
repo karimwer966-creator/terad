@@ -86,6 +86,48 @@ string QA_PriceDescription()
    return text;
 }
 
+// Display-only: fit badge to the viewport, then avoid existing docked rectangles.
+// Full verdict, identities and prices remain available in the tooltip after clipping.
+void QA_LayoutBadge(const string name,const string full)
+{
+   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS);
+   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS);
+   if(cw<=0 || ch<=0) return;
+   int available=(int)MathMax(20,cw-24),n=StringLen(full);
+   string shown=full;
+   while(n>4 && TextWidthPx(shown,"Consolas",9)>available)
+   { n--; shown=QSMC_ClipChars(full,n); }
+   int w=TextWidthPx(shown,"Consolas",9),h=18,x=12,y=(int)MathMax(0,ch-30-h);
+   for(int pass=0;pass<8;pass++)
+   {
+      bool moved=false;
+      for(int j=ObjectsTotal(0,-1,-1)-1;j>=0;j--)
+      {
+         string obj=ObjectName(0,j,-1,-1);
+         if(obj==name || (ENUM_OBJECT)ObjectGetInteger(0,obj,OBJPROP_TYPE)!=OBJ_RECTANGLE_LABEL) continue;
+         if(ObjectGetInteger(0,obj,OBJPROP_TIMEFRAMES)==OBJ_NO_PERIODS) continue;
+         int rw=(int)ObjectGetInteger(0,obj,OBJPROP_XSIZE),rh=(int)ObjectGetInteger(0,obj,OBJPROP_YSIZE);
+         int rx=(int)ObjectGetInteger(0,obj,OBJPROP_XDISTANCE),ry=(int)ObjectGetInteger(0,obj,OBJPROP_YDISTANCE);
+         int corner=(int)ObjectGetInteger(0,obj,OBJPROP_CORNER);
+         if(corner==CORNER_RIGHT_UPPER || corner==CORNER_RIGHT_LOWER) rx=cw-rx-rw;
+         if(corner==CORNER_LEFT_LOWER || corner==CORNER_RIGHT_LOWER) ry=ch-ry-rh;
+         if(x<rx+rw+4 && x+w+4>rx && y<ry+rh+4 && y+h+4>ry)
+         {
+            int above=ry-h-6;
+            if(above>=0) y=above;
+            else { x=(int)MathMax(0,cw-w-12); y=(int)MathMax(0,ch-h-12); }
+            moved=true; break;
+         }
+      }
+      if(!moved) break;
+   }
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_LEFT_UPPER);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
+   ObjectSetString(0,name,OBJPROP_FONT,"Consolas");
+   ObjectSetString(0,name,OBJPROP_TEXT,shown);
+}
+
 void QA_DrawCoreStatus()
 {
    string name=PFX+"CORE_CURRENT_STATE";
@@ -95,8 +137,9 @@ void QA_DrawCoreStatus()
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,12); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,30);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
    ObjectSetInteger(0,name,OBJPROP_COLOR,(g_qa_core.direction==0?clrSilver:clrGold));
-   ObjectSetString(0,name,OBJPROP_TEXT,"CORE "+QA_CoreStatus()+(g_qa_core.direction!=0?" ENTRY CONFIRMED":" - no current entry"));
-   ObjectSetString(0,name,OBJPROP_TOOLTIP,g_qa_core.reason+"\n"+QA_InstanceDescription()+"\n"+QA_PriceDescription());
+   string full="CORE "+QA_CoreStatus()+(g_qa_core.direction!=0?" ENTRY CONFIRMED":" - no current entry");
+   QA_LayoutBadge(name,full);
+   ObjectSetString(0,name,OBJPROP_TOOLTIP,full+"\n"+g_qa_core.reason+"\n"+QA_InstanceDescription()+"\n"+QA_PriceDescription());
 }
 
 bool QA_LabelAlive(const double lo,const double hi,const datetime born,const bool invalid)
