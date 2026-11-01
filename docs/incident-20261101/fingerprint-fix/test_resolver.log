@@ -1,0 +1,120 @@
+PASS  A the resolver has its own input group at L852
+PASS  A InpUseFinalResolver is declared at L853 and defaults to false
+PASS  A InpResWeightBias = 25 at L856
+PASS  A InpResWeightZone = 25 at L857
+PASS  A InpResWeightReaction = 30 at L858
+PASS  A InpResWeightTactical = 20 at L859
+PASS  A InpResWeightBias keeps its shipped default 25 (never silently retuned)
+PASS  A InpResWeightZone keeps its shipped default 25 (never silently retuned)
+PASS  A InpResWeightReaction keeps its shipped default 30 (never silently retuned)
+PASS  A InpResWeightTactical keeps its shipped default 20 (never silently retuned)
+PASS  A the four shipped weights sum to exactly 100 (100)
+PASS  A InpResMinScore = 60 at L860
+PASS  A the resolver flag is declared exactly once (no shadow copy)
+PASS  B enum ENUM_FINAL_SIGNAL is declared at L4454
+PASS  B the enum was appended, not inserted: 44 ENUM_ declarations
+PASS  B the enum names FS_WAIT = 0
+PASS  B the enum names FS_BUY = 1
+PASS  B the enum names FS_SELL = -1
+PASS  B the enum names FS_CONFLICT_WAIT = 2
+PASS  B CONFLICT is its own state, not folded into WAIT: the dashboard can show the difference
+PASS  B g_final_signal is declared once, at L4463
+PASS  B g_final_signal has exactly one global declaration
+PASS  B g_res_score is declared once, at L4464
+PASS  B g_res_score has exactly one global declaration
+PASS  B g_final_why is declared once, at L4465
+PASS  B g_final_why has exactly one global declaration
+PASS  B g_tac_dir is declared once, at L4468
+PASS  B g_tac_dir has exactly one global declaration
+PASS  B g_tac_closed is declared once, at L4469
+PASS  B g_tac_closed has exactly one global declaration
+PASS  B the verdict encoding is documented where it is declared (L4438)
+PASS  B no g_final_score exists: the resolver score cannot collide as a substring with the pre-existing final_score the phase suites count
+PASS  C ResolveFinalSignal is defined at L5817
+PASS  C ResolveFinalSignal is defined exactly once
+PASS  C its forward declaration sits at L6597
+PASS  C the resolver is one small function (L5817-L5859, 42 lines)
+PASS  C leg 0 votes and is named 'bias'
+PASS  C leg 1 votes and is named 'zone'
+PASS  C leg 2 votes and is named 'reaction'
+PASS  C leg 3 votes and is named 'tactical'
+PASS  C the bias leg respects InpUseHTFBias (a disabled layer cannot vote)
+PASS  C the zone leg REUSES PA_ZoneAt instead of scanning zones a second time
+PASS  C exactly one PA_ZoneAt call in the resolver
+PASS  C PA_ZoneAt has exactly 5 call sites file-wide (PA, CF, RM, RS1 and the SC1 edge leg) - each reuses the one zone scan
+PASS  C the resolver's zone leg is one of them (L5798)
+PASS  C the reaction leg is symmetric; two-sided reactions veto below
+PASS  C the tactical leg requires closed confirmation before voting
+PASS  C both sides voting returns 2 = CONFLICT, never a coin flip
+PASS  C the CONFLICT why-text says stand aside (L5843)
+PASS  C nothing voted returns 0 = WAIT and zeroes the score
+PASS  C the minimum-score veto is at L5849
+PASS  C a lone side below InpResMinScore is reported as WAIT, with the threshold named
+PASS  C only the CONFIRMED branch builds the winning why-text (L5856)
+PASS  C the why-text states the score is a confluence count, not a probability
+PASS  C the winning side is what gets returned
+PASS  C six exits including unified adapter, no fall-through verdict
+PASS  C reaction snapshots must belong to this closed bar
+PASS  C WATCH-only snapshots cannot vote as a reaction
+PASS  D the resolver explicitly rejects the forming bar
+PASS  D no series re-read inside the resolver (it reads published globals only)
+PASS  D no full-history loop: one call per closed bar, bounded work
+PASS  D the one price it reads is the closed bar's, and the index is bounds-checked
+PASS  D the resolver draws nothing: it decides, the surfaces render
+PASS  E OnInit checks the weight sum at L14512-L14513
+PASS  E a bad weight sum REFUSES to initialise instead of renormalising
+PASS  E the refusal message names the rule the operator broke
+PASS  E the comment above it says why: refuse rather than renormalise
+PASS  E AlertDispatcherFinalize is called at L15736
+PASS  E the resolver runs at L15739, after the dispatcher, only on a closed-bar or detection event - never per tick
+PASS  E ordering: dispatcher L15736 < resolver L15739, so every layer has published
+PASS  E the call site writes g_final_signal and g_final_why and nothing else
+PASS  E the resolver does not overwrite g_alert_primary: the arbiter still owns it
+PASS  E exactly one call site (a second verdict is how four opinions became one)
+PASS  E ClearMTFExecutionEntry drops the tactical vote at L5590, so a cleared execution cannot keep voting
+PASS  E the execution entry publishes its vote at L5687, after closed_confirm is computed
+PASS  E publication (L5687) precedes the resolver definition (L5817)
+PASS  F the dashboard override starts at L31855
+PASS  F with the flag on the card STATUS is the resolver verdict, CONFLICT included
+PASS  F the card colour follows the same verdict, not the old primary_dir
+PASS  F with the flag off the card still reads primary_dir exactly as before
+PASS  F the tooltip carries the resolver's own why-text at L32023
+PASS  F that line only appears when the flag is on (off = byte-identical tooltip)
+PASS  F the tactical word is demoted CONFIRMED -> INFO when the resolver is on (L5694)
+PASS  F the demotion happens at the single place that built the word
+PASS  F exactly nine references: the declaration, the OnInit refusal, the call gate, the state word, the dashboard override, the tooltip guard and the comment above the enum - no stray extra coupling
+PASS  G InpRXNMinConfirmedScore is still 68 (the resolver adds a verdict, it does not loosen a gate)
+PASS  G InpGateProfile still defaults to QSMC_GATE_STRICT (L1343)
+PASS  G InpAlertCooldownBars is still 5
+PASS  G the Confluence Engine's own display threshold is untouched (60)
+PASS  G no OrderSend call: this is an indicator, execution lives in QSMC_AutoTrader.mq5
+PASS  G no OrderSendAsync call: this is an indicator, execution lives in QSMC_AutoTrader.mq5
+PASS  G no CTrade call: this is an indicator, execution lives in QSMC_AutoTrader.mq5
+PASS  G no PositionOpen call: this is an indicator, execution lives in QSMC_AutoTrader.mq5
+PASS  G no PositionClose call: this is an indicator, execution lives in QSMC_AutoTrader.mq5
+PASS  G no PositionModify call: this is an indicator, execution lives in QSMC_AutoTrader.mq5
+PASS  G every remaining OrderSend mention is prose in a comment (5 of them), not code
+PASS  G the resolver body itself is free of order and object APIs
+PASS  G nadir2.mq5 has 583 input lines (538 + 10 RS1 + 10 GS1 + 16 SC1 + 9 OBS1)
+PASS  G braces balance (3594/3594)
+PASS  G brace count is the pinned 3594
+PASS  G no bare LF: every line ends CRLF as .gitattributes requires
+PASS  G the file is 43359 lines - no scratch rewrite, RS1 + GS1 and the LV include tail
+PASS  G exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes, root remains L639; no duplicated logic
+PASS  G the resolver added no buffers, so no existing plot index moved (the EA reads 7-12)
+PASS  H the doc states '## 11.3 AUDIT-RS1'
+PASS  H the doc states 'ResolveFinalSignal()'
+PASS  H the doc states 'InpUseFinalResolver'
+PASS  H the doc states '25 / 25 / 30 / 20 = 100'
+PASS  H the doc states 'CONFLICT → WAIT'
+PASS  H the doc states 'confluence count'
+PASS  H the doc states 'tools/test_resolver.py'
+PASS  H the doc states 'CI step 32'
+PASS  H the doc states '548'
+PASS  H the doc states '44 enums'
+PASS  H the doc cites the resolver's input block (L852-L860)
+PASS  H the doc cites the resolver's definition line (L5817)
+PASS  H CI runs tools/test_resolver.py
+PASS  H the workflow has 37 named steps (31 + execution safety + resolver + weighted gates + scalping + journal + declutter)
+PASS  H the CI step names the audit it enforces
+AUDIT-RS1 resolver checks: 119   failures: 0

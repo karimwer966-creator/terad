@@ -1,0 +1,96 @@
+PASS  the execution companion exists as its own program
+PASS  no trade API in nadir2.mq5 (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_AlertManager.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Arbiter.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Bias.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_DataProvider.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_EarlyBreakDetector.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Gates.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_IncidentSafety.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_InputFingerprint.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_InstanceIdentity.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_LiquidityValue.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_MarketData.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Preset.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Reaction.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Renderer.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Root.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Scanners.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Selftest.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Stats.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Structure.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Types.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_UnifiedDecision.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_ZoneScorer.mqh (observation layer stays observation-only)
+PASS  no trade API in MQL5/Include/QSMC/QSMC_Zones.mqh (observation layer stays observation-only)
+PASS  the companion does reach the trade API (otherwise it cannot execute anything)
+PASS  the companion uses the standard terminal trade library, not a hand-rolled OrderSend
+PASS  the companion's CORE buffer map is 7..12 as documented
+PASS  indicator buffer 7 is still BufSigCoreDir (the companion reads this slot)
+PASS  indicator buffer 8 is still BufSigCoreEntry (the companion reads this slot)
+PASS  indicator buffer 9 is still BufSigCoreSL (the companion reads this slot)
+PASS  indicator buffer 10 is still BufSigCoreTP1 (the companion reads this slot)
+PASS  indicator buffer 11 is still BufSigCoreTP2 (the companion reads this slot)
+PASS  indicator buffer 12 is still BufSigCoreTP3 (the companion reads this slot)
+PASS  the indicator still exports the CORE signal buffers by default
+PASS  the companion reads no preview mark and no ZRE buffer - only published CORE facts
+PASS  the companion reads the published indicator with no overridden inputs (entry gates cannot be reached, let alone relaxed, from here)
+PASS  the companion never reads the forming bar (shift 0)
+PASS  ships INERT: InpEnableTrading=false (no order can be sent until a human says so)
+PASS  first switch-on is still a DRY RUN: InpDryRun=true
+PASS  refuses a real-money account by default: InpDemoOnly=true
+PASS  hard risk ceiling: InpMaxRiskPercent defaults to 1% of equity per trade
+PASS  the ceiling cannot be raised above 1% by the operator
+PASS  the requested risk is clamped to the ceiling before sizing
+PASS  risk is a fraction of current equity, not of balance or a fixed lot guess
+PASS  no invented LongToString() - MQL5 spells the converter IntegerToString()
+PASS  a real account must be NAMED: InpRealAccountConfirm ships empty
+PASS  the real-account check compares the input to the actual account number (a preset copied from a demo chart cannot arm real money)
+PASS  the companion names a switched-off Algo Trading button as the blocker instead of silently doing nothing
+PASS  server-side expert-trading permission is checked too
+PASS  a disabled / close-only symbol is reported, not traded
+PASS  the attach banner states INERT / DRY RUN / BLOCKED / ARMED in one line
+PASS  the companion can refuse a signal because of no stop, no trade
+PASS  the companion can refuse a signal because of no target, no trade
+PASS  the companion can refuse a signal because of buy geometry (sl<entry<tp)
+PASS  the companion can refuse a signal because of sell geometry (tp<entry<sl)
+PASS  the companion can refuse a signal because of stop below the minimum distance
+PASS  the companion can refuse a signal because of stop above the maximum distance
+PASS  the companion can refuse a signal because of stop already breached by price
+PASS  the companion can refuse a signal because of sell stop already breached
+PASS  the companion can refuse a signal because of target already reached (no chase)
+PASS  the companion can refuse a signal because of broker stops level
+PASS  the companion can refuse a signal because of spread filter
+PASS  the companion can refuse a signal because of daily loss guard
+PASS  the companion can refuse a signal because of open-position cap
+PASS  the companion can refuse a signal because of signal age
+PASS  every call to a local helper passes the number of arguments it declares 
+PASS  signals that existed before the EA was attached are never traded
+PASS  a signal older than InpMaxSignalAgeBars is ignored instead of traded late
+PASS  only positions carrying this EA's magic number are counted or managed
+PASS  a terminal-session global prevents re-firing the same signal after a reload
+PASS  a throttled diagnostic heartbeat exists and is on by default (InpHeartbeatSeconds)
+PASS  the heartbeat scans a configurable lookback window (InpHeartbeatLookback)
+PASS  the heartbeat is one named function
+PASS  the heartbeat reads the CORE direction buffer (7) itself, not an internal indicator state
+PASS  the heartbeat is strictly read-only: no order, modify or close call can hide in it
+PASS  InpHeartbeatSeconds=0 switches the heartbeat off (quiet on demand)
+PASS  when the window has zero signals the heartbeat says so explicitly instead of staying silent
+PASS  the heartbeat runs from both OnTick and OnTimer (a quiet symbol must still report)
+PASS  reference: $25 of risk over a $1 stop at $1/tick/lot is 0.25 lots
+PASS  reference: the rounded volume does not exceed the requested 0.25%
+PASS  reference: a $2 stop yields 0.12 lots, not a widened stop to keep 0.25
+PASS  reference: the wider stop still lands under the risk budget, rounded down
+PASS  reference: a volume is floored to the broker step, never rounded up
+PASS  reference: under the broker minimum the companion trades nothing (silently using the minimum lot is how risk doubles)
+PASS  reference: a fixed 1.0 lot with a $20 stop risks 10% of a $10k account -> refused
+PASS  reference: a fixed 0.4 lot with a $2 stop risks 0.8% -> allowed
+PASS  the fixed-lot path really refuses a size above the ceiling
+PASS  no lot doubling (martingale) in the companion
+PASS  no lot doubling written as lots*2
+PASS  the only volume adjustment on failure is HALVING, for margin, never doubling
+PASS  the header states the no-averaging / no-widening policy it is checked against
+PASS  the only position modification is the break-even move
+PASS  break-even stops are placed exactly at the entry, never beyond it
+PASS  a stop that is already at or past break-even is left alone (never widened)
+AutoTrader contract checks passed; this is not an MT5 run and not a backtest.

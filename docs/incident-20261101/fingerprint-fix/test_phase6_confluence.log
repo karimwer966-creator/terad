@@ -1,0 +1,323 @@
+PASS  A0 the CF section is locatable and brace-terminated
+PASS  A0 the CF slice is long enough to be the real section
+PASS  A1 zero evidence scores 0 at every weight from -5 to 500
+PASS  A1 negative evidence scores 0
+PASS  A1 NaN evidence scores 0 rather than propagating
+PASS  A2 full evidence at weight w scores exactly w, for all w in 0..100
+PASS  A2 half evidence scores exactly half the weight
+PASS  A2 a trace of evidence never scores negative
+PASS  A3 evidence above 100 is clamped to 100
+PASS  A3 a weight above 100 is clamped to 100
+PASS  A3 a negative weight scores nothing
+PASS  A4 the six default weights sum to 100 in the model
+PASS  A4 full evidence on all six legs aggregates to exactly 100
+PASS  A4 no evidence at all aggregates to exactly 0
+PASS  A4 the aggregate is capped at 100 even with absurd weights
+PASS  A5 the sweep covered all 64 evidence patterns
+PASS  A5 six absent legs score 0 - never a free point
+PASS  A5 six present legs at full evidence score exactly 100
+PASS  A5 the score stays inside 0..100 for every pattern
+PASS  A5 any present leg produces a strictly positive score
+PASS  A5 adding evidence to a leg never lowers the total
+PASS  A5 dropping exactly one leg costs exactly that leg's weight
+PASS  A6 CF_PickSide names a side only when exactly one side clears
+PASS  A6 the engine never forces a direction out of a conflict or a shortfall
+PASS  A6 both sides clearing is a stand-aside, not a tie
+PASS  A6 neither side clearing is a stand-aside
+PASS  A6 the minimum is inclusive at exactly the threshold
+PASS  A6 a minimum above 100 can never be cleared
+PASS  A6 a negative minimum clamps to 0, which makes BOTH sides clear -> ambiguous
+PASS  A7 CF_IsAmbiguous agrees with its definition over the whole grid
+PASS  A7 ambiguous only when both sides are at or above the minimum
+PASS  A8 a source carrying no direction is never a contradiction
+PASS  A8 with no side chosen nothing can contradict
+PASS  A8 an opposing source IS a contradiction
+PASS  A8 an agreeing source is not a contradiction
+PASS  A8 four agreeing sources = 0
+PASS  A8 one opposing, three silent = 1
+PASS  A8 four opposing = 4
+PASS  A8 no side chosen means no contradiction can be counted
+PASS  A8 the contradiction count is bounded by the four sources over all 81 combos
+PASS  A9 invalid weights veto even a strong side and quote the real sum
+PASS  A9 a configuration error outranks ambiguity, contradiction and shortfall
+PASS  A9 two sides above the minimum is reported as ambiguous
+PASS  A9 contradictions are reported with their count
+PASS  A9 with the veto disabled, contradictions do NOT force a stand-aside
+PASS  A9 an unmet strategy requirement is reported
+PASS  A9 a shortfall quotes the leading side's score
+PASS  A9 a clean uncontradicted side above the minimum is NOT a stand-aside
+PASS  A9 the reason sweep covered 1536 combinations
+PASS  A9 every non-empty reason uses the specification's 'NO TRADE: <reason>' format
+PASS  A9 at least one combination is a clean trade, so the function is not always refusing
+PASS  A10 CF_Pillar refuses non-positive evidence FIRST, before any arithmetic
+PASS  A10 CF_Pillar clamps evidence to 100
+PASS  A10 CF_Pillar clamps the weight into 0..100
+PASS  A10 CF_Pillar is the only place evidence becomes points
+PASS  A10 the zero-evidence refusal precedes the scoring return
+PASS  A10 CF_Aggregate routes all SIX legs through CF_Pillar
+PASS  A10 CF_Aggregate caps the total at 100
+PASS  A10 CF_Aggregate refuses a non-positive total
+PASS  A10 CF_Aggregate takes a separate weight for each of the six legs
+PASS  A10 CF_PickSide refuses when neither side clears
+PASS  A10 CF_PickSide refuses when BOTH sides clear - no forced direction
+PASS  A10 CF_PickSide has exactly two stand-aside returns
+PASS  A10 CF_PickSide clamps the minimum into 0..100
+PASS  A10 CF_Contradicts treats a directionless source as absent
+PASS  A10 CF_CountContradictions consults exactly the four directional sources
+PASS  A10b CF_PickSide compares the long side inclusively (>=)
+PASS  A10b CF_PickSide compares the short side inclusively (>=)
+PASS  A10b CF_IsAmbiguous requires BOTH sides at or above the minimum
+PASS  A10b CF_IsAmbiguous clamps the minimum exactly as CF_PickSide does
+PASS  A10c all five stand-aside branches use the specification's 'NO TRADE: ' prefix
+PASS  A10c exactly one branch returns the empty string - the clean-trade path
+PASS  A10c the clean-trade return comes after every stand-aside guard
+PASS  A10c CF_StandAsideReason carries the guard if(!weights_valid)
+PASS  A10c CF_StandAsideReason carries the guard if(side==0 && buy_score>=need && sell_score>=need)
+PASS  A10c CF_StandAsideReason carries the guard if(veto && contradictions>0)
+PASS  A10c CF_StandAsideReason carries the guard if(!strategy_ok)
+PASS  A10c CF_StandAsideReason carries the guard if(side==0)
+PASS  A10c the weight error outranks ambiguity
+PASS  A10c ambiguity outranks the contradiction veto
+PASS  A10c the contradiction veto outranks the strategy requirement
+PASS  A10c the strategy requirement outranks the plain shortfall
+PASS  A10c a weight error quotes the sum the operator actually configured
+PASS  A10c a contradiction quotes how many sources disagreed
+PASS  A10c a shortfall quotes the LEADING side, not whichever came first
+PASS  A10c ambiguity is inclusive on both sides, matching CF_PickSide
+
+PASS  B1 the session no-evidence floor is named as 30.0, matching ScoreSession()
+PASS  B1 CF tests the session raw value against that floor
+PASS  B1 an unmatched session contributes 0, not ScoreSession()'s free 30
+PASS  B1 the session is read before it is tested
+PASS  B2 CF_Update never calls ScoreHTF()
+PASS  B2 the whole CF section never calls ScoreHTF()
+PASS  B2 the MTF leg tests the bias itself for existence
+PASS  B2 with no bias the MTF direction is 0, i.e. absent, not neutral-50
+PASS  B2 the long MTF leg is 100 only on an agreeing bias, else 0
+PASS  B2 the short MTF leg is 100 only on an agreeing bias, else 0
+PASS  B3 the candle leg requires Price Action to be enabled AND a real pattern
+PASS  B3 a disabled or patternless candle leg contributes 0
+PASS  B3 an absent candle leg carries no direction, so it cannot contradict
+PASS  B4 CF_Update calls PA_ZoneAt exactly once
+PASS  B4 a live zone scores 100 and no zone scores 0
+PASS  B4 CF_Update does not build a SECOND zone scan of its own
+PASS  B5 ScoreSession() still returns its 30.0 floor, unedited
+PASS  B5 ScoreHTF() still returns 50.0 twice (disabled bias, and no bias), unedited
+
+PASS  C1 the CF section never writes or reads 'g_score.'
+PASS  C1 the CF section never writes or reads 'g_score ='
+PASS  C1 the CF section never writes or reads 'final_score'
+PASS  C1 the CF section never writes or reads 'setup_quality_score'
+PASS  C1 the CF section never writes or reads 'g_pmi_confluence'
+PASS  C2 'g_score.' still occurs exactly 73 times file-wide
+PASS  C2 'final_score' still occurs exactly 21 times file-wide
+PASS  C2 'setup_quality_score' still occurs exactly 5 times file-wide
+PASS  C3 CalculateAITradeSetup( occurs exactly 3 times file-wide
+PASS  C3 ComputeEntryQuality( occurs exactly 3 times file-wide
+PASS  C3 GraphConfluenceScore( occurs exactly 0 times file-wide
+PASS  C3 PA_ZoneAt( occurs exactly 7 times file-wide
+PASS  C3 PMI_ComputeConfluence( occurs exactly 3 times file-wide
+PASS  C3 ScoreHTF( occurs exactly 3 times file-wide
+PASS  C3 ScoreLiquidity( occurs exactly 5 times file-wide
+PASS  C3 ScoreSession( occurs exactly 5 times file-wide
+PASS  C3 ScoreStructure( occurs exactly 6 times file-wide
+PASS  C4 the existing structure coefficient is still applied to g_score.structure
+PASS  C4 the existing regime multiplier is still applied
+PASS  C4 the existing prime bonus is still in place
+PASS  C4 the existing relationship bonus is still in place
+PASS  C5 'int closed=rates_total-2;' still occurs exactly 12 times
+PASS  C5 'int closed=ArraySize(g_buf_c)-2;' still occurs exactly 2 times
+PASS  C5 'int closed=g_rates_total-2;' still occurs exactly 8 times
+PASS  C5 no forming-bar variant was introduced
+
+PASS  D1 CF_Update clears all published state before anything else
+PASS  D1 the clear precedes the master-switch early exit
+PASS  D2 the forming bar is refused before the close array is read
+PASS  D2 the close array is bounds-checked before it is read
+PASS  D2 a history too short to have a closed bar is refused
+PASS  D2 the forming-bar guard uses the file's own rates_total-2 convention
+PASS  D3 CF_Update is called exactly once
+PASS  D3 CF_Update runs AFTER MR_Update, so it summarises the same bar
+PASS  D3 CF_Update runs AFTER PA_Update, whose candle leg it reads
+PASS  D3 CF_Update runs AFTER MVP_Update, whose POC PA_ZoneAt may read
+PASS  D3 CF_Update is gated by the same is_new_bar/detection_updated condition as MR_Update
+PASS  D3 ComputeHTFBias runs before CF_Update, so g_htf_bias is fresh
+PASS  D3 BuildCausalEventGraph runs before CF_Update, so g_structures is fresh
+PASS  D4 five strategy modules are scanned with strictly-greater replacement
+PASS  D4 the scan consults g_p3_dir
+PASS  D4 the scan consults g_sb_active
+PASS  D4 the scan consults g_wy_active
+PASS  D4 the scan consults g_pa_dir
+PASS  D4 the scan consults g_mr_dir
+PASS  D4 the scan starts from 0, so a module scoring 0 can never become best
+PASS  D4 the scan can name POWER_OF_3
+PASS  D4 the scan can name SILVER_BULLET
+PASS  D4 the scan can name WYCKOFF
+PASS  D4 the scan can name PRICE_ACTION
+PASS  D4 the scan can name MEAN_REVERSION
+PASS  D5 CF_Aggregate is called exactly twice, once per side
+PASS  D5 structure is scored for both sides
+PASS  D5 liquidity is scored for both sides
+PASS  D6 a stand-aside zeroes the direction
+PASS  D6 a stand-aside zeroes the score
+PASS  D6 the stand-aside sentence comes from the shared formatter
+PASS  D6 a non-empty reason is what triggers the stand-aside branch
+PASS  D6 the contradiction veto is switchable and off-switchable
+PASS  D6 the strategy requirement is optional and defaults to not required
+PASS  D7 CF_Clear is CALLED exactly twice: once in OnInit, once at CF_Update's head
+PASS  D7 CF_Clear is wired next to MR_Clear in OnInit
+PASS  D7 the self-test is called exactly once, through the shared MTEE harness
+PASS  D7 the self-test reports ten checks, matching CF-1..CF-10
+PASS  D7 the self-test sits under the existing InpMTEERunSelfTest gate
+PASS  D8 the card builder is still present
+PASS  D8 the card's 11-row cap is still present
+PASS  D8 the card still has exactly 13 candidate rows - CF added none
+PASS  D8 no confluence value was written into the card's row budget
+PASS  D8 the tooltip block is gated by BOTH confluence switches
+PASS  D8 the tooltip carries "\nCF: "
+PASS  D8 the tooltip carries "\nCF legs: "
+PASS  D8 the tooltip carries "\nCF sides: buy "
+PASS  D8 the tooltip carries "\nCF best strategy: "
+PASS  D8 the tooltip carries "\nCF invalidation: "
+PASS  D8 the tooltip states the score is not a probability
+PASS  D8 the tooltip block creates no chart objects
+PASS  D8 the CF summary block is placed ahead of the per-module detail
+PASS  D9 the section never indexes the forming bar
+PASS  D9 the section copies no indicator buffers itself
+PASS  D9 the section reaches no series directly
+PASS  D9 the section contains no trade execution
+PASS  D9 the section allocates no buffers and changes no plot
+
+PASS  E the file is still pure CRLF
+PASS  E braces balance file-wide
+PASS  E parentheses balance on stripped text (raw text carries stray parens inside comments and strings, 86 of them, which predate this module)
+PASS  E input InpEnableConfluence defaults to false
+PASS  E input InpCFShowOnDashboard defaults to false
+PASS  E input InpCFWeightStructure defaults to 20
+PASS  E input InpCFWeightLiquidity defaults to 20
+PASS  E input InpCFWeightZone defaults to 20
+PASS  E input InpCFWeightSession defaults to 10
+PASS  E input InpCFWeightCandle defaults to 15
+PASS  E input InpCFWeightMTF defaults to 15
+PASS  E input InpCFMinDisplayScore defaults to 60
+PASS  E input InpCFVetoOnConflict defaults to true
+PASS  E input InpCFRequireActiveStrategy defaults to false
+PASS  E the six declared weight defaults sum to exactly 100
+PASS  E exactly eleven new inputs were added
+PASS  E the new inputs sit under their own labelled group
+PASS  E InpEnableConfluence is a display-only switch defaulting to false
+PASS  E InpCFShowOnDashboard is a display-only switch defaulting to false
+PASS  E InpCFRequireActiveStrategy is a display-only switch defaulting to false
+PASS  E indicator_buffers is still 19 - no buffer was added
+PASS  E indicator_plots is still 7 - no plot was added
+PASS  E the module publishes 25 globals
+PASS  E g_cf_pillar_structure is declared at file scope
+PASS  E CF_Clear resets g_cf_pillar_structure to an inert value
+PASS  E g_cf_pillar_liquidity is declared at file scope
+PASS  E CF_Clear resets g_cf_pillar_liquidity to an inert value
+PASS  E g_cf_pillar_zone is declared at file scope
+PASS  E CF_Clear resets g_cf_pillar_zone to an inert value
+PASS  E g_cf_pillar_session is declared at file scope
+PASS  E CF_Clear resets g_cf_pillar_session to an inert value
+PASS  E g_cf_pillar_candle is declared at file scope
+PASS  E CF_Clear resets g_cf_pillar_candle to an inert value
+PASS  E g_cf_pillar_mtf is declared at file scope
+PASS  E CF_Clear resets g_cf_pillar_mtf to an inert value
+PASS  E g_cf_has_structure is declared at file scope
+PASS  E CF_Clear resets g_cf_has_structure to an inert value
+PASS  E g_cf_has_liquidity is declared at file scope
+PASS  E CF_Clear resets g_cf_has_liquidity to an inert value
+PASS  E g_cf_has_zone is declared at file scope
+PASS  E CF_Clear resets g_cf_has_zone to an inert value
+PASS  E g_cf_has_session is declared at file scope
+PASS  E CF_Clear resets g_cf_has_session to an inert value
+PASS  E g_cf_has_candle is declared at file scope
+PASS  E CF_Clear resets g_cf_has_candle to an inert value
+PASS  E g_cf_has_mtf is declared at file scope
+PASS  E CF_Clear resets g_cf_has_mtf to an inert value
+PASS  E g_cf_buy_score is declared at file scope
+PASS  E CF_Clear resets g_cf_buy_score to an inert value
+PASS  E g_cf_sell_score is declared at file scope
+PASS  E CF_Clear resets g_cf_sell_score to an inert value
+PASS  E g_cf_dir is declared at file scope
+PASS  E CF_Clear resets g_cf_dir to an inert value
+PASS  E g_cf_score is declared at file scope
+PASS  E CF_Clear resets g_cf_score to an inert value
+PASS  E g_cf_no_trade is declared at file scope
+PASS  E CF_Clear resets g_cf_no_trade to an inert value
+PASS  E g_cf_reason is declared at file scope
+PASS  E CF_Clear resets g_cf_reason to an inert value
+PASS  E g_cf_invalidation is declared at file scope
+PASS  E CF_Clear resets g_cf_invalidation to an inert value
+PASS  E g_cf_best_strategy is declared at file scope
+PASS  E CF_Clear resets g_cf_best_strategy to an inert value
+PASS  E g_cf_best_strategy_score is declared at file scope
+PASS  E CF_Clear resets g_cf_best_strategy_score to an inert value
+PASS  E g_cf_best_strategy_dir is declared at file scope
+PASS  E CF_Clear resets g_cf_best_strategy_dir to an inert value
+PASS  E g_cf_contradictions is declared at file scope
+PASS  E CF_Clear resets g_cf_contradictions to an inert value
+PASS  E g_cf_weight_sum is declared at file scope
+PASS  E CF_Clear resets g_cf_weight_sum to an inert value
+PASS  E g_cf_weights_valid is declared at file scope
+PASS  E CF_Clear resets g_cf_weights_valid to an inert value
+PASS  E CF_SelfTest contains exactly the ten checks CF-1..CF-10
+PASS  E CF_SelfTest has a distinct failure exit per assertion
+PASS  E CF_SelfTest returns true only after every check
+PASS  E CF_SelfTest clears the failure message first
+PASS  E CF_SelfTest reads no chart history, so it is symbol- and timeframe-independent
+PASS  E CF-10 sweeps all 64 present/absent patterns
+PASS  E CF-10 asserts it covered both sides of all 64 patterns
+PASS  E CF_Pillar has exactly one forward declaration
+PASS  E CF_Pillar has exactly one declaration plus one definition
+PASS  E CF_Aggregate has exactly one forward declaration
+PASS  E CF_Aggregate has exactly one declaration plus one definition
+PASS  E CF_PickSide has exactly one forward declaration
+PASS  E CF_PickSide has exactly one declaration plus one definition
+PASS  E CF_IsAmbiguous has exactly one forward declaration
+PASS  E CF_IsAmbiguous has exactly one declaration plus one definition
+PASS  E CF_Contradicts has exactly one forward declaration
+PASS  E CF_Contradicts has exactly one declaration plus one definition
+PASS  E CF_CountContradictions has exactly one forward declaration
+PASS  E CF_CountContradictions has exactly one declaration plus one definition
+PASS  E CF_StandAsideReason has exactly one forward declaration
+PASS  E CF_StandAsideReason has exactly one declaration plus one definition
+PASS  E CF_Update has exactly one forward declaration
+PASS  E CF_Update has exactly one declaration plus one definition
+PASS  E CF_Clear has exactly one forward declaration
+PASS  E CF_Clear has exactly one declaration plus one definition
+PASS  E CF_SelfTest has exactly one forward declaration
+PASS  E CF_SelfTest has exactly one declaration plus one definition
+
+==========================================================================
+PASS  C3 the institutional branch is still there (statement found)
+PASS  C3 the default branch is still there (statement found)
+PASS  C3 the institutional weights still sum to 1.1000, not 1.0000 (measured 1.1000)
+PASS  C3 the default weights still sum to 1.1000, not 1.0000 (measured 1.1000)
+PASS  C3 both branches still clamp to 0..100, which is what hides the 1.10 scale
+PASS  C3 EffMinConfidenceScore applies the gate profile and NOTHING else
+PASS  C3 so no compensation for the 1.10 scale exists - the gate is ~9.1% looser than its input reads
+PASS  C3 and final_score really does gate an entry, so this is not display-only
+PASS  C3 the default threshold is still 75 (a true weighted average of ~68.2 passes it)
+PASS  C4 ScoreSession still returns 30.0 when no session matched at all
+PASS  C4 and it is the fall-through return, so it is the no-evidence path
+PASS  C4 ScoreHTF still returns 50.0 both when the bias is off and when it is zero
+PASS  C4 CF_Update detects the 30.0 floor instead of trusting it
+PASS  C4 and zeroes that pillar when there is no session
+PASS  C4 the MTF leg is read straight from g_htf_bias
+PASS  C4 so the 50.0 free point in ScoreHTF never reaches this engine (the code path; the comment that explains why is allowed to name it)
+PASS  C1 the bullish pin-bar test is still lower_wick>=50% of range with an INCLUSIVE close>=open
+PASS  C1 and the bearish mirror is inclusive too
+PASS  C1 one reset plus two branch assignments exist
+PASS  C1 both branch assignments require closes_inside
+PASS  C1 neither branch consults the body, so a zero-body doji satisfies a pin bar
+PASS  C1 while the ACC label calls that same bar a DOJI (body_ratio <= 0.12)
+PASS  C1 with body/range (95,100,90,95) the pin test passes at exactly the boundary
+PASS  C1 and the same bar is a DOJI by the ACC rule - the two disagree
+PASS  C6 the stop used when no zone sits behind entry is 1.50 ATR, not the 1% the brief named
+PASS  C6 InpMinRR still does not exist (a doc may not name it as an input)
+PASS  C6 InpRiskPercent still does not exist (a doc may not name it as an input)
+AUDIT-CF1 checks: 313   failures: 0
+This is a static transcription + wiring contract. It is NOT a backtest, it
+produces no win rate, and it does NOT prove MetaEditor compiles the file.
+==========================================================================

@@ -1,0 +1,240 @@
+PASS  A1 a strictly contained bar is an inside bar
+PASS  A1 an equal high is not an inside bar
+PASS  A1 an equal low is not an inside bar
+PASS  A1 an engulfing bar is not an inside bar
+PASS  A1 an unknown parent is refused rather than guessed
+PASS  A2 a DOJI that is also an inside bar stays a DOJI
+PASS  A2 BULLISH_ENGULFING is never overridden by INSIDE_BAR
+PASS  A2 MORNING_STAR is never overridden by INSIDE_BAR
+PASS  A2 HAMMER is never overridden by INSIDE_BAR
+PASS  A2 PIERCING is never overridden by INSIDE_BAR
+PASS  A2 BULLISH_DISPLACEMENT_CANDLE is never overridden by INSIDE_BAR
+PASS  A2 BEARISH_ENGULFING is never overridden by INSIDE_BAR
+PASS  A2 EVENING_STAR is never overridden by INSIDE_BAR
+PASS  A2 SHOOTING_STAR is never overridden by INSIDE_BAR
+PASS  A2 DARK_CLOUD is never overridden by INSIDE_BAR
+PASS  A2 BEARISH_DISPLACEMENT_CANDLE is never overridden by INSIDE_BAR
+PASS  A2 INSIDE_BAR fills only the gap where nothing matched
+PASS  A2 an empty label counts as no pattern
+PASS  A2 the inside-bar leg is switchable, and off means off
+PASS  A2 a bar that is not an inside bar stays NONE
+PASS  A3 an inside bar takes its configured strength
+PASS  A3 a named pattern keeps its own strength
+PASS  A3 an inside-bar strength is clamped to 0..100
+PASS  A3 a candle score is clamped to 0..100
+PASS  A4 BULLISH_ENGULFING resolves to +1
+PASS  A4 MORNING_STAR resolves to +1
+PASS  A4 HAMMER resolves to +1
+PASS  A4 PIERCING resolves to +1
+PASS  A4 BULLISH_DISPLACEMENT_CANDLE resolves to +1
+PASS  A4 BEARISH_ENGULFING resolves to -1
+PASS  A4 EVENING_STAR resolves to -1
+PASS  A4 SHOOTING_STAR resolves to -1
+PASS  A4 DARK_CLOUD resolves to -1
+PASS  A4 BEARISH_DISPLACEMENT_CANDLE resolves to -1
+PASS  A4 DOJI carries no direction
+PASS  A4 INSIDE_BAR carries no direction
+PASS  A4 NONE carries no direction
+PASS  A4 SOMETHING_NEW carries no direction
+PASS  A5 outside a zone, pattern_dir=-1 zone_dir=-1 gives no direction
+PASS  A5 outside a zone, pattern_dir=-1 zone_dir=0 gives no direction
+PASS  A5 outside a zone, pattern_dir=-1 zone_dir=1 gives no direction
+PASS  A5 outside a zone, pattern_dir=0 zone_dir=-1 gives no direction
+PASS  A5 outside a zone, pattern_dir=0 zone_dir=0 gives no direction
+PASS  A5 outside a zone, pattern_dir=0 zone_dir=1 gives no direction
+PASS  A5 outside a zone, pattern_dir=1 zone_dir=-1 gives no direction
+PASS  A5 outside a zone, pattern_dir=1 zone_dir=0 gives no direction
+PASS  A5 outside a zone, pattern_dir=1 zone_dir=1 gives no direction
+PASS  A6 an undirectional pattern inside a zone takes the zone's direction
+PASS  A6 an agreeing pattern keeps its own direction
+PASS  A7 a pattern contradicting its zone resolves to no direction
+PASS  A7 opposite directions are a conflict
+PASS  A7 an undirectional side is not a conflict
+PASS  A8 outside a zone the score is 0, not a fraction of the strength
+PASS  A8 being inside a valid zone is worth 25 alone
+PASS  A8 maximum pattern strength adds 45, giving 70
+PASS  A8 zone + maximum pattern + agreement is 100
+PASS  A8 an inside bar of strength 45 with agreement is 75
+PASS  A8 a MORNING_STAR of 88 in zone with agreement is 95
+PASS  A9 an out-of-range strength is clamped, not propagated
+PASS  A9 the score stays inside 0..100 for every strength in range
+PASS  A9 agreement never lowers the score
+PASS  A9 the score is monotonic in pattern strength
+PASS  A10 the shipped inside-bar test is 'if(!(prev_h>0.0) || !(prev_l>0.0)) return fa'
+PASS  A10 the shipped inside-bar test is 'if(!(h>0.0) || !(l>0.0)) return false;'
+PASS  A10 the shipped inside-bar test is 'return (h<prev_h && l>prev_l);'
+PASS  A10 unification returns an existing pattern BEFORE considering INSIDE_BAR
+PASS  A10 the never-reclassify guard is the FIRST branch, not a later one
+PASS  A10 the resolve guard order is zone -> conflict -> pattern -> zone
+PASS  A10 the score's zone gate precedes every scoring line
+PASS  A10 the pattern leg is exactly strength*0.45, rounded
+PASS  A10 agreement is worth 30 and the result is capped at 100
+PASS  A10 a conflict needs BOTH sides directional and opposite
+PASS  B the PA1 engine section was located
+PASS  B the PA1 section slice is substantial (22633 chars)
+PASS  B5 the new module writes no buffer
+PASS  B5 the module cannot reach OrderSend
+PASS  B5 the module cannot reach OrderSendAsync
+PASS  B5 the module cannot reach CTrade
+PASS  B5 the module cannot reach PositionOpen
+PASS  B5 the module cannot reach PositionClose
+PASS  B5 the module cannot reach WebRequest
+PASS  B5 the module cannot reach Alert(
+PASS  B5 the module cannot reach SendNotification
+PASS  B5 the module cannot reach iCustom
+PASS  B5 the module cannot reach SymbolInfoTick
+PASS  B7 the module draws nothing, so it needs no object-prefix cleanup
+PASS  B7 no chart object of any kind is created
+PASS  B6 the zone tolerance is ATR-normalized with the existing idiom
+PASS  B6 no literal price level in the module's production code
+PASS  B9 no future bar is read
+PASS  B9 the module reads no live series - only the mirrored buffers
+PASS  B9 the module reads no live series - only the mirrored buffers
+PASS  B9 the module reads no live series - only the mirrored buffers
+PASS  B9 the module reads no live series - only the mirrored buffers
+PASS  B9 the module reads no live series - only the mirrored buffers
+PASS  B9 the module reads no live series - only the mirrored buffers
+PASS  B9 PA_Update indexes the CLOSED bar of the mirrored buffers
+PASS  B9 the pattern comes from the EXISTING unified function, not a re-implementation
+PASS  B9 that function is called exactly once per pass
+PASS  B9 the parent bar is read, which is also closed
+PASS  B9 a bar index that has no parent is refused
+PASS  B9 state is recomputed every pass, never latched between passes
+PASS  B9 the module returns immediately while its switch is off
+PASS  B the zone scan reads the existing g_order_blocks
+PASS  B the zone scan reads the existing g_fvgs
+PASS  B the zone scan reads the existing g_zones
+PASS  B the zone scan reads the existing g_mvp
+PASS  B the g_order_blocks scan iterates the whole array, not a stubbed bound
+PASS  B the g_fvgs scan iterates the whole array, not a stubbed bound
+PASS  B the g_zones scan iterates the whole array, not a stubbed bound
+PASS  B the POC test is the distance-to-POC comparison, using the shared tolerance
+PASS  B the scan honours MITIGATED / EXPIRED / FILLED rather than inventing states
+PASS  B the scan also honours the boolean state flags
+PASS  B the POC reuses the volume profile's own validity guard
+PASS  B zone priority is OB > FVG > S/R > POC - causal first, statistical last
+PASS  B no zone can be returned before the order-block scan has run
+PASS  B the POC is consulted after the S/R zones
+PASS  B the four zone scans are evaluated last-to-first as POC, S/R, FVG, OB
+PASS  B the scan does not misuse IsInstitutionalLocation, which tests premium/discount
+PASS  B the module emits 5 distinct reason strings
+PASS  B a standalone candle gets an explicit stand-aside reason
+PASS  B a contradiction is labelled CONFLICT, not quietly resolved
+PASS  B a compression pattern with no zone direction says so
+PASS  B10 the section states its scores are not probabilities
+PASS  B the module publishes a direction
+PASS  B the module publishes an invalidation reason
+PASS  C PA_Update is called exactly once (1)
+PASS  C PA_Clear is called exactly once, the declaration excluded (1)
+PASS  C PA_SelfTest is invoked exactly once (1)
+PASS  C PA_SelfTest is forward-declared exactly once
+PASS  C PA_IsConflict is forward-declared exactly once
+PASS  C PA_InsideBarGeometry is both declared and defined
+PASS  C PA_UnifyPattern is both declared and defined
+PASS  C PA_UnifyStrength is both declared and defined
+PASS  C PA_PatternDirection is both declared and defined
+PASS  C PA_IsConflict is both declared and defined
+PASS  C PA_ResolveDirection is both declared and defined
+PASS  C PA_Score is both declared and defined
+PASS  C PA_ZoneAt is both declared and defined
+PASS  C PA_Update is both declared and defined
+PASS  C PA_Clear is both declared and defined
+PASS  C PA_SelfTest is both declared and defined
+PASS  C PA_Update runs after MVP_Update and before ZRE_Update
+PASS  C PA_Update runs once per closed bar, never per tick
+PASS  C the ordering reason is documented at the call site, not only in the section
+PASS  C ZRE_Update's own ordering comment was left attached to ZRE_Update
+PASS  C PA_Clear() is called in OnInit
+PASS  C PA_Clear sits with the other module resets in OnInit
+PASS  C PA_SelfTest is gated by the existing InpMTEERunSelfTest switch
+PASS  C the self-test result is logged through the existing version-tagged format
+PASS  C the PA rows go to the dashboard tooltip
+PASS  C the PA rows need BOTH the module switch and the dashboard switch
+PASS  C a side is printed only when a direction is actually resolved
+PASS  C the score is labelled a confluence count, not a win rate
+PASS  C the 11-row card contract is untouched
+PASS  D InpPARequireZoneContext defaults to false
+PASS  D the hard gate appears exactly once (1)
+PASS  D the gate sits after candle_in_zone is computed
+PASS  D the gate sits before the zone bonus it strengthens
+PASS  D every pre-existing scoring line is still present
+PASS  D the pre-existing scoring lines keep their original order
+PASS  D no existing weight was changed: 12, 8 and 10x2 still appear once/twice
+PASS  D the base multiplier is still 0.45
+PASS  D the off-path was compared over 1920 input combinations
+PASS  D with the flag OFF the scorer equals the pre-change scorer on every case
+PASS  D the pre-change scorer really did reward a standalone candle (the gap is real)
+PASS  D with the flag OFF a standalone MORNING_STAR still scores - the gap is documented
+PASS  D with the flag ON that same standalone candle scores 0
+PASS  D the gate does not suppress a candle the caller already validated a zone for
+PASS  D the pre-existing validity and direction guards still fire first
+PASS  D the pre-existing unused zone_mid local is left alone (reported, not touched)
+PASS  D zone_mid is still assigned once and used zero times, exactly as before
+PASS  E AnalyzeClosedCandle's hammer test is still 2.0x body with a capped upper wick
+PASS  E the C1 gate's pin test is still 0.50 of range with no upper-wick condition
+PASS  E the C1 gate's engulf test is still the body-size-free variant
+PASS  E AnalyzeCandleIntelligence's engulf test is still the third variant
+PASS  E AnalyzeCandleIntelligence's rejection test is still 1.8x body at 0.60
+PASS  E the C1 gate is still the only place requiring the close inside the zone
+PASS  E 6561 well-formed bars were examined
+PASS  E the C1 pin bar fires on 83 bars AnalyzeClosedCandle refuses as a hammer
+PASS  E AnalyzeClosedCandle's engulf fires on 2897 bars the C1 gate refuses
+PASS  E every bar C1 calls an engulf, AnalyzeClosedCandle also calls one (0)
+PASS  E bar o=95 h=100 l=90 c=95 is a C1 pin but not an ACC hammer
+PASS  E that same bar is a DOJI (body ratio 0.000) to AnalyzeClosedCandle
+PASS  E bar o=99 h=104 l=90 c=100 is a C1 pin but not an ACC hammer
+PASS  E that same bar is a DOJI (body ratio 0.071) to AnalyzeClosedCandle
+PASS  E a bullish engulf after a BULLISH bar: ACC fires, C1 refuses
+PASS  E so PA treats those bars as directionless, which is the honest reading
+PASS  F input InpEnablePriceAction defaults to false
+PASS  F input InpPAIncludeInsideBar defaults to true
+PASS  F input InpPAIncludePOC defaults to true
+PASS  F input InpPAInsideBarStrength defaults to 45
+PASS  F input InpPARequireZoneContext defaults to false
+PASS  F input InpPAShowOnDashboard defaults to false
+PASS  F input InpPAZoneToleranceATR defaults to 0.15
+PASS  F the enable flag InpEnablePriceAction is OFF by default
+PASS  F the enable flag InpPAShowOnDashboard is OFF by default
+PASS  F the enable flag InpPARequireZoneContext is OFF by default
+PASS  F the module adds exactly 7 inputs (7)
+PASS  F the declared inputs are exactly the documented set
+PASS  F InpEnablePriceAction is declared and actually referenced
+PASS  F InpPAIncludeInsideBar is declared and actually referenced
+PASS  F InpPAIncludePOC is declared and actually referenced
+PASS  F InpPAInsideBarStrength is declared and actually referenced
+PASS  F InpPARequireZoneContext is declared and actually referenced
+PASS  F InpPAShowOnDashboard is declared and actually referenced
+PASS  F InpPAZoneToleranceATR is declared and actually referenced
+PASS  F indicator_buffers is still 19 - no buffer was appended
+PASS  F indicator_plots is still 7
+PASS  F there are still exactly 19 SetIndexBuffer calls
+PASS  F buffer indices are still 0..18 with no gap or shift
+PASS  F the module declares 14 private g_pa_* globals
+PASS  F no g_pa_* global is declared twice
+PASS  F the published state g_pa_pattern exists
+PASS  F the published state g_pa_strength exists
+PASS  F the published state g_pa_dir exists
+PASS  F the published state g_pa_confirms exists
+PASS  F the published state g_pa_score exists
+PASS  F the published state g_pa_reason exists
+PASS  F the published state g_pa_invalidation exists
+PASS  F the published state g_pa_in_zone exists
+PASS  F the published state g_pa_zone_name exists
+PASS  F PA_Clear resets g_pa_pattern to an inert value
+PASS  F PA_Clear resets g_pa_strength to an inert value
+PASS  F PA_Clear resets g_pa_dir to an inert value
+PASS  F PA_Clear resets g_pa_score to an inert value
+PASS  F PA_Clear resets g_pa_reason to an inert value
+PASS  F PA_Clear resets g_pa_invalidation to an inert value
+PASS  F PA_Clear resets g_pa_in_zone to an inert value
+PASS  F PA_Clear resets g_pa_zone_name to an inert value
+PASS  F the file has no bare LF (0)
+PASS  F the section is tagged AUDIT-PA1
+PASS  F the section declares no enum, so no existing enumerator can shift
+PASS  F there is still exactly one version property line (comments excluded)
+
+==========================================================================
+AUDIT-PA1 checks: 234   failures: 0
+This is a static transcription + wiring contract. It is NOT a backtest, it
+produces no win rate, and it does NOT prove MetaEditor compiles the file.
+==========================================================================

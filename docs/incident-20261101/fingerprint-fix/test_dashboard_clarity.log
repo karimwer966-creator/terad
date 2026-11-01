@@ -1,0 +1,21 @@
+PASS new-chart defaults enable a compact, clean view
+PASS the decision card has a bounded row budget
+PASS the compact card is capped in pixels and in chart share
+PASS wide mode is capped too, so it never spans a whole monitor
+PASS the card font is small and clamped
+PASS the card spacing is tight
+PASS clean modes shorten the chart captions and keep the full text in the tooltip
+PASS the strongest MTF zone and its closed-bar evidence are visible
+PASS mixed HTF/D1/top-down direction is shown as wait, not forced
+PASS entry-score wording remains evidence strength, not probability
+PASS the no-alert reason is on the panel and in the tooltip
+PASS the no-alert reason names every real blocker
+PASS the no-alert reason is read-only (no AlertDispatcherSubmit)
+PASS the no-alert reason is read-only (no QSMC_ClaimDirectionalAlert)
+PASS the no-alert reason is read-only (no AlertCooldownCommit)
+PASS the no-alert reason is read-only (no Alert()
+PASS the no-alert reason is read-only (no SendNotification)
+PASS the no-alert reason is read-only (no PlaySound)
+PASS the no-alert reason is read-only (no AlertDispatcherClear)
+PASS the no-alert reason never reads the forming bar
+Dashboard clarity contracts passed; MetaEditor compile and chart review are still required.

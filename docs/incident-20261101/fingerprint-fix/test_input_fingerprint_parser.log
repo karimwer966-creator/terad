@@ -1,0 +1,3 @@
+PASS input fingerprint manifest: 576 inputs
+PASS comma declarations, all eight End inputs, literals, nesting, comments and fail-closed parsing
+PASS native generated-function defaults equality and independent sensitivity to all eight End inputs (not MT5 proof)

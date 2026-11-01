@@ -1,0 +1,302 @@
+PASS  A0 the RM section is locatable and brace-terminated
+PASS  A0 the RM slice is long enough to be the real section
+PASS  A1 the clamp reproduces MathMax(1.0,MathMin(2.0,x)) over -2.0..10.0
+PASS  A1 in-range passes through, below is raised, above is cut
+PASS  A1 a zero or negative percentage falls back to 1.0, never to 0
+PASS  A2 an mR target measures exactly m of reward per risk, on both sides
+PASS  A2 a zero-distance stop has no measurable R:R
+PASS  A2 a target at entry has no reward
+PASS  A2 a missing or non-positive entry, stop or target yields no R:R
+PASS  A3 a long stop is strictly below the level and a short stop strictly above
+PASS  A3 the documented 0.30 ATR buffer places a long stop 3.0 below a 10.0 ATR
+PASS  A3 a missing level cannot produce a stop
+PASS  A3 a non-positive level cannot produce a stop
+PASS  A4 a stop exactly at the cap is still acceptable
+PASS  A4 a stop beyond the cap is rejected
+PASS  A4 a missing distance, ATR or cap is never judged acceptable
+PASS  A4 a wider cap admits a given distance
+PASS  A5 long fallbacks are entry plus 1R, 2R and 3R
+PASS  A5 short fallbacks are entry minus 1R, 2R and 3R
+PASS  A5 a zero risk distance, zero multiple or missing entry yields no target
+PASS  A6 increasing long targets are ordered
+PASS  A6 decreasing short prices are ordered
+PASS  A6 a nearer TP3 is not ordered
+PASS  A6 equal distances are still ordered
+PASS  A6 a target at entry is not ordered
+PASS  A6 a long target BELOW entry is rejected - that is a second stop, not a target
+PASS  A6 a short target ABOVE entry is rejected
+PASS  A6 a missing target is not ordered
+PASS  A7 size x money-per-unit equals equity x the clamped percentage, everywhere
+PASS  A7 risking 1% of 10000 at 100 per unit is 1 unit
+PASS  A7 doubling the percentage doubles the size
+PASS  A7 a zero money-per-unit returns 0 rather than dividing by zero
+PASS  A7 a negative money-per-unit returns 0
+PASS  A7 no equity means no size
+PASS  A7 an absurd percentage is clamped before it can inflate the size
+PASS  A8 an R:R exactly at the floor passes
+PASS  A8 an R:R just below the floor is rejected
+PASS  A8 no measurable reward is rejected
+PASS  A8 a negative reward is rejected
+PASS  A8 with the floor disabled a low R:R is reported rather than rejected
+PASS  A8 disabling the floor still cannot pass a zero reward
+PASS  A8 the gate agrees with its definition over 0.00..6.00 at four floors
+PASS  A9 both sizing branches state that no order is placed
+PASS  A9 the unavailable branch says so and quotes no fabricated number
+PASS  A9 the size is expressed in units, not as an instruction to trade lots
+PASS  A10 the clamp is literally the Sniper model's MathMax(1.0,MathMin(2.0,...))
+PASS  A10 a non-positive percentage falls back to 1.0 before the clamp
+PASS  A10 RM_RewardRisk refuses a non-positive entry, stop or target first
+PASS  A10 RM_RewardRisk refuses a zero-distance stop before dividing by it
+PASS  A10 the zero-risk refusal precedes the division
+PASS  A10 RM_StopBehind refuses a missing level
+PASS  A10 a long stop goes below the level and a short stop above it
+PASS  A10 the cap is inclusive at the limit
+PASS  A10 RM_StopDistanceOK refuses three degenerate cases separately
+PASS  A10 the fallback is entry plus or minus the R multiple
+PASS  A10 ordering requires long targets ABOVE entry at non-decreasing distance
+PASS  A10 ordering requires short targets BELOW entry at non-decreasing distance
+PASS  A10 the divisor is refused BEFORE the division
+PASS  A10 the divisor guard precedes the only division in the function
+PASS  A10 sizing clamps the percentage rather than trusting the input
+PASS  A10 no measurable reward is rejected before the floor is even consulted
+PASS  A10 the floor test uses the same epsilon the TopDown gate uses
+PASS  A10 the rejection paths precede the only OK
+
+PASS  B the RM section contains no OrderSend
+PASS  B the RM section contains no OrderSendAsync
+PASS  B the RM section contains no CTrade
+PASS  B the RM section contains no PositionOpen
+PASS  B the RM section contains no PositionClose
+PASS  B the RM section contains no OrderDelete
+PASS  B the RM section contains no TradeRequest
+PASS  B the RM section contains no MqlTradeRequest
+PASS  B the RM section allocates no buffer or plot (SetIndexBuffer)
+PASS  B the RM section allocates no buffer or plot (IndicatorSetInteger)
+PASS  B the RM section allocates no buffer or plot (ArraySetAsSeries)
+PASS  B the RM section allocates no buffer or plot (PlotIndexSet)
+PASS  B the RM section draws nothing (ObjectCreate)
+PASS  B the RM section draws nothing (DrawZoneBox)
+PASS  B the RM section draws nothing (DrawTextLabel)
+PASS  B the RM section draws nothing (DrawHLine)
+PASS  B the RM section draws nothing (ObjectSetText)
+PASS  B the RM section reaches no series directly (CopyBuffer)
+PASS  B the RM section reaches no series directly (iTime()
+PASS  B the RM section reaches no series directly (iClose()
+PASS  B the RM section reaches no series directly (iHigh()
+PASS  B the RM section reaches no series directly (iLow()
+PASS  B the RM section reaches no series directly (iBarShift()
+PASS  B both branches of RM_SizeText state that no order is placed
+PASS  B RM_Update publishes the size only through RM_SizeText
+PASS  B the size text is assigned exactly once in RM_Update (RM_Clear only resets it)
+PASS  B RM_Update calls the existing TheoreticalRiskMoney exactly once
+PASS  B the RM section does not reimplement tick-value arithmetic
+PASS  B the RM section queries no symbol trade property itself
+
+PASS  C AccountInfoDouble( occurs exactly 2 times file-wide
+PASS  C AccountInfoString( occurs exactly 2 times file-wide
+PASS  C CF_Update( occurs exactly 3 times file-wide
+PASS  C CalculateAITradeSetup( occurs exactly 3 times file-wide
+PASS  C ComputeEntryQuality( occurs exactly 3 times file-wide
+PASS  C GraphConfluenceScore( occurs exactly 0 times file-wide
+PASS  C InpSniperMaxRiskPct occurs exactly 3 times file-wide
+PASS  C InpTopDownMinRR occurs exactly 7 times file-wide
+PASS  C ObjectCreate( occurs exactly 16 times file-wide
+PASS  C PA_ZoneAt( occurs exactly 7 times file-wide
+PASS  C PMI_ComputeConfluence( occurs exactly 3 times file-wide
+PASS  C ScoreHTF( occurs exactly 3 times file-wide
+PASS  C ScoreLiquidity( occurs exactly 5 times file-wide
+PASS  C ScoreSession( occurs exactly 5 times file-wide
+PASS  C ScoreStructure( occurs exactly 6 times file-wide
+PASS  C SetIndexBuffer( occurs exactly 19 times file-wide
+PASS  C TheoreticalRiskMoney( occurs exactly 8 times file-wide
+PASS  C final_score occurs exactly 21 times file-wide
+PASS  C g_score. occurs exactly 73 times file-wide
+PASS  C int closed=ArraySize(g_buf_c)-2; occurs exactly 2 times file-wide
+PASS  C int closed=g_rates_total-2; occurs exactly 8 times file-wide
+PASS  C int closed=rates_total-2; occurs exactly 12 times file-wide
+PASS  C setup_quality_score occurs exactly 5 times file-wide
+PASS  C the file's CODE still contains no OrderSend
+PASS  C the file's CODE still contains no CTrade
+PASS  C the file's CODE still contains no OrderSendAsync
+PASS  C the file's CODE still contains no PositionOpen
+PASS  C the Sniper trade-management model is still present and whole
+PASS  C the Sniper model still contains SNIPER_SL_BUFFER_ATR*safe_chart_atr
+PASS  C the Sniper model still contains SNIPER_SL_HARD_MAX_H1_ATR
+PASS  C the Sniper model still contains cl.entry_grade="SKIP_SL_MAX"
+PASS  C the Sniper model still contains cl.rec_lot_size=NormalizeDouble(
+PASS  C the Sniper model still contains double risk_pct=MathMax(1.0,MathMin(2.0,InpSnipe
+PASS  C the Sniper model still contains SNIPER_BE_DISP_ATR
+PASS  C the Sniper model still contains SNIPER_TRAIL_M15_ATR
+PASS  C the TopDown chain's own R:R gate is byte-intact
+PASS  C the TopDown rejection message is unchanged (checked on RAW text, because strip_comments blanks the very literal this asserts about)
+PASS  C the RM section never WRITES the TopDown state it adopts
+PASS  C the RM section never writes g_score.
+PASS  C the RM section never WRITES any confluence global
+PASS  C the RM section never writes cl.rec_lot_size
+PASS  C the RM section never writes g_active_setup.
+
+PASS  D RM_Update clears all published state before anything else
+PASS  D the clear precedes the master-switch early exit
+PASS  D the forming bar is refused before the close array is read
+PASS  D the close array is bounds-checked before it is read
+PASS  D a history with no closed bar is refused
+PASS  D the module refuses to plan before it has a confluence verdict
+PASS  D no verdict publishes WAIT
+PASS  D the plan direction is assigned exactly once, from g_cf_dir
+PASS  D the plan direction is the confluence direction
+PASS  D an agreeing TopDown plan is adopted only when its direction matches
+PASS  D adoption requires the chain to have published a complete plan
+PASS  D the published plan says which of the two sources produced it
+PASS  D adoption is tried before derivation, never after
+PASS  D the floor comes from the existing InpTopDownMinRR, not a new duplicate input
+PASS  D both rejection kinds are published distinctly
+PASS  D every rejection path is prefixed NO PLAN (zero stop, cap, R:R, ordering)
+PASS  D a derived entry is the last CLOSED bar's close
+PASS  D TP1's distance is measured from entry
+PASS  D TP2's distance is raised to at least TP1's
+PASS  D TP3's distance is raised to at least TP2's
+PASS  D the distances are enforced before the targets are republished from them
+PASS  D exactly two targets are pushed outward, leaving TP1 as the nearest
+PASS  D RM_Update calls the ordering guard exactly once
+PASS  D the guard tests the plan it is about to publish, on the correct side
+PASS  D the ordering guard runs BEFORE any R:R is published from those targets
+PASS  D RM_Update is called exactly once
+PASS  D RM_Update shares the is_new_bar/detection_updated gate
+PASS  D RM_Update runs AFTER CF_Update, whose verdict it attaches to
+PASS  D RM_Update runs AFTER TopDown_Update, whose plan it may adopt
+PASS  D RM_Update runs AFTER MVP_Update, whose POC PA_ZoneAt may read
+PASS  D RM_Clear is CALLED exactly twice: OnInit and RM_Update's head
+PASS  D the self-test is called exactly once, through the shared MTEE harness
+PASS  D the self-test reports ten checks, matching RM-1..RM-10
+PASS  D the self-test sits under the existing InpMTEERunSelfTest gate
+PASS  D the card builder and its 11-row cap are still present
+PASS  D the card still has exactly 13 candidate rows - RM added none
+PASS  D no risk value entered the card's row budget
+PASS  D the tooltip block is gated by BOTH risk-model switches
+PASS  D the tooltip carries "\nRM: "
+PASS  D the tooltip carries "\nRM why: "
+PASS  D the tooltip carries "\nRM plan: entry "
+PASS  D the tooltip carries "\nRM targets: TP1 "
+PASS  D the tooltip carries "\nRM floor: "
+PASS  D the tooltip carries "\nRM size: "
+PASS  D the tooltip carries "\nRM invalidation: "
+PASS  D the tooltip says the numbers are neither a probability nor an order
+PASS  D the tooltip block creates no chart objects
+PASS  D the risk block sits directly after the confluence summary it belongs to
+
+PASS  E the file is still pure CRLF
+PASS  E braces balance file-wide
+PASS  E parentheses balance on stripped text
+PASS  E input InpEnableRiskModel defaults to false
+PASS  E input InpRMShowOnDashboard defaults to false
+PASS  E input InpRMSLBufferATR defaults to 0.30
+PASS  E input InpRMSLMaxATR defaults to 2.00
+PASS  E input InpRMNoZoneSLATR defaults to 1.50
+PASS  E input InpRMUseRRFloor defaults to true
+PASS  E input InpRMPreferTopDownPlan defaults to true
+PASS  E input InpRMMaxPoolScan defaults to 40
+PASS  E exactly eight new inputs were added
+PASS  E the new inputs sit under their own labelled group
+PASS  E InpEnableRiskModel defaults to false
+PASS  E InpRMShowOnDashboard defaults to false
+PASS  E no duplicate InpMinRR was invented - the existing inputs are reused
+PASS  E no duplicate InpRiskPercent was invented - the existing inputs are reused
+PASS  E no duplicate InpRMMinRR was invented - the existing inputs are reused
+PASS  E no duplicate InpRMRiskPercent was invented - the existing inputs are reused
+PASS  E the reused R:R floor InpTopDownMinRR still defaults to 2.0
+PASS  E the reused risk percentage InpSniperMaxRiskPct still defaults to 1.50
+PASS  E indicator_buffers is still 19 - no buffer was added
+PASS  E indicator_plots is still 7 - no plot was added
+PASS  E the module publishes 24 globals
+PASS  E g_rm_verdict is declared at file scope
+PASS  E RM_Clear resets g_rm_verdict to an inert value
+PASS  E g_rm_dir is declared at file scope
+PASS  E RM_Clear resets g_rm_dir to an inert value
+PASS  E g_rm_plan_src is declared at file scope
+PASS  E RM_Clear resets g_rm_plan_src to an inert value
+PASS  E g_rm_entry is declared at file scope
+PASS  E RM_Clear resets g_rm_entry to an inert value
+PASS  E g_rm_sl is declared at file scope
+PASS  E RM_Clear resets g_rm_sl to an inert value
+PASS  E g_rm_sl_dist is declared at file scope
+PASS  E RM_Clear resets g_rm_sl_dist to an inert value
+PASS  E g_rm_sl_dist_atr is declared at file scope
+PASS  E RM_Clear resets g_rm_sl_dist_atr to an inert value
+PASS  E g_rm_tp1 is declared at file scope
+PASS  E RM_Clear resets g_rm_tp1 to an inert value
+PASS  E g_rm_tp2 is declared at file scope
+PASS  E RM_Clear resets g_rm_tp2 to an inert value
+PASS  E g_rm_tp3 is declared at file scope
+PASS  E RM_Clear resets g_rm_tp3 to an inert value
+PASS  E g_rm_rr1 is declared at file scope
+PASS  E RM_Clear resets g_rm_rr1 to an inert value
+PASS  E g_rm_rr2 is declared at file scope
+PASS  E RM_Clear resets g_rm_rr2 to an inert value
+PASS  E g_rm_rr3 is declared at file scope
+PASS  E RM_Clear resets g_rm_rr3 to an inert value
+PASS  E g_rm_sl_src is declared at file scope
+PASS  E RM_Clear resets g_rm_sl_src to an inert value
+PASS  E g_rm_tp1_src is declared at file scope
+PASS  E RM_Clear resets g_rm_tp1_src to an inert value
+PASS  E g_rm_rejected is declared at file scope
+PASS  E RM_Clear resets g_rm_rejected to an inert value
+PASS  E g_rm_reason is declared at file scope
+PASS  E RM_Clear resets g_rm_reason to an inert value
+PASS  E g_rm_invalidation is declared at file scope
+PASS  E RM_Clear resets g_rm_invalidation to an inert value
+PASS  E g_rm_risk_pct is declared at file scope
+PASS  E RM_Clear resets g_rm_risk_pct to an inert value
+PASS  E g_rm_risk_money is declared at file scope
+PASS  E RM_Clear resets g_rm_risk_money to an inert value
+PASS  E g_rm_money_per_lot is declared at file scope
+PASS  E RM_Clear resets g_rm_money_per_lot to an inert value
+PASS  E g_rm_size_units is declared at file scope
+PASS  E RM_Clear resets g_rm_size_units to an inert value
+PASS  E g_rm_size_available is declared at file scope
+PASS  E RM_Clear resets g_rm_size_available to an inert value
+PASS  E g_rm_size_text is declared at file scope
+PASS  E RM_Clear resets g_rm_size_text to an inert value
+PASS  E RM_Clear resets the verdict to WAIT, not to OK
+PASS  E RM_SelfTest contains exactly the ten checks RM-1..RM-10
+PASS  E RM_SelfTest has a distinct failure exit per assertion
+PASS  E RM_SelfTest returns true only after every check
+PASS  E RM_SelfTest clears the failure message first
+PASS  E RM_SelfTest reads no chart history and no account data, so it is environment-independent
+PASS  E RM-10 asserts it covered all 5x8x4x2 geometries
+PASS  E RM_ClampRiskPct has exactly one forward declaration
+PASS  E RM_ClampRiskPct has exactly one declaration plus one definition
+PASS  E RM_RewardRisk has exactly one forward declaration
+PASS  E RM_RewardRisk has exactly one declaration plus one definition
+PASS  E RM_StopBehind has exactly one forward declaration
+PASS  E RM_StopBehind has exactly one declaration plus one definition
+PASS  E RM_StopDistanceOK has exactly one forward declaration
+PASS  E RM_StopDistanceOK has exactly one declaration plus one definition
+PASS  E RM_FallbackTP has exactly one forward declaration
+PASS  E RM_FallbackTP has exactly one declaration plus one definition
+PASS  E RM_TPsOrdered has exactly one forward declaration
+PASS  E RM_TPsOrdered has exactly one declaration plus one definition
+PASS  E RM_PositionSize has exactly one forward declaration
+PASS  E RM_PositionSize has exactly one declaration plus one definition
+PASS  E RM_Verdict has exactly one forward declaration
+PASS  E RM_Verdict has exactly one declaration plus one definition
+PASS  E RM_SizeText has exactly one forward declaration
+PASS  E RM_SizeText has exactly one declaration plus one definition
+PASS  E RM_PoolsAhead has exactly one forward declaration
+PASS  E RM_PoolsAhead has exactly one declaration plus one definition
+PASS  E RM_NearestPoolBehind has exactly one forward declaration
+PASS  E RM_NearestPoolBehind has exactly one declaration plus one definition
+PASS  E RM_Update has exactly one forward declaration
+PASS  E RM_Update has exactly one declaration plus one definition
+PASS  E RM_Clear has exactly one forward declaration
+PASS  E RM_Clear has exactly one declaration plus one definition
+PASS  E RM_SelfTest has exactly one forward declaration
+PASS  E RM_SelfTest has exactly one declaration plus one definition
+PASS  E the RM core slice is long enough to be meaningful
+PASS  E the RM core contains no hard-coded price level - every 3-4 digit decimal is the /100.0 percent divisor, never a price
+PASS  E the only such literal in the core is the percent divisor 100.0
+
+==========================================================================
+AUDIT-RM1 checks: 292   failures: 0
+This is a static transcription + wiring contract. It is NOT a backtest, it
+produces no win rate, and it does NOT prove MetaEditor compiles the file.
+==========================================================================

@@ -1,0 +1,25 @@
+PASS  A no line outside a comment or string is English prose - the compiler has nothing it cannot parse
+PASS  A the file really does contain 196 legal punctuation-free declaration headers (enum/struct/input group) for the detector to reject
+PASS  A none of those legal headers is mistaken for prose
+PASS  A the header exclusion really recognises those declarations
+PASS  B no punctuation-free line sits between two // comments - a broken comment continuation is the shape that cost 42 errors
+PASS  C the file ends outside any comment, string and character literal
+PASS  C /* and */ balance in the code view (0/0)
+PASS  C the file is pure CRLF with zero bare LF - a stray LF inside a comment can silently split it
+PASS  C the file contains no /* */ block comments at all (0/0) - every comment is a // line comment, so a lost marker cannot silently swallow a region
+PASS  D no function is defined twice (a real F7 error class the existing static tools do not cover - mql5_rules.py D9 checks duplicate GLOBALS only)
+PASS  D all 72 module functions of the seven phases are called only where they are defined or declared
+PASS  D that check actually covered the modules (72 distinct names)
+PASS  E SBP3_Clear() is still present
+PASS  E the comment above SBP3_Clear() is three full //-lines
+PASS  E line 1 of that comment is intact
+PASS  E line 2 of that comment carries its // prefix - THIS is the line whose missing marker produced 42 compiler errors
+PASS  E line 3 of that comment is intact
+PASS  E SBP3_Clear()'s body still resets the P3 globals by assignment
+PASS  E SBP3_Clear()'s body still resets the SB globals by assignment
+
+==========================================================================
+COMMENT-INTEGRITY checks: 19   failures: 0
+This is a lexical contract. It is NOT a compiler: it cannot see type errors,
+arity slips, undeclared identifiers or shadowing. F7 remains the authority.
+==========================================================================

@@ -1,0 +1,39 @@
+========================================================================
+ QSMC v6.6.13 - STATIC CONSISTENCY CHECK (not a compiler)
+========================================================================
+  file: QSMC_AlertManager.mqh       15598 bytes
+  file: QSMC_Arbiter.mqh            15356 bytes
+  file: QSMC_Bias.mqh                8247 bytes
+  file: QSMC_DataProvider.mqh       14317 bytes
+  file: QSMC_EarlyBreakDetector.mqh  11015 bytes
+  file: QSMC_Gates.mqh              20760 bytes
+  file: QSMC_IncidentSafety.mqh      7774 bytes
+  file: QSMC_InputFingerprint.mqh   98805 bytes
+  file: QSMC_InstanceIdentity.mqh    3202 bytes
+  file: QSMC_LiquidityValue.mqh      7512 bytes
+  file: QSMC_MarketData.mqh         21471 bytes
+  file: QSMC_Preset.mqh             14543 bytes
+  file: QSMC_Reaction.mqh           16024 bytes
+  file: QSMC_Renderer.mqh            8784 bytes
+  file: QSMC_Root.mqh               48963 bytes
+  file: QSMC_Scanners.mqh           42442 bytes
+  file: QSMC_Selftest.mqh           45182 bytes
+  file: QSMC_Stats.mqh              50000 bytes
+  file: QSMC_Structure.mqh          18921 bytes
+  file: QSMC_Types.mqh              16682 bytes
+  file: QSMC_UnifiedDecision.mqh     8812 bytes
+  file: QSMC_ZoneScorer.mqh          6075 bytes
+  file: QSMC_Zones.mqh              16241 bytes
+------------------------------------------------------------------------
+  --- MQL5 dialect rules (D1-D16) ----------------------------
+  WARN  MQL5/Include/QSMC/QSMC_InstanceIdentity.mqh:5  D3 literal 2166136261 does not fit an int; MQL5 picks the first type that fits (use the hex form or an explicit cast).
+  WARN  MQL5/Include/QSMC/QSMC_InputFingerprint.mqh:7  D3 literal 2166136261 does not fit an int; MQL5 picks the first type that fits (use the hex form or an explicit cast).
+  --- own checks -------------------------------------------------------
+  WARN  QSMC_Arbiter.mqh: 10 new site(s), 3 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
+  WARN  QSMC_MarketData.mqh: 5 new site(s), 1 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
+  WARN  QSMC_Root.mqh: 1 new site(s), 1 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
+  WARN  QSMC_Scanners.mqh: 1 new site(s), 1 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
+  WARN  MQL5/Indicators/QSMC_ScannerProbe.mq5: 1 new site(s), 1 delete site(s); balance is verified at runtime by AllocCalls()/FreeCalls()
+  no errors, 7 warning(s)
+------------------------------------------------------------------------
+  This check does NOT prove the code compiles. Press F7.

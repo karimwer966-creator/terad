@@ -1,0 +1,190 @@
+PASS  A1 a 20-bar range of 4 ATR with 3 touches per side is valid
+PASS  A1 a range shorter than the minimum bar count is rejected
+PASS  A1 a range taller than the cap is a trend, not a range
+PASS  A1 one touch of the UPPER boundary is not two
+PASS  A1 one touch of the LOWER boundary is not two
+PASS  A1 the height cap is exclusive (height == cap is too tall)
+PASS  A1 the minimums are inclusive (exactly min bars, exactly min touches)
+PASS  A1 a non-positive min_touches disables that test rather than failing it
+PASS  A1 but the three-bar floor still holds when the minimums are disabled
+PASS  A2 an unmeasured height (ATR unavailable) must not validate
+PASS  A2 a zero height is degenerate and must not validate
+PASS  A2 a zero height cap would accept a trend and must be refused
+PASS  A2 a negative height cap must be refused
+PASS  A2 fewer than three bars cannot have two sides
+PASS  A2 a negative bar count must be refused, not treated as small
+PASS  A3 a pierced low with a close back inside is a SPRING
+PASS  A3 the Spring carries its invalidation
+PASS  A4 a pierced high with a close back inside is an UPTHRUST
+PASS  A4 the Upthrust carries its invalidation
+PASS  A3/A4 the two events are distinct and are not mirrors of one label
+PASS  A5 a bar that pierced both sides and closed inside names neither
+PASS  A5 the refusal says WHY, rather than reporting a quiet no-event
+PASS  A6 a close below the pierced low is named a BREAK, not a Spring
+PASS  A6 a close above the pierced high is named a BREAK, not an Upthrust
+PASS  A6 a break is never reported as a Spring
+PASS  A6 a break is never reported as an Upthrust
+PASS  A7 without a valid range there is no event however dramatic the bar
+PASS  A7 a refused event invents no invalidation
+PASS  A7 an unpierced range reports that it held
+PASS  A8 no evidence scores 0
+PASS  A8 the range leg is worth 25
+PASS  A8 range + touches is worth 45
+PASS  A8 an event without confirmation is worth 75, not 100
+PASS  A8 the fully confirmed event is worth exactly 100
+PASS  A8 a CONFLICT scores 0 - disagreement is a stand-aside, not partial credit
+PASS  A8 a conflict scores 0 even with no evidence either
+PASS  A8 every score is inside 0..100
+PASS  A9 all three events have a distinct non-empty name
+PASS  A9 an out-of-range event is labelled UNKNOWN, not guessed
+PASS  A10 adding evidence never lowers the score
+PASS  A10 a conflict never scores higher than the same event without one
+PASS  A11 the source's WY_RangeValid guard order matches the transcription
+PASS  A11 the source's WY_Detect branch order matches the transcription
+PASS  A11 the source zeroes a conflicted event before counting legs
+PASS  A11 the source's Wyckoff leg weights are 25/20/30/25 as transcribed
+PASS  A11 the source's event names match the transcribed vocabulary
+PASS  A11 the source distinguishes a break from a failed Spring/Upthrust
+PASS  B1 indicator_buffers is still 19 - no buffer was added
+PASS  B1 indicator_plots is still 7
+PASS  B1 buffer indices are still exactly 0..18
+PASS  B1 the pinned 11-row dashboard card is untouched
+PASS  B1 the card's row clamp is untouched
+PASS  B1 existing input InpDetectJudas still defaults to true
+PASS  B1 existing input InpLiquidityFractalN still defaults to 2
+PASS  B1 existing input InpLiqToleranceATR still defaults to 0.15
+PASS  B1 existing input InpSwingLookback still defaults to 120
+PASS  B1 existing input InpDisplacementATR still defaults to 0.9
+PASS  B1 existing input InpOBUseAgeExpiry still defaults to false
+PASS  B1 existing input InpOBMaxAgeBars still defaults to 200
+PASS  B1 existing input InpEnablePowerOf3 still defaults to false
+PASS  B1 existing input InpEnableSilverBullet still defaults to false
+PASS  B1 existing input InpSBWin1Start still defaults to 180
+PASS  B1 existing input InpSBChainMaxAgeBars still defaults to 240
+PASS  B1b new switch InpEnableWyckoff defaults to false
+PASS  B1b new switch InpWyckoffShowOnDashboard defaults to false
+PASS  B1b new switch InpWyckoffShowRange defaults to false
+PASS  B1b new input InpWyckoffMinRangeBars defaults to 16
+PASS  B1b new input InpWyckoffMaxRangeBars defaults to 240
+PASS  B1b new input InpWyckoffMaxRangeATR defaults to 6.00
+PASS  B1b new input InpWyckoffMinTouches defaults to 2
+PASS  B1b new input InpWyckoffTouchTolATR defaults to 0.25
+PASS  B1b new input InpWyckoffRequireVolume defaults to true
+PASS  B1b new input InpWyckoffMaxAgeBars defaults to 96
+PASS  B2 WY_EventName is declared exactly once
+PASS  B2 WY_EventName is defined exactly once
+PASS  B2 WY_EventName declaration and definition agree
+PASS  B2 WY_RangeValid is declared exactly once
+PASS  B2 WY_RangeValid is defined exactly once
+PASS  B2 WY_RangeValid declaration and definition agree
+PASS  B2 WY_Detect is declared exactly once
+PASS  B2 WY_Detect is defined exactly once
+PASS  B2 WY_Detect declaration and definition agree
+PASS  B2 WY_Score is declared exactly once
+PASS  B2 WY_Score is defined exactly once
+PASS  B2 WY_Score declaration and definition agree
+PASS  B2 WY_BuildRange is declared exactly once
+PASS  B2 WY_BuildRange is defined exactly once
+PASS  B2 WY_BuildRange declaration and definition agree
+PASS  B2 WY_Update is declared exactly once
+PASS  B2 WY_Update is defined exactly once
+PASS  B2 WY_Update declaration and definition agree
+PASS  B2 WY_DrawRange is declared exactly once
+PASS  B2 WY_DrawRange is defined exactly once
+PASS  B2 WY_DrawRange declaration and definition agree
+PASS  B2 WY_Clear is declared exactly once
+PASS  B2 WY_Clear is defined exactly once
+PASS  B2 WY_Clear declaration and definition agree
+PASS  B2 WY_SelfTest is declared exactly once
+PASS  B2 WY_SelfTest is defined exactly once
+PASS  B2 WY_SelfTest declaration and definition agree
+PASS  B3 WY_Update is called exactly once in OnCalculate
+PASS  B3 WY_Update is inside the detection_updated gate, after the Phase 2 adapters
+PASS  B3 WY_Update runs after DetectJudasSwing, whose verdict it reconciles against
+PASS  B4 WY_Clear is called from OnInit
+PASS  B4 WY_Clear sits beside the other module resets
+PASS  B4 the self-test is invoked from OnInit
+PASS  B4 the self-test is inside the existing InpMTEERunSelfTest gate
+PASS  B4 the self-test covers 9 groups
+PASS  B5 QSMC_ArbiterFeedAndFinalize cannot read the Wyckoff state
+PASS  B5 UpdateSignalMask cannot read the Wyckoff state
+PASS  B5 PMI_ComputeConfluence cannot read the Wyckoff state
+PASS  B5 ScenarioUpdate cannot read the Wyckoff state
+PASS  B5 ScenarioDashFull cannot read the Wyckoff state
+PASS  B5 ScoreOrderBlock cannot read the Wyckoff state
+PASS  B5 PMI_BuildLocation cannot read the Wyckoff state
+PASS  B5 CoreDashChain cannot read the Wyckoff state
+PASS  B5 TacticalAuthorityDecide cannot read the Wyckoff state
+PASS  B5 ValidateCausalGraphInvariants cannot read the Wyckoff state
+PASS  B5 ReplayClosedBarStates cannot read the Wyckoff state
+PASS  B5 BuildCausalEventGraph cannot read the Wyckoff state
+PASS  B5 DetectOrderBlocks cannot read the Wyckoff state
+PASS  B5 DetectJudasSwing cannot read the Wyckoff state
+PASS  B5 DetectLiquidity cannot read the Wyckoff state
+PASS  B5 SweepHasDisplacementOrVolume cannot read the Wyckoff state
+PASS  B5 P3_Update cannot read the Wyckoff state
+PASS  B5 SB_Update cannot read the Wyckoff state
+PASS  B5 the display-only claim was checked against 18 real function bodies
+PASS  B the WY1 engine section was located
+PASS  B the WY1 section slice is substantial (21601 chars)
+PASS  B5 the module writes no buffer
+PASS  B5 the module cannot reach OrderSend
+PASS  B5 the module cannot reach OrderSendAsync
+PASS  B5 the module cannot reach CTrade
+PASS  B5 the module cannot reach PositionOpen
+PASS  B5 the module cannot reach PositionModify
+PASS  B5 the module cannot reach OrderCheck
+PASS  B5 the module cannot reach WebRequest
+PASS  B6 no hard-coded XAUUSD in the new code
+PASS  B6 no hard-coded EURUSD in the new code
+PASS  B6 no hard-coded GBPUSD in the new code
+PASS  B6 no hard-coded USDJPY in the new code
+PASS  B6 no hard-coded BTCUSD in the new code
+PASS  B6 no literal price level in the new code
+PASS  B6 tolerances carry a PipSize floor, so they work on any symbol
+PASS  B6 the ATR read reuses the per-bar buffer with its scalar fallback
+PASS  B7 the Wyckoff row is merged into the tooltip
+PASS  B7 the Wyckoff module writes no card row
+PASS  B7 the optional range box is drawn from the dashboard pass
+PASS  B7 the dashboard (which draws the box) runs AFTER the object sweep
+PASS  B8 the module names its objects with the WY_ prefix
+PASS  B8 PrepareDynamicRedraw sweeps the WY_ prefix
+PASS  B8 the module creates no object directly - it reuses DrawZoneBox
+PASS  B8 the range box reuses the existing DrawZoneBox
+PASS  B9 the range window ends at b-1, so the bar under test is outside its own range
+PASS  B9 the range is never built including the bar being tested
+PASS  B9 WY_BuildRange does not itself reach past the bar it was given
+PASS  B9 WY_Update takes the caller's closed bar rather than recomputing a different one
+PASS  B9 no wall-clock time in the new code
+PASS  B9 no forming-bar index in the new code
+PASS  B9 a later closed bar can invalidate an event - it is not latched forever
+PASS  B9 an unavailable ATR is refused rather than silently treated as a valid range
+PASS  B9 the replay-determinism claim is documented where the module is defined
+PASS  B10 the Wyckoff dashboard row disclaims probability
+PASS  B10 the score is labelled a confluence count
+PASS  B10 no direction is printed unless the event is ACTIVE
+PASS  B10 an invalidated or conflicted event publishes NO direction
+PASS  B10 a conflict with Judas is reported as one, explicitly
+PASS  B10 an already-invalidated event says so
+PASS  B10 the drawn range box says it is context, not an entry
+PASS  B10 the module states its scores are not probabilities
+PASS  B11 confirmation reuses the existing sweep validator
+PASS  B11 it is the ONLY confirmation call - no second, looser opinion exists
+PASS  B11 it reads the tick volume the validator already uses, adding no volume source
+PASS  B11 the minimum wick is the SAME threshold the validator enforces
+PASS  B11 confirmation is switchable, and the switch is honoured
+PASS  B11 the module reconciles against the Judas verdict instead of ignoring it
+PASS  B11 the reconciliation is skipped when the Judas detector itself is off
+PASS  B11 the touch tolerance follows DetectLiquidity's ATR-with-pip-floor idiom
+PASS  B11 it does not call the swing dealing range - a different measurement
+PASS  B11 it does not read the liquidity ledger, whose EQH/EQL pools keep no touch count
+PASS  B11 events log through the existing lifecycle log, in the existing format
+--------------------------------------------------------------------------
+Wyckoff Spring/Upthrust contracts: 181 checked, 0 failed
+--------------------------------------------------------------------------
+RESULT: all Wyckoff Spring/Upthrust contracts hold
+--------------------------------------------------------------------------
+The module defaults to OFF, is display only, and adds no buffer, so with its
+switch off nothing is detected, scored, drawn or retired any differently than
+before. This is a transcription + wiring contract. It is NOT a backtest, it
+produces no win rate, and it does NOT prove MetaEditor compilation. Press F7.

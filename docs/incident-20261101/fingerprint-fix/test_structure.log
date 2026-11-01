@@ -1,0 +1,14 @@
+PASS  strict pivot high is emitted on right-side confirmation, not at pivot time
+PASS  equal-high plateau is not arbitrarily selected as a swing
+PASS  wick penetration alone is not BOS
+PASS  closed close beyond confirmed swing level qualifies for BOS
+PASS  BOS establishes trend; opposite close invalidates and emits CHoCH
+PASS  two confirmed equal highs form buy-side liquidity
+PASS  wick through pool plus close-back is a one-shot sweep
+PASS  close beyond configured break buffer is breakout, not sweep
+PASS  a lone swing is not promoted to equal-high liquidity
+PASS  event time and signal-availability time remain distinct and causal
+PASS  aligned HTF and confirmed local structure strengthen directional context
+PASS  opposing HTF/local trends resolve to MIXED, not forced direction
+PASS  direction label identifies the sole available evidence source
+All structure contract checks passed; this is not a backtest.
