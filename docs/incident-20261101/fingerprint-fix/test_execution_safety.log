@@ -1,0 +1,83 @@
+PASS  the execution companion exists
+PASS  the send path is one named function (HandleSignal)
+PASS  D1 there is one classifier for a server refusal (transient vs permanent)
+PASS  D1 TRADE_RETCODE_REQUOTE is classified as transient
+PASS  D1 TRADE_RETCODE_PRICE_CHANGED is classified as transient
+PASS  D1 TRADE_RETCODE_PRICE_OFF is classified as transient
+PASS  D1 TRADE_RETCODE_TIMEOUT is classified as transient
+PASS  D1 TRADE_RETCODE_CONNECTION is classified as transient
+PASS  D1 TRADE_RETCODE_TOO_MANY_REQUESTS is classified as transient
+PASS  D1 TRADE_RETCODE_FROZEN is classified as transient
+PASS  D1 the classifier defaults to permanent (an unknown retcode never retries)
+PASS  D1 a permanent refusal is the ONLY path that marks the signal seen
+PASS  D1 retries are bounded, so a broken broker cannot become an order flood
+PASS  D1 the give-up path also marks seen, so the signal cannot age out mid-flood
+PASS  D1 the 'not marked ... MarkSeen()' contradiction is gone (comment matches code)
+PASS  D2 the terminal-global key carries the symbol (two charts cannot suppress each other)
+PASS  D2 the reload guard still reads the same key (no second, symbol-less key survives)
+PASS  D2b this EA's own global-variable namespace sanitises the symbol (a suffix character would make GlobalVariableSet fail silently)
+PASS  D2b both the writer and the housekeeping sweep use the sanitised symbol
+PASS  D3 InpMinRRAtFill is an input (the check can be argued with, or off)
+PASS  D3 it refuses any plan whose remaining RR is below 1:1 by default
+PASS  D3 the RR check runs BEFORE the order, not after it
+PASS  D3 the RR check sits with the permanent geometry checks, before every transient gate
+PASS  D3 RR is measured from the price that will be on the ticket, not the planned entry
+PASS  D3 a refusal is transient: the signal stays retryable while it is young
+PASS  D3 reference: a plan 100 pips from TP and 50 from SL is 2.0R
+PASS  D3 reference: chasing 80 of the 150 pips leaves 0.15R and must be refused
+PASS  D4 a failed close aborts the entry instead of stacking a second exposure
+PASS  D4 the journal names the reason, so the silence has a cause
+PASS  D5 a refused break-even is attempted once per pause, not on every tick
+PASS  D5 the refusal is printed once per ticket instead of being swallowed
+PASS  D5 the only stop change is still towards break-even (never widened)
+PASS  the companion still ships INERT after these fixes
+PASS  the companion still ships in DRY RUN after these fixes
+PASS  both new inputs are validated at init instead of failing at the first signal
+PASS  D6a the day guard key carries the account login and the magic
+PASS  D6a the baseline is written to the terminal, not kept only in memory
+PASS  D6a the block is persisted and flushed, so a reload cannot re-base the day
+PASS  D6a a restart restores the SAME baseline for the same server day
+PASS  D6a a new server day is the only thing that creates a new baseline
+PASS  D6b InpDeviationPoints is an input
+PASS  D6b the default is inside the range where a normal broker actually fills
+PASS  D6b the trade object uses the input, not a hard-coded 10
+PASS  D6b the hard-coded 10-point slippage is gone
+PASS  D6b a negative slippage is refused at init
+PASS  D6c there is one housekeeping function for the EA's own terminal globals
+PASS  D6c it only touches keys this EA wrote (prefix = magic + symbol)
+PASS  D6c keys older than one day are deleted; today's are kept (they stop a re-fire)
+PASS  D6c it runs at init AND at deinit, so a crash-load does not leak them either
+PASS  D6d GP_ANCH is no longer printed as an 'anchors' value to compare with a threshold
+PASS  D6d it is labelled as a count, in words
+PASS  D6e every input that nothing reads says INERT in its own label (41 found)
+PASS  D6f the signal-log banner names its entry model (a limit entry cannot describe the EA)
+PASS  D6g there is a go-live runbook, not only a code contract
+PASS  D6g the runbook names F7 as a human gate
+PASS  D6g the runbook explains arming a real account
+PASS  D6g the runbook lists the kill switches, fastest first
+PASS  D6g the runbook warns that the EA runs the indicator's DEFAULTS
+PASS  D6g the runbook has a rollback procedure
+PASS  D6g the runbook states what the evidence log measures
+PASS  D7a the session window is an explicit input pair, not an implicit hour test
+PASS  D7b one function decides the session, so the gate and the journal cannot disagree
+PASS  D7c a window may wrap midnight (Asia / NY-only mandates), not only sit inside one day
+PASS  D7d a closed window REFUSES the entry and prints the reason
+PASS  D7e entries per day are capped and counted
+PASS  D7f the daily count is persisted in the day-guard namespace, so a reload cannot reset it
+PASS  D7g the counter resets on a NEW server day, together with the equity baseline
+PASS  D7h there is a cooldown after a losing close (no revenge re-entry)
+PASS  D7i the cooldown reads CLOSING deals only, not entries
+PASS  D7j the cooldown classifies a loss NET of commission and swap, not gross
+PASS  D7k a partial can be banked at +R (default off)
+PASS  D7l the partial is a real partial close, not a second opposite order
+PASS  D7m the ORIGINAL R is remembered per ticket (break-even erases it)
+PASS  D7n a lot size that cannot be split is skipped and counted, not sent and rejected
+PASS  D7o the partial triggers on R moved from the real entry
+PASS  D7p the partial is taken BEFORE break-even can overwrite the stop distance
+PASS  D7s a DRY RUN entry is counted too, so the daily cap is rehearsable before it costs money
+PASS  D7q the heartbeat names the discipline layer instead of leaving 'CORE 1, sent 0' unexplained
+PASS  D7r the init banner states all four discipline settings, so a preset is visible
+============================================================
+AUDIT-EX1 execution-safety checks: 79 checks, failures: 0
+All execution-safety contracts hold. This is a source contract: it does not
+prove MetaEditor compiles the file, and it is not a backtest. Press F7.

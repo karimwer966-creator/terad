@@ -1,0 +1,6 @@
+PASS  ATRAt bounds requests against the latest closed bar
+PASS  forming-bar ATR requests are refused
+PASS  host ATR is used only for its current closed bar
+PASS  historical indices use their own causal Wilder ATR
+PASS  structure warm-up uses per-index historical ATR without present-bar leakage
+Historical ATR checks passed; this is not an MT5 compile or backtest.

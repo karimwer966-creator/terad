@@ -1,0 +1,65 @@
+========================================================================
+ QSMC v6.6.4 PART C PHASE 7 - SCANNER ARITHMETIC CHECK
+========================================================================
+
+T1-T3  seasonality: sample size, dispersion, withholding
+PASS  T1a January n = 19 (the first bar has no prior close)        [n=19 (expected 19)]
+PASS  T1b years covered counts only years with a return            [years=19 (expected 19)]
+PASS  T1c January mean return is +1.00%                            [1.000000%]
+PASS  T1d February mean return is -1.00%                           [-1.000000%]
+PASS  T1e dispersion of a constant series is 0                     [std=0.000000000]
+PASS  T2a n below the minimum => WITHHELD (not shown)              [n=19 < min_n=30]
+PASS  T2b n above the minimum => shown                             [n=19 >= min_n=10]
+PASS  T2c median reported correctly                                [1.000000%]
+PASS  T2d positive share reported                                  [100.0%]
+PASS  T3 an absent bucket is withheld, never zero-filled           [n=0]
+PASS  T3b the bucket that exists is the one that reports           [n=239 at hour 0]
+PASS  T3c nothing fell outside the array under HOUR bucketing      [dropped=0]
+
+T4-T5  volatility percentile and regime
+PASS  T4a percentile is within [0,100]                             [pct100=99.00]
+PASS  T4b the maximum of a rising series is at 99                  [pct100=99.00 (expected 99.00)]
+PASS  T4c the 250-bar window also places it near the top           [pct250=99.60]
+PASS  T4d the minimum sits at percentile 0                         [0.00]
+PASS  T5a insufficient history returns -1, not 0.0                 
+PASS  T5b ATR=0 returns -1, not a percentile                       
+PASS  T5c no data => UNKNOWN, never LOW                            
+PASS  T5d the five buckets map as documented                       
+
+T6-T7  momentum z-score
+PASS  T6a zero variance => z = 0, never NaN                        [z=0.0]
+PASS  T6b below the sample floor the z-score is refused, not computed [n<8 for z-score]
+PASS  T7a a constant-growth series has z = 0 (degenerate sd guarded) [z=0.000000000]
+PASS  T7b ROC over the lookback is correct                         [22.019004% (expected 22.019004%)]
+PASS  T7c an upside outlier gives a positive z                     [z=9.900]
+
+T8  bucket coverage: the array bounds the MQL5 side must respect
+PASS  T8a December is counted (was dropped at index 12 of 12)      [n=20 mean=-1.0000%]
+PASS  T8b December carries the -1% branch, not an empty row        [-1.000000%]
+PASS  T8c slot 0 is January, not a phantom                         [n=19]
+PASS  T8d labels stay 1-based where the buckets are 0-based        [Jan / Dec]
+PASS  T8e week 53 maps to slot 52 and is in range                  [slot=52 label=W53]
+PASS  T8f the first days of a year land in week 1, not slot -1     
+PASS  T8g no observation fell outside the bucket array             [dropped=0]
+
+T9  percentile denominator: valid ATRs only
+PASS  T9a a warm-up hole is excluded from the denominator, not counted as quiet [pct=98.75 over 80 valid]
+PASS  T9b with no holes the answer is unchanged (99.00)            
+PASS  T9c fewer than 10 valid samples is refused, never reported as 0 or 100 
+
+T10  median reservoir: an unbiased sample, and the same one every time
+PASS  T10a n is the FULL bucket even though the median is sampled  [n=1511, reservoir=512]
+PASS  T10b the sampled median tracks the whole bucket, not the oldest 512 bars [reservoir=5.000 exact=5.000 first-512=-2.000]
+PASS  T10c identical bars => identical sample => identical median (no clock, no RNG seed) 
+PASS  T10d dispersion is reproducible too                          [std=3.311646909]
+PASS  T10e a constant bucket inside the reservoir => std exactly 0.0 [n=400 std=0]
+
+------------------------------------------------------------------------
+RESULT: all scanner arithmetic checks passed
+------------------------------------------------------------------------
+This mirrors QSMC_Scanners.mqh - its arithmetic AND its fixed bucket
+arrays, which is how the December/week-53 drop became visible. It also
+runs against the real host now: MQL5/Indicators/QSMC_ScannerProbe.mq5.
+It does NOT test
+symbol discovery, Market Watch or CopyRates - those need a terminal.
+It is not a backtest and produces no win rate. Press F7 to compile.

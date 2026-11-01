@@ -1,0 +1,7 @@
+PASS  aligned upward features produce a bounded upward warning score
+PASS  mirrored downward features produce a bounded downward warning score
+PASS  heuristic score remains normalized to 0..100, not calibrated probability
+PASS  neutral price, volume and CUSUM evidence produce no directional warning
+PASS  excessive spread applies a transparent score penalty
+PASS  unavailable quote/order-book flow is represented as missing data
+Early-break checks passed; warnings are heuristics, not entries or probabilities.

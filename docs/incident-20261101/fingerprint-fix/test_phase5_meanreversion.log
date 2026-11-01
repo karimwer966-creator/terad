@@ -1,0 +1,262 @@
+PASS  A1 a persistent 2-point offset above VWAP gives sigma = 2.00
+PASS  A1 the mean-centred variant reports sigma = 0 for that same series
+PASS  A1 so mean-centring would make every bar of a steady trend look extreme
+PASS  A1 a symmetric +/-1 oscillation about VWAP gives sigma = 1.00
+PASS  A1 price sitting exactly on VWAP gives sigma 0, which means no band at all
+PASS  A1 one missing VWAP sample means no sigma, not a partial estimate
+PASS  A1 a window that cannot be filled returns no sigma
+PASS  A2 a close beyond the band is stretched
+PASS  A2 a close exactly ON the band is not an overextension
+PASS  A2 a close inside the bands is not stretched
+PASS  A2 missing input (105.0, 100.0, 0.0, 2.0) gives no side
+PASS  A2 missing input (105.0, 0.0, 2.0, 2.0) gives no side
+PASS  A2 missing input (105.0, 100.0, 2.0, 0.0) gives no side
+PASS  A2 missing input (0.0, 100.0, 2.0, 2.0) gives no side
+PASS  A2 a wider k moves the band out
+PASS  A3 stretch above VWAP is positive
+PASS  A3 stretch below VWAP is negative
+PASS  A3 no sigma means no stretch to report
+PASS  A4 a higher high with a lower RSI high is bearish divergence
+PASS  A4 a lower low with a higher RSI low is bullish divergence
+PASS  A4 a higher high with a higher RSI high is not divergence
+PASS  A4 a LOWER high in price cannot be a bearish divergence
+PASS  A4 a HIGHER low in price cannot be a bullish divergence
+PASS  A4 an RSI gap below the minimum is noise, not divergence
+PASS  A4 an RSI gap exactly at the minimum does count (the bound is inclusive)
+PASS  A4 an unavailable RSI (this file's 0.0 sentinel) cannot manufacture divergence
+PASS  A4 an unavailable price cannot manufacture divergence
+PASS  A4 a bearish pair read as a LOW-side divergence is nothing
+PASS  A5 a histogram beyond the dead zone is momentum
+PASS  A5 a hair-thin histogram inside the dead zone is not momentum
+PASS  A5 a flat histogram is not momentum
+PASS  A5 a zero dead zone falls back to the sign
+PASS  A5 momentum pushing in the stretched direction conflicts with a fade
+PASS  A5 momentum against the stretch supports the fade, it does not conflict
+PASS  A5 a filter that did not run abstains, it never vetoes
+PASS  A6 with no overextension there is nothing to fade (div=-1 rsi=False)
+PASS  A6 with no overextension there is nothing to fade (div=-1 rsi=True)
+PASS  A6 with no overextension there is nothing to fade (div=0 rsi=False)
+PASS  A6 with no overextension there is nothing to fade (div=0 rsi=True)
+PASS  A6 with no overextension there is nothing to fade (div=1 rsi=False)
+PASS  A6 with no overextension there is nothing to fade (div=1 rsi=True)
+PASS  A6 a stretch with no exhaustion evidence resolves to nothing
+PASS  A6 stretched up with bearish divergence fades DOWN
+PASS  A6 stretched down with bullish divergence fades UP
+PASS  A6 an RSI extreme is exhaustion evidence on its own
+PASS  A6 momentum still pushing up vetoes the short fade
+PASS  A6 momentum still pushing down vetoes the long fade
+PASS  A6 a divergence pointing WITH the stretch contradicts the fade
+PASS  A7 with no overextension nothing scores, however good the evidence
+PASS  A7 the stretch alone is worth 35 and cannot look like a setup
+PASS  A7 an agreeing divergence adds 45
+PASS  A7 an RSI extreme adds 20
+PASS  A7 the full evidence set is exactly 100, with MACD contributing nothing
+PASS  A8 over every combination MACD can only veto, never raise the score
+PASS  A8 even perfect evidence scores 0 when momentum vetoes the fade
+PASS  A8 the maximum is reachable with MACD entirely absent
+PASS  A9 no combination prints a contradictory label
+PASS  A9 the consistency sweep covered all 36 combinations
+PASS  A10 sigma is the root-mean-square of (close - VWAP)
+PASS  A10 sigma is NOT mean-centred - the mean is never subtracted
+PASS  A10 one dirty VWAP sample abandons the whole window
+PASS  A10 the sigma guards refuse before touching any array
+PASS  A10 the band test is strict, so a close ON the band is not an overextension
+PASS  A10 the 0.0 unavailable sentinel is honoured before any divergence
+PASS  A10 the sentinel guard precedes the divergence tests
+PASS  A10 regular divergence only: higher-high/lower-RSI and lower-low/higher-RSI
+PASS  A10 momentum is the histogram against an ATR-scaled dead zone
+PASS  A10 the resolve order is stretch -> veto -> contradiction -> exhaustion -> fade
+PASS  A10 the score's two vetoes come first
+PASS  A10 the legs are 35 + 45 + 20 = 100 exactly
+PASS  A10 no branch adds to the score on MACD's behalf
+PASS  A10 there are exactly two scoring additions (2)
+PASS  B the MR1 engine section was located
+PASS  B the MR1 section slice is substantial (31493 chars)
+PASS  B the bands reuse the existing BufVWAP, not a second VWAP
+PASS  B no Bollinger/RSI/ATR handle is created - the per-bar arrays already exist
+PASS  B divergence reads the existing per-bar RSI array
+PASS  B ATR uses the file's own idiom
+PASS  B swings are the file's own CONFIRMED fractals
+PASS  B the PREVIEW (unconfirmed) fractals are never used - they would repaint
+PASS  B the confirmation depth reuses FractalRightBars()
+PASS  B the swing depth is the file's canonical InpSwingFractalN, not a second notion
+PASS  B IsFractalHigh refuses any bar without n fully closed bars to its right
+PASS  B that guard is documented as the confirmation rule in the source itself
+PASS  B IsFractalLow applies the same confirmation bound
+PASS  B confirmation depth is at least one closed bar
+PASS  B5 the module writes no buffer
+PASS  B5 the module cannot reach OrderSend
+PASS  B5 the module cannot reach OrderSendAsync
+PASS  B5 the module cannot reach CTrade
+PASS  B5 the module cannot reach PositionOpen
+PASS  B5 the module cannot reach PositionClose
+PASS  B5 the module cannot reach WebRequest
+PASS  B5 the module cannot reach Alert(
+PASS  B5 the module cannot reach SendNotification
+PASS  B5 the module cannot reach iCustom
+PASS  B5 the module cannot reach SymbolInfoTick
+PASS  B7 the module draws nothing, so it needs no object-prefix cleanup
+PASS  B6 no literal price level in the module's production code
+PASS  B6 the MACD dead zone is ATR-scaled, so it is symbol-agnostic
+PASS  B9 no future bar is read
+PASS  B9 MR_Update reads no live series
+PASS  B9 MR_Update reads no live series
+PASS  B9 MR_Update reads no live series
+PASS  B9 MR_Update reads no live series
+PASS  B9 MR_Update reads no live series
+PASS  B9 MR_Update reads no live series
+PASS  B9 the band test uses the CLOSED bar's close
+PASS  B9 a bar with no history behind it is refused
+PASS  B9 the module returns immediately while its switch is off
+PASS  B9 g_mr_ext_dir=0 is reset before the early return, so nothing is latched
+PASS  B9 g_mr_div_dir=0 is reset before the early return, so nothing is latched
+PASS  B9 g_mr_dir=0 is reset before the early return, so nothing is latched
+PASS  B9 g_mr_score=0 is reset before the early return, so nothing is latched
+PASS  B9 g_mr_reason="" is reset before the early return, so nothing is latched
+PASS  B9 g_mr_sigma=0.0 is reset before the early return, so nothing is latched
+PASS  B9 g_mr_macd_dir=0 is reset before the early return, so nothing is latched
+PASS  B9 the swing bars are reset too, so a stale swing can never be reused
+PASS  B the optional MACD copy never returns prev_calculated
+PASS  B it never touches the file's bounded indicator-copy retry counter
+PASS  B it never touches the retry warning flag
+PASS  B a short copy is detected, not trusted
+PASS  B an unfilled bar is marked with the file's own 0.0 unavailable sentinel
+PASS  B both MACD legs are copied, main and signal
+PASS  B the index mapping matches the one the file already uses for ATR/ADX/RSI
+PASS  B the module emits 9 distinct reason strings
+PASS  B an inside-the-bands bar says so explicitly
+PASS  B contradictions are labelled CONFLICT, not quietly resolved
+PASS  B all three contradiction kinds are named: both divergences, MACD, and divergence-vs-stretch
+PASS  B a stretch with no exhaustion evidence gets an explicit stand-aside
+PASS  B the confirming reason says it is a reading, not an entry
+PASS  B an enabled-but-unavailable MACD is reported rather than silently skipped
+PASS  B10 the section states its scores are not probabilities
+PASS  B the module logs through the existing single-argument LogLifecycle
+PASS  C MR_Update is called exactly once (1)
+PASS  C MR_Clear is called exactly once, the declaration excluded (1)
+PASS  C MR_SelfTest is invoked exactly once (1)
+PASS  C MR_StdDevAroundVWAP is both declared and defined
+PASS  C MR_BandSide is both declared and defined
+PASS  C MR_Stretch is both declared and defined
+PASS  C MR_FindConfirmedSwingPair is both declared and defined
+PASS  C MR_DivergenceDir is both declared and defined
+PASS  C MR_MacdDirection is both declared and defined
+PASS  C MR_MacdConflicts is both declared and defined
+PASS  C MR_ResolveDirection is both declared and defined
+PASS  C MR_Score is both declared and defined
+PASS  C MR_RefreshMACD is both declared and defined
+PASS  C MR_Update is both declared and defined
+PASS  C MR_Clear is both declared and defined
+PASS  C MR_SelfTest is both declared and defined
+PASS  C MR_Update runs after FillEMAAndVWAP has filled BufVWAP
+PASS  C MR_Update sits with the other observational modules
+PASS  C MR_Update runs once per closed bar, never per tick
+PASS  C MR_Update runs after the per-bar RSI copy
+PASS  C the ordering reason names the inputs it depends on, at the call site
+PASS  C MR_Clear() is called in OnInit
+PASS  C MR_Clear sits with the other module resets in OnInit
+PASS  C MR_SelfTest is gated by the existing InpMTEERunSelfTest switch
+PASS  C the self-test result uses the existing version-tagged log format
+PASS  C iMACD is created with the standard 12/26/9 parameters, all configurable
+PASS  C a failed optional handle does NOT fail init - it degrades to unavailable
+PASS  C h_macd was NOT added to the existing handle-validity test
+PASS  C the handle result is checked
+PASS  C OnDeinit releases the handle exactly once and resets it
+PASS  C there is exactly one release
+PASS  C the optional handle block comes AFTER the existing init-failure test
+PASS  C the MR rows go to the dashboard tooltip
+PASS  C the MR rows need BOTH the module switch and the dashboard switch
+PASS  C a side is printed only when a direction is actually resolved
+PASS  C the score is labelled a confluence count, not a win rate
+PASS  C the 11-row card contract is untouched
+PASS  D there are still exactly 2 code-level INIT_FAILED returns (2), so the optional handle added no init-failure path
+PASS  D INIT_FAILED is mentioned in at most one comment
+PASS  D the pre-existing handle-validity test is byte-intact
+PASS  D the pre-existing handle releases are untouched
+PASS  D the pre-existing FillEMAAndVWAP call is untouched
+PASS  D the pre-existing per-bar RSI copy is untouched
+PASS  D all 12 closed=rates_total-2 sites are unchanged (12)
+PASS  D no site was moved onto the forming bar
+PASS  D both surviving mirrored-array closed-bar sites are unchanged (was 3: the third lived in a dead function deleted in doc 11.14)
+PASS  D all 8 replay-path closed-bar sites are unchanged
+PASS  D the version property is 6.613 since AUDIT-G1
+PASS  D the version text is v6.6.13 since AUDIT-G1
+PASS  D indicator_buffers is still 19 - no buffer was appended
+PASS  D indicator_plots is still 7
+PASS  D buffer indices are still 0..18 with no gap or shift
+PASS  D no enum was added or removed (44, was 44 before this phase)
+PASS  D the section declares no enum, so no existing enumerator can shift
+PASS  D the file has no bare LF (0)
+PASS  E input InpEnableMeanReversion defaults to false
+PASS  E input InpMRBandSigma defaults to 2.00
+PASS  E input InpMRDivLookback defaults to 200
+PASS  E input InpMRDivMinRSIDelta defaults to 2.00
+PASS  E input InpMRFastEMA defaults to 12
+PASS  E input InpMRMacdDeadZoneATR defaults to 0.05
+PASS  E input InpMRRSIOverbought defaults to 70.0
+PASS  E input InpMRRSIOversold defaults to 30.0
+PASS  E input InpMRShowOnDashboard defaults to false
+PASS  E input InpMRSignalSMA defaults to 9
+PASS  E input InpMRSlowEMA defaults to 26
+PASS  E input InpMRStdDevPeriod defaults to 20
+PASS  E input InpMRUseMACD defaults to false
+PASS  E the switch InpEnableMeanReversion is OFF by default
+PASS  E the switch InpMRShowOnDashboard is OFF by default
+PASS  E the switch InpMRUseMACD is OFF by default
+PASS  E the module adds exactly 13 inputs (13)
+PASS  E the declared inputs are exactly the documented set
+PASS  E InpEnableMeanReversion is declared and actually referenced
+PASS  E InpMRBandSigma is declared and actually referenced
+PASS  E InpMRDivLookback is declared and actually referenced
+PASS  E InpMRDivMinRSIDelta is declared and actually referenced
+PASS  E InpMRFastEMA is declared and actually referenced
+PASS  E InpMRMacdDeadZoneATR is declared and actually referenced
+PASS  E InpMRRSIOverbought is declared and actually referenced
+PASS  E InpMRRSIOversold is declared and actually referenced
+PASS  E InpMRShowOnDashboard is declared and actually referenced
+PASS  E InpMRSignalSMA is declared and actually referenced
+PASS  E InpMRSlowEMA is declared and actually referenced
+PASS  E InpMRStdDevPeriod is declared and actually referenced
+PASS  E InpMRUseMACD is declared and actually referenced
+PASS  E the existing InpRSIPeriod was not changed by this phase
+PASS  E the existing InpSwingFractalN was not changed by this phase
+PASS  E the module declares 20 private globals
+PASS  E no MR global is declared twice
+PASS  E the published state h_macd exists
+PASS  E the published state g_mr_vwap exists
+PASS  E the published state g_mr_sigma exists
+PASS  E the published state g_mr_upper exists
+PASS  E the published state g_mr_lower exists
+PASS  E the published state g_mr_stretch exists
+PASS  E the published state g_mr_ext_dir exists
+PASS  E the published state g_mr_div_dir exists
+PASS  E the published state g_mr_rsi_extreme exists
+PASS  E the published state g_mr_macd_dir exists
+PASS  E the published state g_mr_macd_conflict exists
+PASS  E the published state g_mr_dir exists
+PASS  E the published state g_mr_confirms exists
+PASS  E the published state g_mr_score exists
+PASS  E the published state g_mr_reason exists
+PASS  E the published state g_mr_invalidation exists
+PASS  E MR_Clear resets g_mr_vwap to an inert value
+PASS  E MR_Clear resets g_mr_sigma to an inert value
+PASS  E MR_Clear resets g_mr_upper to an inert value
+PASS  E MR_Clear resets g_mr_lower to an inert value
+PASS  E MR_Clear resets g_mr_stretch to an inert value
+PASS  E MR_Clear resets g_mr_ext_dir to an inert value
+PASS  E MR_Clear resets g_mr_div_dir to an inert value
+PASS  E MR_Clear resets g_mr_rsi_extreme to an inert value
+PASS  E MR_Clear resets g_mr_macd_dir to an inert value
+PASS  E MR_Clear resets g_mr_macd_conflict to an inert value
+PASS  E MR_Clear resets g_mr_dir to an inert value
+PASS  E MR_Clear resets g_mr_confirms to an inert value
+PASS  E MR_Clear resets g_mr_score to an inert value
+PASS  E MR_Clear resets g_mr_reason to an inert value
+PASS  E MR_Clear resets g_mr_invalidation to an inert value
+PASS  E MR_Clear also drops the MACD readiness flag
+
+==========================================================================
+AUDIT-MR1 checks: 256   failures: 0
+This is a static transcription + wiring contract. It is NOT a backtest, it
+produces no win rate, and it does NOT prove MetaEditor compiles the file.
+==========================================================================

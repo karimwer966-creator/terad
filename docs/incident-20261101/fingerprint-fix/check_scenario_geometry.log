@@ -1,0 +1,61 @@
+========================================================================
+ QSMC v6.6.0 - SCENARIO GEOMETRY CHECK (predicts QSMC_Selftest.mqh)
+ QST_BARS=40  QST_ATR=2.00  QST_HALF=1.00  ATR_PERIOD=14
+========================================================================
+
+T01  SELL rejection at resistance 108.00-109.00, once, no repeat
+PASS  T00 synthetic ATR matches QST_ATR                          [expected 2.00 measured 2.0500]
+    bar 38  ATR=2.0500  pen=0.20 ATR(bounded=True) accepted=False closed_back=True
+    -> dir=-1 expected=-1  match=yes   rejection at RESISTANCE
+PASS  T01a bar 38 is a bounded rejection => SELL                 
+
+T02  closed bar accepted above resistance => BUY continuation
+    bar 38  ATR=2.0393  pen=0.54 ATR(bounded=False) accepted=True closed_back=False
+    -> dir=+1 expected=+1  match=yes   acceptance at RESISTANCE
+PASS  T02a bar 38 is an acceptance => BUY                        
+
+T03  tactical SELL inside SUPPORT 90.00-91.00 => blocked by location
+    bar 38  ATR=1.9000  -> dir=+1  rejection at SUPPORT
+PASS  T03a the zone is actually in reach (not a trivial pass)    [rejection at SUPPORT]
+PASS  T03b the zone cannot license a SELL (location gate must refuse) 
+PASS  T03c the only role-consistent direction is BUY             
+
+T04  price between zones => NO TRADE / BETWEEN ZONES
+    ATR=1.9643  gap to RES=3.67 ATR  gap to SUP=4.99 ATR  nearest=3.67
+PASS  T04a no zone within 1.50 ATR                               [nearest 3.67 ATR]
+
+T05  the fact cites the FORMING bar => never CONFIRMED
+PASS  T05a bar 39 is the forming bar (ClosedIndex=38)            
+
+T06  30 M1 bars, each a genuine rejection of the same zone
+    ATR=2.0357  valid rejections: 30/30
+PASS  T06a all 30 bars are genuine rejections                    [valid=30/30]
+
+T07  SELL then a genuine BUY acceptance on the same zone => flip-flop
+    bar 38  ATR=1.9413  pen=0.15 ATR(bounded=True) accepted=False closed_back=True
+    -> dir=-1 expected=-1  match=yes   rejection at RESISTANCE
+PASS  T07a first bar is a SELL rejection                         
+    bar 38  ATR=2.0056  pen=0.65 ATR(bounded=False) accepted=True closed_back=False
+    -> dir=+1 expected=+1  match=yes   acceptance at RESISTANCE
+PASS  T07b second bar is a genuine BUY acceptance (opposite direction) 
+
+T08  two charts, one symbol => at most one alert
+    bar 38  ATR=2.0500  pen=0.20 ATR(bounded=True) accepted=False closed_back=True
+    -> dir=-1 expected=-1  match=yes   rejection at RESISTANCE
+PASS  T08a the shared bar really publishes (not a trivial pass)  
+
+T09  weak rejection against a bullish HTF consensus => COUNTER-TREND
+    bar 38  ATR=1.9929  -> dir=-1  rejection at RESISTANCE
+    wick ratio 0.16 (min 0.50)  volume 1000 vs flat 1000
+PASS  T09a the zone licenses a SELL (so the bias gate is reached) [rejection at RESISTANCE]
+PASS  T09b the rejection is genuinely weak (few evidence groups) [wick 0.16<0.50, no volume spike]
+
+T10  no series loaded => no signal (no geometry to check)
+PASS  T10 no data => BuildContext() must return false            
+
+------------------------------------------------------------------------
+RESULT: all geometry checks passed
+------------------------------------------------------------------------
+This predicts the arithmetic of QSMC_Selftest.mqh. It does NOT model
+the gates, the arbiter or the alert manager, and it is NOT a backtest.
+It does not prove compilation. Press F7.

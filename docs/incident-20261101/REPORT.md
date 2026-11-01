@@ -1,5 +1,9 @@
 # تحقيق QSMC 6.6.13 — حادثة 2026-11-01
 
+## تصحيح لاحق لنتيجة F7
+
+أبلغ المستخدم بعد الدمج عن **32 errors, 0 warnings** في `QSMC_InputFingerprint.mqh`. ثبت أن المولّد القديم لا يفصل declarators المتعددة بفاصلة؛ فدمج Start/End في تعبير غير صالح وأغفل ثمانية End من البصمة. صُحّح المولّد وأعيد توليد header إلى 576 متغيرًا. أحدث تشغيل محلي: **47 فحصًا ناجحًا**؛ الأدلة في `fingerprint-fix/` والتفاصيل في `fingerprint-fix/NOTE.md`. نتائج 46 فحصًا أدناه توثّق المرحلة السابقة، وليست إثباتًا لصحة compilation؛ F7 بعد الإصلاح ما زال غير متاح هنا.
+
 ## الحكم التنفيذي
 
 **هذه نهاية مرحلة إصلاح المصدر والاختبارات المحلية، وليست موافقة نشر للإنتاج.**
@@ -60,7 +64,7 @@
 ## 5. P1: instances وخطة توافق التشخيص
 
 - **المؤكد:** EA يستدعي `iCustom(_Symbol,_Period,InpIndicatorName)` بلا قائمة Inputs. لا يرث الإعدادات المرئية. مفتاح التشخيص القديم كان مشتركًا للرمز والفريم.
-- **التعديل:** `QSMC_InstanceIdentity.mqh:1–78`؛ `QSMC_InputFingerprint.mqh` مولّد من **568 input declaration فعلية** في host والملفات المضمّنة ذات المدخلات. `generate_input_fingerprint.py --check` يكشف drift في الأسماء/الترتيب/defaults. الـdouble يُسلسل إلى 16 منزلة؛ لا تُطبع قيم المدخلات الخام.
+- **التعديل:** `QSMC_InstanceIdentity.mqh:1–78`؛ `QSMC_InputFingerprint.mqh` مولّد من **576 متغير input فعليًا** (568 سطر declaration؛ بعض الأسطر يعرّف متغيرين) في host والملفات المضمّنة ذات المدخلات. `generate_input_fingerprint.py --check` يكشف drift في الأسماء/الترتيب/defaults. الـdouble يُسلسل إلى 16 منزلة؛ لا تُطبع قيم المدخلات الخام.
 - heartbeat يسجل الهوية قبل early returns في `nadir2.mq5:15102`. يسجل `[QSMC_INSTANCE]` الرمز والفريم وchart ID وactual/default hash ويذكر عدم توريث Inputs. EA يسجل `[QSMC_AT INSTANCE]` عند التهيئة.
 - اختلاف hashes النشطة لنفس scope خلال 300 ثانية server-time ينتج `INSTANCE MISMATCH - WAIT` في حالة العرض المشتركة. **هذه علامة عرض وتشخيص، وليست بوابة تداول جديدة ولا تعطيلًا للـEA**. لا يتغير Core buffer بسببها.
 - مفتاح v2 يحتوي بصمة الحساب/السيرفر/الرمز + الفريم + بصمة المدخلات؛ EA `DiagVarName` عند `QSMC_AutoTrader.mq5:1056` يكتشف فقط default-equivalent حديثة. لا fallback إلى متغيرات التشخيص القديمة؛ missing identity يعني no record.
