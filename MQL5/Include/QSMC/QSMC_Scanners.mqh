@@ -682,31 +682,42 @@ class CVolatilityHeatmap
 private:
    SVolatilityRow    m_rows[QSC_MAX_ROWS];
    int               m_rows_n;
+   datetime          m_dump100;
+   datetime          m_dump250;
 
    double            Percentile(const CBarSeries &bars,const int ci,
                                 const int window,const double value) const
      {
-      int from=(int)MathMax(1,ci-window+1);
-      int n=ci-from+1;
-      if(n<10 || !(value>0.0)) return -1.0;
+      // Compare against exactly window PRIOR closed ATRs, never the current
+      // sample or a partial warm-up window. Zero is valid only if none is lower.
+      int from=ci-window;
+      if(window<1 || from<1 || !MathIsValidNumber(value) || value<=0.0 || value==EMPTY_VALUE) return -1.0;
       int below=0, valid=0;
-      for(int i=from;i<=ci;i++)
+      for(int i=from;i<ci;i++)
         {
          double a=bars.ATRAt(i);
-         if(!(a>0.0)) continue;
+         if(!MathIsValidNumber(a) || a<=0.0 || a==EMPTY_VALUE) return -1.0;
          valid++;
          if(a<value) below++;
         }
-      //--- Divide by the ATRs actually compared, not by the window. Counting
-      //--- the bars where ATR is not defined yet in the denominator diluted the
-      //--- result toward zero (a 100-bar window with 20 warm-up bars reported a
-      //--- true 80th percentile as 64th - still plausible, still wrong).
-      if(valid<10) return -1.0;
+      if(valid!=window) return -1.0;
       return (double)below/(double)valid*100.0;
      }
 
 public:
-                     CVolatilityHeatmap() { m_rows_n=0; }
+                     CVolatilityHeatmap() { m_rows_n=0; m_dump100=0; m_dump250=0; }
+   // Explicit debug-only audit; once per completed bar and requested window.
+   void DumpSample(const CBarSeries &bars,const int window)
+     {
+      int ci=bars.ClosedIndex(); if(ci<1 || (window!=100 && window!=250)) return;
+      datetime now=bars.T(ci);
+      if(window==100) { if(m_dump100==now) return; m_dump100=now; }
+      else { if(m_dump250==now) return; m_dump250=now; }
+      double current=bars.ATRAt(ci);
+      Print("[QSMC_ATR_SAMPLE] ",bars.Symbol()," ",EnumToString(bars.Timeframe())," window=",window," current=",current," pct=",Percentile(bars,ci,window,current)," from=",ci-window," to=",ci-1);
+      for(int i=(int)MathMax(1,ci-window);i<ci;i++)
+         Print("[QSMC_ATR_SAMPLE] i=",i," time=",TimeToString(bars.T(i))," ATR=",bars.ATRAt(i));
+     }
    int               Rows() const { return m_rows_n; }
    //--- No pointer to a struct in MQL5: reference-out (see D12).
    //--- No pointer to a struct in MQL5: reference-out (see D12).
@@ -727,7 +738,7 @@ public:
       int ci=bars.ClosedIndex();
       if(ci<20) { r.note="not enough bars"; m_rows[m_rows_n]=r; m_rows_n++;
                   return false; }
-      double atr=bars.ATR();
+      double atr=bars.ATRAt(ci); // same Wilder series as percentile history
       double px=bars.C(ci);
       if(!(atr>0.0) || !(px>0.0))
         { r.note="no ATR/price"; m_rows[m_rows_n]=r; m_rows_n++; return false; }
@@ -743,7 +754,9 @@ public:
       else if(p<90.0)    { r.regime="HIGH"; }
       else               { r.regime="EXTREME"; }
 
-      if(r.pct250<0.0) r.note="pct250 needs 250 bars; pct100 shown";
+      if(r.pct250<0.0) r.note="pct250 needs 250 valid prior ATRs; pct100 may be unavailable";
+      if(p<0.0) { r.note="insufficient/invalid full ATR windows"; m_rows[m_rows_n]=r; m_rows_n++; return false; }
+      if(r.pct100==0.0 && r.pct250==0.0) r.note="verified minimum/tie: all 100/250 prior valid ATRs >= current";
       r.valid=true;
       m_rows[m_rows_n]=r; m_rows_n++;
       return true;

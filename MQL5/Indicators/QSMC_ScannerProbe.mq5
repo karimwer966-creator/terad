@@ -231,6 +231,7 @@ void RenderHeatmaps(string &txt)
    g_mom.BeginPass();
    g_mom.Evaluate(_Symbol,QGRP_OTHER,*ch);
    g_vol.BeginPass();
+   if(InpProbeDumpATR) { g_vol.DumpSample(*ch,100); g_vol.DumpSample(*ch,250); }
    g_vol.Evaluate(_Symbol,QGRP_OTHER,*ch);
 
    txt+="\nmomentum ("+IntegerToString(g_mom.Lookback())+"-bar ROC, z-scored vs its own "
@@ -308,3 +309,5 @@ void OnTimer()
    g_setup.BeginPass(); // reset only after table and counters consumed the same snapshot
   }
 //+------------------------------------------------------------------+
+
+input bool InpProbeDumpATR = false; // dump full prior ATR windows once per closed bar
