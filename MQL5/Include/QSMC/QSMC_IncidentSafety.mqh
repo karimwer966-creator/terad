@@ -51,6 +51,7 @@ void QA_CoreDisplayRefresh(const int closed)
    if(closed<0 || closed>=g_rates_total-1 || closed>=ArraySize(g_buf_t) ||
       closed>=ArraySize(BufSigCoreDir)) return;
    g_qa_core.bar=g_buf_t[closed];
+   if(QA_InstanceMismatch()) { g_qa_core.reason="INSTANCE MISMATCH: "+QA_InstanceDescription(); return; }
    double d=BufSigCoreDir[closed];
    if(d!=1.0 && d!=-1.0) return;
    g_qa_core.direction=(int)d;
@@ -59,6 +60,7 @@ void QA_CoreDisplayRefresh(const int closed)
 
 string QA_CoreStatus()
 {
+   if(StringFind(g_qa_core.reason,"INSTANCE MISMATCH")==0) return "INSTANCE MISMATCH - WAIT";
    return (g_qa_core.direction==1?"BUY":(g_qa_core.direction==-1?"SELL":"WAIT"));
 }
 
@@ -72,7 +74,7 @@ void QA_DrawCoreStatus()
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
    ObjectSetInteger(0,name,OBJPROP_COLOR,(g_qa_core.direction==0?clrSilver:clrGold));
    ObjectSetString(0,name,OBJPROP_TEXT,"CORE "+QA_CoreStatus()+(g_qa_core.direction!=0?" ENTRY CONFIRMED":" - no current entry"));
-   ObjectSetString(0,name,OBJPROP_TOOLTIP,g_qa_core.reason);
+   ObjectSetString(0,name,OBJPROP_TOOLTIP,g_qa_core.reason+"\n"+QA_InstanceDescription());
 }
 
 bool QA_LabelAlive(const double lo,const double hi,const datetime born,const bool invalid)

@@ -15099,7 +15099,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                 const double &low[], const double &close[], const long &tick_volume[],
                 const long &volume[], const int &spread[])
 {
-   g_oncalc_seq++;
+   g_oncalc_seq++; QA_InstancePublish();
    long t0perf=(long)GetMicrosecondCount();
    // v5.7.3 PERF: instrument metadata is immutable per chart symbol; load it
    // once (and on symbol change) instead of on every tick.
@@ -18991,7 +18991,7 @@ int DiagBlockerCode(const string key)
 string DiagPrefix()
 {
    if(g_diag_prefix=="")
-      g_diag_prefix="QSMC_DIAG_"+_Symbol+"_"+IntegerToString((long)_Period)+"_";
+      g_diag_prefix=QA_InstanceDiagPrefix();
    return g_diag_prefix;
 }
 
@@ -43354,3 +43354,6 @@ bool MTF_SniperZone_SelfTest()
 #include <QSMC/QSMC_LiquidityValue.mqh>
 #include <QSMC/QSMC_UnifiedDecision.mqh>
 #include <QSMC/QSMC_IncidentSafety.mqh>
+#define QSMC_HOST_IDENTITY
+#include <QSMC/QSMC_InstanceIdentity.mqh>
+#include <QSMC/QSMC_InputFingerprint.mqh>
