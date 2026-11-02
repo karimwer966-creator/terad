@@ -1,0 +1,35 @@
+; QSMC_ScannerProbe.mq5 - MetaEditor F7, pasted by the operator 2026-11-02
+; VERBATIM. Nothing in this file was edited, reordered or summarised.
+;
+; WHAT THIS PROVES
+;   The probe and its whole transitive include chain parse and compile on the
+;   operator's terminal: 0 errors, 0 warnings. Those are the 7 headers below,
+;   and they include QSMC_Types.mqh / QSMC_MarketData.mqh / QSMC_Zones.mqh /
+;   QSMC_Reaction.mqh / QSMC_Bias.mqh / QSMC_Preset.mqh / QSMC_Scanners.mqh.
+;
+; WHAT IT DOES NOT PROVE
+;   * QSMC_ScannerProbe.mq5 is the LIGHTEST program in the repository. It is not
+;     nadir2.mq5 (43k lines, the signal host) and not QSMC_AutoTrader.mq5 (the
+;     only file that can trade, and the one that carries the 100/200/300 ladder).
+;   * 16 of the 23 headers are not in this chain and remain uncompiled.
+;   * "Compiles" is not "runs", not "trades" and not "is profitable".
+;
+QSMC_ScannerProbe.mq5
+
+QSMC_Preset.mqh
+
+QSMC_Types.mqh
+
+QSMC_Scanners.mqh
+
+QSMC_MarketData.mqh
+
+QSMC_Zones.mqh
+
+QSMC_Reaction.mqh
+
+QSMC_Bias.mqh
+
+code generated			0
+
+0 errors, 0 warnings, 2536 ms elapsed, cpu='AVX2 + FMA3'			0

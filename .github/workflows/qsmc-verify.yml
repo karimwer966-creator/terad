@@ -105,6 +105,14 @@ jobs:
       - name: Decision dashboard clarity contract
         run: python3 tools/test_dashboard_clarity.py 2>&1 | tee out/test_dashboard_clarity.log
 
+      # The one claim no tool here could make: "it builds in MetaEditor". The
+      # evidence folder holds the pasted F7 output; this step stops the F7 matrix
+      # from drifting from those logs (a PASS row needs a 0-error log, and a log
+      # must list exactly that program's real include chain). It still cannot
+      # compile anything - it keeps the file honest about what was pasted.
+      - name: Build evidence (F7 matrix vs the pasted compiler logs)
+        run: python3 tools/test_build_evidence.py 2>&1 | tee out/test_build_evidence.log
+
       - name: Execution companion contract (buffer map, switches, sizing)
         run: python3 tools/test_autotrader_contract.py 2>&1 | tee out/test_autotrader.log
 
