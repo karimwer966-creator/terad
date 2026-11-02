@@ -31509,7 +31509,7 @@ void ScenarioDrawOne(const SScenarioPlan &p,const string tag)
       DrawTextLabel(base+"TAG",t2,(p.is_buy?p.zone_low:p.zone_high),
                     string(p.is_buy?"BUY":"SELL")+" PLAN — "+
                        (terminal?ScenarioStateName(p.state)+" — NOT AN ENTRY":
-                                 "CONDITIONAL — "+ScenarioStateName(p.state)),
+                                 "CONDITIONAL — "+ScenarioStateName(p.state)+(terminal||!p.distance_available||g_scn_ctx.selection_atr<=0.0?"":StringFormat(" | %.1f H1-ATR %s the zone",p.distance_atr,(g_scn_ctx.close_price>p.zone_high?"above":(g_scn_ctx.close_price<p.zone_low?"below":"at"))))),
                     col,!p.is_buy,8);
    if(InpShowSLTP && p.structural_invalidation>0.0)
       DrawHLine(base+"INV",p.structural_invalidation,col,
@@ -31863,15 +31863,15 @@ void DrawQuantumDashboard(const int total,const double &c[])
    string primary="PRIMARY: none (closed-bar only)";
    string needs="NEEDS: wait for a closed-bar reaction";
    string invalid="INVALIDATION: n/a";
+   // v6.6.13 AUDIT-PR1: the card states HOW FAR the level is; beyond InpAlertMaxDistanceATR it is amber, never a live side colour.
+   bool p_near=(g_alert_primary.valid && g_alert_primary.distance_atr<=(InpAlertMaxDistanceATR>=0.0&&MathIsValidNumber(InpAlertMaxDistanceATR)?InpAlertMaxDistanceATR:2.0)); string p_dist=(g_alert_primary.distance_atr<=0.05?"at the zone":StringFormat("%.1f ATR %s",g_alert_primary.distance_atr,(c[closed]>g_alert_primary.zone_hi?"below":(c[closed]<g_alert_primary.zone_lo?"above":"away"))));
    if(g_alert_primary.valid && primary_dir!=0)
    {
       string level_tag=(g_alert_primary.source==2?RXN_LevelName(g_alert_primary.level):source);
-      primary=StringFormat("PRIMARY %s %s %s-%s | %d/100",
-                           level_tag,(primary_dir>0?"S":"R"),
-                           DoubleToString(g_alert_primary.zone_lo,_Digits),
-                           DoubleToString(g_alert_primary.zone_hi,_Digits),
-                           (InpUnifiedDecision?g_ud.score:g_alert_primary.score));
-      needs="NEEDS: "+(g_alert_primary.needs==""?"none":g_alert_primary.needs);
+      primary=StringFormat("PRIMARY %s %s %s | %d/100 | %s",(primary_dir>0?"BUY":"SELL"),level_tag,
+                           DoubleToString(g_alert_primary.zone_lo,_Digits)+"-"+DoubleToString(g_alert_primary.zone_hi,_Digits),
+                           (InpUnifiedDecision?g_ud.score:g_alert_primary.score),p_dist);
+      needs=(p_near?"NEEDS: "+(g_alert_primary.needs==""?"none":g_alert_primary.needs):"NEEDS: "+AlertWhyNoPopup(closed,g_buf_t[closed]));
       invalid="INVALIDATION: "+AlertInvalidationText(g_alert_primary);
    }
    // v6.6.8: when this closed bar produced NO directional candidate, the panel
@@ -31979,7 +31979,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    string lines[11]; color cols[11]; int ln=0;
    lines[ln]="STATUS: "+status+" | "+_Symbol+" "+TFName((ENUM_TIMEFRAMES)_Period);
    cols[ln++]=status_col;
-   lines[ln]=primary; cols[ln++]=(primary_dir>0?clrLimeGreen:(primary_dir<0?clrLightCoral:clrSilver));
+   lines[ln]=primary; cols[ln++]=(primary_dir==0?clrSilver:(p_near?(primary_dir>0?clrLimeGreen:clrLightCoral):clrOrange));
    lines[ln]=best_level; cols[ln++]=best_level_col;
    lines[ln]=entry_check; cols[ln++]=entry_check_col;
    if(InpDisplayMode!=QSMC_MODE_MINIMAL)
@@ -32224,9 +32224,9 @@ void DrawQuantumDashboard(const int total,const double &c[])
       lines[0]="STATUS: "+status;
    if(ln>1 && TextWidthPx(lines[1],"Consolas",panel_font,false)>text_max &&
       g_alert_primary.valid && primary_dir!=0)
-      lines[1]=StringFormat("PRIMARY %s @ %s | %d/100",(primary_dir>0?"BUY":"SELL"),
+      lines[1]=StringFormat("CONTEXT (NOT ENTRY) | %s @ %s | %d/100 | %s",(primary_dir>0?"BUY":"SELL"),
                             DoubleToString((g_alert_primary.zone_lo+g_alert_primary.zone_hi)*0.5,_Digits),
-                            g_alert_primary.score);
+                            g_alert_primary.score,p_dist);
    // Drop optional lines that cannot fit as whole strings. Their full versions
    // remain in the tooltip; no displayed row is ever truncated.
    for(int i=1;i<ln;)

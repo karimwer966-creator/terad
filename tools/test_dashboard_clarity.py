@@ -66,6 +66,44 @@ checks = {
         "every alert channel is OFF",
         "arbiter top blocker",
     )),
+    # v6.6.13 AUDIT-PR1. Observed on a live demo chart: the card read
+    # "STATUS: WAIT" and, one row below, "PRIMARY BUY @ 3897.59 | 64/100" in BUY
+    # green - while that level was 4.4 ATR BELOW the price (beyond
+    # InpAlertMaxDistanceATR) and the chart tag on the same level said
+    # "BUY PLAN - CONDITIONAL - LATE - WAIT FOR RETEST". Two causes, both display:
+    # (a) the compact card's width fallback rebuilt row 1 as "PRIMARY <side> @ ..."
+    #     and dropped the "CONTEXT (NOT ENTRY)" qualifier that the full row carries,
+    #     so the one row a compact chart always shows was the one row without it;
+    # (b) the row was coloured by direction alone, so an unreachable level looked
+    #     like a live side.
+    "the compact card's width fallback cannot drop the qualifier": all(
+        token in text for token in (
+            'lines[1]=StringFormat("CONTEXT (NOT ENTRY) | %s @ %s | %d/100 | %s"',
+            "primary_dir>0?\"BUY\":\"SELL\")",
+        )),
+    "the primary row states how far the level is": all(token in text for token in (
+        "string p_dist=(g_alert_primary.distance_atr<=0.05?\"at the zone\"",
+        '"%.1f ATR %s"',
+        'primary=StringFormat("PRIMARY %s %s %s | %d/100 | %s"',
+    )),
+    "a level beyond InpAlertMaxDistanceATR is amber, not a live side colour": all(
+        token in text for token in (
+            "bool p_near=(g_alert_primary.valid && g_alert_primary.distance_atr<=",
+            "p_near?(primary_dir>0?clrLimeGreen:clrLightCoral):clrOrange",
+        )),
+    "an out-of-reach level reports the real blocker beside it": (
+        'needs=(p_near?"NEEDS: "+(g_alert_primary.needs==""?"none":g_alert_primary.needs)'
+        ':"NEEDS: "+AlertWhyNoPopup(closed,g_buf_t[closed]));' in text),
+    "the S/R token is gone from the row (S for support read as SELL)": (
+        '"PRIMARY %s %s %s-%s | %d/100"' not in text),
+    # The same complaint on the other surface: the plan tag named its state but
+    # never how far the closed price sat from the zone, which is the whole reason
+    # a LATE plan must wait. The tag now carries it, for live plans only.
+    "the conditional plan tag states the closed distance to its zone": all(
+        token in text for token in (
+            '" | %.1f H1-ATR %s the zone"',
+            "terminal||!p.distance_available||g_scn_ctx.selection_atr<=0.0",
+        )),
 }
 # AlertWhyNoPopup() is a display helper. If it ever calls into the dispatcher it
 # stops being an explanation and becomes an unreviewed second decision path.

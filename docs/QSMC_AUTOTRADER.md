@@ -134,6 +134,50 @@ Worked example (XAUUSD-like: tick `0.01`, $1 per tick per lot, step `0.01`):
 Both rows are reproduced by an independent model in
 `tools/test_autotrader_contract.py`.
 
+### The fixed pip ladder — "0.05 lots, 100/200/300"
+
+A fixed size and fixed pip targets cannot be expressed through `InpTPLevel`
+(which only chooses one of the indicator's own targets). They are therefore an
+**execution-layer** feature, off by default, that changes no indicator gate and
+no signal:
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `InpUseTPPips` | `false` | ignore the indicator TP and use the ladder below |
+| `InpPipPoints` | `0` | points per pip; `0` = auto (gold/silver 0.10 of price, 5/3-digit FX 10 points, other 1 point) |
+| `InpTP1Pips` / `InpTP2Pips` / `InpTP3Pips` | `100` / `200` / `300` | rungs measured from the **fill** |
+| `InpTP1ClosePercent` / `InpTP2ClosePercent` | `40` / `40` | % of the **original** volume banked at each rung |
+| `InpMoveSLToBEAtTP1` | `true` | stop to the entry after rung 1 |
+| `InpMoveSLToTP1AtTP2` | `true` | stop to rung 1 after rung 2 |
+
+How it behaves, exactly:
+
+```
+CORE signal -> 0.05 lots, indicator stop, TP on the ticket = rung 3 (300 pips)
+  +100 pips : close 40% (0.02) of the ORIGINAL volume, stop -> entry
+  +200 pips : close 40% (0.02), stop -> +100 pips
+  +300 pips : the remaining 20% exits through the ticket TP
+```
+
+- the TP written on the ticket is the **last rung**, so a target survives even if
+  this EA is removed from the chart;
+- the rung counter and the original volume are persisted per ticket in terminal
+  globals, so a reload cannot bank the same rung twice;
+- a gap through both rungs is processed in one pass — no partial is skipped;
+- a rung that cannot be split at the broker minimum is skipped, logged once, and
+  not retried on every tick;
+- while the ladder is on it is the **only** exit manager: `InpPartialCloseAtR` is
+  ignored (and the journal says so), so two rules can never close the same volume;
+- the stop only ever moves toward profit, and only if it stays on the safe side of
+  the price and outside the broker's stops level.
+
+The attach banner prints the resolved pip size, the three distances, the money
+each rung is worth at the configured volume, and **the widest stop the 1% ceiling
+can pay for**. On XAUUSD at 0.05 lots that ceiling allows a stop of about $9.17
+on a $4,587 account; a wider signal stop is refused by design. `presets/QSMC_fixed005_tp100_200_300.set`
+is the ready-made configuration, and `docs/QSMC_DEPLOYMENT_AR.md` explains where
+each file goes (one EA per chart) and which timeframe suits which pip ladder.
+
 ### Exits and filters
 
 | Input | Default | Meaning |
