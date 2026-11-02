@@ -74,6 +74,17 @@ def resolve_include(name):
 
 INC_RX = re.compile(r'^\s*#include\s+[<"]([^>"]+)[>"]', re.M)
 
+# Includes that ship with MetaTrader, not with this repository. They cannot be
+# resolved from the tree, so they are recognised by name instead: the Standard
+# Library headers pulled in by <Trade/Trade.mqh>. A log is allowed to list these
+# and nothing else beyond the repository's own chain - any other unknown basename
+# is a file this repository does not contain, which means the log came from a
+# different source tree.
+TRADE_STDLIB = {
+    "Trade.mqh", "Object.mqh", "StdLibErr.mqh", "OrderInfo.mqh",
+    "HistoryOrderInfo.mqh", "PositionInfo.mqh", "DealInfo.mqh", "SymbolInfo.mqh",
+}
+
 
 def chain(start, seen=None):
     """Transitive include chain of `start`, as basenames, definition order."""
@@ -134,14 +145,22 @@ for program, status, evidence in rows:
         if n_warn:
             print("      note: %s reports %d warning(s) - kept, not hidden" % (label, n_warn))
 
-    # B: the log's own file list must be this program's real include chain.
+    # B: the log's own file list must be this program's real include chain, plus
+    # (only) the terminal Standard Library headers it is documented to pull in.
     listed = set(re.findall(r"^([A-Za-z0-9_]+\.mq[5h])\s*$", log, re.M))
     expected = set(chain(path))
+    src = read(path)
+    terminal = set()
+    if re.search(r'#include\s+[<"]Trade/Trade\.mqh[>"]', src):
+        terminal |= TRADE_STDLIB
     missing = expected - listed
-    extra = listed - expected
+    extra = listed - expected - terminal
     check(not missing and not extra,
           "B %s log lists exactly that program's include chain" % label,
           "missing=%s extra=%s" % (sorted(missing), sorted(extra)))
+    if terminal:
+        check("Trade.mqh" in listed,
+              "B %s includes <Trade/Trade.mqh>, so its log must list Trade.mqh" % label)
 
 # C: no PASS row may hide a failing log anywhere in the folder.
 for name in sorted(os.listdir(BE)):

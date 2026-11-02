@@ -1,0 +1,48 @@
+; QSMC_AutoTrader.mq5 - MetaEditor F7, pasted by the operator 2026-11-02
+; VERBATIM. Nothing in this file was edited, reordered or summarised.
+;
+; WHAT THIS PROVES
+;   The execution companion - the ONLY file in this repository that may reach
+;   the trade API, and the file that carries the 100/200/300 pip ladder added in
+;   PR #27 - parses and compiles on the operator's terminal: 0 errors,
+;   0 warnings. The ladder code (PipPointsFor / PipsToPrice / PlanTP /
+;   LadderClose / ManagePipLadder / PosSlotInit / LadderKey) is therefore
+;   compile-clean, not merely source-clean.
+;
+;   Terminal-shipped includes in the list (Trade.mqh, Object.mqh, StdLibErr.mqh,
+;   OrderInfo.mqh, HistoryOrderInfo.mqh, PositionInfo.mqh, DealInfo.mqh) come
+;   with MetaTrader, not with this repository. The one repository include is
+;   QSMC_InstanceIdentity.mqh (it includes nothing else).
+;
+; WHAT IT DOES NOT PROVE
+;   * nadir2.mq5 is NOT in this chain. The companion loads it by NAME through
+;     iCustom(), so compiling the EA never compiles the indicator. The 43k-line
+;     signal host - which produces every number the chart shows - is still
+;     uncompiled, and it is the largest remaining risk.
+;   * "It compiles" is not "it runs", not "it trades correctly", and not "it is
+;     profitable". The ladder arithmetic is pinned by tools/test_execution_safety.py;
+;     the ORDER PATH is pinned only by review until a demo run.
+;   * A clean compile of the EA also does not validate the preset values, the
+;     broker's pip convention for your symbol, or your account's margin.
+;
+QSMC_AutoTrader.mq5
+
+Trade.mqh
+
+Object.mqh
+
+StdLibErr.mqh
+
+OrderInfo.mqh
+
+HistoryOrderInfo.mqh
+
+PositionInfo.mqh
+
+DealInfo.mqh
+
+QSMC_InstanceIdentity.mqh
+
+code generated			0
+
+0 errors, 0 warnings, 2441 ms elapsed, cpu='AVX2 + FMA3'			0
