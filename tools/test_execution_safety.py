@@ -24,6 +24,7 @@ These checks pin the FIXED shape of the send path, so a future edit cannot
 quietly restore any of the five. They are source contracts, not a compiler and
 not a backtest: F7 in MetaEditor and a demo run remain the human gates.
 """
+import math
 import re
 from pathlib import Path
 
@@ -261,6 +262,92 @@ check("DisciplineSuffix()" in code,
       "D7q the heartbeat names the discipline layer instead of leaving 'CORE 1, sent 0' unexplained")
 check("discipline: " in noc,
       "D7r the init banner states all four discipline settings, so a preset is visible")
+
+# --------------------------------------------------- D8 fixed pip ladder (opt-in)
+# "Open 0.05 lots and take 100/200/300 pips" cannot be expressed with InpTPLevel,
+# so the execution layer now owns a three-rung ladder. These are the properties
+# that would cost money if they broke: the ladder is OFF by default, it changes
+# the TP BEFORE the geometry checks, it banks from the ORIGINAL volume, it never
+# moves a stop away from the entry, it survives a reload, and it cannot try to
+# close a size the broker refuses eight times a second.
+check(re.search(r"input\s+bool\s+InpUseTPPips\s*=\s*false", ea) is not None,
+      "D8a the pip ladder ships OFF - the default behaviour of the EA is unchanged")
+check(re.search(r"input\s+int\s+InpTP1Pips\s*=\s*100", ea) is not None and
+      re.search(r"input\s+int\s+InpTP2Pips\s*=\s*200", ea) is not None and
+      re.search(r"input\s+int\s+InpTP3Pips\s*=\s*300", ea) is not None,
+      "D8b the three rungs default to 100 / 200 / 300 pips")
+check("double PipPointsFor(const string sym)" in code and "double PipsToPrice(" in code,
+      "D8c pip size is resolved per symbol in one pure helper, not hard-coded at the call site")
+check('StringFind(u,"XAU")' in noc and "return 10.0;" in code,
+      "D8d gold resolves one pip to 0.10 of price and 5/3-digit FX to 10 points")
+check("input int    InpPipPoints            = 0;" in ea,
+      "D8e the operator can override the pip definition (0 = auto)")
+check("double PlanTP(const int shift,const double base,const bool buy)" in code,
+      "D8f one function decides the TP for both modes, so checks and the ticket cannot disagree")
+check(noc.find("double ladder_tp=PlanTP(s.shift,price,buy);")
+      < noc.find('Note(key,"signal has no stop");'),
+      "D8g the ladder TP is applied BEFORE every geometry check (no-chase, RR, stops level)")
+check(code.find("if(InpUseTPPips)") < code.find("double lots=CalcLots("),
+      "D8h the ladder decision happens before sizing and before any order call")
+check("double v0=PosVolume0(ticket,PositionGetDouble(POSITION_VOLUME));" in code,
+      "D8i rung percentages are of the ORIGINAL volume, not of what is left")
+check("for(int guard=0;guard<2;guard++)" in code,
+      "D8j a gap through both rungs is banked in one pass (no skipped partial)")
+check("if(!LadderClose(ticket,step+1,v0,live)) break;" in code,
+      "D8k a refused close stops the pass instead of looping on the server")
+check("if(part>live) part=NormalizeDouble(live,3);" in code and
+      "remain>0.0 && remain<vmin" in code,
+      "D8l the close never exceeds the live volume and never leaves a sub-minimum remainder unattempted")
+check("if(buy)\n     {\n      if(sl>=want_sl || want_sl>=cur) return;" in code and
+      "if(sl<=want_sl || want_sl<=cur) return;" in code,
+      "D8m the ladder stop only moves toward profit: a stop already past the rung is left alone")
+check("if(done>=2 && InpMoveSLToTP1AtTP2)      want_sl=l1;" in code,
+      "D8n after rung 2 the stop moves to rung 1 (locked), not beyond it")
+check('GlobalVariableSet(LadderKey(ticket,"STEP"),(double)step);' in noc and
+      'GlobalVariableGet(k)' in noc,
+      "D8o the rung counter is persisted per ticket, so a reload cannot bank the same rung twice")
+check('GlobalVariableSet(k,live);' in code,
+      "D8p the original volume is persisted too (the in-memory ring dies with the EA)")
+check("void PurgeLadderGlobals()" in code and "if(PositionSelectByTicket(t)) continue;" in code,
+      "D8q ladder memory is purged for tickets that no longer exist, and only for those")
+check("if(InpUseTPPips)\n        {\n         ManagePipLadder(ticket,buy,entry,cur,sl,tp);\n         continue;" in code,
+      "D8r exactly ONE exit manager owns a position: the ladder replaces the R partial and the R break-even")
+check('if(InpTP1Pips<=0 || InpTP2Pips<=InpTP1Pips || InpTP3Pips<=InpTP2Pips)' in code,
+      "D8s a ladder that is not strictly ascending is refused at init, not at the first signal")
+check("InpTP1ClosePercent+InpTP2ClosePercent>99.0" in code,
+      "D8t two rungs that together close everything are refused (nothing would reach rung 3)")
+check("0 < InpTP1Pips < InpTP2Pips < InpTP3Pips" in ea,
+      "D8u the refusal names the exact constraint instead of failing silently")
+check("1 pip = " in ea and "the stop may be at most " in ea,
+      "D8v the attach banner prints the resolved pip size, the money per rung and the widest stop the 1% cap can pay for")
+_init_ladder = noc[noc.find("0 < InpTP1Pips < InpTP2Pips < InpTP3Pips"):]
+check("return INIT_PARAMETERS_INCORRECT;" in _init_ladder[:1600],
+      "D8w bad ladder inputs stop OnInit instead of running with a half-configured exit")
+
+# Reference arithmetic for LadderClose(): 0.05 lots, 40% + 40%, step 0.01,
+# minimum 0.01 -> 0.02 banked, 0.03 left, 0.02 banked, 0.01 runs to rung 3.
+def ladder_split(v0, pct, live, step, vmin):
+    part = math.floor((v0 * pct / 100.0) / step + 0.0000001) * step
+    part = round(part, 3)
+    if part <= 0.0:
+        return 0.0, live
+    if part > live:
+        part = live
+    remain = round(live - part, 3)
+    if remain > 0.0 and remain < vmin:
+        return 0.0, live
+    return part, remain
+
+
+p1, left1 = ladder_split(0.05, 40.0, 0.05, 0.01, 0.01)
+p2, left2 = ladder_split(0.05, 40.0, left1, 0.01, 0.01)
+check(abs(p1 - 0.02) < 1e-9 and abs(left1 - 0.03) < 1e-9,
+      "D8x reference: 0.05 lot ladder banks 0.02 at rung 1 and leaves 0.03")
+check(abs(p2 - 0.02) < 1e-9 and abs(left2 - 0.01) < 1e-9,
+      "D8y reference: rung 2 banks another 0.02 and leaves 0.01 for rung 3")
+p3, left3 = ladder_split(0.02, 40.0, 0.02, 0.01, 0.01)
+check(p3 == 0.0 and left3 == 0.02,
+      "D8z reference: when 40% is under one volume step the rung closes nothing and is not retried")
 
 print("=" * 60)
 TOTAL = ea.count("\n")

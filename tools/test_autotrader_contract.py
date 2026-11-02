@@ -296,4 +296,28 @@ require("double new_sl=NormalizeDouble(entry,_Digits);" in code,
 require("if(buy && sl>=entry) continue;" in code and "if(!buy && sl<=entry) continue;" in code,
         "a stop that is already at or past break-even is left alone (never widened)")
 
+# ------------------------------------------------- the shipped 0.05 preset
+# A preset is an input surface the operator loads with one click, so it is
+# checked like code: it must not arm anything, and the numbers must be the
+# request it claims to answer (0.05 lots, 100/200/300, 40% + 40%).
+PRESET = ROOT / "presets/QSMC_fixed005_tp100_200_300.set"
+require(PRESET.is_file(), "the fixed-0.05 / 100-200-300 preset ships with the repository")
+pset = PRESET.read_text(encoding="utf-8", errors="replace")
+vals = dict(re.findall(r"^(Inp\w+)=(.*)$", pset, re.M))
+require(vals.get("InpEnableTrading") == "false" and vals.get("InpDryRun") == "true",
+        "the preset does NOT arm the account (INERT then DRY RUN, by hand)")
+require(vals.get("InpLotMode") == "1" and vals.get("InpFixedLots") == "0.05",
+        "the preset is fixed volume 0.05, not a risk-derived size")
+require(vals.get("InpUseTPPips") == "true" and
+        (vals.get("InpTP1Pips"), vals.get("InpTP2Pips"), vals.get("InpTP3Pips")) == ("100", "200", "300"),
+        "the preset asks for the 100/200/300 pip ladder")
+require(vals.get("InpTP1ClosePercent") == "40.0" and vals.get("InpTP2ClosePercent") == "40.0",
+        "the preset banks 40% + 40% and leaves 20% for rung 3")
+require(vals.get("InpMaxRiskPercent", "1.0") in ("1.0", "1", "1.00"),
+        "the preset keeps the 1% ceiling")
+require(vals.get("InpPartialCloseAtR") == "0.0",
+        "the preset disables the R-based partial, so ONE exit manager owns the position")
+require("pip ladder ON" in pset or "pip ladder" in pset,
+        "the preset explains the pip convention it relies on")
+
 print("AutoTrader contract checks passed; this is not an MT5 run and not a backtest.")

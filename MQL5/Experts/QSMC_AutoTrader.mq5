@@ -22,6 +22,22 @@
 //|  EA can never act on a forming candle. It trades the CORE         |
 //|  published signal only - not the tactical preview mark, not ZRE.  |
 //|                                                                   |
+//|  FIXED SIZE, FIXED PIP LADDER (opt-in, off by default)            |
+//|  --------------------------------------------------               |
+//|  InpLotMode=QSMC_LOT_FIXED with InpFixedLots=0.05 takes the same   |
+//|  volume on every signal instead of a risk-derived one; it is       |
+//|  still refused if that volume's stop would break the 1% ceiling.   |
+//|  InpUseTPPips=true then replaces the indicator's target with three |
+//|  fixed distances measured from the FILL (100/200/300 pips by       |
+//|  default): rung 1 and rung 2 are banked as partial closes of the   |
+//|  ORIGINAL volume (40% + 40%), the stop moves to the entry after    |
+//|  rung 1 and to rung 1 after rung 2, and the remainder exits at     |
+//|  rung 3 - which is the TP written on the ticket, so the position   |
+//|  still has a target if this EA is removed. A "pip" is resolved per |
+//|  symbol (gold 0.10 of price, 5/3-digit FX 10 points) and the       |
+//|  attach banner prints the resolved distances and their money value |
+//|  - if that line is not what you intended, set InpPipPoints.        |
+//|                                                                   |
 //|  WHAT IT REFUSES TO DO                                            |
 //|  ---------------------                                            |
 //|  - It ships INERT: InpEnableTrading=false, and a first switch-on  |
@@ -65,6 +81,10 @@
 //|     on all three in MetaEditor.                                   |
 //|  2. Attach the EA to the SAME symbol and timeframe you want to    |
 //|     trade. Strategy Tester and live charts both work.             |
+//|     ONE EXPERT PER CHART: MetaTrader allows a single EA on a chart,|
+//|     so this file and KLJ_DataFeeder.mq5 need separate charts. The  |
+//|     indicator(s) may share this chart - so the usual layout is     |
+//|     chart 1 = nadir2 + this EA, chart 2 = the data feeder.         |
 //|  3. Tick "Allow Algo Trading" in the terminal and in the EA.      |
 //|  4. Leave it inert for a session and read the journal lines it    |
 //|     prints (they say INERT / DRY RUN and why each signal was      |
@@ -193,6 +213,24 @@ input double InpFixedLots            = 0.00;   // volume used when InpLotMode = 
 input ENUM_QSMC_TP_SOURCE InpTPLevel = QSMC_TP_LEVEL1; // which indicator target becomes the TP
 input double InpBreakEvenAtR         = 1.00;   // move the stop to entry after +1R; 0 = off
 
+//--- 3b. FIXED PIP LADDER (opt-in) -----------------------------------
+// The indicator sizes its own targets from structure, so a "100/200/300" request
+// cannot be expressed through InpTPLevel. This block does it in the EXECUTION
+// layer only: the position is sent with the ladder's LAST rung as its broker TP
+// (so a target survives even if this EA is removed), and the first two rungs are
+// banked by partial closes from ManageOpenPositions(). It changes no indicator
+// gate and no signal: only where this EA takes profit on what it was given.
+// Everything is OFF by default, so the shipped behaviour is unchanged.
+input bool   InpUseTPPips            = false;  // true = ignore the indicator TP and use the pip ladder below
+input int    InpPipPoints            = 0;      // points per pip; 0 = auto (gold 0.10, 5/3-digit FX 10 pts, other 1 pt)
+input int    InpTP1Pips              = 100;    // rung 1 distance from the FILL price, in pips
+input int    InpTP2Pips              = 200;    // rung 2
+input int    InpTP3Pips              = 300;    // rung 3 (this is the TP put on the ticket)
+input double InpTP1ClosePercent      = 40.0;   // % of the ORIGINAL volume closed at rung 1
+input double InpTP2ClosePercent      = 40.0;   // % of the ORIGINAL volume closed at rung 2
+input bool   InpMoveSLToBEAtTP1      = true;   // after rung 1 the stop goes to the entry (never widened)
+input bool   InpMoveSLToTP1AtTP2     = true;   // after rung 2 the stop goes to rung 1 (locks the first leg)
+
 //--- 4. filters ------------------------------------------------------
 input int    InpMaxSpreadPoints      = 30;     // refuse a signal while the spread is wider
 // Slippage tolerance for a MARKET order. It used to be a hard-coded 10 points,
@@ -290,7 +328,14 @@ ulong     g_be_warned_ticket=0;
 ulong     g_pos_ticket[QSMC_AT_POS_RING];
 double    g_pos_risk[QSMC_AT_POS_RING];
 bool      g_pos_partial[QSMC_AT_POS_RING];
+double    g_pos_vol0[QSMC_AT_POS_RING];   // volume at first sight: rung %s are of THIS, not of what is left
+int       g_pos_step[QSMC_AT_POS_RING];   // pip-ladder rungs already banked (0..2)
 int       g_pos_n=0;
+
+// Ladder close throttle: a refused partial is retried, but not on every tick and
+// not silently - the same rule the break-even move already follows.
+ulong     g_lad_warn_ticket=0;
+datetime  g_lad_warn_time=0;
 
 struct SQsigSignal
   {
@@ -740,6 +785,52 @@ double PickTP(const int shift)
   }
 
 //+------------------------------------------------------------------+
+//| FIXED PIP LADDER - pure price arithmetic, no order, no state.     |
+//|                                                                   |
+//| A "pip" is a broker convention, not a number: 1 pip is 10 points  |
+//| on 5- and 3-digit FX quotes, 0.10 of price on gold (10 points on  |
+//| a 2-digit XAUUSD, 100 on a 3-digit one), and there is no          |
+//| convention at all for indices and crypto. Guessing silently is    |
+//| how "300 pips" becomes $3 on one symbol and $300 on another, so   |
+//| the choice is explicit here, printed at attach, and overridable   |
+//| with InpPipPoints.                                                |
+//+------------------------------------------------------------------+
+double PipPointsFor(const string sym)
+  {
+   if(InpPipPoints>0) return (double)InpPipPoints;
+   double point=SymbolInfoDouble(sym,SYMBOL_POINT);
+   if(point<=0.0) return 0.0;
+   int digits=(int)SymbolInfoInteger(sym,SYMBOL_DIGITS);
+   string u=sym;
+   StringToUpper(u);
+   // Gold and silver quotes are conventionally one pip = 0.10 of price, whatever
+   // the number of digits the broker uses.
+   if(StringFind(u,"XAU")>=0 || StringFind(u,"XAG")>=0 || StringFind(u,"GOLD")>=0 ||
+      StringFind(u,"SILVER")>=0)
+      return MathMax(1.0,MathRound(0.10/point));
+   if(digits==3 || digits==5) return 10.0;   // FX: the fifth (or third) decimal is a point, ten of them a pip
+   return 1.0;                               // indices/crypto: one point is the smallest unit the broker names
+  }
+
+// Price of "pips" from base, in the direction of the trade.
+double PipsToPrice(const string sym,const double base,const int pips,const bool up)
+  {
+   double one=(PipPointsFor(sym)*SymbolInfoDouble(sym,SYMBOL_POINT));
+   if(one<=0.0 || base<=0.0) return 0.0;
+   double d=(double)pips*one;
+   return NormalizeDouble(up ? base+d : base-d,(int)SymbolInfoInteger(sym,SYMBOL_DIGITS));
+  }
+
+// The TP this EA will put on the ticket: the ladder's last rung when the ladder
+// is on, the indicator's own target otherwise. Kept in ONE place so the geometry
+// checks, the send, and the journal line can never disagree about the target.
+double PlanTP(const int shift,const double base,const bool buy)
+  {
+   if(!InpUseTPPips) return PickTP(shift);
+   return PipsToPrice(_Symbol,base,InpTP3Pips,buy);
+  }
+
+//+------------------------------------------------------------------+
 //| One candidate signal -> one decision.                            |
 //+------------------------------------------------------------------+
 void HandleSignal(SQsigSignal &s)
@@ -756,6 +847,22 @@ void HandleSignal(SQsigSignal &s)
      {
       Note(key,"no price yet");
       return;
+     }
+
+   // --- fixed pip ladder: decide the target BEFORE any geometry check, so
+   // --- "no chase", RR-at-fill and the broker stops level are all measured
+   // --- against the same TP that will be written on the ticket.
+   if(InpUseTPPips)
+     {
+      double ladder_tp=PlanTP(s.shift,price,buy);
+      if(ladder_tp<=0.0)
+        {
+         Note(key,"pip ladder produced no target (check InpTP1/2/3Pips and InpPipPoints)");
+         MarkSeen(key,s.bar_time,s.dir);
+         g_refused++;
+         return;
+        }
+      s.tp=ladder_tp;
      }
 
    // --- permanent refusals: geometry the signal itself gets wrong ----
@@ -1234,6 +1341,250 @@ string DisciplineSuffix()
 //| InpHeartbeatSeconds; the first run fires immediately so an       |
 //| operator does not wait a full interval for the first verdict.    |
 //+------------------------------------------------------------------+
+int PosFind(const ulong ticket)
+  {
+   for(int i=0;i<g_pos_n;i++)
+      if(g_pos_ticket[i]==ticket) return i;
+   return -1;
+  }
+
+int PosSlot(const ulong ticket)
+  {
+   if(g_pos_n<QSMC_AT_POS_RING) return g_pos_n++;
+   return (int)(ticket%QSMC_AT_POS_RING);
+  }
+
+// One place that claims a ring slot and initialises EVERY field. Adding a field
+// to the ring without adding it here is how a stale volume or rung counter
+// survives from a previous position that happened to hash to the same slot.
+int PosSlotInit(const ulong ticket)
+  {
+   int i=PosFind(ticket);
+   if(i>=0) return i;
+   i=PosSlot(ticket);
+   g_pos_ticket[i]=ticket;
+   g_pos_risk[i]=0.0;
+   g_pos_partial[i]=false;
+   g_pos_vol0[i]=0.0;
+   g_pos_step[i]=0;
+   return i;
+  }
+
+double PosRiskRemember(const ulong ticket,const double risk)
+  {
+   int i=PosSlotInit(ticket);
+   if(risk>0.0 && g_pos_risk[i]<=0.0) g_pos_risk[i]=risk;
+   return g_pos_risk[i];
+  }
+
+bool PosPartialDone(const ulong ticket)
+  {
+   int i=PosFind(ticket);
+   return (i>=0 && g_pos_partial[i]);
+  }
+
+void PosMarkPartial(const ulong ticket,const double risk)
+  {
+   int i=PosSlotInit(ticket);
+   if(risk>0.0 && g_pos_risk[i]<=0.0) g_pos_risk[i]=risk;
+   g_pos_partial[i]=true;
+  }
+
+//+------------------------------------------------------------------+
+//| Ladder state is PERSISTED in terminal globals, keyed by ticket.   |
+//| The in-memory ring dies with the EA, and a reload in the middle of |
+//| a trade would otherwise re-open rung 1 and bank the same 40% a      |
+//| second time. A terminal global survives a reload of this EA (not a  |
+//| terminal restart, which also flattens nothing - the position stays  |
+//| and the volume check below still prevents a double close).          |
+//+------------------------------------------------------------------+
+string LadderKey(const ulong ticket,const string leaf)
+  {
+   return ("QSMC_AT_LAD_"+IntegerToString(InpMagic)+"_"+
+           IntegerToString((long)ticket)+"_"+leaf);
+  }
+
+int PosLadderStep(const ulong ticket)
+  {
+   string k=LadderKey(ticket,"STEP");
+   if(GlobalVariableCheck(k)) return (int)GlobalVariableGet(k);
+   int i=PosFind(ticket);
+   return (i<0 ? 0 : g_pos_step[i]);
+  }
+
+void PosLadderStepSet(const ulong ticket,const int step)
+  {
+   int i=PosSlotInit(ticket);
+   g_pos_step[i]=step;
+   GlobalVariableSet(LadderKey(ticket,"STEP"),(double)step);
+   GlobalVariablesFlush();
+  }
+
+// Volume at first sight. Rung percentages are of THIS number, not of whatever
+// is left: 40% of 0.05 is 0.02 both times, which is what the operator asked for.
+double PosVolume0(const ulong ticket,const double live)
+  {
+   string k=LadderKey(ticket,"V0");
+   if(GlobalVariableCheck(k))
+     {
+      double v=GlobalVariableGet(k);
+      if(v>0.0)
+        {
+         int j=PosSlotInit(ticket);
+         g_pos_vol0[j]=v;
+         return v;
+        }
+     }
+   int i=PosSlotInit(ticket);
+   if(g_pos_vol0[i]<=0.0 && live>0.0)
+     {
+      g_pos_vol0[i]=live;
+      GlobalVariableSet(k,live);
+      GlobalVariablesFlush();
+     }
+   return g_pos_vol0[i];
+  }
+
+//+------------------------------------------------------------------+
+//| Delete ladder keys whose position no longer exists. Called on init and
+// deinit only: one pass over globals per attach, never per tick.
+void PurgeLadderGlobals()
+  {
+   string pfx="QSMC_AT_LAD_"+IntegerToString(InpMagic)+"_";
+   for(int i=GlobalVariablesTotal()-1;i>=0;i--)
+     {
+      string name=GlobalVariableName(i);
+      if(StringFind(name,pfx)!=0) continue;
+      string rest=StringSubstr(name,StringLen(pfx));
+      int us=StringFind(rest,"_");
+      if(us<=0) continue;
+      ulong t=(ulong)StringToInteger(StringSubstr(rest,0,us));
+      if(t==0) continue;
+      if(PositionSelectByTicket(t)) continue;   // still open: keep its memory
+      GlobalVariableDel(name);
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| One rung of the fixed pip ladder.                                 |
+//| Returns TRUE when the rung is DONE - either because it was banked  |
+//| or because it cannot be split at this broker (a hard fact, not a   |
+//| transient failure). FALSE means "try again", throttled by the      |
+//| caller. It never widens anything and never closes more than asked. |
+//+------------------------------------------------------------------+
+bool LadderClose(const ulong ticket,const int rung,const double v0,const double live)
+  {
+   string sym=_Symbol;
+   double vmin=SymbolInfoDouble(sym,SYMBOL_VOLUME_MIN);
+   double vstep=SymbolInfoDouble(sym,SYMBOL_VOLUME_STEP);
+   if(vstep<=0.0) vstep=0.01;
+   double pct=(rung<=1 ? InpTP1ClosePercent : InpTP2ClosePercent);
+   pct=MathMin(100.0,MathMax(1.0,pct));
+   double part=MathFloor((v0*pct/100.0)/vstep+0.0000001)*vstep;
+   part=NormalizeDouble(part,3);
+   if(part<=0.0)
+     {
+      Print("[QSMC_AT] ladder rung ",IntegerToString(rung)," skipped on #",
+            IntegerToString((long)ticket),": ",DoubleToString(v0,2)," lots x ",
+            DoubleToString(pct,0),"% is under one volume step ",
+            DoubleToString(vstep,2)," - the position runs on to rung 3 unchanged");
+      return true;
+     }
+   if(part>live) part=NormalizeDouble(live,3);
+   double remain=NormalizeDouble(live-part,3);
+   if(remain>0.0 && remain<vmin)
+     {
+      Print("[QSMC_AT] ladder rung ",IntegerToString(rung)," skipped on #",
+            IntegerToString((long)ticket),": closing ",DoubleToString(part,2),
+            " would leave ",DoubleToString(remain,2)," under the broker minimum ",
+            DoubleToString(vmin,2)," - the rung is not retried");
+      return true;
+     }
+   if(g_trade.PositionClosePartial(ticket,part))
+     {
+      Print("[QSMC_AT] ladder rung ",IntegerToString(rung)," BANKED ",
+            DoubleToString(part,2)," lots of #",IntegerToString((long)ticket),
+            " (",DoubleToString(pct,0),"% of the original ",DoubleToString(v0,2),
+            "); ",DoubleToString(remain,2)," lots left | target was ",
+            IntegerToString(rung<=1 ? InpTP1Pips : InpTP2Pips)," pips");
+      return true;
+     }
+   if(ticket!=g_lad_warn_ticket || (long)(TimeCurrent()-g_lad_warn_time)>=30)
+     {
+      g_lad_warn_ticket=ticket;
+      g_lad_warn_time=TimeCurrent();
+      Print("[QSMC_AT] ladder rung ",IntegerToString(rung)," REFUSED on #",
+            IntegerToString((long)ticket)," retcode=",
+            IntegerToString((long)g_trade.ResultRetcode())," ",
+            g_trade.ResultRetcodeDescription(),
+            " - retried on the next tick, throttled to one line per 30 s");
+     }
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| FIXED PIP LADDER manager (InpUseTPPips).                          |
+//|                                                                   |
+//| Rung 1 -> close InpTP1ClosePercent of the ORIGINAL volume and put  |
+//|           the stop at the entry (InpMoveSLToBEAtTP1).              |
+//| Rung 2 -> close InpTP2ClosePercent of the ORIGINAL volume and put  |
+//|           the stop at rung 1 (InpMoveSLToTP1AtTP2).                |
+//| Rest   -> leaves at rung 3, which is the TP already on the ticket. |
+//|                                                                   |
+//| A gap through both rungs is handled in one pass, so a fast candle  |
+//| cannot skip a banked partial. The stop only ever moves TOWARD the  |
+//| profit side - never away - and only when it is still on the safe   |
+//| side of the current price and above the broker's stops level.      |
+//+------------------------------------------------------------------+
+void ManagePipLadder(const ulong ticket,const bool buy,const double entry,
+                     const double cur,const double sl,const double tp)
+  {
+   double l1=PipsToPrice(_Symbol,entry,InpTP1Pips,buy);
+   double l2=PipsToPrice(_Symbol,entry,InpTP2Pips,buy);
+   if(l1<=0.0 || l2<=0.0) return;
+   double v0=PosVolume0(ticket,PositionGetDouble(POSITION_VOLUME));
+   for(int guard=0;guard<2;guard++)
+     {
+      int step=PosLadderStep(ticket);
+      if(step>=2) break;
+      double lvl=(step==0 ? l1 : l2);
+      if(buy ? cur<lvl : cur>lvl) break;
+      double live=PositionGetDouble(POSITION_VOLUME);
+      if(live<=0.0) break;
+      if(!LadderClose(ticket,step+1,v0,live)) break;   // refused: retried next tick
+      PosLadderStepSet(ticket,step+1);
+     }
+   int done=PosLadderStep(ticket);
+   double want_sl=0.0;
+   if(done>=2 && InpMoveSLToTP1AtTP2)      want_sl=l1;
+   else if(done>=1 && InpMoveSLToBEAtTP1)  want_sl=entry;
+   if(want_sl<=0.0) return;
+   if(buy)
+     {
+      if(sl>=want_sl || want_sl>=cur) return;      // already at/past it, or it would cross price
+     }
+   else
+     {
+      if(sl<=want_sl || want_sl<=cur) return;
+     }
+   if(!StopsDistanceOK(_Symbol,cur,want_sl,0.0)) return;
+   if(ticket==g_be_ticket && (long)(TimeCurrent()-g_be_last_try)<30) return;
+   g_be_ticket=ticket;
+   g_be_last_try=TimeCurrent();
+   if(g_trade.PositionModify(ticket,want_sl,tp))
+      Print("[QSMC_AT] ladder: stop on #",IntegerToString((long)ticket)," moved to ",
+            DoubleToString(want_sl,_Digits),(done>=2 ? " (rung 1)" : " (entry)"),
+            " after rung ",IntegerToString(done)," - protection only, never widened");
+   else if(g_be_warned_ticket!=ticket)
+     {
+      g_be_warned_ticket=ticket;
+      Print("[QSMC_AT] ladder stop MODIFY REFUSED on #",IntegerToString((long)ticket),
+            " retcode=",IntegerToString((long)g_trade.ResultRetcode())," ",
+            g_trade.ResultRetcodeDescription(),
+            " | the stop is unchanged, retried every 30 s, never widened");
+     }
+  }
+
 void DiagnosticHeartbeat()
   {
    if(InpHeartbeatSeconds<=0) return;
@@ -1359,56 +1710,9 @@ void DiagnosticHeartbeat()
 //| the risk distance the partial-close test needs, so the first sight |
 //| of a ticket stores it. 16 slots is far more than one EA holds.     |
 //+------------------------------------------------------------------+
-int PosFind(const ulong ticket)
-  {
-   for(int i=0;i<g_pos_n;i++)
-      if(g_pos_ticket[i]==ticket) return i;
-   return -1;
-  }
-
-int PosSlot(const ulong ticket)
-  {
-   if(g_pos_n<QSMC_AT_POS_RING) return g_pos_n++;
-   return (int)(ticket%QSMC_AT_POS_RING);
-  }
-
-double PosRiskRemember(const ulong ticket,const double risk)
-  {
-   int i=PosFind(ticket);
-   if(i<0)
-     {
-      i=PosSlot(ticket);
-      g_pos_ticket[i]=ticket;
-      g_pos_risk[i]=0.0;
-      g_pos_partial[i]=false;
-     }
-   if(risk>0.0 && g_pos_risk[i]<=0.0) g_pos_risk[i]=risk;
-   return g_pos_risk[i];
-  }
-
-bool PosPartialDone(const ulong ticket)
-  {
-   int i=PosFind(ticket);
-   return (i>=0 && g_pos_partial[i]);
-  }
-
-void PosMarkPartial(const ulong ticket,const double risk)
-  {
-   int i=PosFind(ticket);
-   if(i<0)
-     {
-      i=PosSlot(ticket);
-      g_pos_ticket[i]=ticket;
-      g_pos_risk[i]=0.0;
-      g_pos_partial[i]=false;
-     }
-   if(risk>0.0 && g_pos_risk[i]<=0.0) g_pos_risk[i]=risk;
-   g_pos_partial[i]=true;
-  }
-
 void ManageOpenPositions()
   {
-   if(InpBreakEvenAtR<=0.0 && InpPartialCloseAtR<=0.0) return;
+   if(InpBreakEvenAtR<=0.0 && InpPartialCloseAtR<=0.0 && !InpUseTPPips) return;
    for(int i=PositionsTotal()-1;i>=0;i--)
      {
       ulong ticket=PositionGetTicket(i);
@@ -1422,6 +1726,13 @@ void ManageOpenPositions()
       double tp=PositionGetDouble(POSITION_TP);
       double cur=(buy ? SymbolInfoDouble(_Symbol,SYMBOL_BID) : SymbolInfoDouble(_Symbol,SYMBOL_ASK));
       if(sl<=0.0 || cur<=0.0) continue;
+      // The fixed pip ladder owns this position's exits when it is on: one
+      // manager per position, so two rules can never close the same volume.
+      if(InpUseTPPips)
+        {
+         ManagePipLadder(ticket,buy,entry,cur,sl,tp);
+         continue;
+        }
       double risk=(buy ? entry-sl : sl-entry);
       if(risk<=0.0) risk=PosRiskRemember(ticket,0.0);   // stop already at BE: use the stored R
       if(risk<=0.0) continue;
@@ -1568,6 +1879,35 @@ int OnInit()
       Print("[QSMC_AT] InpDeviationPoints must be >= 0 (0 = no slippage control at all)");
       return INIT_PARAMETERS_INCORRECT;
      }
+   if(InpUseTPPips)
+     {
+      if(InpTP1Pips<=0 || InpTP2Pips<=InpTP1Pips || InpTP3Pips<=InpTP2Pips)
+        {
+         Print("[QSMC_AT] pip ladder must satisfy 0 < InpTP1Pips < InpTP2Pips < InpTP3Pips (got ",
+               IntegerToString(InpTP1Pips),"/",IntegerToString(InpTP2Pips),"/",
+               IntegerToString(InpTP3Pips),")");
+         return INIT_PARAMETERS_INCORRECT;
+        }
+      if(InpTP1ClosePercent<1.0 || InpTP1ClosePercent>95.0 ||
+         InpTP2ClosePercent<1.0 || InpTP2ClosePercent>95.0 ||
+         InpTP1ClosePercent+InpTP2ClosePercent>99.0)
+        {
+         Print("[QSMC_AT] ladder close percentages must each be 1..95 and sum to <= 99, ",
+               "otherwise nothing is left to reach rung 3 (got ",
+               DoubleToString(InpTP1ClosePercent,1),"% + ",
+               DoubleToString(InpTP2ClosePercent,1),"% = ",
+               DoubleToString(InpTP1ClosePercent+InpTP2ClosePercent,1),"%)");
+         return INIT_PARAMETERS_INCORRECT;
+        }
+      if(PipPointsFor(_Symbol)<=0.0)
+        {
+         Print("[QSMC_AT] this symbol publishes no usable point size, so a pip distance cannot be computed");
+         return INIT_PARAMETERS_INCORRECT;
+        }
+      if(InpPartialCloseAtR>0.0)
+         Print("[QSMC_AT] NOTE: InpPartialCloseAtR is IGNORED while the pip ladder is on - ",
+               "one exit manager per position, and the ladder is the one that owns it");
+     }
    if(InpDeviationPoints>0 && InpDeviationPoints<10)
       Print("[QSMC_AT] WARNING: InpDeviationPoints=",IntegerToString(InpDeviationPoints),
             " is under 10 points - on a fast bar the server will answer requote more often than it fills");
@@ -1592,6 +1932,7 @@ int OnInit()
       return INIT_FAILED;
      }
    Print("[QSMC_AT INSTANCE] authority=private iCustom DEFAULT inputs; visible Inputs NOT inherited. Default input hash and diagnostics: [QSMC_INSTANCE], ABI v2, no legacy fallback.");
+   PurgeLadderGlobals();
    g_start_bar=iTime(_Symbol,_Period,0);
    if(g_start_bar<=0) g_start_bar=(datetime)TimeCurrent();
    g_day_index=-1;
@@ -1601,7 +1942,10 @@ int OnInit()
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",
-         " | tp ",IntegerToString((int)InpTPLevel)," | break-even ",DoubleToString(InpBreakEvenAtR,2),"R",
+         " | tp ",(InpUseTPPips ? "PIP LADDER "+IntegerToString(InpTP1Pips)+"/"+
+                                 IntegerToString(InpTP2Pips)+"/"+IntegerToString(InpTP3Pips)
+                               : IntegerToString((int)InpTPLevel)),
+         " | break-even ",(InpUseTPPips ? "ladder-driven" : DoubleToString(InpBreakEvenAtR,2)+"R"),
          " | ",(InpEnableTrading ? (InpDryRun ? "DRY RUN" : "LIVE") : "INERT"),
          " | ",(InpDemoOnly ? "demo-only" : "demo+real"),
          " | closed-bar signals only, no martingale, no stop widening");
@@ -1636,6 +1980,47 @@ int OnInit()
          " | RR at fill>= ",DoubleToString(InpMinRRAtFill,2),
          " | stop ",IntegerToString(InpMinStopPoints),"..",IntegerToString(InpMaxStopPoints)," pts",
          " | signal age<= ",IntegerToString(InpMaxSignalAgeBars)," closed bar(s)");
+   if(InpUseTPPips)
+     {
+      double pip_pts=PipPointsFor(_Symbol);
+      double pip_px=pip_pts*SymbolInfoDouble(_Symbol,SYMBOL_POINT);
+      double d1=(double)InpTP1Pips*pip_px;
+      double d2=(double)InpTP2Pips*pip_px;
+      double d3=(double)InpTP3Pips*pip_px;
+      Print("[QSMC_AT] pip ladder ON: 1 pip = ",DoubleToString(pip_px,_Digits),
+            " of price (",DoubleToString(pip_pts,0)," points) on ",_Symbol,
+            " | TP1 ",IntegerToString(InpTP1Pips)," pips = ",DoubleToString(d1,_Digits),
+            " | TP2 ",IntegerToString(InpTP2Pips)," pips = ",DoubleToString(d2,_Digits),
+            " | TP3 ",IntegerToString(InpTP3Pips)," pips = ",DoubleToString(d3,_Digits),
+            " (TP on the ticket)",
+            " | closes ",DoubleToString(InpTP1ClosePercent,0),"% then ",
+            DoubleToString(InpTP2ClosePercent,0),"% of the original volume, stop -> ",
+            (InpMoveSLToBEAtTP1?"entry after rung 1":"unchanged after rung 1"),
+            (InpMoveSLToTP1AtTP2?", rung 1 after rung 2":""));
+      // The one number that decides whether a 0.05 lot is even allowed: how many
+      // dollars one unit of price costs at this volume, and the widest stop the
+      // 1% ceiling can pay for. Printed, because the refusal that follows is
+      // otherwise indistinguishable from "the system does not trade".
+      double tick_size=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
+      double tick_value=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE);
+      double lots_now=(InpLotMode==QSMC_LOT_FIXED ? NormalizeLots(_Symbol,InpFixedLots) : 0.0);
+      if(tick_size>0.0 && tick_value>0.0 && lots_now>0.0)
+        {
+         double per_price=(1.0/tick_size)*tick_value*lots_now;
+         double cap_pct=MathMin(InpMaxRiskPercent,1.0);
+         double cap_money=AccountInfoDouble(ACCOUNT_EQUITY)*cap_pct/100.0;
+         Print("[QSMC_AT] ladder money at ",DoubleToString(lots_now,2)," lots: ",
+               DoubleToString(per_price,2)," per 1.00 of price -> TP1 $",
+               DoubleToString(d1*per_price,2),", TP2 $",DoubleToString(d2*per_price,2),
+               ", TP3 $",DoubleToString(d3*per_price,2));
+         Print("[QSMC_AT] risk check at ",DoubleToString(lots_now,2)," lots: the ",
+               DoubleToString(cap_pct,2),"% ceiling is $",DoubleToString(cap_money,2),
+               ", so the stop may be at most ",
+               DoubleToString(cap_money/MathMax(per_price,0.0000001),_Digits),
+               " of price away. A wider signal stop is REFUSED by design - lower the lot, ",
+               "raise the account, or accept the refusal; never raise InpMaxRiskPercent above 1.");
+        }
+     }
    Print("[QSMC_AT] discipline: ",
          (InpSessionStartHour==InpSessionEndHour ? "session filter OFF" :
           "session "+IntegerToString(InpSessionStartHour)+":00-"+IntegerToString(InpSessionEndHour)+":00 server"),
@@ -1654,6 +2039,7 @@ void OnDeinit(const int reason)
   {
    EventKillTimer();
    PurgeStaleSignalGlobals();   // do not leave a year of seen-keys behind
+   PurgeLadderGlobals();        // and no dead ticket memory either
    if(g_handle!=INVALID_HANDLE)
      {
       IndicatorRelease(g_handle);
