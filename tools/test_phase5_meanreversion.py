@@ -700,14 +700,14 @@ check(code_only.count("int closed=ArraySize(g_buf_c)-2;") == 2,
       "lived in a dead function deleted in doc 11.14)")
 check(code_only.count("int closed=g_rates_total-2;") == 8,
       "D all 8 replay-path closed-bar sites are unchanged")
-check(TEXT.count('#property version   "6.613"') == 1, "D the version property is 6.613 since AUDIT-G1")
-check(TEXT.count('"v6.6.13"') >= 1, "D the version text is v6.6.13 since AUDIT-G1")
+check(TEXT.count('#property version   "6.614"') == 1, "D the version property is 6.614 since AUDIT-G1")
+check(TEXT.count('"v6.6.14"') >= 1, "D the version text is v6.6.14 since AUDIT-G1")
 check(len(re.findall(r'(?m)^#property indicator_buffers\s+19\b', TEXT)) == 1,
       "D indicator_buffers is still 19 - no buffer was appended")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,
       "D indicator_plots is still 7")
 idx = sorted(int(m) for m in re.findall(r'SetIndexBuffer\(\s*(\d+)', TEXT))
-check(idx == list(range(19)), "D buffer indices are still 0..18 with no gap or shift", str(idx))
+check(idx == list(range(21)), "D buffer indices are still 0..20 with no gap or shift", str(idx))
 ENUMS = len(re.findall(r'(?m)^enum\s+ENUM_', TEXT))
 check(ENUMS == 44, "D no enum was added or removed (%d, was 44 before this phase)" % ENUMS)
 check(re.search(r"enum\s+ENUM_", mr_section) is None,

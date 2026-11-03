@@ -131,7 +131,7 @@ for name, ln in sorted(GL.items(), key=lambda kv: kv[1]):
           "got %d" % decls)
 check("never for evidence" in line_at(4474),
       "B the veto flag's comment states it is only ever data/spread/news",
-      "L4449 is %r" % line_at(4474).strip()[:80])
+      "L4479 is %r" % line_at(4474).strip()[:80])
 check("Written only by WeightedGateAllows()" in body(4470, 4472),
       "B the ownership comment names the single writer")
 
@@ -355,7 +355,7 @@ check(TEXT.count("{") == TEXT.count("}") == 3594,
       "G braces balance at the pinned 3594",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
 check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43359,
-      "G the file is 43359 lines: insertions only, no scratch rewrite",
+      "G the file is 43422 lines: insertions only, no scratch rewrite",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")

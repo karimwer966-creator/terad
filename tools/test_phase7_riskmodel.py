@@ -231,9 +231,12 @@ def rm_ordered(is_buy, entry, tp1, tp2, tp3):
         return False
     if not (tp1 > 0.0) or not (tp2 > 0.0) or not (tp3 > 0.0):
         return False
+    # v6.6.14 FIX (C2): strict inequality between consecutive targets. Two
+    # targets at the same price are not a distinct reward step. This aligns
+    # the Python harness with the MQL5 self-test RM-6 assertion.
     if is_buy:
-        return tp1 > entry and tp2 >= tp1 and tp3 >= tp2
-    return tp1 < entry and tp2 <= tp1 and tp3 <= tp2
+        return tp1 > entry and tp2 > tp1 and tp3 > tp2
+    return tp1 < entry and tp2 < tp1 and tp3 < tp2
 
 
 def rm_size(equity, risk_pct, money_per_lot):
@@ -326,7 +329,7 @@ check(all(rm_fallback(a, b, True, c) == 0.0 for a, b, c in
 check(rm_ordered(True, 100.0, 102.0, 104.0, 106.0), "A6 increasing long targets are ordered")
 check(rm_ordered(False, 100.0, 98.0, 96.0, 94.0), "A6 decreasing short prices are ordered")
 check(not rm_ordered(True, 100.0, 106.0, 104.0, 102.0), "A6 a nearer TP3 is not ordered")
-check(rm_ordered(True, 100.0, 102.0, 102.0, 106.0), "A6 equal distances are still ordered")
+check(not rm_ordered(True, 100.0, 102.0, 102.0, 106.0), "A6 two targets at the same distance are NOT ordered (strict)")
 check(not rm_ordered(True, 100.0, 100.0, 104.0, 106.0), "A6 a target at entry is not ordered")
 check(not rm_ordered(True, 100.0, 98.0, 104.0, 106.0),
       "A6 a long target BELOW entry is rejected - that is a second stop, not a target")
@@ -417,10 +420,11 @@ check("return (is_buy ? entry+sl_dist*multiple : entry-sl_dist*multiple);" in fb
       "A10 the fallback is entry plus or minus the R multiple")
 
 to = norm(body_of("bool RM_TPsOrdered(const bool is_buy,const double entry,", "A10 RM_TPsOrdered"))
-check("if(is_buy) return (tp1>entry && tp2>=tp1 && tp3>=tp2);" in to,
-      "A10 ordering requires long targets ABOVE entry at non-decreasing distance")
-check("return (tp1<entry && tp2<=tp1 && tp3<=tp2);" in to,
-      "A10 ordering requires short targets BELOW entry at non-decreasing distance")
+# v6.6.14 FIX (C2): strict inequality between targets (tp2 > tp1, tp3 > tp2).
+check("if(is_buy) return (tp1>entry && tp2>tp1 && tp3>tp2);" in to,
+      "A10 ordering requires long targets ABOVE entry at STRICTLY increasing distance")
+check("return (tp1<entry && tp2<tp1 && tp3<tp2);" in to,
+      "A10 ordering requires short targets BELOW entry at STRICTLY increasing distance")
 
 ps = norm(body_of("double RM_PositionSize(const double equity,const double risk_pct,const double money_per_lot)",
                   "A10 RM_PositionSize"))
@@ -500,7 +504,7 @@ DELTA = {
     # untouched: existing scoring state
     "g_score.": 73, "final_score": 21, "setup_quality_score": 5,   # -1 each: one dead setter
     # untouched: buffers, objects, closed-bar conventions
-    "SetIndexBuffer(": 19, "ObjectCreate(": 16,   # 24 -> 16: 8 calls lived in dead renderers
+    "SetIndexBuffer(": 21, "ObjectCreate(": 16,   # 24 -> 16: 8 calls lived in dead renderers
     "int closed=rates_total-2;": 12, "int closed=ArraySize(g_buf_c)-2;": 2,   # 3 -> 2: purge
     "int closed=g_rates_total-2;": 8,
 }

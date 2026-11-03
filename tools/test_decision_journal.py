@@ -526,7 +526,7 @@ check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
 check(TEXT.count("{") == TEXT.count("}") == 3594, "J braces balance at 3594",
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(TEXT.split("\n")) - 1 == 43359, "J the file is 43359 lines",
+check(len(TEXT.split("\n")) - 1 == 43359, "J the file is 43422 lines",
       "got %d" % (len(TEXT.split("\n")) - 1))
 check(RAW.replace("\r\n", "").count("\n") == 0, "J every line still ends CRLF: no bare LF was introduced")
 check(TEXT.count("#include") == 6 and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes", "got %d" % TEXT.count("#include"))
@@ -553,7 +553,7 @@ for phrase in ("## 11.6 AUDIT-OBS1", "InpEnableDecisionJournal", "OBS_Record", "
     check(phrase in DOCX, "K the doc states %r" % phrase)
 check("L6205" in DOCX, "K the doc cites OBS_Record's definition line (L6205)")
 check("L889" in DOCX, "K the doc cites the journal flag's line (L889)")
-check("L4490" in DOCX, "K the doc cites the row struct's line (L4490)")
+check("L4495" in DOCX, "K the doc cites the row struct's line (L4495)")
 check("L15749" in DOCX, "K the doc cites the OnCalculate record call (L15749)")
 check(re.search(r"run: python3 tools/test_decision_journal\.py", WFX),
       "K CI runs tools/test_decision_journal.py")

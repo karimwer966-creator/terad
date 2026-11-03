@@ -424,7 +424,18 @@ string QSMC_ZoneRangeReason(const double lo,const double hi,const double price,
    if(mid<history_low || mid>history_high) return "outside symbol closed history range";
    if(!MathIsValidNumber(atr) || atr<=0.0 || atr==EMPTY_VALUE || !MathIsValidNumber(price) || price<=0.0) return "invalid ATR/price";
    double gap=MathMax(0.0,MathMax(lo-price,price-hi));
-   if(gap>max_distance_atr*atr && (age<0 || age>lifetime)) return "expired distant zone";
+   // A zone is rejected only when it is BOTH outside the actionable distance AND
+   // known to be expired. Zones with unknown birth (age<0) are rejected ONLY when
+   // they are beyond the distance gate (nearby zones of unknown age are kept so a
+   // fresh reaction at price can still trade them).
+   if(gap>max_distance_atr*atr)
+     {
+      // distant: reject if known-expired OR unknown-age (can't prove freshness)
+      if(age<0 || age>lifetime) return "expired distant zone";
+     }
+   // nearby zones are NEVER rejected on age alone (age is a freshness penalty in
+   // the score, not a hard veto) -- previously the code rejected nearby unknown
+   // age zones (gap==0 && age<0) which wiped fresh reactions at un-catalogued levels.
    return "";
   }
 // ZONE_RANGE_END

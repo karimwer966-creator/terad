@@ -405,8 +405,8 @@ check(m and m.group(1) == "19", "B1 indicator_buffers is still 19 - no buffer wa
 m = re.search(r"^#property indicator_plots\s+(\d+)", TEXT, re.M)
 check(m and m.group(1) == "7", "B1 indicator_plots is still 7")
 idx = sorted(int(x) for x in re.findall(r"SetIndexBuffer\((\d+),", TEXT))
-check(idx == list(range(19)),
-      "B1 the 19 buffer indices are still exactly 0..18", "got %s" % idx)
+check(idx == list(range(21)),
+      "B1 the 21 buffer indices are still exactly 0..20", "got %s" % idx)
 check("string lines[11]; color cols[11]; int ln=0;" in TEXT,
       "B1 the pinned 11-row dashboard card is untouched")
 check("if(ln>11) ln=11;" in TEXT, "B1 the card's row clamp is untouched")

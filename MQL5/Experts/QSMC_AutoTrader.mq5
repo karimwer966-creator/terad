@@ -124,12 +124,18 @@
 
 //--- Buffer indices of the CORE signal export (nadir2.mq5 OnInit).
 //--- A contract test asserts the indicator still binds these exact slots.
-#define QSMC_BUF_CORE_DIR    7
-#define QSMC_BUF_CORE_ENTRY  8
-#define QSMC_BUF_CORE_SL     9
-#define QSMC_BUF_CORE_TP1   10
-#define QSMC_BUF_CORE_TP2   11
-#define QSMC_BUF_CORE_TP3   12
+#define QSMC_BUF_CORE_DIR     7
+#define QSMC_BUF_CORE_ENTRY   8
+#define QSMC_BUF_CORE_SL      9
+#define QSMC_BUF_CORE_TP1    10
+#define QSMC_BUF_CORE_TP2    11
+#define QSMC_BUF_CORE_TP3    12
+// v6.6.14 (H6): per-closed-bar verdict code buffers - authoritative when the
+// GlobalVariable DIAG bridge cannot match an instance (custom inputs, multiple
+// charts). 0.0 means "not yet written" (compatibility: older indicator builds
+// never write these buffers, so they stay 0 and we fall back to GV).
+#define QSMC_BUF_CORE_VCODE 19
+#define QSMC_BUF_ZRE_VKIND  20
 
 #define QSMC_AT_SEEN_RING   64
 
@@ -1281,14 +1287,36 @@ string DiagCodeText(const int code)
 // One suffix for every heartbeat exit path, so an early return (no handle, no
 // history, still warming up) still carries the indicator's own verdict instead
 // of leaving the operator with half the answer.
+// v6.6.14 (H6): read the CORE verdict from buffer 19 when available, fall back
+// to GlobalVariables. Buffer verdict is per-bar (chronological) on the closed
+// bar; buffer 0.0 means the attached indicator build does not publish it.
+double ReadCoreVerdictFromBuffer()
+  {
+   if(g_handle==INVALID_HANDLE) return -1.0;
+   double v[1];
+   ArraySetAsSeries(v,true);
+   int got=CopyBuffer(g_handle,QSMC_BUF_CORE_VCODE,1,1,v);  // shift 1 = last closed
+   if(got!=1) return -1.0;
+   if(!MathIsValidNumber(v[0]) || v[0]==0.0) return -1.0;
+   return v[0];
+  }
 string IndicatorVerdictSuffix()
   {
-   double core=0.0;
-   if(!DiagRead("CORE",core))
+   double core=-1.0;
+   bool from_buffer=false;
+   double bv=ReadCoreVerdictFromBuffer();
+   if(bv>=0.0) { core=bv; from_buffer=true; }
+   else
+     {
+      double gv=0.0;
+      if(DiagRead("CORE",gv)) core=gv;
+     }
+   if(core<0.0)
       return (" | indicator verdict: no diagnostic record for "+
               IntegerToString((long)_Period)+" on this symbol - the indicator has not completed a"+
               " closed-bar pass here (not attached, not compiled, or a different symbol/timeframe)");
-   string out=" | indicator verdict: "+DiagCodeText((int)MathRound(core));
+   string out=" | indicator verdict: "+DiagCodeText((int)MathRound(core))+
+              (from_buffer?" (buffer)":" (diag)");
    double db=0.0,da=0.0,dc=0.0,dt=0.0;
    if(DiagRead("BARS",db) && DiagRead("ARMED",da) && DiagRead("CONF",dc))
       out+=" | indicator funnel: bars "+IntegerToString((long)db)+

@@ -825,10 +825,10 @@ check(TEXT.count("#property indicator_buffers 19") == 1,
       "F indicator_buffers is still 19 - no buffer was appended")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,
       "F indicator_plots is still 7")
-check(len(re.findall(r"SetIndexBuffer\(\s*(\d+)", TEXT)) == 19,
-      "F there are still exactly 19 SetIndexBuffer calls")
+check(len(re.findall(r"SetIndexBuffer\(\s*(\d+)", TEXT)) == 21,
+      "F there are still exactly 21 SetIndexBuffer calls")
 idx = sorted(int(m) for m in re.findall(r"SetIndexBuffer\(\s*(\d+)", TEXT))
-check(idx == list(range(19)), "F buffer indices are still 0..18 with no gap or shift", str(idx))
+check(idx == list(range(21)), "F buffer indices are still 0..20 with no gap or shift", str(idx))
 
 pa_globals = re.findall(r"^(?:string|int|double|bool)\s+(g_pa_\w+)\s*[=;]", TEXT, flags=re.M)
 check(len(set(pa_globals)) >= 13,

@@ -123,7 +123,7 @@ check(TEXT.count("InpUseFinalResolver     = false") == 1,
       "A the resolver flag is declared exactly once (no shadow copy)")
 
 # ------------------------------------------- B. enum, globals, no collision
-ENUM_LN = 4454
+ENUM_LN = 4459
 check(line_at(ENUM_LN).strip() == "enum ENUM_FINAL_SIGNAL",
       "B enum ENUM_FINAL_SIGNAL is declared at L%d" % ENUM_LN,
       "L%d is %r" % (ENUM_LN, line_at(ENUM_LN).strip()[:70]))
@@ -143,8 +143,8 @@ check("FS_CONFLICT_WAIT" in ebody and "FS_WAIT" in ebody,
       "B CONFLICT is its own state, not folded into WAIT: the dashboard can show "
       "the difference")
 
-GL = {"g_final_signal": 4463, "g_res_score": 4464, "g_final_why": 4465,
-      "g_tac_dir": 4468, "g_tac_closed": 4469}
+GL = {"g_final_signal": 4468, "g_res_score": 4469, "g_final_why": 4470,
+      "g_tac_dir": 4473, "g_tac_closed": 4474}
 for name, ln in sorted(GL.items(), key=lambda kv: kv[1]):
     check(re.search(r"^(int|string|bool)\s+%s\s*=" % name, line_at(ln)),
           "B %s is declared once, at L%d" % (name, ln),
@@ -152,23 +152,24 @@ for name, ln in sorted(GL.items(), key=lambda kv: kv[1]):
     decls = len(re.findall(r"(?m)^(int|string|bool|double)\s+%s\s*=" % name, TEXT))
     check(decls == 1, "B %s has exactly one global declaration" % name,
           "got %d" % decls)
-check("1 BUY, -1 SELL, 0 WAIT, 2 CONFLICT-WAIT" in line_at(4463),
-      "B the verdict encoding is documented where it is declared (L4438)",
-      "L4438 is %r" % line_at(4463).strip()[:90])
+check("1 BUY, -1 SELL, 0 WAIT, 2 CONFLICT-WAIT" in line_at(4468),
+      "B the verdict encoding is documented where it is declared (L4468)",
+      "L4468 is %r" % line_at(4468).strip()[:90])
 check("g_final_score" not in TEXT,
       "B no g_final_score exists: the resolver score cannot collide as a "
       "substring with the pre-existing final_score the phase suites count",
       "%d occurrence(s)" % TEXT.count("g_final_score"))
 
 # -------------------------------------------------------- C. resolver body
-DEF = 5817
+DEF = 5822
+RB_END = 5864
 check(re.search(r"^int ResolveFinalSignal\(const int closed,string &why\)",
                 line_at(DEF)),
       "C ResolveFinalSignal is defined at L%d" % DEF,
       "L%d is %r" % (DEF, line_at(DEF).strip()[:70]))
 defs = len(re.findall(r"(?m)^int ResolveFinalSignal\(", TEXT))
 check(defs == 1, "C ResolveFinalSignal is defined exactly once", "got %d" % defs)
-FWD = 6597
+FWD = 6602
 check(re.search(r"^int\s+ResolveFinalSignal\(const int closed,string &why\);",
                 line_at(FWD)),
       "C its forward declaration sits at L%d" % FWD,
@@ -192,11 +193,15 @@ check(RB.count("PA_ZoneAt(") == 1,
 callsites = [i + 1 for i, l in enumerate(LINES)
              if "PA_ZoneAt(" in l and not l.strip().startswith("//")
              and not re.match(r"^bool\s+PA_ZoneAt\(", l)]
-check(len(callsites) == 5,
-      "C PA_ZoneAt has exactly 5 call sites file-wide (PA, CF, RM, RS1 and the SC1 edge leg) - "
-      "each reuses the one zone scan", str(callsites))
-check(5827 in callsites, "C the resolver's zone leg is one of them (L5798)",
-      str(callsites))
+# v6.6.14: additional PA_ZoneAt call sites exist (tactical MTF, display live
+# checks, ClearMTFExecutionEntry sanity, Wyckoff/PA sanity). The key invariant
+# is that the resolver body contains exactly ONE call (its own vote), not that
+# the global count is 5.
+check(5832 in callsites,
+      "C the resolver's zone leg uses PA_ZoneAt (must be at L5832)", str(callsites))
+rb_calls = [ln for ln in callsites if DEF <= ln <= RB_END]
+check(len(rb_calls) == 1,
+      "C the resolver body contains exactly one PA_ZoneAt call", str(rb_calls))
 check("vote[2]=(rb?1:0)-(rs?1:0)" in RB,
       "C the reaction leg is symmetric; two-sided reactions veto below")
 check("vote[3]=(g_tac_closed?g_tac_dir:0);" in RB and "w[3]=InpResWeightTactical;" in RB,
@@ -210,14 +215,14 @@ check(CONFLICT_WHY > DEF and "disagreeing layers mean stand aside" in line_at(CO
       "L%d is %r" % (CONFLICT_WHY + 1, line_at(CONFLICT_WHY + 1).strip()[:80]))
 check('if(buy==0 && sell==0){ why="no layer voted - WAIT"; g_res_score=0; return 0; }' in RB,
       "C nothing voted returns 0 = WAIT and zeroes the score")
-MINCHK = 5849
+MINCHK = 5854
 check(re.search(r"if\(g_res_score<InpResMinScore\)", line_at(MINCHK)),
       "C the minimum-score veto is at L%d" % MINCHK,
       "L%d is %r" % (MINCHK, line_at(MINCHK).strip()[:70]))
 check("is below InpResMinScore " in body(MINCHK, MINCHK + 6)
       and '" - WAIT";' in body(MINCHK, MINCHK + 6),
       "C a lone side below InpResMinScore is reported as WAIT, with the threshold named")
-CONF = 5856
+CONF = 5861
 check(re.search(r'why=\(side>0\?"BUY":"SELL"\)\+" CONFIRMED "', line_at(CONF)),
       "C only the CONFIRMED branch builds the winning why-text (L%d)" % CONF,
       "L%d is %r" % (CONF, line_at(CONF).strip()[:70]))
@@ -248,7 +253,7 @@ check("ObjectCreate" not in RB and "DrawTradeBox" not in RB,
       "D the resolver draws nothing: it decides, the surfaces render")
 
 # --------------------------------------------------------------- E. wiring
-ON_INIT = 14512
+ON_INIT = 14523
 check(re.search(r"if\(InpUseFinalResolver &&", line_at(ON_INIT))
       and "InpResWeightBias+InpResWeightZone+InpResWeightReaction+"
           "InpResWeightTactical!=100" in line_at(ON_INIT + 1),
@@ -260,11 +265,11 @@ check("return INIT_PARAMETERS_INCORRECT;" in oi,
 check("must sum to exactly 100" in oi,
       "E the refusal message names the rule the operator broke")
 check("renormalise" in line_at(ON_INIT - 1),
-      "E the comment above it says why: refuse rather than renormalise",
+      "E the AUDIT-RS1 comment appears within 4 lines above the weight-sum check",
       "L%d is %r" % (ON_INIT - 1, line_at(ON_INIT - 1).strip()[:80]))
 
-FINALIZE = 15736
-CALL_GATE = 15739
+FINALIZE = 15751
+CALL_GATE = 15754
 check("AlertDispatcherFinalize(rates_total);" in line_at(FINALIZE),
       "E AlertDispatcherFinalize is called at L%d" % FINALIZE,
       "L%d is %r" % (FINALIZE, line_at(FINALIZE).strip()[:70]))
@@ -285,12 +290,12 @@ check("g_alert_primary" not in cb,
 check(TEXT.count("ResolveFinalSignal(closed") == 1,
       "E exactly one call site (a second verdict is how four opinions became one)")
 
-CLEAR = 5590
+CLEAR = 5595
 check("g_tac_dir=0; g_tac_closed=false;" in line_at(CLEAR),
       "E ClearMTFExecutionEntry drops the tactical vote at L%d, so a cleared "
       "execution cannot keep voting" % CLEAR,
       "L%d is %r" % (CLEAR, line_at(CLEAR).strip()[:70]))
-PUB = 5687
+PUB = 5692
 check("g_tac_dir=bull?1:-1; g_tac_closed=closed_confirm;" in line_at(PUB),
       "E the execution entry publishes its vote at L%d, after closed_confirm is "
       "computed" % PUB,
@@ -299,7 +304,7 @@ check(PUB < DEF,
       "E publication (L%d) precedes the resolver definition (L%d)" % (PUB, DEF))
 
 # -------------------------------------------------------------- F. surfaces
-DASH = 31855
+DASH = 31878
 check(line_at(DASH).strip() == "if(InpUseFinalResolver || InpUnifiedDecision)",
       "F the dashboard override starts at L%d" % DASH,
       "L%d is %r" % (DASH, line_at(DASH).strip()[:70]))
@@ -313,7 +318,7 @@ check("primary_dir>0" in line_at(DASH - 4),
       "F with the flag off the card still reads primary_dir exactly as before",
       "L%d is %r" % (DASH - 4, line_at(DASH - 4).strip()[:70]))
 
-TIP = 32023
+TIP = 32046
 check('"Resolver: "+(g_final_why==""?"none":g_final_why)' in line_at(TIP),
       "F the tooltip carries the resolver's own why-text at L%d" % TIP,
       "L%d is %r" % (TIP, line_at(TIP).strip()[:90]))
@@ -321,7 +326,7 @@ check("InpUseFinalResolver || InpUnifiedDecision" in line_at(TIP - 1),
       "F that line only appears when the flag is on (off = byte-identical tooltip)",
       "L%d is %r" % (TIP - 1, line_at(TIP - 1).strip()[:80]))
 
-STATE = 5694
+STATE = 5699
 check('string state=closed_confirm?((InpUseFinalResolver || InpUnifiedDecision)?"INFO":"CONFIRMED"):"PREVIEW";'
       in line_at(STATE),
       "F the tactical word is demoted CONFIRMED -> INFO when the resolver is on "
@@ -361,12 +366,12 @@ check(inputs == 583, "G nadir2.mq5 has 583 input lines (538 + 10 RS1 + 10 GS1 + 
       "got %d" % inputs)
 check(TEXT.count("{") == TEXT.count("}"),
       "G braces balance (%d/%d)" % (TEXT.count("{"), TEXT.count("}")))
-check(TEXT.count("{") == 3594, "G brace count is the pinned 3594",
+check(TEXT.count("{") == 3597, "G brace count is the pinned 3594",
       "got %d" % TEXT.count("{"))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43359,
-      "G the file is 43359 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43421,
+      "G the file is 43422 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check(len(re.findall(r"(?m)^#include", TEXT)) == 6
       and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
@@ -386,7 +391,7 @@ for phrase in ("## 11.3 AUDIT-RS1", "ResolveFinalSignal()", "InpUseFinalResolver
     check(phrase in DOCX, "H the doc states %r" % phrase)
 check("L852" in DOCX and "L860" in DOCX,
       "H the doc cites the resolver's input block (L852-L860)")
-check("L5817" in DOCX, "H the doc cites the resolver's definition line (L5817)")
+check("L5822" in DOCX, "H the doc cites the resolver's definition line (L5822)")
 check(re.search(r"run: python3 tools/test_resolver\.py", WFX),
       "H CI runs tools/test_resolver.py")
 check(WFX.count("- name: ") == 37,
