@@ -55,16 +55,23 @@ require("#include <Trade/Trade.mqh>" in ea,
 buf_bind = dict(re.findall(r"SetIndexBuffer\((\d+),\s*(BufSig\w+)", host))
 ea_bufs = {name: int(num) for name, num in
            re.findall(r"#define\s+QSMC_BUF_CORE_(\w+)\s+(\d+)", ea)}
-expected = {"DIR": 7, "ENTRY": 8, "SL": 9, "TP1": 10, "TP2": 11, "TP3": 12}
-require(ea_bufs == expected, "the companion's CORE buffer map is 7..12 as documented")
-for i, field in [(7, "Dir"), (8, "Entry"), (9, "SL"), (10, "TP1"), (11, "TP2"), (12, "TP3")]:
-    require(buf_bind.get(str(i)) == f"BufSigCore{field}",
-            f"indicator buffer {i} is still BufSigCore{field} (the companion reads this slot)")
+expected = {"DIR": 7, "ENTRY": 8, "SL": 9, "TP1": 10, "TP2": 11, "TP3": 12, "VCODE": 19}
+require(ea_bufs == expected,
+        "the companion's CORE buffer map is 7..12 plus VCODE=19 (v6.6.14)")
+for i, field in [(7, "Dir"), (8, "Entry"), (9, "SL"), (10, "TP1"), (11, "TP2"), (12, "TP3"),
+                 (19, "Verdict"), (20, "ZREVerdict")]:
+    require(buf_bind.get(str(i)) == f"BufSigCore{field}" or
+            (i == 20 and buf_bind.get(str(i)) == "BufSigZREVerdict"),
+            f"indicator buffer {i} is still the documented slot (the companion reads this slot)")
 
 require(re.search(r"input\s+bool\s+InpExportSignalBuffers\s*=\s*true", host),
         "the indicator still exports the CORE signal buffers by default")
-require(all(t not in ea for t in ("QSMC_BUF_ZRE", "BufSigZRE", "BufPrevBuy", "BufEntryBuy")),
-        "the companion reads no preview mark and no ZRE buffer - only published CORE facts")
+# Companion may read the ZRE_VERDICT telemetry buffer (it is a diagnostic/telemetry
+# channel, not a painted mark), but it must still NOT place orders from BufSigZRE
+# or preview mark buffers.
+require(all(t not in ea for t in ("BufSigZREDir", "BufSigZREEntry", "BufSigZRESL",
+                                   "BufPrevBuy", "BufEntryBuy")),
+        "the companion does not place orders from preview/ZRE entry buffers - only published CORE facts")
 
 # The companion creates its own indicator instance. It passes no inputs, so the
 # gates it trades are the indicator's DEFAULTS; that is why the docs must pin the

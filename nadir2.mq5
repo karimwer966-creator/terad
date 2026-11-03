@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.613"
+#property version   "6.614"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -621,8 +621,8 @@
 // 13 v6.5.1 and 23 v6.5.2 fixes in its body, so every dashboard title, the
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
-// #property version and the banner now use this release's value (v6.6.13).
-#define QSMC_VERSION_TEXT "v6.6.13"
+// #property version and the banner now use this release's value (v6.6.14).
+#define QSMC_VERSION_TEXT "v6.6.14"
 #property indicator_chart_window
 #property indicator_buffers 19   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (SigLog, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -801,7 +801,7 @@ input double InpOBMaxHeightATR = 3.0;
 //--- display vocabulary. There is no second OB engine and no parallel registry.
 //--- Every one defaults to today's behaviour bit-for-bit: with all four left
 //--- alone, no order block is created, sized, scored, drawn or retired differently.
-//--- AUDIT-G1: the release triple now reads v6.6.13 (docs 11.10). The older
+//--- AUDIT-G1: the release triple now reads v6.6.14 (docs 11.10). The older
 //--- v6.6.10/v6.6.11/v6.6.12 markers in this file are the dates the work landed,
 //--- not claims about the build - and CI now fails if any marker ever claims a
 //--- version AHEAD of the triple.
@@ -3787,6 +3787,11 @@ struct SZREContext
    int    d1_bias;             // +1 BULLISH / -1 BEARISH / 0
    int    min_score;
    int    max_zones;
+   // v6.6.14 (H5): incident-safety limits read from the same preset-aware config
+   // the rest of ZRE uses, so the filter cannot be stricter than what scoring
+   // already accounts for. -1 means "use the default safe input".
+   int    reject_lifetime_bars;
+   double reject_max_distance_atr;
 };
 
 SZREZone g_zre_zones[];
@@ -13289,6 +13294,10 @@ struct SSigLogRec
 // Values sit on the CLOSED signal bar and are written once the bar closed.
 double BufSigCoreDir[],BufSigCoreEntry[],BufSigCoreSL[],BufSigCoreTP1[],BufSigCoreTP2[],BufSigCoreTP3[];
 double BufSigZREDir[],BufSigZREEntry[],BufSigZRESL[],BufSigZRETP1[],BufSigZRETP2[],BufSigZRETP3[];
+// v6.6.14 (H6): verdict code buffers - one code per closed bar, same indexing as
+// BufSigCoreDir (chronological, 0.0 = not yet written). The EA can CopyBuffer
+// these instead of relying on GlobalVariables (which require instance match).
+double BufSigCoreVerdict[],BufSigZREVerdict[];
 
 // SIGLOG_CORE_BEGIN - pure functions: no chart state, no globals, no I/O
 void SigLog_RecInit(SSigLogRec &r)
@@ -14036,6 +14045,8 @@ void SigLog_PrepareBuffers(const int rates_total,const int prev_calculated)
       ArrayInitialize(BufSigZRETP1,0.0);
       ArrayInitialize(BufSigZRETP2,0.0);
       ArrayInitialize(BufSigZRETP3,0.0);
+      ArrayInitialize(BufSigCoreVerdict,0.0);
+      ArrayInitialize(BufSigZREVerdict,0.0);
       ArrayInitialize(BufEntryBuy0,EMPTY_VALUE);    // v6.4.1: marks must start EMPTY.
       ArrayInitialize(BufEntrySell0,EMPTY_VALUE);   // Uninitialised 0.0 would paint a
       ArrayInitialize(BufPrevBuy0,EMPTY_VALUE);     // stray arrow at price 0 on every
@@ -14623,6 +14634,8 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    SetIndexBuffer(16, BufSigZRETP1,   INDICATOR_CALCULATIONS);
    SetIndexBuffer(17, BufSigZRETP2,   INDICATOR_CALCULATIONS);
    SetIndexBuffer(18, BufSigZRETP3,   INDICATOR_CALCULATIONS);
+   SetIndexBuffer(19, BufSigCoreVerdict, INDICATOR_CALCULATIONS);
+   SetIndexBuffer(20, BufSigZREVerdict,  INDICATOR_CALCULATIONS);
    ArraySetAsSeries(BufSigCoreDir,false);
    ArraySetAsSeries(BufSigCoreEntry,false);
    ArraySetAsSeries(BufSigCoreSL,false);
@@ -14635,6 +14648,8 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    ArraySetAsSeries(BufSigZRETP1,false);
    ArraySetAsSeries(BufSigZRETP2,false);
    ArraySetAsSeries(BufSigZRETP3,false);
+   ArraySetAsSeries(BufSigCoreVerdict,false);
+   ArraySetAsSeries(BufSigZREVerdict,false);
 
    h_ema_fast = iMA(_Symbol, PERIOD_CURRENT, InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
    h_ema_slow = iMA(_Symbol, PERIOD_CURRENT, InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
@@ -19015,6 +19030,11 @@ void DiagPublishCoreState(const int closed)
    else if(g_active_setup.active)                                      code=2;
    else if(g_trade_setup.confirmation_pending || g_trade_setup.valid)   code=3;
    else                                    code=DiagBlockerCode(GateAuditTopReason());
+
+   // v6.6.14 (H6): also publish the verdict code to an indicator buffer so any
+   // EA with an iCustom handle can CopyBuffer(19) without relying on GV.
+   if(closed>=0 && closed<ArraySize(BufSigCoreVerdict))
+      BufSigCoreVerdict[closed]=(double)code;
 
    string p=DiagPrefix();
    GlobalVariableSet(p+"CORE",(double)code);
@@ -26575,8 +26595,11 @@ bool RM_TPsOrdered(const bool is_buy,const double entry,
    // never decreases. Testing the side and not just the distance is what stops a
    // target behind entry - which would be a second stop, not a target - from
    // passing as an ordered plan.
-   if(is_buy) return (tp1>entry && tp2>=tp1 && tp3>=tp2);
-   return (tp1<entry && tp2<=tp1 && tp3<=tp2);
+   // v6.6.14 FIX (C2): strict inequality on tpN -> tpN+1. Two targets at the same
+   // price are geometrically meaningless (no distinct reward step) and previously
+   // passed the audit RM-6 check with tp1=102, tp2=102.
+   if(is_buy) return (tp1>entry && tp2>tp1 && tp3>tp2);
+   return (tp1<entry && tp2<tp1 && tp3<tp2);
 }
 
 // PURE. Suggested size in units. Returns 0.0 whenever it cannot be computed, so
@@ -31863,7 +31886,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    string primary="PRIMARY: none (closed-bar only)";
    string needs="NEEDS: wait for a closed-bar reaction";
    string invalid="INVALIDATION: n/a";
-   // v6.6.13 AUDIT-PR1: the card states HOW FAR the level is; beyond InpAlertMaxDistanceATR it is amber, never a live side colour.
+   // v6.6.14 AUDIT-PR1: the card states HOW FAR the level is; beyond InpAlertMaxDistanceATR it is amber, never a live side colour.
    bool p_near=(g_alert_primary.valid && g_alert_primary.distance_atr<=(InpAlertMaxDistanceATR>=0.0&&MathIsValidNumber(InpAlertMaxDistanceATR)?InpAlertMaxDistanceATR:2.0)); string p_dist=(g_alert_primary.distance_atr<=0.05?"at the zone":StringFormat("%.1f ATR %s",g_alert_primary.distance_atr,(c[closed]>g_alert_primary.zone_hi?"below":(c[closed]<g_alert_primary.zone_lo?"above":"away"))));
    if(g_alert_primary.valid && primary_dir!=0)
    {
@@ -34472,6 +34495,8 @@ void ZRE_ContextInit(SZREContext &ctx)
    ctx.d1_bias=0;
    ctx.min_score=60;
    ctx.max_zones=6;
+   ctx.reject_lifetime_bars=-1;     // -1 => fall back to InpZoneLifetimeBars
+   ctx.reject_max_distance_atr=-1.0; // -1 => fall back to InpZoneMaxDistanceATR
 }
 
 //--------------------------------------------------------------------
@@ -34835,7 +34860,12 @@ int ZRE_BuildZonesEx(SZRECand &cands[],const SZREContext &ctx,const double &h[],
    ArrayResize(out,0);
    ArrayResize(dropped,0);
    ArrayResize(tail,0);
-   if(!(ctx.atr>0.0) || ctx.closed<1) return 0; QA_FilterCandidates(cands,ctx);
+   if(!(ctx.atr>0.0) || ctx.closed<1) return 0;
+   // v6.6.14 FIX (C1): pass the caller-supplied h/l/c and a time array. When the
+   // live host calls BuildZonesEx with g_buf_*, those are the chart arrays; when
+   // ZRE_SelfTest calls with synthetic h[]/l[] the guard inside QA_FilterCandidates
+   // detects the short arrays and skips the wipe (so self-test candidates survive).
+   QA_FilterCandidates(cands,ctx,h,l,g_buf_t);
    // Assign a causal role before consolidation. This makes the merge side-aware
    // while preserving the later closed-bar flip state as a separate lifecycle fact.
    for(int ci=0;ci<ArraySize(cands);ci++)
@@ -37053,6 +37083,29 @@ void ZRE_CollectCandidates(SZRECand &out[],const int closed,const double atr)
    double pwl=(w1_ok?w1ref.low:0.0);
    if(pwh>0.0) ZRE_AddCand(out,pwh-pad,pwh+pad,"PWH",(conf_on?0:1),10,false,w1ref.avail_bar);
    if(pwl>0.0) ZRE_AddCand(out,pwl-pad,pwl+pad,"PWL",(conf_on?0:1),10,false,w1ref.avail_bar);
+
+   // 6) Kill-zones (London / NY initial balance windows). These are the high/low
+   //    of recent session-opening windows, drawn as KZ_* rectangles on the chart
+   //    but previously NEVER fed to the zone registry so reactions inside them
+   //    were "invisible" to ZRE/RXN (audit H4). We feed the KZ range as a band
+   //    candidate; born_bar is set to the first bar strictly after the window
+   //    ends, so age is measured from when the KZ became tradeable.
+   if(InpShowKillZones)
+   {
+      for(int kzi=0;kzi<ArraySize(g_kill_zones);kzi++)
+      {
+         if(!(g_kill_zones[kzi].high>g_kill_zones[kzi].low)) continue;
+         if(g_kill_zones[kzi].end<=0) continue;
+         // find first bar index with time >= kz.end (i.e. the bar that opened
+         // after the KZ closed); that is when the KZ high/low became observable.
+         int born=-1;
+         if(ArraySize(g_buf_t)>closed)
+            for(int bi=0;bi<=closed;bi++)
+               if(g_buf_t[bi]>=g_kill_zones[kzi].end) { born=bi; break; }
+         string tok=(StringFind(g_kill_zones[kzi].name,"LONDON")>=0 ? "LKZ" : "NKZ");
+         ZRE_AddCand(out,g_kill_zones[kzi].low-pad,g_kill_zones[kzi].high+pad,tok,1,8,false,born);
+      }
+   }
 }
 
 void ZRE_FillContext(SZREContext &ctx,const int closed,const double atr)
@@ -37070,6 +37123,11 @@ void ZRE_FillContext(SZREContext &ctx,const int closed,const double atr)
    ctx.d1_bias=(g_d1_structure_state=="BULLISH"?1:(g_d1_structure_state=="BEARISH"?-1:0));
    ctx.min_score=ZRE_CfgMinZoneScore();
    ctx.max_zones=ZRE_CfgMaxZones();
+   // v6.6.14 (H5): incident-safety filter uses preset-aware lifetime/distance.
+   // We deliberately bound reject_lifetime to ZRE's own expire_bars so that
+   // zones ZRE still keeps cannot be silently deleted by IncidentSafety.
+   ctx.reject_lifetime_bars=(int)MathMax(InpZoneLifetimeBars,(int)MathMax(240,(int)(ZRE_CfgFreshBars()*2.5)));
+   ctx.reject_max_distance_atr=MathMax(InpZoneMaxDistanceATR,ZRE_CfgMaxZoneATR()*3.0);
 }
 
 void ZRE_Clear()
@@ -37150,6 +37208,10 @@ void ZRE_Update(const int rates_total,const bool force_rebuild)
       for(int i=0;i<nt;i++) g_rxn_extra_zones[nd+i]=zre_tail[i];
       g_zre_built_time=bar_time;
       ZRE_ProcessClosedBar(rates_total,closed,atr,ctx);
+
+      // v6.6.14 (H6): expose ZRE verdict on the closed bar via buffer 20
+      if(closed>=0 && closed<ArraySize(BufSigZREVerdict))
+         BufSigZREVerdict[closed]=(double)g_zre_verdict.kind;
 
       if(InpZREDebugLog)
       {

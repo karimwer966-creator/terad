@@ -4,17 +4,31 @@
 input double InpZoneMaxDistanceATR = 12.0;
 input int InpZoneLifetimeBars = 120;
 
-void QA_FilterCandidates(SZRECand &cands[],const SZREContext &ctx)
+void QA_FilterCandidates(SZRECand &cands[],const SZREContext &ctx,const double &h[],const double &l[],const datetime &t[])
 {
    double low=DBL_MAX,high=0;
-   if(ctx.closed>=ArraySize(g_buf_h) || ctx.closed>=ArraySize(g_buf_l) || ctx.closed>=ArraySize(g_buf_t)) { ArrayResize(cands,0); return; }
+   // Guard against callers that pass unallocated/undersized arrays (e.g. self-tests
+   // that invoke ZRE_BuildZones with synthetic h[]/l[] of size ctx.hist). In that
+   // case we SKIP the filter instead of wiping the candidate list (the caller's
+   // own h/l arrays are the history window they want evaluated).
+   bool have_h=(ArraySize(h)>ctx.closed);
+   bool have_l=(ArraySize(l)>ctx.closed);
+   if(!have_h || !have_l) return;            // caller history is authoritative; do not evict
    for(int b=0;b<=ctx.closed;b++)
    {
-      if(!MathIsValidNumber(g_buf_l[b]) || !MathIsValidNumber(g_buf_h[b]) || g_buf_l[b]<=0 || g_buf_h[b]<g_buf_l[b]) { ArrayResize(cands,0); return; }
-      low=MathMin(low,g_buf_l[b]); high=MathMax(high,g_buf_h[b]);
+      if(!MathIsValidNumber(l[b]) || !MathIsValidNumber(h[b]) || l[b]<=0 || h[b]<l[b]) { ArrayResize(cands,0); return; }
+      low=MathMin(low,l[b]); high=MathMax(high,h[b]);
    }
-   double distance=(MathIsValidNumber(InpZoneMaxDistanceATR) && InpZoneMaxDistanceATR>=1.0?InpZoneMaxDistanceATR:12.0);
-   int lifetime=(InpZoneLifetimeBars>0?InpZoneLifetimeBars:120);
+   // v6.6.14 (H5): prefer ctx-preset values (set by ZRE_FillContext) when they
+   // are configured, fall back to the raw input defaults otherwise. This keeps
+   // the safety filter consistent with the preset (SCALPER/INTRADAY/SWING)
+   // instead of always applying M30-suitable 120/12 defaults.
+   double distance=((MathIsValidNumber(ctx.reject_max_distance_atr) && ctx.reject_max_distance_atr>=1.0)
+                    ? ctx.reject_max_distance_atr
+                    : (MathIsValidNumber(InpZoneMaxDistanceATR) && InpZoneMaxDistanceATR>=1.0?InpZoneMaxDistanceATR:12.0));
+   int lifetime=(ctx.reject_lifetime_bars>0
+                 ? ctx.reject_lifetime_bars
+                 : (InpZoneLifetimeBars>0?InpZoneLifetimeBars:120));
    int keep=0;
    for(int i=0;i<ArraySize(cands);i++)
    {
@@ -24,8 +38,11 @@ void QA_FilterCandidates(SZRECand &cands[],const SZREContext &ctx)
       if(why!="")
       {
          if(UD_LogAllows("ZONE_REJECT|"+cands[i].tokens+"|"+why))
-            Print("[QSMC_ZONE_REJECT] symbol=",_Symbol," tf=",EnumToString((ENUM_TIMEFRAMES)_Period),
-                  " source=",cands[i].tokens," created=",(born>=0 && born<=ctx.closed?TimeToString(g_buf_t[born]):"unknown"),
+            Print("[QSMC_ZONE_REJECT] symbol=", _Symbol," tf=",EnumToString((ENUM_TIMEFRAMES)_Period),
+                  " source=",cands[i].tokens," created=",
+                  (born>=0 && born<=ctx.closed && ArraySize(t)>born && t[born]>0
+                     ? TimeToString(t[born])
+                     : "unknown"),
                   " lo=",cands[i].lo," hi=",cands[i].hi," closed=",ctx.close_px," history=",low,"..",high,
                   " ATR=",ctx.atr," point=",_Point," digits=",_Digits," scale=raw-price reason=",why);
          continue;
