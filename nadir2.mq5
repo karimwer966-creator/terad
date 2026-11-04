@@ -35744,6 +35744,14 @@ void ZRE_TestCtx(SZREContext &ctx)
    ctx.d1_bias=1;
    ctx.min_score=0;
    ctx.max_zones=6;
+   // v6.6.14 (ZRE self-test): synthetic data runs on a tiny 60-bar price window
+   // (100-111) so the 12-ATR / 120-bar IncidentSafety defaults would reject
+   // legitimate test candidates (VAL at 90 is 15 away from close=105; POC+FVG at
+   // 120 is 15 above) and break the rank-and-cap and deterministic-order
+   // assertions. Disable the distance/lifetime guards for the synthetic test;
+   // the live path still applies them through ZRE_FillContext.
+   ctx.reject_lifetime_bars=99999;    // effectively never reject by age
+   ctx.reject_max_distance_atr=999.0;// effectively never reject by distance
 }
 
 bool ZRE_SameZones(const SZREZone &a[],const SZREZone &b[])
@@ -37988,32 +37996,32 @@ int RXN_PhaseAfterStructure(const int phase_with_disp,const bool structure_ok)
 string RXN_ExecReason(const SRxnEvidence &e)
 {
    if(e.exec_state==(int)RXN_EXEC_READY) return "core confirmed (RXN is observational)";
-   if(e.exec_state==(int)RXN_EXEC_WAITING_RETEST) return "waiting for retest";
-   if(e.exec_state==(int)RXN_EXEC_BLOCKED_TOPDOWN) return "blocked by top-down";
-   if(e.exec_state==(int)RXN_EXEC_BLOCKED_SPREAD) return "blocked by spread";
-   if(e.exec_state==(int)RXN_EXEC_BLOCKED_OWNERSHIP) return "blocked by ownership";
-   if(e.exec_state==(int)RXN_EXEC_BLOCKED_RR) return "blocked by RR floor";
-   if(e.exec_state==(int)RXN_EXEC_BLOCKED_GEOMETRY) return "blocked by geometry";
-   if(e.level>=(int)RXN_LEVEL_CONFIRMED) return "waiting for retest";
-   if(e.phase<(int)RXN_P5_REJECTION) return "waiting for rejection";
-   if(!e.disp.detected) return "waiting for displacement";
-   if(!e.struct_ev.detected || !e.struct_ev.aligned) return "waiting for structure";
-   return "waiting for confirmation score";
+   if(e.exec_state==(int)RXN_EXEC_WAITING_RETEST) return "WAITING FOR RETEST";
+   if(e.exec_state==(int)RXN_EXEC_BLOCKED_TOPDOWN) return "BLOCKED BY TOP-DOWN";
+   if(e.exec_state==(int)RXN_EXEC_BLOCKED_SPREAD) return "BLOCKED BY SPREAD";
+   if(e.exec_state==(int)RXN_EXEC_BLOCKED_OWNERSHIP) return "BLOCKED BY OWNERSHIP";
+   if(e.exec_state==(int)RXN_EXEC_BLOCKED_RR) return "BLOCKED BY RR FLOOR";
+   if(e.exec_state==(int)RXN_EXEC_BLOCKED_GEOMETRY) return "BLOCKED BY GEOMETRY";
+   if(e.level>=(int)RXN_LEVEL_CONFIRMED) return "WAITING FOR RETEST";
+   if(e.phase<(int)RXN_P5_REJECTION) return "WAITING FOR REJECTION";
+   if(!e.disp.detected) return "WAITING FOR DISPLACEMENT";
+   if(!e.struct_ev.detected || !e.struct_ev.aligned) return "WAITING FOR STRUCTURE";
+   return "WAITING FOR CONFIRMATION SCORE";
 }
 
 string RXN_NeedsText(const SRxnEvidence &e)
 {
-   if(e.exec_state==(int)RXN_EXEC_BLOCKED_TOPDOWN) return "blocked by top-down";
-   if(e.exec_state==(int)RXN_EXEC_BLOCKED_SPREAD) return "blocked by spread";
-   if(e.exec_state==(int)RXN_EXEC_BLOCKED_OWNERSHIP) return "blocked by ownership";
-   if(e.exec_state==(int)RXN_EXEC_WAITING_RETEST) return "waiting for retest";
-   if(e.exec_state==(int)RXN_EXEC_BLOCKED_RR) return "blocked by RR floor";
-   if(e.exec_state==(int)RXN_EXEC_BLOCKED_GEOMETRY) return "blocked by geometry";
+   if(e.exec_state==(int)RXN_EXEC_BLOCKED_TOPDOWN) return "BLOCKED BY TOP-DOWN";
+   if(e.exec_state==(int)RXN_EXEC_BLOCKED_SPREAD) return "BLOCKED BY SPREAD";
+   if(e.exec_state==(int)RXN_EXEC_BLOCKED_OWNERSHIP) return "BLOCKED BY OWNERSHIP";
+   if(e.exec_state==(int)RXN_EXEC_WAITING_RETEST) return "WAITING FOR RETEST";
+   if(e.exec_state==(int)RXN_EXEC_BLOCKED_RR) return "BLOCKED BY RR FLOOR";
+   if(e.exec_state==(int)RXN_EXEC_BLOCKED_GEOMETRY) return "BLOCKED BY GEOMETRY";
    if(e.level>=(int)RXN_LEVEL_CONFIRMED) return RXN_ExecReason(e);
-   if(e.phase<(int)RXN_P5_REJECTION || !e.rejection_detected) return "rejection";
-   if(!e.disp.detected) return "displacement";
-   if(!e.struct_ev.detected || !e.struct_ev.aligned) return "structure";
-   return "confirmation score";
+   if(e.phase<(int)RXN_P5_REJECTION || !e.rejection_detected) return "REJECTION";
+   if(!e.disp.detected) return "DISPLACEMENT";
+   if(!e.struct_ev.detected || !e.struct_ev.aligned) return "STRUCTURE";
+   return "CONFIRMATION SCORE";
 }
 
 string RXN_PathText(const SRxnEvidence &e)

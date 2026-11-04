@@ -423,8 +423,8 @@ check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
 check(TEXT.count("{") == TEXT.count("}") == 3594, "J braces balance at 3594",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43430,
-      "J the file is 43430 lines: insertions only, no scratch rewrite",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43438,
+      "J the file is 43438 lines: insertions only, no scratch rewrite",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""), "J no bare LF: CRLF everywhere")
 check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,

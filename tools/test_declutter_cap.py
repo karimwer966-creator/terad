@@ -338,7 +338,7 @@ check("tk[1]=true;" in ST, "I DC-9 pins that a taken slot is skipped")
 check("QSMC_OldestSlot(notime,none)!=-1" in ST, "I DC-11 pins the empty list")
 
 # ------------------------------------------------------- J. counts and nothing weakened
-check(len(TEXT.split("\n")) - 1 == 43430, "J the file is 43430 lines",
+check(len(TEXT.split("\n")) - 1 == 43438, "J the file is 43438 lines",
       "got %d" % (len(TEXT.split("\n")) - 1))
 check(TEXT.count("{") == TEXT.count("}") == 3594, "J braces balance at 3594",
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
