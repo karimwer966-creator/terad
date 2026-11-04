@@ -526,7 +526,7 @@ check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
 check(TEXT.count("{") == TEXT.count("}") == 3597, "J braces balance at 3597",
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(TEXT.split("\n")) - 1 == 43446, "J the file is 43446 lines",
+check(len(TEXT.split("\n")) - 1 == 43454, "J the file is 43454 lines",
       "got %d" % (len(TEXT.split("\n")) - 1))
 check(RAW.replace("\r\n", "").count("\n") == 0, "J every line still ends CRLF: no bare LF was introduced")
 check(TEXT.count("#include") == 6 and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes", "got %d" % TEXT.count("#include"))

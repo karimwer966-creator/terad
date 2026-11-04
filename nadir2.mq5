@@ -35716,21 +35716,29 @@ void ZRE_Expect(const bool ok,const string why,string &where)
 // 60 bars far above the test zone (100-101), except three touch runs.
 void ZRE_TestSeries(double &h[],double &l[])
 {
+   // v6.6.14 hotfix: keep the touch-episode geometry byte-identical to the
+   // original (60 bars; dips at l[20]=100.5, l[40]=100.6, l[41]=100.7,
+   // l[59]=100.2 on an 110..111 field) so 'score exact 81' stays 81,
+   // BUT widen the [low,high] envelope that QA_FilterCandidates computes
+   // so that synthetic zones at VAL=90 and POC+FVG=120 do not fall
+   // 'outside symbol closed history range'. Two non-touching sentinel bars
+   // at index 0 (h=125,l=125) and index 1 (h=80,l=80) set the envelope
+   // to 80..125. A tight bar at 125 never hits zones at 90-91, 100-101 or
+   // 120-121 (its l=125 is beyond the upper tolerance 121.5/101.5/91.5); a
+   // tight bar at 80 never hits them either (its h=80 is below the lower
+   // tolerance 89.5/99.5/119.5); and they sit at index 0/1 which is
+   // BEFORE the first touch episode at bar 20, so no extra touch episode
+   // is created by them (hit stays false on every later bar, and prev
+   // being false on bar 20 correctly fires cnt++ for episode 1).
    ArrayResize(h,60);
    ArrayResize(l,60);
-   // v6.6.14 hotfix: the H5 safety filter (QA_FilterCandidates) rejects zones
-   // whose midpoint lies outside [history_low,history_high] before it applies
-   // the distance/lifetime gates. The synthetic series must therefore span the
-   // full price range exercised by the self-test (VAL@90 .. POC+FVG@121),
-   // otherwise the rank-and-cap / born-window / deterministic-order assertions
-   // wipe their own candidates on a live-chart-shaped history window. A single
-   // 85..122 box is enough: QA_FilterCandidates uses [low,high] as the
-   // "symbol closed history range", not any per-bar close.
    for(int k=0;k<60;k++)
    {
-      h[k]=122.0;
-      l[k]=85.0;
+      h[k]=111.0;
+      l[k]=110.0;
    }
+   h[0]=125.0; l[0]=125.0;           // high sentinel: sets history high=125
+   h[1]=80.0;  l[1]=80.0;            // low sentinel:  sets history low=80
    l[20]=100.5;                      // episode 1
    l[40]=100.6;                      // episode 2 (bars 40-41 are one run)
    l[41]=100.7;
