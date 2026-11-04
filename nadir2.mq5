@@ -1282,7 +1282,7 @@ input int    InpSignalDedupCooldownBars = 3;      // minimum bars between two ma
 input bool   InpProximityFilter         = true;   // refuse an entry that sits right under strong resistance (BUY) / right over strong support (SELL)
 input double InpProximityMaxATR         = 0.35;   // ...within this many ATR of the opposing edge
 input int    InpLabelFontSize           = 0;      // chart label font (0 = per-element default, 7 recommended with Clean)
-input int    InpMaxChartObjects         = 0;      // hard cap on QSMC_* chart objects per pass (0 = 1200, 900 with Clean)
+input int    InpMaxChartObjects         = 500;    // hard cap on QSMC_* chart objects per pass (v6.6.14: 500 to de-clutter the Sniper/RXN label stack; was 0 -> 1200)
 input int    InpMaxZonesPerSide         = 5;      // demand / supply boxes drawn per side (Clean forces 2)
 input bool   InpDeclutterMode           = true;   // Clean preset: fewer zones, small labels, capped objects
 
@@ -43022,10 +43022,17 @@ void MTF_SniperZone_Draw()
       // v6.5.3 (D6): short tag, anchored at THIS zone's own left edge instead of
       // on the shared last-bar column, so two zones can never print on top of
       // each other. The rectangle keeps the full text as its tooltip.
+      // v6.6.14 UX: do NOT also draw a standalone DrawTextLabel at the zone edge.
+      // DrawZoneBox already renders the label inside the filled rectangle, so a
+      // second label printed at price_low produced two copies of the same text
+      // stacked vertically (visible in the user's screenshot as "SNIPER MS 1.00"
+      // printed twice per zone). Keep the rectangle and its embedded label only;
+      // a one-letter ribbon at the zone edge keeps scanability without duplication.
       string lbl_txt  =StringFormat("SNIPER %s %.2f %s",
                                     cl.tf_label,cl.level.strength,cl.type_label);
+      string tag      =StringFormat("S %s",cl.tf_label);
       DrawZoneBox(rect_name,t1,cl.level.price_high,t_right,cl.level.price_low,zone_col,lbl_txt,84);
-      DrawTextLabel(lbl_name,t1,cl.level.price_low,lbl_txt,zone_col,false,8);
+      DrawTextLabel(lbl_name,t1,cl.level.price_low,tag,zone_col,false,7);
       sup_drawn++; sup_last_px=cl.level.price_low;
    }
 
@@ -43040,10 +43047,12 @@ void MTF_SniperZone_Draw()
       if(res_drawn>0 && MathAbs(cl.level.price_high-res_last_px)<dedupe_band) continue;
       string rect_name=PFX+"SNIPER_RES_RECT_"+IntegerToString(i);
       string lbl_name =PFX+"SNIPER_RES_LBL_"+IntegerToString(i);
+      // v6.6.14 UX: same de-duplication as support side.
       string lbl_txt  =StringFormat("SNIPER %s %.2f %s",
                                     cl.tf_label,cl.level.strength,cl.type_label);
+      string tag      =StringFormat("R %s",cl.tf_label);
       DrawZoneBox(rect_name,t1,cl.level.price_high,t_right,cl.level.price_low,zone_col,lbl_txt,84);
-      DrawTextLabel(lbl_name,t1,cl.level.price_high,lbl_txt,zone_col,true,8);
+      DrawTextLabel(lbl_name,t1,cl.level.price_high,tag,zone_col,true,7);
       res_drawn++; res_last_px=cl.level.price_high;
    }
 }
