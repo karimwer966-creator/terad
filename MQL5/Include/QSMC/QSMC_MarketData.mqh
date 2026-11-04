@@ -432,8 +432,19 @@ public:
                           const ENUM_TIMEFRAMES exec_tf,const int bars,
                           const int atr_period)
      {
-      SafeDelete(m_chart); SafeDelete(m_exec);
-      SafeDelete(m_d1); SafeDelete(m_h4); SafeDelete(m_h1);
+      // v6.6.15: only count SafeDelete frees when there was a prior alloc.
+      // The generic SafeDelete() helper always calls delete-and-increment,
+      // so on a FIRST OnInit (m_* all NULL) it increments m_free_calls for
+      // objects that were never allocated -> leak report shows 'market
+      // 5/0' on a clean init. Use an explicit POINTER_DYNAMIC guard here:
+      // CheckPointer returns POINTER_INVALID for NULL / uninitialized,
+      // so we only free+count objects that are really CBarSeries instances
+      // from a previous (succeeded) Init.
+      if(CheckPointer(m_chart)==POINTER_DYNAMIC){ delete m_chart; m_free_calls++; } m_chart=NULL;
+      if(CheckPointer(m_exec )==POINTER_DYNAMIC){ delete m_exec;  m_free_calls++; } m_exec=NULL;
+      if(CheckPointer(m_d1   )==POINTER_DYNAMIC){ delete m_d1;    m_free_calls++; } m_d1=NULL;
+      if(CheckPointer(m_h4   )==POINTER_DYNAMIC){ delete m_h4;    m_free_calls++; } m_h4=NULL;
+      if(CheckPointer(m_h1   )==POINTER_DYNAMIC){ delete m_h1;    m_free_calls++; } m_h1=NULL;
 
       m_chart=new CBarSeries(); m_alloc_calls++;
       m_exec =new CBarSeries(); m_alloc_calls++;

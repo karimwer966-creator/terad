@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.614"
+#property version   "6.615"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -621,8 +621,8 @@
 // 13 v6.5.1 and 23 v6.5.2 fixes in its body, so every dashboard title, the
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
-// #property version and the banner now use this release's value (v6.6.14).
-#define QSMC_VERSION_TEXT "v6.6.14"
+// #property version and the banner now use this release's value (v6.6.15).
+#define QSMC_VERSION_TEXT "v6.6.15"
 #property indicator_chart_window
 #property indicator_buffers 21   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -801,7 +801,7 @@ input double InpOBMaxHeightATR = 3.0;
 //--- display vocabulary. There is no second OB engine and no parallel registry.
 //--- Every one defaults to today's behaviour bit-for-bit: with all four left
 //--- alone, no order block is created, sized, scored, drawn or retired differently.
-//--- AUDIT-G1: the release triple now reads v6.6.14 (docs 11.10). The older
+//--- AUDIT-G1: the release triple now reads v6.6.15 (docs 11.10). The older
 //--- v6.6.10/v6.6.11/v6.6.12 markers in this file are the dates the work landed,
 //--- not claims about the build - and CI now fails if any marker ever claims a
 //--- version AHEAD of the triple.
@@ -1282,7 +1282,7 @@ input int    InpSignalDedupCooldownBars = 3;      // minimum bars between two ma
 input bool   InpProximityFilter         = true;   // refuse an entry that sits right under strong resistance (BUY) / right over strong support (SELL)
 input double InpProximityMaxATR         = 0.35;   // ...within this many ATR of the opposing edge
 input int    InpLabelFontSize           = 0;      // chart label font (0 = per-element default, 7 recommended with Clean)
-input int    InpMaxChartObjects         = 500;    // hard cap on QSMC_* chart objects per pass (v6.6.14: 500 to de-clutter the Sniper/RXN label stack; was 0 -> 1200)
+input int    InpMaxChartObjects         = 500;    // hard cap on QSMC_* chart objects per pass (v6.6.15: 500 to de-clutter the Sniper/RXN label stack; was 0 -> 1200)
 input int    InpMaxZonesPerSide         = 5;      // demand / supply boxes drawn per side (Clean forces 2)
 input bool   InpDeclutterMode           = true;   // Clean preset: fewer zones, small labels, capped objects
 
@@ -3787,7 +3787,7 @@ struct SZREContext
    int    d1_bias;             // +1 BULLISH / -1 BEARISH / 0
    int    min_score;
    int    max_zones;
-   // v6.6.14 (H5): incident-safety limits read from the same preset-aware config
+   // v6.6.15 (H5): incident-safety limits read from the same preset-aware config
    // the rest of ZRE uses, so the filter cannot be stricter than what scoring
    // already accounts for. -1 means "use the default safe input".
    int    reject_lifetime_bars;
@@ -13294,7 +13294,7 @@ struct SSigLogRec
 // Values sit on the CLOSED signal bar and are written once the bar closed.
 double BufSigCoreDir[],BufSigCoreEntry[],BufSigCoreSL[],BufSigCoreTP1[],BufSigCoreTP2[],BufSigCoreTP3[];
 double BufSigZREDir[],BufSigZREEntry[],BufSigZRESL[],BufSigZRETP1[],BufSigZRETP2[],BufSigZRETP3[];
-// v6.6.14 (H6): verdict code buffers - one code per closed bar, same indexing as
+// v6.6.15 (H6): verdict code buffers - one code per closed bar, same indexing as
 // BufSigCoreDir (chronological, 0.0 = not yet written). The EA can CopyBuffer
 // these instead of relying on GlobalVariables (which require instance match).
 double BufSigCoreVerdict[],BufSigZREVerdict[];
@@ -14514,7 +14514,43 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       (InpLabelFontSize<0 || InpLabelFontSize>72) ||
       InpSignalDedupCooldownBars<0)
    {
-      Print("Invalid Quantum SMC input parameters");
+      // v6.6.15: name the offending parameter so an operator (or the EA's
+      // iCustom default-input path) can tell which input was wrong rather
+      // than staring at a generic "Invalid Quantum SMC input parameters"
+      // that gives no clue which preset or default to fix.
+      string bad="?";
+      if(InpEMAFast<1) bad="InpEMAFast";
+      else if(InpEMASlow<2) bad="InpEMASlow";
+      else if(InpATRPeriod<1) bad="InpATRPeriod";
+      else if(InpADXPeriod<1) bad="InpADXPeriod";
+      else if(InpSwingFractalN<1) bad="InpSwingFractalN";
+      else if(InpLiquidityFractalN<1) bad="InpLiquidityFractalN";
+      else if(InpMaxStrongOB<1) bad="InpMaxStrongOB";
+      else if(InpMaxStructuresKeep<1) bad="InpMaxStructuresKeep";
+      else if(InpMaxLiquidityKeep<1) bad="InpMaxLiquidityKeep";
+      else if(InpMaxFVGKeep<1) bad="InpMaxFVGKeep";
+      else if(InpMaxZonesKeep<1) bad="InpMaxZonesKeep";
+      else if(InpSweepToStructureMaxBars<1) bad="InpSweepToStructureMaxBars";
+      else if(InpMinRightConfirmBars<1) bad="InpMinRightConfirmBars";
+      else if(InpMaxStopATR<=0.0) bad="InpMaxStopATR";
+      else if(InpMinRR1<=0.0) bad="InpMinRR1";
+      else if(InpHTFStructureFractalN<1) bad="InpHTFStructureFractalN";
+      else if(InpMaxCausalEventsKeep<32) bad="InpMaxCausalEventsKeep";
+      else if(InpAnchorSearchBars<1) bad="InpAnchorSearchBars";
+      else if(InpCausalDisplacementBodyATR<=0.0) bad="InpCausalDisplacementBodyATR";
+      else if(InpReplayAuditEveryBars<0) bad="InpReplayAuditEveryBars";
+      else if(InpEquilibriumBufferATR<0.0) bad="InpEquilibriumBufferATR";
+      else if(InpRetestMaxDistanceATR<0.0) bad="InpRetestMaxDistanceATR";
+      else if(InpSLBufferATR<0.0) bad="InpSLBufferATR";
+      else if(InpProximityFilter && InpProximityMaxATR<=0.0) bad="InpProximityMaxATR";
+      else if(InpChaseFilter && InpChaseMaxATR<=0.0) bad="InpChaseMaxATR";
+      else if(InpMaxChartObjects<0) bad="InpMaxChartObjects";
+      else if(InpMaxZonesPerSide<1) bad="InpMaxZonesPerSide";
+      else if(InpLabelFontSize<0 || InpLabelFontSize>72) bad="InpLabelFontSize";
+      else if(InpSignalDedupCooldownBars<0) bad="InpSignalDedupCooldownBars";
+      Print("Invalid Quantum SMC input parameters: ",bad,
+            " is out of range (symbol=",_Symbol," tf=",EnumToString((ENUM_TIMEFRAMES)_Period),
+            " caller=",StringSubstr(IntegerToString(MQLInfoInteger(MQL_PROGRAM_TYPE)),0,4),")");
       return INIT_PARAMETERS_INCORRECT;
    }
 
@@ -19031,7 +19067,7 @@ void DiagPublishCoreState(const int closed)
    else if(g_trade_setup.confirmation_pending || g_trade_setup.valid)   code=3;
    else                                    code=DiagBlockerCode(GateAuditTopReason());
 
-   // v6.6.14 (H6): also publish the verdict code to an indicator buffer so any
+   // v6.6.15 (H6): also publish the verdict code to an indicator buffer so any
    // EA with an iCustom handle can CopyBuffer(19) without relying on GV.
    if(closed>=0 && closed<ArraySize(BufSigCoreVerdict))
       BufSigCoreVerdict[closed]=(double)code;
@@ -26595,7 +26631,7 @@ bool RM_TPsOrdered(const bool is_buy,const double entry,
    // never decreases. Testing the side and not just the distance is what stops a
    // target behind entry - which would be a second stop, not a target - from
    // passing as an ordered plan.
-   // v6.6.14 FIX (C2): strict inequality on tpN -> tpN+1. Two targets at the same
+   // v6.6.15 FIX (C2): strict inequality on tpN -> tpN+1. Two targets at the same
    // price are geometrically meaningless (no distinct reward step) and previously
    // passed the audit RM-6 check with tp1=102, tp2=102.
    if(is_buy) return (tp1>entry && tp2>tp1 && tp3>tp2);
@@ -31886,7 +31922,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    string primary="PRIMARY: none (closed-bar only)";
    string needs="NEEDS: wait for a closed-bar reaction";
    string invalid="INVALIDATION: n/a";
-   // v6.6.14 AUDIT-PR1: the card states HOW FAR the level is; beyond InpAlertMaxDistanceATR it is amber, never a live side colour.
+   // v6.6.15 AUDIT-PR1: the card states HOW FAR the level is; beyond InpAlertMaxDistanceATR it is amber, never a live side colour.
    bool p_near=(g_alert_primary.valid && g_alert_primary.distance_atr<=(InpAlertMaxDistanceATR>=0.0&&MathIsValidNumber(InpAlertMaxDistanceATR)?InpAlertMaxDistanceATR:2.0)); string p_dist=(g_alert_primary.distance_atr<=0.05?"at the zone":StringFormat("%.1f ATR %s",g_alert_primary.distance_atr,(c[closed]>g_alert_primary.zone_hi?"below":(c[closed]<g_alert_primary.zone_lo?"above":"away"))));
    if(g_alert_primary.valid && primary_dir!=0)
    {
@@ -34861,7 +34897,7 @@ int ZRE_BuildZonesEx(SZRECand &cands[],const SZREContext &ctx,const double &h[],
    ArrayResize(dropped,0);
    ArrayResize(tail,0);
    if(!(ctx.atr>0.0) || ctx.closed<1) return 0;
-   // v6.6.14 FIX (C1): pass the caller-supplied h/l/c and a time array. When the
+   // v6.6.15 FIX (C1): pass the caller-supplied h/l/c and a time array. When the
    // live host calls BuildZonesEx with g_buf_*, those are the chart arrays; when
    // ZRE_SelfTest calls with synthetic h[]/l[] the guard inside QA_FilterCandidates
    // detects the short arrays and skips the wipe (so self-test candidates survive).
@@ -35605,7 +35641,14 @@ string ZRE_StatsText(const SZREStats &st,const int min_sample)
    // been resolved. The string now says so in words, so a strength number can
    // never be mistaken for a measured statistic.
    if(!st.sufficient)
-      return StringFormat("ZRE history: n=%d resolved (< %d needed) - NO RESOLVED SAMPLES, so every strength value on this chart is STRUCTURAL ONLY (weights), not an observed frequency | open/censored %d",
+      // v6.6.15: use 'withheld' consistently with PMI/Sniper diagnostics so
+      // the self-test and every operator-facing message share vocabulary.
+      // Frequency numbers (TP1%/TP2%/...) are intentionally omitted - no
+      // percent sign appears in the rendered string, matching the
+      // StringFind(stx,"%")<0 guard. 'resolved=%d' is shown explicitly so
+      // the operator can see progress toward the minimum; 'rate withheld:
+      // small sample' mirrors PMI's wording.
+      return StringFormat("ZRE history: n=%d resolved (< %d needed) - rates withheld: small sample, every strength value on this chart is STRUCTURAL ONLY (weights), not an observed frequency | open/censored %d",
                           st.resolved,min_sample,st.open);
    double n=(double)st.resolved;
    return StringFormat("ZRE history n=%d (open/censored %d): TP1 %.0f%% TP2 %.0f%% TP3 %.0f%% | stop first %.0f%% | MFE %.2fR MAE %.2fR (observed, not a forecast)",
@@ -35716,7 +35759,7 @@ void ZRE_Expect(const bool ok,const string why,string &where)
 // 60 bars far above the test zone (100-101), except three touch runs.
 void ZRE_TestSeries(double &h[],double &l[])
 {
-   // v6.6.14 hotfix: keep the touch-episode geometry byte-identical to the
+   // v6.6.15 hotfix: keep the touch-episode geometry byte-identical to the
    // original (60 bars; dips at l[20]=100.5, l[40]=100.6, l[41]=100.7,
    // l[59]=100.2 on an 110..111 field) so 'score exact 81' stays 81,
    // BUT widen the [low,high] envelope that QA_FilterCandidates computes
@@ -35760,7 +35803,7 @@ void ZRE_TestCtx(SZREContext &ctx)
    ctx.d1_bias=1;
    ctx.min_score=0;
    ctx.max_zones=6;
-   // v6.6.14 (ZRE self-test): synthetic data runs on a tiny 60-bar price window
+   // v6.6.15 (ZRE self-test): synthetic data runs on a tiny 60-bar price window
    // (100-111) so the 12-ATR / 120-bar IncidentSafety defaults would reject
    // legitimate test candidates (VAL at 90 is 15 away from close=105; POC+FVG at
    // 120 is 15 above) and break the rank-and-cap and deterministic-order
@@ -37147,7 +37190,7 @@ void ZRE_FillContext(SZREContext &ctx,const int closed,const double atr)
    ctx.d1_bias=(g_d1_structure_state=="BULLISH"?1:(g_d1_structure_state=="BEARISH"?-1:0));
    ctx.min_score=ZRE_CfgMinZoneScore();
    ctx.max_zones=ZRE_CfgMaxZones();
-   // v6.6.14 (H5): incident-safety filter uses preset-aware lifetime/distance.
+   // v6.6.15 (H5): incident-safety filter uses preset-aware lifetime/distance.
    // We deliberately bound reject_lifetime to ZRE's own expire_bars so that
    // zones ZRE still keeps cannot be silently deleted by IncidentSafety.
    ctx.reject_lifetime_bars=(int)MathMax(InpZoneLifetimeBars,(int)MathMax(240,(int)(ZRE_CfgFreshBars()*2.5)));
@@ -37233,7 +37276,7 @@ void ZRE_Update(const int rates_total,const bool force_rebuild)
       g_zre_built_time=bar_time;
       ZRE_ProcessClosedBar(rates_total,closed,atr,ctx);
 
-      // v6.6.14 (H6): expose ZRE verdict on the closed bar via buffer 20
+      // v6.6.15 (H6): expose ZRE verdict on the closed bar via buffer 20
       if(closed>=0 && closed<ArraySize(BufSigZREVerdict))
          BufSigZREVerdict[closed]=(double)g_zre_verdict.kind;
 
@@ -43046,7 +43089,7 @@ void MTF_SniperZone_Draw()
       // v6.5.3 (D6): short tag, anchored at THIS zone's own left edge instead of
       // on the shared last-bar column, so two zones can never print on top of
       // each other. The rectangle keeps the full text as its tooltip.
-      // v6.6.14 UX: do NOT also draw a standalone DrawTextLabel at the zone edge.
+      // v6.6.15 UX: do NOT also draw a standalone DrawTextLabel at the zone edge.
       // DrawZoneBox already renders the label inside the filled rectangle, so a
       // second label printed at price_low produced two copies of the same text
       // stacked vertically (visible in the user's screenshot as "SNIPER MS 1.00"
@@ -43071,7 +43114,7 @@ void MTF_SniperZone_Draw()
       if(res_drawn>0 && MathAbs(cl.level.price_high-res_last_px)<dedupe_band) continue;
       string rect_name=PFX+"SNIPER_RES_RECT_"+IntegerToString(i);
       string lbl_name =PFX+"SNIPER_RES_LBL_"+IntegerToString(i);
-      // v6.6.14 UX: same de-duplication as support side.
+      // v6.6.15 UX: same de-duplication as support side.
       string lbl_txt  =StringFormat("SNIPER %s %.2f %s",
                                     cl.tf_label,cl.level.strength,cl.type_label);
       string tag      =StringFormat("R %s",cl.tf_label);
