@@ -211,8 +211,8 @@ input string InpTradeComment         = "QSMC-AUTO"; // comment stamped on every 
 
 //--- 2. sizing -------------------------------------------------------
 input ENUM_QSMC_LOT_MODE InpLotMode  = QSMC_LOT_RISK_PERCENT; // how the volume is chosen
-input double InpRiskPercent          = 0.25;   // % of equity risked by the stop, per trade
-input double InpMaxRiskPercent       = 1.00;   // hard ceiling; the input above is clamped to this
+input double InpRiskPercent          = 0.10;   // % of equity risked by the stop, per trade (first-trial conservative: 0.10%)
+input double InpMaxRiskPercent       = 0.10;   // hard ceiling; the input above is clamped to this (matches per-trade risk for first trial)
 input double InpFixedLots            = 0.00;   // volume used when InpLotMode = QSMC_LOT_FIXED
 
 //--- 3. exits --------------------------------------------------------
@@ -238,14 +238,25 @@ input bool   InpMoveSLToBEAtTP1      = true;   // after rung 1 the stop goes to 
 input bool   InpMoveSLToTP1AtTP2     = true;   // after rung 2 the stop goes to rung 1 (locks the first leg)
 
 //--- 4. filters ------------------------------------------------------
-input int    InpMaxSpreadPoints      = 30;     // refuse a signal while the spread is wider
+input int    InpMaxSpreadPoints      = 30;     // absolute cap; refuse a signal while the spread is wider
+// v6.6.15: trial guard - refuse when the current spread is more than this
+// fraction of the planned stop distance. 10% = 0.10 means if the stop is
+// 100 points away and spread is 12 points, the setup is skipped: the cost
+// of the trade alone eats more than 10% of the risk budget. 0 = off.
+input double InpMaxSpreadFracOfStop  = 0.10;   // max spread as fraction of stop distance
 // Slippage tolerance for a MARKET order. It used to be a hard-coded 10 points,
 // which is under one pip on a 5-digit FX pair and well under a normal gold
 // spread: the server answered "requote" and the operator had no input to widen
 // it. 0 = fill at any price (NOT recommended; the broker decides the fill).
 input int    InpDeviationPoints      = 20;     // max slippage accepted on a market order, in points
 input int    InpMaxOpenPositions     = 1;      // positions of this magic and symbol
-input double InpMaxDailyLossPercent  = 3.00;   // stop for the day after this equity drawdown; 0 = off
+input double InpMaxDailyLossPercent  = 0.50;   // stop for the day after this equity drawdown; 0 = off (first-trial conservative: 0.5% ≈ $25 on $5k)
+// v6.6.15: account-level circuit breakers for the first-trial playbook.
+// Unlike InpMaxDailyLossPercent these persist across day boundaries and
+// reference the equity at EA attach time (or the persisted high-water mark).
+input double InpMaxAccountDrawdownPct= 3.00;   // halt all new entries when equity drops this % from the EA's session-start equity (0 = off)
+input int    InpStopAfterConsecLoss  = 2;      // halt new entries after this many losing closes in a row (0 = off)
+input int    InpMaxDataAgeSeconds    = 30;     // refuse entries when the last tick is older than this (stale feed / disconnect); 0 = off
 input int    InpMaxSignalAgeBars     = 2;      // ignore a signal older than this many closed bars
 input int    InpMinStopPoints        = 20;     // refuse a stop closer than this
 input int    InpMaxStopPoints        = 5000;   // refuse a stop wider than this
@@ -271,7 +282,7 @@ input int    InpOrderRetryMax        = 3;      // transient order failures toler
 // operator asks for it - presets/QSMC_pro_execution.set turns them on.
 input int    InpSessionStartHour     = 0;      // server hour to start trading (0 + End 0 = no session filter)
 input int    InpSessionEndHour       = 0;      // server hour to stop  (wrap over midnight is allowed, e.g. 22 -> 6)
-input int    InpMaxTradesPerDay      = 0;      // entries per server day, persisted (0 = no cap)
+input int    InpMaxTradesPerDay      = 3;      // entries per server day, persisted (0 = no cap; 3 = conservative cap for first trial, well above the 2-loss breaker)
 input int    InpCooldownAfterLossMin = 0;      // minutes to stand down after a losing close (0 = off)
 input double InpPartialCloseAtR      = 0.0;    // close InpPartialClosePercent at this R (0 = off)
 input double InpPartialClosePercent  = 50.0;   // percent of the volume banked at InpPartialCloseAtR
@@ -292,6 +303,11 @@ datetime  g_start_bar=0;        // open time of the bar that was forming at atta
 int       g_day_index=-1;
 double    g_day_start_equity=0.0;
 bool      g_day_blocked=false;
+// v6.6.15 trial guards - persisted across ticks, survive day roll
+double    g_session_start_equity=0.0; // equity at EA attach (account drawdown reference)
+int       g_consec_losses=0;          // losing closes in a row (reset by any winner or manual reset on next session)
+bool      g_loss_streak_blocked=false;// set true once g_consec_losses hits the breaker - requires EA restart to clear
+bool      g_drawdown_blocked=false;   // set true when account drawdown trips
 
 string    g_seen[QSMC_AT_SEEN_RING];
 int       g_seen_n=0;
@@ -685,6 +701,92 @@ void DayGuardUpdate()
   }
 
 //+------------------------------------------------------------------+
+//| v6.6.15: account-level session guard (drawdown + consecutive      |
+//| losses). Unlike DayGuard these do NOT reset at day roll - they    |
+//| trip once and stay tripped until the operator re-attaches the EA  |
+//| (conscious review). Consecutive losses are recomputed from deal   |
+//| history on every call, so a reload mid-streak does not forget.    |
+//+------------------------------------------------------------------+
+string SessionGuardKey(const string leaf)
+  {
+   return ("QSMC_AT_SESS_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
+           "_"+IntegerToString(InpMagic)+"_"+leaf);
+  }
+
+void SessionGuardPersist()
+  {
+   GlobalVariableSet(SessionGuardKey("_EQ"),g_session_start_equity);
+   GlobalVariableSet(SessionGuardKey("_DDB"),g_drawdown_blocked?1.0:0.0);
+   GlobalVariableSet(SessionGuardKey("_LSB"),g_loss_streak_blocked?1.0:0.0);
+   GlobalVariableSet(SessionGuardKey("_CL"),(double)g_consec_losses);
+   GlobalVariablesFlush();
+  }
+
+int CountConsecutiveLosses()
+  {
+   // Walk deal history backwards (most recent first) for our magic; count
+   // consecutive DEAL_ENTRY_OUT with net<0 until we hit a winner or run out.
+   // Looks back up to 48 hours to avoid startup cost.
+   if(!HistorySelect(TimeCurrent()-172800,TimeCurrent())) return 0;
+   int streak=0;
+   for(int i=HistoryDealsTotal()-1;i>=0;i--)
+     {
+      ulong t=HistoryDealGetTicket(i);
+      if(t==0) continue;
+      if((long)HistoryDealGetInteger(t,DEAL_MAGIC)!=InpMagic) continue;
+      if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(t,DEAL_ENTRY)!=DEAL_ENTRY_OUT) continue;
+      // skip partial closes that still left the position open - only count
+      // the final close that returned POSITION_ID empty
+      ulong pos_id=(ulong)HistoryDealGetInteger(t,DEAL_POSITION_ID);
+      if(pos_id>0 && HistoryDealGetInteger(t,DEAL_VOLUME)>0.0)
+        {
+         // if there is still an open position for this pos_id, it's a partial
+         if(PositionSelectByTicket(pos_id)) continue;
+        }
+      double net=HistoryDealGetDouble(t,DEAL_PROFIT)+
+                 HistoryDealGetDouble(t,DEAL_COMMISSION)+
+                 HistoryDealGetDouble(t,DEAL_SWAP);
+      if(net<0.0) streak++;
+      else break;   // winner stops the streak
+      if(streak>99) break;
+     }
+   return streak;
+  }
+
+void SessionGuardUpdate()
+  {
+   // account drawdown vs session-start equity
+   if(InpMaxAccountDrawdownPct>0.0 && g_session_start_equity>0.0 && !g_drawdown_blocked)
+     {
+      double eq=AccountInfoDouble(ACCOUNT_EQUITY);
+      double floor_eq=g_session_start_equity*(1.0-InpMaxAccountDrawdownPct/100.0);
+      if(eq<=floor_eq)
+        {
+         g_drawdown_blocked=true;
+         Print("[QSMC_AT] ACCOUNT DRAWDOWN guard: equity ",DoubleToString(eq,2),
+               " <= ",DoubleToString(floor_eq,2)," (",DoubleToString(InpMaxAccountDrawdownPct,2),
+               "% from session start ",DoubleToString(g_session_start_equity,2),
+               ") - no new entries (EA restart required to resume)");
+         SessionGuardPersist();
+        }
+     }
+   // consecutive losses (recomputed from history each tick, so no counter drift)
+   if(InpStopAfterConsecLoss>0 && !g_loss_streak_blocked)
+     {
+      g_consec_losses=CountConsecutiveLosses();
+      if(g_consec_losses>=InpStopAfterConsecLoss)
+        {
+         g_loss_streak_blocked=true;
+         Print("[QSMC_AT] CONSECUTIVE-LOSS guard: ",IntegerToString(g_consec_losses),
+               " losing closes in a row >= InpStopAfterConsecLoss ",
+               IntegerToString(InpStopAfterConsecLoss),
+               " - no new entries (EA restart required to resume)");
+         SessionGuardPersist();
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
 //| Session window, on SERVER hours (the same clock the daily guard    |
 //| uses). Start == End means "no window". A window may wrap midnight  |
 //| (22 -> 6), which is how an Asia-only or NY-only mandate is set.    |
@@ -980,6 +1082,53 @@ void HandleSignal(SQsigSignal &s)
    // All three are TRANSIENT (no MarkSeen): the same signal may be tradable
    // once the window opens, but refusing it must not burn it.
    string dis="";
+
+   // v6.6.15 trial circuit breakers (account level). These LATCH: once they
+   // trip, no new entry is accepted until the operator detaches and re-attaches
+   // the EA (review + conscious decision to continue).
+   if(g_day_blocked)
+     {
+      Note(key,"DAILY-LOSS breaker tripped - EA restart required to resume");
+      return;
+     }
+   if(g_drawdown_blocked)
+     {
+      Note(key,"ACCOUNT-DRAWDOWN breaker tripped - EA restart required to resume");
+      return;
+     }
+   if(g_loss_streak_blocked)
+     {
+      Note(key,"CONSECUTIVE-LOSS breaker tripped after "+
+           IntegerToString(InpStopAfterConsecLoss)+" losses - EA restart required to resume");
+      return;
+     }
+
+   // Data freshness / disconnect guard. SymbolInfoTick gives the last tick
+   // the terminal received for this symbol; if it is older than
+   // InpMaxDataAgeSeconds we treat the feed as stale (broker disconnect or
+   // market closed) and refuse to send an order.
+   if(InpMaxDataAgeSeconds>0)
+     {
+      MqlTick tk;
+      if(SymbolInfoTick(sym,tk))
+        {
+         long age=(long)TimeCurrent()-(long)tk.time;
+         if(age<0) age=0;
+         if(age>InpMaxDataAgeSeconds)
+           {
+            Note(key,"stale feed: last tick "+IntegerToString((int)age)+"s ago > InpMaxDataAgeSeconds "+
+                 IntegerToString(InpMaxDataAgeSeconds)+"s (broker disconnect?)");
+            return;
+           }
+        }
+     }
+
+   if(!IsConnected())
+     {
+      Note(key,"terminal reports !IsConnected() - trading blocked while disconnected");
+      return;
+     }
+
    if(!SessionOpenNow(dis))
      {
       Note(key,dis);
@@ -1001,6 +1150,24 @@ void HandleSignal(SQsigSignal &s)
       Note(key,"already "+IntegerToString(OpenCount(sym))+" position(s) open");
       return;
      }
+
+   // v6.6.15: spread as fraction of stop distance. The absolute cap
+   // (InpMaxSpreadPoints) still fires below via CalcLots, but we also refuse
+   // when the spread alone eats more than InpMaxSpreadFracOfStop of the risk.
+   double stop_dist_points=MathAbs(price-s.sl)/_Point;
+   if(InpMaxSpreadFracOfStop>0.0 && stop_dist_points>0.0)
+     {
+      double sp_pts=MathAbs((SymbolInfoDouble(sym,SYMBOL_ASK)-SymbolInfoDouble(sym,SYMBOL_BID))/_Point);
+      double frac=sp_pts/stop_dist_points;
+      if(frac>InpMaxSpreadFracOfStop)
+        {
+         Note(key,"spread "+DoubleToString(sp_pts,1)+" pts is "+
+              DoubleToString(frac*100.0,1)+"% of stop "+DoubleToString(stop_dist_points,1)+
+              " pts > InpMaxSpreadFracOfStop "+DoubleToString(InpMaxSpreadFracOfStop*100.0,0)+"%");
+         return;
+        }
+     }
+
    if(!StopsDistanceOK(sym,price,s.sl,s.tp))
      {
       Note(key,"broker stops level rejects this SL/TP");
@@ -1996,7 +2163,31 @@ int OnInit()
    g_start_bar=iTime(_Symbol,_Period,0);
    if(g_start_bar<=0) g_start_bar=(datetime)TimeCurrent();
    g_day_index=-1;
+   // v6.6.15: session-start equity for account-drawdown circuit breaker
+   g_session_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
+   g_consec_losses=0;
+   g_loss_streak_blocked=false;
+   g_drawdown_blocked=false;
+   // restore persisted breaker state if the EA was reloaded mid-session
+   string sk="QSMC_AT_SESS_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"_"+IntegerToString(InpMagic);
+   if(GlobalVariableCheck(sk+"_EQ"))
+     {
+      double e0=GlobalVariableGet(sk+"_EQ");
+      if(e0>0.0) g_session_start_equity=e0;
+      g_drawdown_blocked=(GlobalVariableCheck(sk+"_DDB") && GlobalVariableGet(sk+"_DDB")>0.5);
+      g_loss_streak_blocked=(GlobalVariableCheck(sk+"_LSB") && GlobalVariableGet(sk+"_LSB")>0.5);
+      g_consec_losses=(int)GlobalVariableGet(sk+"_CL");
+     }
+   else
+     {
+      GlobalVariableSet(sk+"_EQ",g_session_start_equity);
+      GlobalVariableSet(sk+"_DDB",0.0);
+      GlobalVariableSet(sk+"_LSB",0.0);
+      GlobalVariableSet(sk+"_CL",0.0);
+      GlobalVariablesFlush();
+     }
    DayGuardUpdate();
+   SessionGuardUpdate();
 
    Print("[QSMC_AT] QSMC v6.615 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
@@ -2089,6 +2280,14 @@ int OnInit()
          " | partial ",(InpPartialCloseAtR>0.0 ?
             DoubleToString(InpPartialClosePercent,0)+"% at "+DoubleToString(InpPartialCloseAtR,2)+"R" : "off"),
          " | break-even at ",(InpBreakEvenAtR>0.0 ? DoubleToString(InpBreakEvenAtR,2)+"R" : "off"));
+   Print("[QSMC_AT] trial guards: ",
+         " risk/trade ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",
+         " | daily cap ",DoubleToString(InpMaxDailyLossPercent,2),"%",
+         " | account DD ",(InpMaxAccountDrawdownPct>0.0?DoubleToString(InpMaxAccountDrawdownPct,2)+"%":"off"),
+         " | consec-loss breaker ",(InpStopAfterConsecLoss>0?IntegerToString(InpStopAfterConsecLoss):(int)0),
+         " | spread<=",(InpMaxSpreadFracOfStop>0.0?DoubleToString(InpMaxSpreadFracOfStop*100.0,0)+"% of SL":"off"),
+         " | data fresh<",(InpMaxDataAgeSeconds>0?IntegerToString(InpMaxDataAgeSeconds)+"s":"off"),
+         " | max positions ",IntegerToString(InpMaxOpenPositions));
    PurgeStaleSignalGlobals();
 
    EventSetTimer(InpPollSeconds);
@@ -2113,6 +2312,7 @@ void OnDeinit(const int reason)
 void OnTick()
   {
    DayGuardUpdate();
+   SessionGuardUpdate();
    ProcessSignals();
    ManageOpenPositions();
    DiagnosticHeartbeat();
@@ -2123,6 +2323,7 @@ void OnTimer()
    // The timer keeps the EA responsive on a quiet symbol where no tick arrives
    // for minutes; it reads the same closed-bar buffers, so it adds no new signal.
    DayGuardUpdate();
+   SessionGuardUpdate();
    ProcessSignals();
    ManageOpenPositions();
    DiagnosticHeartbeat();
