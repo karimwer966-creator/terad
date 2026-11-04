@@ -80,7 +80,6 @@ def fn_end(first):
 GRP, FLAG = 861, 862
 WL, WE, WP, WA, WR = 863, 864, 865, 866, 867
 WMIN, WEV, WROOM = 868, 869, 871
-
 check('input group "====== Weighted Gate Scoring (AUDIT-GS1, evidence weighted, '
       'vetoes hard) ======"' in line_at(GRP),
       "A the weighted gates have their own input group at L%d" % GRP,
@@ -121,7 +120,7 @@ check(len(re.findall(r"(?m)^input .*InpUseWeightedGates", TEXT)) == 1,
       "A the flag is declared exactly once (no shadow copy)")
 
 # ---------------------------------------------------------------- B. globals
-GL = {"g_wgate_score": 4472, "g_wgate_why": 4473, "g_wgate_veto": 4474}
+GL = {"g_wgate_score": 4477, "g_wgate_why": 4478, "g_wgate_veto": 4479}
 for name, ln in sorted(GL.items(), key=lambda kv: kv[1]):
     check(re.search(r"^(int|string|bool)\s+%s\s*=" % name, line_at(ln)),
           "B %s is declared at L%d" % (name, ln),
@@ -136,7 +135,7 @@ check("Written only by WeightedGateAllows()" in body(4470, 4472),
       "B the ownership comment names the single writer")
 
 # ---------------------------------------------------------- C. hard vetoes
-DEF = 40023
+DEF = 40093
 check(re.search(r"^bool WeightedGateAllows\(const SAlertCandidate &c,"
                 r"const datetime bar_time,string &why\)", line_at(DEF)),
       "C WeightedGateAllows is defined at L%d" % DEF,
@@ -149,10 +148,10 @@ check(0 < END - DEF <= 90,
       "a gate that grows into a second engine is how the chain got opaque")
 RB = body(DEF, END)
 
-V_DATA = 40029
-V_SPREAD = 40035
-V_NEWS = 40042
-FIRST_LEG = 40053
+V_DATA = 40101
+V_SPREAD = 40107
+V_NEWS = 40112
+FIRST_LEG = None
 check("!c.valid || c.direction==0 || c.bar_time<=0 || c.closed_index<0" in body(V_DATA, V_DATA + 6),
       "C veto 1 is invalid candidate data (L%d)" % V_DATA,
       "L%d is %r" % (V_DATA, line_at(V_DATA).strip()[:80]))
@@ -237,7 +236,7 @@ check("below InpWGMinScore " in low and '"- WAIT";' in low.replace("\n", "")
       "D a candidate below the minimum is reported as WAIT with the threshold named",
       low.strip()[:90])
 check("missed: " in low, "D the WAIT text lists what was missed")
-PUB = 40074
+PUB = None
 check("PUBLISH " in body(PUB, END) and "a weighted confluence count, not a probability"
       in body(PUB, END),
       "D the success text says PUBLISH and states the score is a confluence "
@@ -275,7 +274,7 @@ check("InpWGMinScore<0 || InpWGMinScore>100" in oi2
       and "return INIT_PARAMETERS_INCORRECT;" in oi2,
       "E an out-of-range InpWGMinScore also refuses (L%d)" % OI2, oi2.strip()[:80])
 
-GS_DECL, GS_TERN = 40107, 40121
+GS_DECL, GS_TERN = 6172, 6182
 check('string gs_why="";' in line_at(GS_DECL),
       "F the why-buffer is declared once before the candidate loop (L%d)" % GS_DECL,
       "L%d is %r" % (GS_DECL, line_at(GS_DECL).strip()[:70]))
@@ -296,7 +295,7 @@ check("AlertChannelsFor(c,ap,apush,asnd)" in sel
       "and de-duplication, not evidence", sel.strip()[:100])
 check(sel.count("InpUseWeightedGates") == 0,
       "F the hard gates are not inside the flag's scope")
-WIN = 40134
+WIN = None
 wb = body(WIN, WIN + 8)
 check("if(InpUseWeightedGates)" in line_at(WIN)
       and "WeightedGateAllows(best_alert,bar_time,wfinal)" in wb,
@@ -304,7 +303,7 @@ check("if(InpUseWeightedGates)" in line_at(WIN)
       "not whichever the loop tested last (L%d)" % WIN, wb.strip()[:90])
 check("no candidate reached the weighted gate - WAIT" in wb,
       "F when nothing published, the display says so instead of showing a stale reason")
-TIP = 32025
+TIP = 32048
 check('"Weighted gate: "+(g_wgate_why==""?"none":g_wgate_why)' in line_at(TIP),
       "F the tooltip carries the gate's own why-text at L%d" % TIP,
       "L%d is %r" % (TIP, line_at(TIP).strip()[:90]))

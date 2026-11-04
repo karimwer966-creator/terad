@@ -84,12 +84,11 @@ def fn_end(first):
 
 
 # ---------------------------------------------------------------- A. inputs
-GRP, FLAG, SHOW = 872, 873, 874
+GRP, FLAG, SHOW  = 872, 873, 874
 W = {"InpScalpWeightMomentum": (20, 875), "InpScalpWeightEdge": (20, 876),
      "InpScalpWeightSilverBullet": (15, 877), "InpScalpWeightPowerOf3": (15, 878),
      "InpScalpWeightWyckoff": (15, 879), "InpScalpWeightConfluence": (15, 880)}
-MIN, DISP, STOP, TGT, RR, SPR, SESS = 881, 882, 883, 884, 885, 886, 887
-
+MIN, DISP, STOP, TGT, RR, SPR, SESS  = 881, 882, 883, 884, 885, 886, 887
 check('input group "====== Scalping Strategies (AUDIT-SC1, M1-M5, display only, '
       'advisory) ======"' in line_at(GRP),
       "A the overlay has its own input group at L%d" % GRP, line_at(GRP).strip()[:70])
@@ -163,8 +162,8 @@ check("no repaint" in line_at(4486),
       "B g_sc_bar's comment states the anti-repaint rule")
 
 # ------------------------------------------------------------ C. pure cores
-F_RATIO, F_VETO, F_RR, F_SUM = 5887, 5894, 5902, 5909
-F_SIDE, F_DEC, F_VOTES, F_UPD, F_ST = 5916, 5936, 5948, 5981, 6079
+F_RATIO, F_VETO, F_RR, F_SUM  = 5887, 5894, 5902, 5909
+F_SIDE, F_DEC, F_VOTES, F_UPD, F_ST  = 5916, 5936, 5948, 5981, 6079
 for name, ln, sig in (("SCALP_SpreadRatio", F_RATIO, r"^double SCALP_SpreadRatio\("),
                       ("SCALP_SpreadVeto", F_VETO, r"^bool SCALP_SpreadVeto\("),
                       ("SCALP_RR", F_RR, r"^double SCALP_RR\("),
@@ -254,7 +253,7 @@ check("SCALP_Score(" not in TEXT and "ScalpScore(" not in TEXT,
 # --------------------------------------------------------------- E. vetoes
 UPD_END = fn_end(F_UPD)
 UB = body(F_UPD, UPD_END)
-V_ATR, V_SPRD, V_SESS, V_NEWS, LEG1 = 5990, 5996, 6005, 6013, 6029
+V_ATR, V_SPRD, V_SESS, V_NEWS, LEG1  = 5990, 5996, 6005, 6013, 6029
 check(line_at(V_ATR).strip() == "if(!(atr>0.0))",
       "E veto 1 is missing ATR - no cost model, no scalp (L%d)" % V_ATR,
       body(V_ATR - 1, V_ATR + 1).strip()[:80])
@@ -292,7 +291,7 @@ check("TimeCurrent()" not in UB and "TimeLocal()" not in UB,
 check("g_sc_dir=SCALP_Decide(buy,sell,InpScalpMinScore);" in line_at(LEG1),
       "F the verdict comes from the pure decide rule at L%d" % LEG1,
       line_at(LEG1).strip()[:80])
-CONF, WAIT, RRCHK, WHY = 6032, 6039, 6054, 6067
+CONF, WAIT, RRCHK, WHY  = 6032, 6039, 6054, 6067
 conf = body(CONF, CONF + 8)
 check("if(g_sc_dir==2)" in line_at(CONF) and "g_sc_score=0;" in conf
       and "disagreeing scalps mean stand aside" in conf,
@@ -344,7 +343,7 @@ check("g_sc_" in UB and UB.count("g_sc_") >= 12,
       "G the overlay writes its own state (%d g_sc_ references)" % UB.count("g_sc_"))
 
 # ---------------------------------------------------------------- H. wiring
-OI_W, OI_G, OI_P, CALL, HOOK, TIP = 14537, 14542, 14549, 15720, 14954, 32027
+OI_W, OI_G, OI_P, CALL, HOOK, TIP  = 14537, 14542, 14549, 15720, 14954, 32027
 check("if(InpEnableScalping && SCALP_WeightsSum()!=100)" in line_at(OI_W),
       "H OnInit refuses a weight sum that is not 100 (L%d)" % OI_W,
       line_at(OI_W).strip()[:70])
@@ -421,7 +420,7 @@ check("InpEnableAllModules" not in body(GRP, SESS + 1),
 check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "J 583 input lines (574 + the 9 OBS1 lines)",
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
-check(TEXT.count("{") == TEXT.count("}") == 3594, "J braces balance at 3594",
+check(TEXT.count("{") == TEXT.count("}") == 3597, "J braces balance at 3597",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
 check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43438,
       "J the file is 43438 lines: insertions only, no scratch rewrite",

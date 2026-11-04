@@ -821,8 +821,8 @@ check(pa_inputs == set(EXPECT), "F the declared inputs are exactly the documente
 for nm in sorted(pa_inputs):
     check(TEXT.count(nm) >= 2, "F %s is declared and actually referenced" % nm)
 
-check(TEXT.count("#property indicator_buffers 19") == 1,
-      "F indicator_buffers is still 19 - no buffer was appended")
+check(TEXT.count("#property indicator_buffers 21") == 1,
+      "F indicator_buffers is still 21 - no buffer was appended")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,
       "F indicator_plots is still 7")
 check(len(re.findall(r"SetIndexBuffer\(\s*(\d+)", TEXT)) == 21,

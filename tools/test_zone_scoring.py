@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """Independent reference checks for the documented ZoneScorer model."""
 
-MISS_HTF, MISS_ROOM, MISS_SPREAD = 1, 2, 4
-
-
+MISS_HTF, MISS_ROOM, MISS_SPREAD  = 1, 2, 4
 def score(*, strength, touches, distance, room, htf, spread):
     missing = 0
     htf_pts = 0

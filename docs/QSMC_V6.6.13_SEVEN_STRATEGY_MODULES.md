@@ -362,15 +362,15 @@ Strategy Tester and on any symbol.
 L15341  OB age bound            inline, LAST within the closed bar (price outranks time)
 L15455  P3_Update(closed)
 L15456  SB_Update(closed)
-L15460  WY_Update(closed)
-L15516  TopDown_Update(rates_total,false)   <-- publishes the plan RM may adopt
-L15538  PMI_Update()
-L15688  MVP_Update(...)                     <-- volume profile / POC
-L15697  PA_Update(closed)
-L15705  MR_Update(closed,rates_total,full_indicators)
-L15711  CF_Update(closed,rates_total)       <-- reads PA, MR, WY, P3, SB
-L15716  RM_Update(closed,rates_total)       <-- reads CF's verdict + TopDown's plan
-L15723  ZRE_Update(...)
+L15475  WY_Update(closed)
+L15531  TopDown_Update(rates_total,false)   <-- publishes the plan RM may adopt
+L15552  PMI_Update()
+L15703  MVP_Update(...)                     <-- volume profile / POC
+L15712  PA_Update(closed)
+L15720  MR_Update(closed,rates_total,full_indicators)
+L15726  CF_Update(closed,rates_total)       <-- reads PA, MR, WY, P3, SB
+L15731  RM_Update(closed,rates_total)       <-- reads CF's verdict + TopDown's plan
+L15738  ZRE_Update(...)
 ```
 
 Two properties this order guarantees:
@@ -938,7 +938,7 @@ setups of 2026-10-27..29 needed answered. Guessing at a missed setup and
 auditing one are different activities; this makes the second one possible.
 
 **What.** `OBS_Record()` (**L6205**) behind `InpEnableDecisionJournal = false`
-(**L889**), writing rows of `SObsJournalRow` (**L4490**) into a bounded
+(**L889**), writing rows of `SObsJournalRow` (**L4495**) into a bounded
 **ring buffer** `g_obs_rows[]`. One row per **closed** bar, ten columns:
 
 | Column | Source it is read from | Never re-derived |
@@ -956,10 +956,10 @@ count stays at 44. A veto outranks a strong score in `OBS_GateState()` on purpos
 the journal must never read as *95/100 but no trade* without also naming the veto.
 
 **Where it runs, and why that is the load-bearing detail.** Measured order inside
-`OnCalculate`: `CF_Update` (L15711) → `RM_Update` (L15716) → `SCALP_Update`
-(L15720) → `AlertDispatcherFinalize` (L15736) → `g_final_signal=ResolveFinalSignal`
-(L15742) → `g_final_why=rs_why` (L15743) → **`OBS_Record(closed,rates_total)`
-(L15749)**. It is recorded LAST, not next to `SCALP_Update`, which would have
+`OnCalculate`: `CF_Update` (L15726) → `RM_Update` (L15731) → `SCALP_Update`
+(L15735) → `AlertDispatcherFinalize` (L15751) → `g_final_signal=ResolveFinalSignal`
+(L15757) → `g_final_why=rs_why` (L15758) → **`OBS_Record(closed,rates_total)`
+(L15764)**. It is recorded LAST, not next to `SCALP_Update`, which would have
 transcribed the *previous* bar's resolver verdict and reproduced the stale-citation
 defect this module exists to end. The call gate mirrors the resolver's own:
 `is_new_bar || detection_updated || prev_calculated==0`.

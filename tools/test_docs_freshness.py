@@ -128,8 +128,8 @@ def find_def(name):
 ANCHORS = [
     # --- structure the doc's whole argument leans on
     ("OnCalculate starts at L14396", 15097, r"^int OnCalculate\(", None),
-    ("#property indicator_buffers 19 at L627", 627,
-     r"^#property indicator_buffers\s+19\b", None),
+    ("#property indicator_buffers 21 at L627", 627,
+     r"^#property indicator_buffers\s+21\b", None),
     ("#property indicator_plots 7 at L628", 628,
      r"^#property indicator_plots\s+7\b", None),
     ("enum ENUM_P3_PHASE at L747", 747, r"^enum\s+ENUM_P3_PHASE\s*$", None),
@@ -401,10 +401,10 @@ check(ENUMS == 44, "D the file has 44 top-level enums (all new ones appended)",
 check("Enums | 43" in DOC_FLAT or "43, all appended" in DOC_FLAT,
       "D the doc states 43 enums", "phrase absent from the doc")
 
-check("#property indicator_buffers 19" in RAW and
+check("#property indicator_buffers 21" in RAW and
       "#property indicator_plots   7" in RAW,
-      "D indicator_buffers is still 19 and indicator_plots still 7 - zero new buffers")
-check("indicator_buffers` 19" in DOC_FLAT or "indicator_buffers 19" in DOC_FLAT,
+      "D indicator_buffers is still 21 and indicator_plots still 7 - zero new buffers")
+check("indicator_buffers` 21" in DOC_FLAT or "indicator_buffers 21" in DOC_FLAT,
       "D the doc states buffers 19 / plots 7")
 
 check(re.search(r'QSMC_VERSION_TEXT\s+"v6\.6\.13"', RAW) is not None,

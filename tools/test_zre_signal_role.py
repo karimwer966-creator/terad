@@ -33,12 +33,10 @@ Not a backtest, not a probability. Exit code 1 on any failure.
 import pathlib
 import sys
 
-SUPPORT, RESISTANCE = 0, 1
-
-ST_IDLE, ST_APPROACHING, ST_TOUCHED_PREVIEW = 0, 1, 2
-ST_REACTION_CONFIRMED, ST_BROKEN, ST_EXPIRED = 3, 4, 5
-ST_HELD, ST_FLIPPED = 6, 7
-
+SUPPORT, RESISTANCE  = 0, 1
+ST_IDLE, ST_APPROACHING, ST_TOUCHED_PREVIEW  = 0, 1, 2
+ST_REACTION_CONFIRMED, ST_BROKEN, ST_EXPIRED  = 3, 4, 5
+ST_HELD, ST_FLIPPED  = 6, 7
 FAILS = []
 SRC = pathlib.Path(__file__).resolve().parent.parent / "nadir2.mq5"
 
