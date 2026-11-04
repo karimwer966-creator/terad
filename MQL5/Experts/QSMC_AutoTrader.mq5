@@ -1293,9 +1293,9 @@ string DiagCodeText(const int code)
 double ReadCoreVerdictFromBuffer()
   {
    if(g_handle==INVALID_HANDLE) return -1.0;
-   double v[1];
-   ArraySetAsSeries(v,true);
-   int got=CopyBuffer(g_handle,QSMC_BUF_CORE_VCODE,1,1,v);  // shift 1 = last closed
+   double v[];
+   ArraySetAsSeries(v,true);                                  // v6.6.14: dynamic array to avoid static-array warning
+   int got=CopyBuffer(g_handle,QSMC_BUF_CORE_VCODE,1,1,v);   // shift 1 = last closed
    if(got!=1) return -1.0;
    if(!MathIsValidNumber(v[0]) || v[0]==0.0) return -1.0;
    return v[0];
