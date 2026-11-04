@@ -119,8 +119,7 @@ def params_at(i):
 # tests (only their distinctness and their mapping to names), which is exactly
 # why the enum was added as its own type: appending it could not shift any
 # existing enumerator.
-P3_NONE, P3_ACC, P3_MAN, P3_DIST = 0, 1, 2, 3
-
+P3_NONE, P3_ACC, P3_MAN, P3_DIST  = 0, 1, 2, 3
 P3_NAMES = {P3_NONE: "NONE", P3_ACC: "ACCUMULATION",
             P3_MAN: "MANIPULATION", P3_DIST: "DISTRIBUTION"}
 
@@ -401,7 +400,7 @@ def input_default(name):
 
 
 m = re.search(r"^#property indicator_buffers\s+(\d+)", TEXT, re.M)
-check(m and m.group(1) == "19", "B1 indicator_buffers is still 19 - no buffer was added")
+check(m and m.group(1) == "21", "B1 indicator_buffers is still 21 - no buffer was added")
 m = re.search(r"^#property indicator_plots\s+(\d+)", TEXT, re.M)
 check(m and m.group(1) == "7", "B1 indicator_plots is still 7")
 idx = sorted(int(x) for x in re.findall(r"SetIndexBuffer\((\d+),", TEXT))

@@ -87,18 +87,17 @@ def fn_end(start):
 
 
 # ---------------------------------------------------- measured anchors
-INP_CAP, INP_DECL, INP_SMART = 1285, 1287, 1297
+INP_CAP, INP_DECL, INP_SMART  = 1285, 1287, 1297
 BANNER = 7515
-EXCESS, OLDEST, COUNT, DELETE = 7535, 7547, 7564, 7580
-SELFTEST, SMART = 7622, 7666
-CAPLINE, OWNEDCALL, EXCESSCALL = 7675, 7681, 7682
-CUT, FAMCALL, LEFTOVER = 7691, 7694, 7705
-FAM_ZONE, FAM_STRUCT, FAM_OB, FAM_FVG = 27257, 27275, 27289, 27322
+EXCESS, OLDEST, COUNT, DELETE  = 7535, 7547, 7564, 7580
+SELFTEST, SMART  = 7622, 7666
+CAPLINE, OWNEDCALL, EXCESSCALL  = 7675, 7681, 7682
+CUT, FAMCALL, LEFTOVER  = 7691, 7694, 7705
+FAM_ZONE, FAM_STRUCT, FAM_OB, FAM_FVG  = 27257, 27275, 27289, 27322
 STRUCT_LABEL_CALL = 27277
-GUARD, OBS_HOOK, HOOK_PASS, HOOK_FAIL = 14919, 14959, 14963, 14965
-ONCALC, SMART_CALL = 15097, 15570
-DISPLAY_ALLOWS, VISUAL_POLICY = 39675, 39686
-
+GUARD, OBS_HOOK, HOOK_PASS, HOOK_FAIL  = 14919, 14959, 14963, 14965
+ONCALC, SMART_CALL  = 15097, 15570
+DISPLAY_ALLOWS, VISUAL_POLICY  = 39675, 39686
 EXCESS_END, OLDEST_END = fn_end(EXCESS), fn_end(OLDEST)
 COUNT_END, DELETE_END = fn_end(COUNT), fn_end(DELETE)
 SELFTEST_END, SMART_END = fn_end(SELFTEST), fn_end(SMART)
@@ -340,7 +339,7 @@ check("QSMC_OldestSlot(notime,none)!=-1" in ST, "I DC-11 pins the empty list")
 # ------------------------------------------------------- J. counts and nothing weakened
 check(len(TEXT.split("\n")) - 1 == 43438, "J the file is 43438 lines",
       "got %d" % (len(TEXT.split("\n")) - 1))
-check(TEXT.count("{") == TEXT.count("}") == 3594, "J braces balance at 3594",
+check(TEXT.count("{") == TEXT.count("}") == 3597, "J braces balance at 3597",
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
 check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44, "J still 44 enums",
       "got %d" % len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)))

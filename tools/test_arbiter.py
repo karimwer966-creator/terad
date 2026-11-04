@@ -30,11 +30,9 @@ from typing import List, Optional, Tuple
 # ---------------------------------------------------------------- constants
 EPS = 1e-9
 
-ZR_SUPPORT, ZR_RESISTANCE, ZR_NEUTRAL = 0, 1, 2
-
-SIG_NONE, SIG_NO_TRADE, SIG_WATCH, SIG_PREVIEW = 0, 1, 2, 3
-SIG_TACTICAL_INFO, SIG_COUNTER_TREND, SIG_LIMITED_ROOM, SIG_CONFIRMED = 4, 5, 6, 7
-
+ZR_SUPPORT, ZR_RESISTANCE, ZR_NEUTRAL  = 0, 1, 2
+SIG_NONE, SIG_NO_TRADE, SIG_WATCH, SIG_PREVIEW  = 0, 1, 2, 3
+SIG_TACTICAL_INFO, SIG_COUNTER_TREND, SIG_LIMITED_ROOM, SIG_CONFIRMED  = 4, 5, 6, 7
 STATE_NAME = {
     SIG_NONE: "NONE", SIG_NO_TRADE: "NO TRADE", SIG_WATCH: "WATCH",
     SIG_PREVIEW: "PREVIEW", SIG_TACTICAL_INFO: "TACTICAL-INFO",
@@ -42,12 +40,10 @@ STATE_NAME = {
     SIG_LIMITED_ROOM: "LIMITED ROOM", SIG_CONFIRMED: "CONFIRMED",
 }
 
-EV_WICK, EV_CANDLE, EV_VOLUME, EV_DISPLACEMENT, EV_SWEEP, EV_MSS = 1, 2, 4, 8, 16, 32
+EV_WICK, EV_CANDLE, EV_VOLUME, EV_DISPLACEMENT, EV_SWEEP, EV_MSS  = 1, 2, 4, 8, 16, 32
 EV_NAMES = [(EV_WICK, "wick"), (EV_CANDLE, "candle"), (EV_VOLUME, "volume"),
             (EV_DISPLACEMENT, "displacement"), (EV_SWEEP, "sweep"), (EV_MSS, "ltf-MSS")]
 EV_COUNT = 6
-
-
 def ev_list(mask: int) -> str:
     s = "+".join(n for b, n in EV_NAMES if mask & b)
     return s if s else "none"

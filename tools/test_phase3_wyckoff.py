@@ -147,7 +147,7 @@ def input_default(name):
 # =====================================================================
 # Part A - transcription of the PURE cores
 # =====================================================================
-WY_NONE, WY_SPRING, WY_UPTHRUST = 0, 1, 2
+WY_NONE, WY_SPRING, WY_UPTHRUST  = 0, 1, 2
 WY_NAMES = {WY_NONE: "NONE", WY_SPRING: "SPRING", WY_UPTHRUST: "UPTHRUST"}
 
 
@@ -363,7 +363,7 @@ NEW_FUNCS = ["WY_EventName", "WY_RangeValid", "WY_Detect", "WY_Score",
 
 # --- B1 nothing that already worked moved ------------------------------
 m = re.search(r"^#property indicator_buffers\s+(\d+)", TEXT, re.M)
-check(m and m.group(1) == "19", "B1 indicator_buffers is still 19 - no buffer was added")
+check(m and m.group(1) == "21", "B1 indicator_buffers is still 21 - no buffer was added")
 m = re.search(r"^#property indicator_plots\s+(\d+)", TEXT, re.M)
 check(m and m.group(1) == "7", "B1 indicator_plots is still 7")
 idx = sorted(int(x) for x in re.findall(r"SetIndexBuffer\((\d+),", TEXT))

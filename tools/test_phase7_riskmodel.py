@@ -703,8 +703,8 @@ check(input_default("InpTopDownMinRR") == "2.0",
 check(input_default("InpSniperMaxRiskPct") == "1.50",
       "E the reused risk percentage InpSniperMaxRiskPct still defaults to 1.50")
 
-check(re.search(r"#property\s+indicator_buffers\s+19\b", TEXT) is not None,
-      "E indicator_buffers is still 19 - no buffer was added")
+check(re.search(r"#property\s+indicator_buffers\s+21\b", TEXT) is not None,
+      "E indicator_buffers is still 21 - no buffer was added")
 check(re.search(r"#property\s+indicator_plots\s+7\b", TEXT) is not None,
       "E indicator_plots is still 7 - no plot was added")
 

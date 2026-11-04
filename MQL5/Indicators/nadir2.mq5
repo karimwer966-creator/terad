@@ -624,7 +624,7 @@
 // #property version and the banner now use this release's value (v6.6.14).
 #define QSMC_VERSION_TEXT "v6.6.14"
 #property indicator_chart_window
-#property indicator_buffers 19   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (SigLog, INDICATOR_CALCULATIONS)
+#property indicator_buffers 21   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
 //+------------------------------------------------------------------+
 //| v6.6.0 SIGNAL ARBITRATION LAYER                                  |

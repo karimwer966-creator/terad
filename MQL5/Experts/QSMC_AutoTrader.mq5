@@ -1952,39 +1952,43 @@ int OnInit()
    else if((fill&SYMBOL_FILLING_IOC)!=0) g_trade.SetTypeFilling(ORDER_FILLING_IOC);
    else                                  g_trade.SetTypeFilling(ORDER_FILLING_RETURN);
 
+   g_handle=iCustom(_Symbol,_Period,InpIndicatorName);
    // v6.6.14 hotfix: error 4802 almost always means nadir2.ex5 is NOT in
-   // MQL5/Indicators/ (which is where iCustom looks for short names). Try
-   // several canonical paths before giving up, and print the terminal's
-   // MQL5/Indicators directory and a Files-folder listing so the operator
-   // can see exactly where MT5 is searching.
-   string try_paths[]={InpIndicatorName,
-                       "nadir2",
-                       "Indicators\\nadir2",
-                       "..\\Indicators\\nadir2",
-                       TerminalInfoString(TERMINAL_DATA_PATH)+"\\MQL5\\Indicators\\nadir2.ex5",
-                       ""};
-   int last_err=0;
-   for(int pi=0;pi<ArraySize(try_paths)-1;pi++)
+   // MQL5/Indicators/ (where iCustom resolves short names). If the default
+   // call fails, try a small number of canonical fallbacks before giving up,
+   // and print the MT5 search directory so the operator has one concrete F7
+   // action rather than a vague error.
+   if(g_handle==INVALID_HANDLE)
      {
-      ResetLastError();
-      g_handle=iCustom(_Symbol,_Period,try_paths[pi]);
-      if(g_handle!=INVALID_HANDLE)
+      int last_err=GetLastError();
+      string try_paths[]={"nadir2",
+                          "Indicators\\nadir2",
+                          "..\\Indicators\\nadir2",
+                          TerminalInfoString(TERMINAL_DATA_PATH)+"\\MQL5\\Indicators\\nadir2.ex5"};
+      for(int pi=0;pi<ArraySize(try_paths);pi++)
         {
-         if(pi>0)
-            Print("[QSMC_AT] indicator loaded via path '",try_paths[pi],"' (InpIndicatorName='",InpIndicatorName,"' failed); consider setting InpIndicatorName to 'nadir2'");
-         break;
+         ResetLastError();
+         int h=iCustom(_Symbol,_Period,try_paths[pi]);
+         if(h!=INVALID_HANDLE)
+           {
+            g_handle=h;
+            Print("[QSMC_AT] indicator loaded via path '",try_paths[pi],
+                  "' (InpIndicatorName='",InpIndicatorName,"' failed with error ",
+                  IntegerToString(last_err),"); consider setting InpIndicatorName='nadir2'");
+            break;
+           }
+         last_err=GetLastError();
         }
-      last_err=GetLastError();
      }
    if(g_handle==INVALID_HANDLE)
      {
+      int last_err=GetLastError();
       string ind_dir=TerminalInfoString(TERMINAL_DATA_PATH)+"\\MQL5\\Indicators";
-      string common_dir=TerminalInfoString(TERMINAL_COMMONDATA_PATH)+"\\Files";
-      Print("[QSMC_AT] could not create `",InpIndicatorName,"` iCustom handle. Last error ",
-            IntegerToString(last_err)," (4802 = INDICATOR_CANNOT_CREATE / ex5 not found).");
-      Print("[QSMC_AT] MT5 is searching for ",InpIndicatorName,".ex5 inside: ",ind_dir);
-      Print("[QSMC_AT] ACTION: open MetaEditor -> Navigator -> Indicators -> right-click nadir2 -> Modify -> press F7. The compiled nadir2.ex5 MUST land in ",ind_dir);
-      Print("[QSMC_AT] Common Files directory: ",common_dir," (not the indicator location, ignore for iCustom)");
+      Print("[QSMC_AT] could not create `",InpIndicatorName,
+            "` iCustom handle. Last error ",IntegerToString(last_err),
+            " (4802 = INDICATOR_CANNOT_CREATE / nadir2.ex5 not found).");
+      Print("[QSMC_AT] MT5 searches for ",InpIndicatorName,".ex5 in: ",ind_dir);
+      Print("[QSMC_AT] ACTION: MetaEditor -> Navigator -> Indicators -> right-click nadir2 -> Modify -> F7 so nadir2.ex5 is (re)compiled into ",ind_dir);
       return INIT_FAILED;
      }
    Print("[QSMC_AT INSTANCE] authority=private iCustom DEFAULT inputs; visible Inputs NOT inherited. Default input hash and diagnostics: [QSMC_INSTANCE], ABI v2, no legacy fallback.");
