@@ -116,7 +116,7 @@
 //|  and checked by tools/test_diag_bridge.py.                        |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
-#property version   "6.614"
+#property version   "6.615"
 #property description "Companion execution EA for the QSMC indicator. Ships inert; no strategy claim."
 #property strict
 
@@ -130,7 +130,7 @@
 #define QSMC_BUF_CORE_TP1    10
 #define QSMC_BUF_CORE_TP2    11
 #define QSMC_BUF_CORE_TP3    12
-// v6.6.14 (H6): per-closed-bar verdict code buffers - authoritative when the
+// v6.6.15 (H6): per-closed-bar verdict code buffers - authoritative when the
 // GlobalVariable DIAG bridge cannot match an instance (custom inputs, multiple
 // charts). 0.0 means "not yet written" (compatibility: older indicator builds
 // never write these buffers, so they stay 0 and we fall back to GV).
@@ -1287,14 +1287,14 @@ string DiagCodeText(const int code)
 // One suffix for every heartbeat exit path, so an early return (no handle, no
 // history, still warming up) still carries the indicator's own verdict instead
 // of leaving the operator with half the answer.
-// v6.6.14 (H6): read the CORE verdict from buffer 19 when available, fall back
+// v6.6.15 (H6): read the CORE verdict from buffer 19 when available, fall back
 // to GlobalVariables. Buffer verdict is per-bar (chronological) on the closed
 // bar; buffer 0.0 means the attached indicator build does not publish it.
 double ReadCoreVerdictFromBuffer()
   {
    if(g_handle==INVALID_HANDLE) return -1.0;
    double v[];
-   ArraySetAsSeries(v,true);                                  // v6.6.14: dynamic array to avoid static-array warning
+   ArraySetAsSeries(v,true);                                  // v6.6.15: dynamic array to avoid static-array warning
    int got=CopyBuffer(g_handle,QSMC_BUF_CORE_VCODE,1,1,v);   // shift 1 = last closed
    if(got!=1) return -1.0;
    if(!MathIsValidNumber(v[0]) || v[0]==0.0) return -1.0;
@@ -1953,7 +1953,7 @@ int OnInit()
    else                                  g_trade.SetTypeFilling(ORDER_FILLING_RETURN);
 
    g_handle=iCustom(_Symbol,_Period,InpIndicatorName);
-   // v6.6.14 hotfix: error 4802 almost always means nadir2.ex5 is NOT in
+   // v6.6.15 hotfix: error 4802 almost always means nadir2.ex5 is NOT in
    // MQL5/Indicators/ (where iCustom resolves short names). If the default
    // call fails, try a small number of canonical fallbacks before giving up,
    // and print the MT5 search directory so the operator has one concrete F7
@@ -1998,7 +1998,7 @@ int OnInit()
    g_day_index=-1;
    DayGuardUpdate();
 
-   Print("[QSMC_AT] QSMC v6.614 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
+   Print("[QSMC_AT] QSMC v6.615 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",

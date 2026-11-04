@@ -366,12 +366,12 @@ check(inputs == 583, "G nadir2.mq5 has 583 input lines (538 + 10 RS1 + 10 GS1 + 
       "got %d" % inputs)
 check(TEXT.count("{") == TEXT.count("}"),
       "G braces balance (%d/%d)" % (TEXT.count("{"), TEXT.count("}")))
-check(TEXT.count("{") == 3597, "G brace count is the pinned 3594",
+check(TEXT.count("{") == 3597, "G brace count is the pinned 3597",
       "got %d" % TEXT.count("{"))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43454,
-      "G the file is 43454 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43497,
+      "G the file is 43497 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check(len(re.findall(r"(?m)^#include", TEXT)) == 6
       and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT

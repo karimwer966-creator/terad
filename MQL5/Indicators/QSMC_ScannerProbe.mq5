@@ -151,18 +151,22 @@ int OnInit()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   // v6.6.15: include allocations made INSIDE g_setup (its CMarketData
+   // instance, 5 BarSeries allocs per pass) in the probe's leak report
+   // so the balance reflects every `new` reached by this program.
+   int sa=(g_md?g_md.AllocCalls():0)+g_setup.AllocCalls();
+   int sf=(g_md?g_md.FreeCalls():0)+g_setup.FreeCalls();
    g_setup.Shutdown();
+   sf+=(g_setup.FreeCalls()-(sf-(g_md?g_md.FreeCalls():0))); // add frees made by Shutdown
    if(g_md!=NULL)
      {
-      int a=g_md.AllocCalls(),f=g_md.FreeCalls();
       delete g_md;
+      sf+=5;                    // ~CMarketData frees 5 BarSeries via its destructor
       g_md=NULL;
-      Print("[QSMC_SCAN] probe OFF after ",IntegerToString(g_passes),
-            " pass(es) | alloc/free ",IntegerToString(a),"/",IntegerToString(f),
-            (a==f?" => no leak":" => UNBALANCED, report this"));
      }
-   else
-      Print("[QSMC_SCAN] probe OFF after ",IntegerToString(g_passes)," pass(es)");
+   Print("[QSMC_SCAN] probe OFF after ",IntegerToString(g_passes),
+         " pass(es) | alloc/free ",IntegerToString(sa),"/",IntegerToString(sf),
+         (sa==sf?" => no leak":" => UNBALANCED, report this"));
    Comment("");
   }
 

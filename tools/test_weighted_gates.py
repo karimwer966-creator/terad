@@ -148,10 +148,10 @@ check(0 < END - DEF <= 90,
       "a gate that grows into a second engine is how the chain got opaque")
 RB = body(DEF, END)
 
-V_DATA = 40101
-V_SPREAD = 40107
-V_NEWS = 40112
-FIRST_LEG = None
+V_DATA = 40158
+V_SPREAD = 40164
+V_NEWS = 40171
+FIRST_LEG = 40177
 check("!c.valid || c.direction==0 || c.bar_time<=0 || c.closed_index<0" in body(V_DATA, V_DATA + 6),
       "C veto 1 is invalid candidate data (L%d)" % V_DATA,
       "L%d is %r" % (V_DATA, line_at(V_DATA).strip()[:80]))
@@ -236,7 +236,7 @@ check("below InpWGMinScore " in low and '"- WAIT";' in low.replace("\n", "")
       "D a candidate below the minimum is reported as WAIT with the threshold named",
       low.strip()[:90])
 check("missed: " in low, "D the WAIT text lists what was missed")
-PUB = None
+PUB = 40207
 check("PUBLISH " in body(PUB, END) and "a weighted confluence count, not a probability"
       in body(PUB, END),
       "D the success text says PUBLISH and states the score is a confluence "
@@ -258,7 +258,7 @@ check(not re.search(r"\b\d{3,5}\.\d+\b", RB),
 check("TimeCurrent()" not in RB, "E no wall-clock read: the decision is bar-bound")
 
 # ---------------------------------------------------------------- F. wiring
-OI1, OI2 = 14521, 14528
+OI1, OI2 = 14568, 14575
 check("if(InpUseWeightedGates &&" in line_at(OI1)
       and "InpWGWeightAlignment+InpWGWeightRoom!=100" in line_at(OI1 + 2),
       "E OnInit checks the five-weight sum at L%d-L%d" % (OI1, OI1 + 2),
@@ -274,7 +274,7 @@ check("InpWGMinScore<0 || InpWGMinScore>100" in oi2
       and "return INIT_PARAMETERS_INCORRECT;" in oi2,
       "E an out-of-range InpWGMinScore also refuses (L%d)" % OI2, oi2.strip()[:80])
 
-GS_DECL, GS_TERN = 6172, 6182
+GS_DECL, GS_TERN = 40236, 40250
 check('string gs_why="";' in line_at(GS_DECL),
       "F the why-buffer is declared once before the candidate loop (L%d)" % GS_DECL,
       "L%d is %r" % (GS_DECL, line_at(GS_DECL).strip()[:70]))
@@ -295,7 +295,7 @@ check("AlertChannelsFor(c,ap,apush,asnd)" in sel
       "and de-duplication, not evidence", sel.strip()[:100])
 check(sel.count("InpUseWeightedGates") == 0,
       "F the hard gates are not inside the flag's scope")
-WIN = None
+WIN = 40266
 wb = body(WIN, WIN + 8)
 check("if(InpUseWeightedGates)" in line_at(WIN)
       and "WeightedGateAllows(best_alert,bar_time,wfinal)" in wb,
@@ -303,7 +303,7 @@ check("if(InpUseWeightedGates)" in line_at(WIN)
       "not whichever the loop tested last (L%d)" % WIN, wb.strip()[:90])
 check("no candidate reached the weighted gate - WAIT" in wb,
       "F when nothing published, the display says so instead of showing a stale reason")
-TIP = 32048
+TIP = 32084
 check('"Weighted gate: "+(g_wgate_why==""?"none":g_wgate_why)' in line_at(TIP),
       "F the tooltip carries the gate's own why-text at L%d" % TIP,
       "L%d is %r" % (TIP, line_at(TIP).strip()[:90]))
@@ -350,11 +350,11 @@ check(all(l.strip().startswith("//") for l in LINES if "OrderSend" in l),
 inputs = len(re.findall(r"(?m)^input\s", TEXT))
 check(inputs == 583, "G nadir2.mq5 has 583 input lines (548 + 10 GS1 + 16 SC1 + 9 OBS1)",
       "got %d" % inputs)
-check(TEXT.count("{") == TEXT.count("}") == 3594,
-      "G braces balance at the pinned 3594",
+check(TEXT.count("{") == TEXT.count("}") == 3597,
+      "G braces balance at the pinned 3597",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43454,
-      "G the file is 43454 lines: insertions only, no scratch rewrite",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43497,
+      "G the file is 43497 lines: insertions only, no scratch rewrite",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
