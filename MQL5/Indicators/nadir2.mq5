@@ -35718,10 +35718,18 @@ void ZRE_TestSeries(double &h[],double &l[])
 {
    ArrayResize(h,60);
    ArrayResize(l,60);
+   // v6.6.14 hotfix: the H5 safety filter (QA_FilterCandidates) rejects zones
+   // whose midpoint lies outside [history_low,history_high] before it applies
+   // the distance/lifetime gates. The synthetic series must therefore span the
+   // full price range exercised by the self-test (VAL@90 .. POC+FVG@121),
+   // otherwise the rank-and-cap / born-window / deterministic-order assertions
+   // wipe their own candidates on a live-chart-shaped history window. A single
+   // 85..122 box is enough: QA_FilterCandidates uses [low,high] as the
+   // "symbol closed history range", not any per-bar close.
    for(int k=0;k<60;k++)
    {
-      h[k]=111.0;
-      l[k]=110.0;
+      h[k]=122.0;
+      l[k]=85.0;
    }
    l[20]=100.5;                      // episode 1
    l[40]=100.6;                      // episode 2 (bars 40-41 are one run)
@@ -38176,10 +38184,10 @@ string RXN_SuppressionText(const SRxnEvidence &e,const SRxnParams &p)
    // taken. The text now names the failure, the direction that is refused and the
    // evidence, in that order.
    if(e.outcome==(int)RXN_OC_BREAKOUT)
-      return "NO "+dir+" TRADE - "+role+" FAILED: price was accepted beyond the far edge for "+
+      return "NO "+dir+" TRADE - "+role+" ACCEPTED / BREAKOUT: price was accepted beyond the far edge for "+
              IntegerToString(e.accept_bars)+" consecutive closed bars and the zone was not reclaimed";
    if(e.outcome==(int)RXN_OC_ACCEPTANCE)
-      return "NO "+dir+" TRADE - "+role+" FAILED: price closed inside/beyond the zone and did not "+
+      return "NO "+dir+" TRADE - "+role+" ACCEPTED: price closed inside/beyond the zone and did not "+
              "reclaim it (acceptance THROUGH the level, not a hold)";
    if(e.conflicted)
       return (e.suppression_reason!="" ? e.suppression_reason :
