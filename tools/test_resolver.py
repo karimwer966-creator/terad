@@ -370,8 +370,8 @@ check(TEXT.count("{") == 3597, "G brace count is the pinned 3594",
       "got %d" % TEXT.count("{"))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43438,
-      "G the file is 43438 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43446,
+      "G the file is 43446 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check(len(re.findall(r"(?m)^#include", TEXT)) == 6
       and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT

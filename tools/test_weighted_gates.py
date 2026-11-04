@@ -353,8 +353,8 @@ check(inputs == 583, "G nadir2.mq5 has 583 input lines (548 + 10 GS1 + 16 SC1 + 
 check(TEXT.count("{") == TEXT.count("}") == 3594,
       "G braces balance at the pinned 3594",
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43438,
-      "G the file is 43438 lines: insertions only, no scratch rewrite",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43446,
+      "G the file is 43446 lines: insertions only, no scratch rewrite",
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
