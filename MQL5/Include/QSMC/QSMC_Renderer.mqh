@@ -12,7 +12,7 @@
 //|  keeps them apart by an ATR-scaled vertical offset. It never      |
 //|  deletes an object it did not create.                             |
 //|                                                                   |
-//|  COMPLEXITY: O(1) per draw; Clear() is O(objects) once per Deinit. |
+//|  COMPLEXITY: O(1) per draw; Clear()/census scan 5 owned slots.     |
 //+------------------------------------------------------------------+
 #ifndef __QSMC_RENDERER_MQH__
 #define __QSMC_RENDERER_MQH__
@@ -49,6 +49,26 @@ public:
    int               Created() const { return m_created; }
    int               Deleted() const { return m_deleted; }
 
+   // The layer owns exactly these five stable names. Counting ObjectFind after
+   // cleanup is authoritative even when the host's prefix sweep deleted a
+   // primary object before ClearPrimary() ran (created/deleted are lifetime
+   // counters, not a live-object census).
+   string            OwnedName(const int slot) const
+     {
+      if(slot==0) return QSMC_ARB_PFX+"MARKET_DIRECTION";
+      if(slot==1) return QSMC_ARB_PFX+"PRIMARY_ARROW";
+      if(slot==2) return QSMC_ARB_PFX+"PRIMARY_L1";
+      if(slot==3) return QSMC_ARB_PFX+"PRIMARY_L2";
+      return QSMC_ARB_PFX+"SUPPRESSED";
+     }
+   int               OwnedAlive() const
+     {
+      if(!m_enabled) return 0;
+      int n=0;
+      for(int i=0;i<5;i++) if(ObjectFind(m_chart,OwnedName(i))>=0) n++;
+      return n;
+     }
+
    void              Init(const long chart_id,const int subwin,const bool enabled)
      { m_chart=chart_id; m_subwin=subwin; m_enabled=enabled; }
 
@@ -58,12 +78,10 @@ public:
      {
       if(!m_enabled) return 0;   // a private reader owns no chart objects
       int n=0;
-      int total=ObjectsTotal(m_chart,-1,-1);
-      for(int i=total-1;i>=0;i--)
+      for(int i=0;i<5;i++)
         {
-         string nm=ObjectName(m_chart,i,-1,-1);
-         if(StringFind(nm,QSMC_ARB_PFX)!=0) continue;
-         if(ObjectDelete(m_chart,nm)) { n++; m_deleted++; }
+         string nm=OwnedName(i);
+         if(ObjectFind(m_chart,nm)>=0 && ObjectDelete(m_chart,nm)) { n++; m_deleted++; }
         }
       return n;
      }
@@ -180,12 +198,11 @@ public:
 
    void              ClearPrimary()
      {
-      string names[3];
-      names[0]=QSMC_ARB_PFX+"PRIMARY_ARROW";
-      names[1]=QSMC_ARB_PFX+"PRIMARY_L1";
-      names[2]=QSMC_ARB_PFX+"PRIMARY_L2";
-      for(int i=0;i<3;i++)
-         if(ObjectFind(m_chart,names[i])>=0) { ObjectDelete(m_chart,names[i]); m_deleted++; }
+      for(int i=1;i<=3;i++)
+        {
+         string nm=OwnedName(i);
+         if(ObjectFind(m_chart,nm)>=0 && ObjectDelete(m_chart,nm)) m_deleted++;
+        }
      }
   };
 

@@ -458,7 +458,7 @@ public:
       // VISUAL instance already owns user-facing diagnostics). QSMC_SilentReader()
       // is forward-declared in nadir2.mq5 before this include.
       if(!QSMC_SilentReader())
-         Print("[QSMC_ARB] v6.6.19 arbitration layer ON | preset ",m_preset.EffectiveName(),
+         Print("[QSMC_ARB] v6.6.20 arbitration layer ON | preset ",m_preset.EffectiveName(),
                " | gates ",IntegerToString(m_arbiter.GateCount()),
                " | exec TF ",QSMC_TFName(m_exec_tf),
                " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"),
@@ -504,22 +504,21 @@ public:
    //--- Building text here therefore means '+' concatenation or StringFormat.
    string            LeakReport() const
      {
-      // v6.6.15: include chart objects in the balance check. Previously the
-      // verdict compared only market+gates alloc/free so chart objects 2/0
-      // produced "no leak" even though two ObjectCreate calls had no matching
-      // ObjectDelete. Each m_render.ObjectCreate increments m_created and each
-      // ObjectDelete increments m_deleted, so (m_created - m_deleted) is the
-      // number of chart objects still alive - add that as an imbalance.
+      // v6.6.20: created/deleted are lifetime counters. The host can delete a
+      // primary object during its prefix sweep before ClearPrimary() sees it,
+      // so subtraction used to report phantom survivors (e.g. 4/2 after a
+      // two-bar attach). Ask the renderer for the actual owned names still on
+      // the chart AFTER Clear(); that is the only valid live-object census.
       int a=m_md.AllocCalls()+m_arbiter.AllocCalls();
       int f=m_md.FreeCalls()+m_arbiter.FreeCalls();
-      int live_chart=m_render.Created()-m_render.Deleted();
-      string s=StringFormat("alloc/free: market %d/%d | gates %d/%d | chart objects created/deleted %d/%d",
+      int live_chart=m_render.OwnedAlive();
+      string s=StringFormat("alloc/free: market %d/%d | gates %d/%d | chart objects created/deleted %d/%d | owned remaining %d",
                             m_md.AllocCalls(),m_md.FreeCalls(),
                             m_arbiter.AllocCalls(),m_arbiter.FreeCalls(),
-                            m_render.Created(),m_render.Deleted());
+                            m_render.Created(),m_render.Deleted(),live_chart);
       if(a==f && live_chart==0) s+=" => no leak";
       else if(a==f && live_chart>0)
-         s+=StringFormat(" => chart objects still alive (%d) - harmless if this is a startup re-init",live_chart);
+         s+=StringFormat(" => chart objects still owned (%d) - inspect ObjectDelete failures/chart ownership",live_chart);
       else s+=StringFormat(" => LEAK (alloc %d vs free %d, chart live %d)",a,f,live_chart);
       return s;
      }

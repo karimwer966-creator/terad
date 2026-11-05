@@ -37,8 +37,9 @@ void QA_FilterCandidates(SZRECand &cands[],const SZREContext &ctx,const double &
       string why=QSMC_ZoneRangeReason(cands[i].lo,cands[i].hi,ctx.close_px,low,high,ctx.atr,age,lifetime,distance);
       if(why!="")
       {
-         if(UD_LogAllows("ZONE_REJECT|"+cands[i].tokens+"|"+why))
-            Print("[QSMC_ZONE_REJECT] symbol=", _Symbol," tf=",EnumToString((ENUM_TIMEFRAMES)_Period),
+         if(!QSMC_IsReaderSilent() &&
+            UD_LogAllows("ZONE_REJECT|"+cands[i].tokens+"|"+why))
+            Print("[QSMC_ZONE_REJECT] role=",EnumToString(g_instance_role)," symbol=", _Symbol," tf=",EnumToString((ENUM_TIMEFRAMES)_Period),
                   " source=",cands[i].tokens," created=",
                   (born>=0 && born<=ctx.closed && ArraySize(t)>born && t[born]>0
                      ? TimeToString(t[born])

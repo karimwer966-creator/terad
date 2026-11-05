@@ -48,6 +48,7 @@ jobs:
         run: |
           python3 tools/test_comment_integrity.py 2>&1 | tee out/comment_integrity.log
           python3 tools/test_tick_performance.py 2>&1 | tee out/tick_performance.log
+          python3 tools/test_runtime_diagnostics.py 2>&1 | tee out/runtime_diagnostics.log
 
       # One switch for all seven modules, and no per-tick object churn. Both
       # opt-in, both default false; this pins every gate and tooltip guard that

@@ -626,8 +626,9 @@ check("PA_Clear();" in init_seg, "C MR_Clear sits with the other module resets i
 _st = TEXT.find("MR_SelfTest(mtee_fail)")
 check("InpMTEERunSelfTest" in TEXT[max(0, _st - 7000):_st],
       "C MR_SelfTest is gated by the existing InpMTEERunSelfTest switch")
-check('Print(">>> ",QSMC_VERSION_TEXT," Mean-reversion / momentum self-test: PASS (9/9)");' in TEXT,
-      "C the self-test result uses the existing version-tagged log format")
+check('QSMC_InitPass(" Mean-reversion / momentum self-test: PASS (9/9)");' in TEXT and
+      'if(!QSMC_IsReaderSilent()) Print(">>> ",QSMC_VERSION_TEXT,message);' in TEXT,
+      "C the self-test result uses the version-tagged visual-only PASS helper")
 
 # The optional handle must not change whether the indicator loads.
 macd_blk = TEXT[TEXT.find("if(InpMRUseMACD)"):TEXT.find("if(InpMRUseMACD)") + 900]
@@ -700,8 +701,8 @@ check(code_only.count("int closed=ArraySize(g_buf_c)-2;") == 2,
       "lived in a dead function deleted in doc 11.14)")
 check(code_only.count("int closed=g_rates_total-2;") == 8,
       "D all 8 replay-path closed-bar sites are unchanged")
-check(TEXT.count('#property version   "6.619"') == 1, "D the version property is 6.619 (tick/UI performance release)")
-check(TEXT.count('"v6.6.19"') >= 1, "D the version text is v6.6.19 (tick/UI performance release)")
+check(TEXT.count('#property version   "6.620"') == 1, "D the version property is 6.620 (runtime-log hotfix)")
+check(TEXT.count('"v6.6.20"') >= 1, "D the version text is v6.6.20 (runtime-log hotfix)")
 check(len(re.findall(r'(?m)^#property indicator_buffers\s+21\b', TEXT)) == 1,
       "D indicator_buffers is still 21 - no buffer was appended")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,

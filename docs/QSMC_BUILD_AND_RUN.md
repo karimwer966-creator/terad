@@ -1,4 +1,4 @@
-# QSMC v6.6.19 — BUILD, RUN, VERIFY
+# QSMC v6.6.20 — BUILD, RUN, VERIFY
 
 Operational guide for `nadir2.mq5` + the `MQL5/Include/QSMC` arbitration layer.
 Design and root-cause analysis live in `docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md`;
@@ -37,7 +37,7 @@ v6.6.2: literal hygiene + the CI gate).
    `QSMC_Scanners.mqh` يُترجم فعلًا — قبل v6.6.3 لم يكن لهذا الملف أي مضيف.
 4. في MT5: `Navigator` ← `Indicators` ← `nadir2` اسحبه على مخطط M5/M15.
 5. راجع تبويب `Experts`/`Journal`: السطر الأول يجب أن يكون
-   `[QSMC_ARB] v6.6.19 arbitration layer ON | preset …`.
+   `[QSMC_ARB] v6.6.20 arbitration layer ON | preset …`.
 6. للاختبار الذاتي: اسحب `QSMC_ArbiterTest` (Scripts) على أي مخطط —
    النتيجة المطلوبة `RESULT: 45 passed, 0 failed` (includes quant, structure, and zone-scoring assertions).
 7. للتحقق بدون MT5 (من الطرفية، داخل المستودع):
@@ -56,6 +56,31 @@ here`، ويظهر جدول `top setups by EVIDENCE SCORE` مع قائمة «not
 
 **زر الإيقاف:** `InpArbEnabled = false` → الطبقة تصبح معطّلة تمامًا ويتصرف
 المؤشر مثل v6.5.5 (بدون إعادة تجميع، بدون تغيير في لوحة العرض).
+
+### v6.6.20 — runtime-log review and diagnostic truthfulness
+
+This hotfix follows the supplied MT5 startup/shutdown excerpt. It changes
+diagnostics and object-cleanup accounting only; the closed-bar signal model,
+exported buffers, retry bounds, fallback policy and EA execution contract are
+unchanged.
+
+* The startup banner says `LIVE MARKET | ANALYSIS ONLY (no orders)` instead of
+  `LIVE TRADING`. The legacy `InpRealTimeZones` input is explicitly marked
+  inert; the real calculation cadence is `InpUpdateEveryTick`, while zone and
+  signal authority remains closed-bar.
+* The EA-reader role is detected before informational banners. Duplicate
+  reader PASS/banner/stop text is suppressed, but the deterministic self-tests
+  still run and FAIL/handle/input/data warnings remain visible.
+* Sniper copy waits now print the actual retry bound, terminal error and
+  `BarsCalculated` count where available, identify the instance role, and print
+  a `READY` recovery line. The existing bounded retry/partial-data policy is
+  not relaxed or tightened by this wording change.
+* Routine `[QSMC_ZONE_REJECT]` diagnostics are visual-only; the rejection itself
+  still applies to both instances.
+* The arbitration leak verdict counts the five owned object names still on the
+  chart after cleanup. Lifetime `created/deleted` counters are still printed,
+  but no longer infer phantom survivors when the host sweep deleted an object
+  first. See `docs/QSMC_RUNTIME_LOG_REVIEW_AR.md`.
 
 ### v6.6.19 — tick/UI performance and the Bid-line complaint
 
@@ -116,7 +141,7 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 ├─ Indicators\QSMC_ScannerProbe.mq5      <- PART C Phase 7 scanner host (v6.6.3)
 ├─ Scripts\QSMC_ArbiterTest.mq5         <- deterministic self-test harness
 ├─ Experts\KLJ_DataFeeder.mq5           <- optional CSV data feeder (PART C)
-└─ Experts\QSMC_AutoTrader.mq5          <- v6.6.19 execution companion (opt-in, inert)
+└─ Experts\QSMC_AutoTrader.mq5          <- v6.6.20 execution companion (opt-in, inert)
 ```
 
 The two `Experts` files are separate programs, and only one of them can trade:
@@ -189,7 +214,7 @@ its host is ever removed). It is not a type checker: a clean run still needs F7.
 3. Journal must show, in this order:
 
 ```
-[QSMC_ARB] v6.6.19 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
+[QSMC_ARB] v6.6.20 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
              | exec TF M15 | tactical may confirm: NO (informational only)
              | on XAUUSD M15
 ```

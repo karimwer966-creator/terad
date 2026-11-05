@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the QSMC v6.6.19 production install ZIP.
+"""Build the QSMC v6.6.20 production install ZIP.
 
 The ZIP is a Data-Folder layout, not a compiled release: it contains .mq5/.mqh
 sources and presets. MetaEditor F7 is still required on the target terminal.
@@ -19,7 +19,7 @@ import zipfile
 from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VERSION = "v6.6.19"
+VERSION = "v6.6.20"
 OUT_DIR = os.path.join(ROOT, "release")
 STAGE = os.path.join(ROOT, "out", "package_stage")
 
@@ -83,14 +83,15 @@ def main():
         "MQL5/Experts/QSMC_AutoTrader.mq5",
         "MQL5/Experts/KLJ_DataFeeder.mq5",
         "INSTALL_AR.md",
-        "presets/QSMC_v6.6.19_production_chart.set",
-        "presets/QSMC_AutoTrader_v6.6.19_PRODUCTION_SAFE.set",
-        "presets/QSMC_v6.6.19_latency_diagnosis.set",
+        "presets/QSMC_v6.6.20_production_chart.set",
+        "presets/QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set",
+        "presets/QSMC_v6.6.20_latency_diagnosis.set",
     ]
     inc = os.path.join(ROOT, "MQL5", "Include", "QSMC")
     files += ["MQL5/Include/QSMC/" + f for f in sorted(os.listdir(inc)) if f.endswith(".mqh")]
     for doc in ("QSMC_BUILD_AND_RUN.md", "QSMC_GO_LIVE_RUNBOOK.md", "QSMC_PRODUCTION_CHECKLIST.md",
-                "QSMC_AUTOTRADER.md", "QSMC_WHY_NO_TRADES.md", "QSMC_CHART_READING_AR.md"):
+                "QSMC_AUTOTRADER.md", "QSMC_WHY_NO_TRADES.md", "QSMC_CHART_READING_AR.md",
+                "QSMC_RUNTIME_LOG_REVIEW_AR.md"):
         rel = "docs/" + doc
         if os.path.isfile(os.path.join(ROOT, rel)):
             files.append(rel)
