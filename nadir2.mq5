@@ -14494,7 +14494,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       InpMaxStructuresKeep<1 || InpMaxLiquidityKeep<1 || InpMaxFVGKeep<1 ||
       InpMaxZonesKeep<1 || InpSweepToStructureMaxBars<1 || InpMinRightConfirmBars<1 ||
       InpMaxStopATR<=0.0 || InpMinRR1<=0.0 || InpHTFStructureFractalN<1 ||
-      InpMaxCausalEventsKeep<32 || InpAnchorSearchBars<1 || InpCausalDisplacementBodyATR<=0.0 ||
+      InpMaxCausalEventsKeep<0 || InpAnchorSearchBars<1 || InpCausalDisplacementBodyATR<=0.0 ||
       InpReplayAuditEveryBars<0 || InpEquilibriumBufferATR<0.0 || InpRetestMaxDistanceATR<0.0 || InpSLBufferATR<0.0 ||
       InpAsianStart<0 || InpAsianStart>23 || InpAsianEnd<0 || InpAsianEnd>23 ||
       InpLondonStart<0 || InpLondonStart>23 || InpLondonEnd<0 || InpLondonEnd>23 ||
@@ -14535,7 +14535,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       else if(InpMaxStopATR<=0.0) bad="InpMaxStopATR";
       else if(InpMinRR1<=0.0) bad="InpMinRR1";
       else if(InpHTFStructureFractalN<1) bad="InpHTFStructureFractalN";
-      else if(InpMaxCausalEventsKeep<32) bad="InpMaxCausalEventsKeep";
+      else if(InpMaxCausalEventsKeep<0) bad="InpMaxCausalEventsKeep (must be >= 0; 0 = unlimited)";
       else if(InpAnchorSearchBars<1) bad="InpAnchorSearchBars";
       else if(InpCausalDisplacementBodyATR<=0.0) bad="InpCausalDisplacementBodyATR";
       else if(InpReplayAuditEveryBars<0) bad="InpReplayAuditEveryBars";
