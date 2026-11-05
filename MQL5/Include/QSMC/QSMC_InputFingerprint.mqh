@@ -498,7 +498,7 @@ void QA_InputHashes(uint &actual,uint &defaults)
       QSMC_AddInputHash(a,"InpShowGateAudit",IntegerToString((long)(InpShowGateAudit)));
       QSMC_AddInputHash(d,"InpShowGateAudit",IntegerToString((long)(true)));
       QSMC_AddInputHash(a,"InpGateAuditLogEveryBars",IntegerToString((long)(InpGateAuditLogEveryBars)));
-      QSMC_AddInputHash(d,"InpGateAuditLogEveryBars",IntegerToString((long)(0)));
+      QSMC_AddInputHash(d,"InpGateAuditLogEveryBars",IntegerToString((long)(25)));
       QSMC_AddInputHash(a,"InpRealTimeZones",IntegerToString((long)(InpRealTimeZones)));
       QSMC_AddInputHash(d,"InpRealTimeZones",IntegerToString((long)(true)));
       QSMC_AddInputHash(a,"InpUpdateEveryTick",IntegerToString((long)(InpUpdateEveryTick)));
@@ -578,7 +578,7 @@ void QA_InputHashes(uint &actual,uint &defaults)
       QSMC_AddInputHash(a,"InpLabelFontSize",IntegerToString((long)(InpLabelFontSize)));
       QSMC_AddInputHash(d,"InpLabelFontSize",IntegerToString((long)(0)));
       QSMC_AddInputHash(a,"InpMaxChartObjects",IntegerToString((long)(InpMaxChartObjects)));
-      QSMC_AddInputHash(d,"InpMaxChartObjects",IntegerToString((long)(0)));
+      QSMC_AddInputHash(d,"InpMaxChartObjects",IntegerToString((long)(500)));
       QSMC_AddInputHash(a,"InpMaxZonesPerSide",IntegerToString((long)(InpMaxZonesPerSide)));
       QSMC_AddInputHash(d,"InpMaxZonesPerSide",IntegerToString((long)(5)));
       QSMC_AddInputHash(a,"InpDeclutterMode",IntegerToString((long)(InpDeclutterMode)));

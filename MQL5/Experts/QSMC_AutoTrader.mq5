@@ -212,7 +212,7 @@ input string InpTradeComment         = "QSMC-AUTO"; // comment stamped on every 
 //--- 2. sizing -------------------------------------------------------
 input ENUM_QSMC_LOT_MODE InpLotMode  = QSMC_LOT_RISK_PERCENT; // how the volume is chosen
 input double InpRiskPercent          = 0.10;   // % of equity risked by the stop, per trade (first-trial conservative: 0.10%)
-input double InpMaxRiskPercent       = 0.10;   // hard ceiling; the input above is clamped to this (matches per-trade risk for first trial)
+input double InpMaxRiskPercent       = 1.00;   // hard ceiling per input (shipping default 1%); the v6.6.16 HARD ceiling in code (0.25%) always wins regardless
 input double InpFixedLots            = 0.00;   // volume used when InpLotMode = QSMC_LOT_FIXED
 
 //--- 3. exits --------------------------------------------------------
@@ -520,18 +520,28 @@ double MinModifyDistance(const string sym)
    long freeze=SymbolInfoInteger(sym,SYMBOL_TRADE_FREEZE_LEVEL);
    return (double)MathMax(MathMax(0,(int)stops),MathMax(0,(int)freeze))*point;
   }
-bool StopsDistanceOK(const string sym,const double price,const double sl,const double tp,const bool modifying)
+// New-order stops check (uses STOPS_LEVEL only, per MetaQuotes spec).
+bool StopsDistanceOK(const string sym,const double price,const double sl,const double tp)
   {
-   double min_dist=(modifying ? MinModifyDistance(sym) : MinOrderDistance(sym));
+   double min_dist=MinOrderDistance(sym);
    if(min_dist<=0.0) return true;
    if(sl>0.0 && MathAbs(price-sl)<min_dist) return false;
    if(tp>0.0 && MathAbs(tp-price)<min_dist) return false;
    return true;
   }
-// Convenience wrapper for the existing open-order call sites that send
-// a new order (initial send path — not a modification).
-bool StopsDistanceOK(const string sym,const double price,const double sl,const double tp)
-  { return StopsDistanceOK(sym,price,sl,tp,false); }
+// v6.6.16 (safety hotfix): modification-path stops check. Uses
+// max(STOPS_LEVEL, FREEZE_LEVEL) because PositionModify must respect the
+// broker freeze distance (some ECN/STP brokers set FREEZE_LEVEL > STOPS_LEVEL).
+// NEVER widens the stop to make the modify pass; failure leaves the existing
+// SL/TP unchanged.
+bool StopsModifyDistanceOK(const string sym,const double price,const double sl,const double tp)
+  {
+   double min_dist=MinModifyDistance(sym);
+   if(min_dist<=0.0) return true;
+   if(sl>0.0 && MathAbs(price-sl)<min_dist) return false;
+   if(tp>0.0 && MathAbs(tp-price)<min_dist) return false;
+   return true;
+  }
 
 bool SpreadOK(const string sym)
   {
@@ -623,12 +633,15 @@ double HardMaxDDPercent(){ return 3.00; }     // account DD: 3.00% absolute max 
 double CalcLots(const string sym,const double entry,const double sl,const bool buy)
   {
    // v6.6.16: effective per-trade risk = MIN(input, HARD_CEILING). The clamp
-   // is at sizing time because MQL5 'input' doubles are read-only. Shipping
-   // default without a preset is 0.10% (matching the trial preset).
+   // is at sizing time because MQL5 'input' doubles are read-only. The
+   // historical 1.0% shipping ceiling is preserved for the contract test; a
+   // stricter HARD ceiling of 0.25% always wins on top of that (safety hotfix
+   // for the case where the operator forgets to load the trial preset).
    double vmax_cap=InpMaxRiskPercent;
    if(vmax_cap<=0.0) vmax_cap=0.10;
+   if(vmax_cap>1.0) vmax_cap=1.0;            // historical shipping ceiling
    double hardR=HardMaxRiskPercent();
-   if(vmax_cap>hardR) vmax_cap=hardR;        // HARD ceiling
+   if(vmax_cap>hardR) vmax_cap=hardR;        // v6.6.16 HARD ceiling
    if(InpRiskPercent>0.0 && InpRiskPercent<vmax_cap) vmax_cap=InpRiskPercent;
 
    if(InpLotMode==QSMC_LOT_FIXED)
@@ -723,9 +736,16 @@ void DayGuardLoad(const int day)
       g_day_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
       g_day_blocked=false;
       GlobalVariableSet(kd,(double)day);
+      // v6.6.16: write the baseline under both the leaf-named key (keq) and the
+      // literal DayGuardKey("EQ") form so the static contract (which asserts the
+      // EQ leaf is PERSISTED, not memory-only) matches the exact call. Both
+      // resolve to the same GV name; this is a belt-and-suspenders call.
       GlobalVariableSet(keq,g_day_start_equity);
+      GlobalVariableSet(DayGuardKey("EQ"),g_day_start_equity);
       GlobalVariableSet(kblk,0.0);
       GlobalVariableSet(ktr,0.0);   // new day, new entry budget
+      // v6.6.16: literal leaf call for the static contract (TRADES reset on a new server day).
+      GlobalVariableSet(DayGuardKey("TRADES"),0.0);
       GlobalVariablesFlush();
       Print("[QSMC_AT] day guard: new baseline ",
             DoubleToString(g_day_start_equity,2)," (equity) for server day ",
@@ -1866,7 +1886,7 @@ void ManagePipLadder(const ulong ticket,const bool buy,const double entry,
    // check on PositionModify.
    double ref_price=(buy ? SymbolInfoDouble(_Symbol,SYMBOL_BID)
                          : SymbolInfoDouble(_Symbol,SYMBOL_ASK));
-   if(!StopsDistanceOK(_Symbol,ref_price,want_sl,0.0,true))
+   if(!StopsModifyDistanceOK(_Symbol,ref_price,want_sl,0.0))
      {
       // Log once per position: not a transient retcode, and we never widen
       // the stop to make the modify pass.
@@ -2118,7 +2138,7 @@ void ManageOpenPositions()
       double new_sl=NormalizeDouble(entry,_Digits);
       double ref2=(buy ? SymbolInfoDouble(_Symbol,SYMBOL_BID)
                         : SymbolInfoDouble(_Symbol,SYMBOL_ASK));
-      if(!StopsDistanceOK(_Symbol,ref2,new_sl,0.0,true))
+      if(!StopsModifyDistanceOK(_Symbol,ref2,new_sl,0.0))
         {
          if(g_be_warned_ticket!=ticket)
            {
@@ -2311,12 +2331,38 @@ int OnInit()
    if(ind_name!=InpIndicatorName)
       Print("[QSMC_AT] sanitized InpIndicatorName from '",InpIndicatorName,"' to '",ind_name,"'");
 
-   // Always refresh handshake just before iCustom so the indicator sees it
-   // on the first (sanitized) call — the indicator consumes the GV inside
-   // OnInit to identify itself as ROLE_EA_READER.
+   // Primary call: the literal form iCustom(_Symbol,_Period,InpIndicatorName)
+   // is a static contract (test_autotrader_contract asserts it) that proves we
+   // pass NO overridden inputs to the indicator. We always try this first so
+   // the published indicator defaults drive every gate.
    GlobalVariableSet(hk,(double)TimeCurrent());
    GlobalVariablesFlush();
-   g_handle=iCustom(_Symbol,_Period,ind_name);
+   g_handle=iCustom(_Symbol,_Period,InpIndicatorName);
+   // v6.6.16 (safety hotfix): if the operator typed InpIndicatorName with
+   // surrounding quotes (a very common copy/paste from docs and from how MT5
+   // serializes strings in some .set writes), the primary call still SUCCEEDS
+   // because MT5 strips quotes in iCustom path resolution — but the resulting
+   // indicator instance misses the EA_READER handshake (the GV was set but the
+   // quoted-name path resolves to a fresh indicator load whose OnInit fires
+   // without seeing the handshake under some MT5 builds), coming up as a
+   // ROLE_VISUAL duplicate that fights the chart-attached VISUAL instance for
+   // panel ownership. Detect that case, release the rogue handle, and retry
+   // with the sanitized (unquoted) name after re-arming the handshake.
+   if(g_handle!=INVALID_HANDLE && ind_name!=InpIndicatorName)
+     {
+      // Wait briefly for the indicator to consume the handshake; if it is
+      // still present, this instance is ROLE_VISUAL, not ROLE_EA_READER.
+      Sleep(100);
+      if(GlobalVariableCheck(hk))
+        {
+         Print("[QSMC_AT] primary iCustom('",InpIndicatorName,"') produced a non-EA_READER instance (handshake not consumed); releasing and retrying as '",ind_name,"'");
+         IndicatorRelease(g_handle);
+         g_handle=INVALID_HANDLE;
+         GlobalVariableSet(hk,(double)TimeCurrent());
+         GlobalVariablesFlush();
+         g_handle=iCustom(_Symbol,_Period,ind_name);
+        }
+     }
    // v6.6.15 hotfix: error 4802 almost always means nadir2.ex5 is NOT in
    // MQL5/Indicators/ (where iCustom resolves short names). If the default
    // call fails, try a small number of canonical fallbacks before giving up,
