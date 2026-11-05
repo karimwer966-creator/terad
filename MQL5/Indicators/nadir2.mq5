@@ -14489,6 +14489,36 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          DoubleToString(g_instrument.volume_step,8),"/",
          DoubleToString(g_instrument.volume_max,8));
 
+   // v6.6.15: auto-heal the iCustom init race. When the EA calls
+   // iCustom(_Symbol,_Period,name) with NO arguments, MT5 passes the
+   // indicator's compiled defaults, but on the very first OnInit of the
+   // very first attach in a terminal session some double inputs arrive
+   // as 0.0 before the input manifest is deserialized. We have seen
+   // this manifest as InpMaxCausalEventsKeep=0,
+   // InpCausalDisplacementBodyATR=0 (and potentially other ATR/threshold
+   // doubles) in sequence, each time blocking OnInit and forcing a
+   // second attach which succeeds. Rather than reject init and make the
+   // operator re-attach, silently clamp non-positive threshold doubles
+   // to their DOCUMENTED DEFAULTS (values right there in the input
+   // declarations above) and print a note. This ONLY runs when the
+   // incoming value is 0 or negative; operator-set positive values are
+   // never touched. Integer inputs (EMAFast, bars limits, session
+   // hours) still hard-fail because 0 is a legitimate value for some of
+   // those inputs (session start/end = 0 means "off").
+   string auto_heal="";
+#define QSMC_HEAL_DBL(var,dft,nm) if(var<=0.0){ var=dft; auto_heal+=nm+"->"+DoubleToString(dft,2)+" "; }
+   QSMC_HEAL_DBL(InpMaxStopATR,4.0,"InpMaxStopATR");
+   QSMC_HEAL_DBL(InpMinRR1,1.5,"InpMinRR1");
+   QSMC_HEAL_DBL(InpCausalDisplacementBodyATR,0.35,"InpCausalDisplacementBodyATR");
+   QSMC_HEAL_DBL(InpEquilibriumBufferATR,0.15,"InpEquilibriumBufferATR");
+   // InpRetestMaxDistanceATR and InpSLBufferATR can be 0 meaningfully
+   // (off / no buffer), so do not clamp them.
+   if(InpProximityFilter && InpProximityMaxATR<=0.0){ InpProximityMaxATR=0.35; auto_heal+="InpProximityMaxATR->0.35 "; }
+   if(InpChaseFilter && InpChaseMaxATR<=0.0){ InpChaseMaxATR=1.50; auto_heal+="InpChaseMaxATR->1.50 "; }
+   if(auto_heal!="")
+      Print("[QSMC_INIT] auto-healed iCustom race defaults: ",auto_heal,
+            " (first iCustom OnInit before input deserialization; harmless)");
+
    if(InpEMAFast<1 || InpEMASlow<2 || InpATRPeriod<1 || InpADXPeriod<1 ||
       InpSwingFractalN<1 || InpLiquidityFractalN<1 || InpMaxStrongOB<1 ||
       InpMaxStructuresKeep<1 || InpMaxLiquidityKeep<1 || InpMaxFVGKeep<1 ||
