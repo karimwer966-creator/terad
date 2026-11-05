@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.616"
+#property version   "6.619"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -622,7 +622,7 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.15).
-#define QSMC_VERSION_TEXT "v6.6.16"
+#define QSMC_VERSION_TEXT "v6.6.19"
 #property indicator_chart_window
 #property indicator_buffers 21   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -1212,7 +1212,7 @@ input double InpTopDownMinRR = 2.0;          // hard R:R floor (policy: never be
 input int    InpTopDownMinConfluences = 3;   // minimum distinct-timeframe confluences to publish
 input bool   InpTopDownRequireSession = false; // additionally require an active killzone
 input int    InpTopDownProfileBars = 120;    // H1 bars for the value-area (POC/VAH/VAL) profile
-input bool   InpShowPerfMeter = false;   // INERT: nothing reads it (doc 11.14)
+input bool   InpShowPerfMeter = false;   // visual-only rate-limited OnCalculate timing report (30 s); never gates entries
 input bool InpDetectJudas = true;
 input int InpMaxSpreadPts = 60;
 input bool InpIgnoreSpreadOffHours = false;
@@ -2212,10 +2212,84 @@ int g_dash_h=110;
 // pacing; signal logic never reads these). GetTickCount() ms; 0 = draw now.
 uint g_ui_last_dash_ms=0;
 uint g_ui_last_lbl_ms=0;
+uint g_ui_last_live_ms=0;
+bool g_qsmc_paint_slice=true;
+#define QSMC_LIVE_UI_COALESCE_MS 100
+// Optional timing counters (InpShowPerfMeter). They measure this indicator's
+// OnCalculate body only; broker RTT and terminal paint time are NOT included.
+long g_perf_calc_sum_us=0,g_perf_calc_max_us=0,g_perf_bar_max_us=0;
+int  g_perf_calc_samples=0;
+uint g_perf_report_ms=0;
    // PURGED (doc 11.14): g_ui_last_panel_ms had no reader and no writer.
 #define QSMC_UI_COALESCE_MS 300
    // PURGED (doc 11.14): g_pmi_panel_y had no reader and no writer.
    // PURGED (doc 11.14): g_pmi_panel_height had no reader and no writer.
+// One display authority: the private EA reader calculates buffers but never paints.
+// g_qsmc_paint_slice is a per-OnCalculate presentation budget, not a signal gate.
+bool QSMC_PaintAllowed()
+{
+   return (g_qsmc_silent_reader==0 && g_qsmc_paint_slice);
+}
+
+// Property writes invalidate the terminal chart even when the value is unchanged.
+// Closed-bar objects are repainted from immutable state, so compare before writing.
+void QSMC_SetObjInt(const string name,const ENUM_OBJECT_PROPERTY_INTEGER prop,const long value,const int modifier=0)
+{
+   if(ObjectGetInteger(0,name,prop,modifier)!=value)
+      ObjectSetInteger(0,name,prop,modifier,value);
+}
+void QSMC_SetObjDbl(const string name,const ENUM_OBJECT_PROPERTY_DOUBLE prop,const double value,const int modifier=0)
+{
+   if(ObjectGetDouble(0,name,prop,modifier)!=value)
+      ObjectSetDouble(0,name,prop,modifier,value);
+}
+void QSMC_SetObjStr(const string name,const ENUM_OBJECT_PROPERTY_STRING prop,const string value,const int modifier=0)
+{
+   if(ObjectGetString(0,name,prop,modifier)!=value)
+      ObjectSetString(0,name,prop,modifier,value);
+}
+void QSMC_MoveObj(const string name,const int point,const datetime tm,const double price)
+{
+   if(ObjectGetInteger(0,name,OBJPROP_TIME,point)!=(long)tm ||
+      ObjectGetDouble(0,name,OBJPROP_PRICE,point)!=price)
+      ObjectMove(0,name,point,tm,price);
+}
+
+void QSMC_PerfReset()
+{
+   g_perf_calc_sum_us=0; g_perf_calc_max_us=0; g_perf_bar_max_us=0;
+   g_perf_calc_samples=0; g_perf_report_ms=0;
+}
+
+void QSMC_PerfObserve(const long elapsed_us,const bool bar_slice)
+{
+   if(!InpShowPerfMeter || QSMC_IsReaderSilent()) return;
+   g_perf_calc_samples++;
+   g_perf_calc_sum_us+=elapsed_us;
+   if(elapsed_us>g_perf_calc_max_us) g_perf_calc_max_us=elapsed_us;
+   if(bar_slice && elapsed_us>g_perf_bar_max_us) g_perf_bar_max_us=elapsed_us;
+   uint now=GetTickCount();
+   if(g_perf_report_ms==0){ g_perf_report_ms=now; return; }
+   if(now-g_perf_report_ms<30000) return;
+   long quote_age_ms=-1;
+   MqlTick tick;
+   if(SymbolInfoTick(_Symbol,tick) && tick.time_msc>0)
+   {
+      datetime server=TimeTradeServer();
+      if(server>0) quote_age_ms=(long)server*1000-(long)tick.time_msc;
+   }
+   long avg=(g_perf_calc_samples>0 ? g_perf_calc_sum_us/g_perf_calc_samples : 0);
+   Print("[QSMC_PERF] role=VISUAL symbol=",_Symbol," tf=",EnumToString((ENUM_TIMEFRAMES)_Period),
+         " | samples=",g_perf_calc_samples," calc_avg_us=",avg,
+         " calc_max_us=",g_perf_calc_max_us," bar_max_us=",g_perf_bar_max_us,
+         " | owned_objects=",QSMC_CountOwnedObjects(),
+         " | quote_age_ms=",quote_age_ms," (server clock; <0=clock skew)",
+         " | live_ui_coalesce_ms=",QSMC_LIVE_UI_COALESCE_MS,
+         " | measures OnCalculate only, not broker RTT or terminal paint");
+   g_perf_calc_sum_us=0; g_perf_calc_max_us=0; g_perf_bar_max_us=0;
+   g_perf_calc_samples=0; g_perf_report_ms=now;
+}
+
 datetime g_visual_audit_last_time=0;
 int g_visual_audit_runs=0;
 int g_visual_audit_failures=0;
@@ -5685,8 +5759,11 @@ void ClearMTFExecutionEntry()
    // cleared with it. A caller that wants to KEEP the reason (because the clear
    // was itself the decision) re-publishes it immediately after this call.
    g_mtf_entry_authority=""; g_mtf_entry_blocked=false; g_mtf_entry_src=-1;
-   ObjectDelete(0,PFX+"MTF_ENTRY"); ObjectDelete(0,PFX+"MTF_ENTRY_TX");
-   EntryMarkClearTactical();   // v6.4.1: no orphan arrow/preview mark when the signal lapses
+   if(QSMC_PaintAllowed())
+     {
+      ObjectDelete(0,PFX+"MTF_ENTRY"); ObjectDelete(0,PFX+"MTF_ENTRY_TX");
+     }
+   EntryMarkClearTactical();   // buffer clear every tick; object clear obeys the paint slice
 }
 void UpdateMTFExecutionEntry()
 {
@@ -5844,7 +5921,7 @@ void UpdateMTFExecutionEntry()
    }
    // v6.4.1: the tactical entry is now an arrow + a graded label, not only an
    // HLINE plus a text label that the collision resolver could hide outright.
-   if(InpShowMTFExecutionEntry && QA_LabelAlive(trigger,trigger,trigger_time,auth==TAC_AUTH_BLOCKED || auth==TAC_AUTH_STALE))
+   if(QSMC_PaintAllowed() && InpShowMTFExecutionEntry && QA_LabelAlive(trigger,trigger,trigger_time,auth==TAC_AUTH_BLOCKED || auth==TAC_AUTH_STALE))
    {
       string exect=TimeToString(et,TIME_MINUTES);
       string line=PFX+"MTF_ENTRY";
@@ -5883,7 +5960,7 @@ void UpdateMTFExecutionEntry()
             EntryMarkObjectsFor(g_buf_t[ArraySize(g_buf_t)-1],2,bull,closed_confirm);   // tactical buffer slot stays on the last bar
       }
    }
-   else QA_ClearTacticalPaint();
+   else if(QSMC_PaintAllowed()) QA_ClearTacticalPaint();
    // v6.6.0: this block USED to call FireQuantAlert() directly. That was
    // the source of the reported alert storm: no zone, no reaction, no
    // room, no session and no data-quality check, plus a dedupe key that
@@ -7262,6 +7339,7 @@ void EntryMarkTactical(const bool buy,const bool confirmed,const double price)
    if(!InpShowTacticalEntries){ EntryMarkClearTactical(); return; }
    if(confirmed){ if(buy) BufEntryBuy0[k]=price; else BufEntrySell0[k]=price; }
    else         { if(buy) BufPrevBuy0[k]=price;  else BufPrevSell0[k]=price; }
+   if(!QSMC_PaintAllowed()) return;
    string nm=PFX+"MTF_MARK"+(buy?"_BUY":"_SELL")+(confirmed?"_C":"_P");
    double p=(buy ? g_buf_l[k] : g_buf_h[k]);
    double off=MathMax(2.0*_Point,InpEntryLabelATR*MathMax(g_atr,_Point));
@@ -7292,13 +7370,15 @@ void EntryMarkClearTactical()
    string names[4];
    names[0]=PFX+"MTF_MARK_BUY_C";  names[1]=PFX+"MTF_MARK_SELL_C";
    names[2]=PFX+"MTF_MARK_BUY_P";  names[3]=PFX+"MTF_MARK_SELL_P";
-   for(int i=0;i<4;i++) if(ObjectFind(0,names[i])>=0) ObjectDelete(0,names[i]);
+   if(QSMC_PaintAllowed())
+      for(int i=0;i<4;i++) if(ObjectFind(0,names[i])>=0) ObjectDelete(0,names[i]);
 }
 
 // Confirmed objects are keyed by source, side and bar time; live previews stay singletons.
 void EntryMarkObject(const string base,const int idx,const bool buy,const bool confirmed,
                      const bool force_delete=false)
 {
+   if(!QSMC_PaintAllowed()) return;
    if(idx<0 || idx>=ArraySize(g_buf_t)) return;
    string nm=PFX+"EMARK_"+base+(buy?"_BUY":"_SELL")+
              (confirmed ? "_C_"+IntegerToString((long)g_buf_t[idx]) : "_P");
@@ -7314,14 +7394,14 @@ void EntryMarkObject(const string base,const int idx,const bool buy,const bool c
    int code=(confirmed ? (buy?233:234) : (buy?108:109));   // wingdings: solid up/down vs diamond
    color  col=(confirmed ? (buy?clrLime:clrTomato) : (buy?clrAqua:clrMagenta));
    if(ObjectFind(0,nm)<0) ObjectCreate(0,nm,OBJ_ARROW,0,g_buf_t[idx],y);
-   ObjectMove(0,nm,0,g_buf_t[idx],y);
-   ObjectSetInteger(0,nm,OBJPROP_ARROWCODE,code);
-   ObjectSetInteger(0,nm,OBJPROP_ANCHOR,(buy?ANCHOR_TOP:ANCHOR_BOTTOM));
-   ObjectSetInteger(0,nm,OBJPROP_COLOR,col);
-   ObjectSetInteger(0,nm,OBJPROP_WIDTH,1);
-   ObjectSetInteger(0,nm,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,nm,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,nm,OBJPROP_BACK,false);
+   QSMC_MoveObj(nm,0,g_buf_t[idx],y);
+   QSMC_SetObjInt(nm,OBJPROP_ARROWCODE,code);
+   QSMC_SetObjInt(nm,OBJPROP_ANCHOR,(buy?ANCHOR_TOP:ANCHOR_BOTTOM));
+   QSMC_SetObjInt(nm,OBJPROP_COLOR,col);
+   QSMC_SetObjInt(nm,OBJPROP_WIDTH,1);
+   QSMC_SetObjInt(nm,OBJPROP_SELECTABLE,false);
+   QSMC_SetObjInt(nm,OBJPROP_HIDDEN,true);
+   QSMC_SetObjInt(nm,OBJPROP_BACK,false);
 }
 
 void EntryMarkObjectsFor(const datetime bar_time,const int src,const bool buy,const bool confirmed,
@@ -7335,6 +7415,7 @@ void EntryMarkObjectsFor(const datetime bar_time,const int src,const bool buy,co
 
 void EntryMarkDropObjectAt(const int idx,const string suffix)
 {
+   if(!QSMC_PaintAllowed()) return;
    if(idx<0 || idx>=ArraySize(g_buf_t)) return;
    string nm=PFX+"ENTLVL_"+IntegerToString((long)g_buf_t[idx])+"_"+suffix;
    if(ObjectFind(0,nm)>=0) ObjectDelete(0,nm);
@@ -7474,6 +7555,8 @@ void DrawEntrySignalVisuals(const int total,const bool is_new_bar)
       EntryMarkObjectsFor(g_buf_t[MathMin(pb,n-1)],0,g_active_setup.is_buy,false);
       string nm=PFX+"ENTRY_PREVIEW";
       double ep=g_active_setup.entry;
+      if(QSMC_PaintAllowed())
+        {
       if(ObjectFind(0,nm)<0) ObjectCreate(0,nm,OBJ_HLINE,0,0,ep);
       ObjectSetDouble(0,nm,OBJPROP_PRICE,ep);
       ObjectSetInteger(0,nm,OBJPROP_COLOR,clrAqua);
@@ -7481,13 +7564,14 @@ void DrawEntrySignalVisuals(const int total,const bool is_new_bar)
       ObjectSetInteger(0,nm,OBJPROP_WIDTH,1);
       ObjectSetInteger(0,nm,OBJPROP_SELECTABLE,false);
       ObjectSetInteger(0,nm,OBJPROP_BACK,true);
+        }
       DrawTextLabel(PFX+"ENTLVLPV",g_buf_t[MathMin(pb,n-1)],ep,
                     StringFormat("%s PREVIEW @ %.2f (live, non-authoritative)",
                                  g_active_setup.is_buy?"BUY":"SELL",ep),
                     clrAqua,g_active_setup.is_buy,8);
    }
-   else if(ObjectFind(0,PFX+"ENTRY_PREVIEW")>=0) ObjectDelete(0,PFX+"ENTRY_PREVIEW");
-   if(ObjectFind(0,PFX+"ENTLVLPV")>=0) ObjectDelete(0,PFX+"ENTLVLPV");
+   else if(QSMC_PaintAllowed() && ObjectFind(0,PFX+"ENTRY_PREVIEW")>=0) ObjectDelete(0,PFX+"ENTRY_PREVIEW");
+   if(QSMC_PaintAllowed() && ObjectFind(0,PFX+"ENTLVLPV")>=0) ObjectDelete(0,PFX+"ENTLVLPV");
 
    //--- CONFIRMED: redraw every still-known signal from its immutable bar
    if(!is_new_bar) return;
@@ -7756,6 +7840,7 @@ bool QSMC_DeclutterSelfTest(string &where)
 
 void SmartObjectCleanup(const bool isNewBar)
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!InpSmartObjectManagement) return;
 
    // v6.4.2 DECLUTTER: unbounded object growth is a real MT5 slowdown on a
@@ -7822,6 +7907,7 @@ void SmartObjectCleanup(const bool isNewBar)
 
 void PrepareDynamicRedraw()
 {
+   if(!QSMC_PaintAllowed()) return;
    // Index-based names become stale after array pruning.  Delete only the
    // dynamic categories, and only on a new bar, then redraw from masters.
    ObjectsDeleteAll(0,PFX+"ZRE_");   // v6.3.0: projections are redrawn by ZRE_Update
@@ -13284,8 +13370,8 @@ void PMI_Deinit()
    g_pmi_struct_dedupe_count=0;
    g_pmi_struct_dedupe_ready=false;
    PMI_CloseCSV();
-   ObjectsDeleteAll(0,PFX+"PMI_");
-   if(g_pmi_enabled)
+   if(!QSMC_IsReaderSilent()) ObjectsDeleteAll(0,PFX+"PMI_");
+   if(g_pmi_enabled && !QSMC_IsReaderSilent())
       Print("[PMI] shutdown | nodes allocated ",g_pmi_nodes_allocated,
             " freed ",g_pmi_nodes_freed," leaked ",(g_pmi_nodes_allocated-g_pmi_nodes_freed),
             " | builds ",g_pmi_builds,
@@ -14622,12 +14708,9 @@ arb.FinalizeBar(authoritative_pending || InpUnifiedDecision);
 int OnInit()
 {
 AlertDispatcherClear();
-// v6.6.0: create the one arbitration root. It is destroyed in OnDeinit.
-QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
-   // v6.1.3 (L5c): no object from a previous session / dashboard mode may
-   // survive underneath the fresh panels (they all share the QSMC_ prefix).
-   ObjectsDeleteAll(0,PFX);
-   g_lbl_count=0;
+   g_qsmc_paint_slice=true;
+   g_ui_last_dash_ms=0; g_ui_last_lbl_ms=0; g_ui_last_live_ms=0;
+   QSMC_PerfReset();
    // The compact Core panel is always visible; this flag controls only its
    // three hidden diagnostic rows (collapsed by default).
    g_dashboard_expanded=false;
@@ -14708,6 +14791,14 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
                               g_instance_owner_magic,_Symbol,
                               EnumToString((ENUM_TIMEFRAMES)_Period),
                               (long)g_instance_chart_id);
+   // Role is now known: a private reader must not wipe the visual chart,
+   // and the arbitration renderer is disabled for that reader.
+   if(!QSMC_IsReaderSilent())
+     {
+      ObjectsDeleteAll(0,PFX);
+      g_lbl_count=0;
+     }
+   QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
 
    // v6.6.15: auto-heal iCustom init-race zero defaults.
    // When the EA calls iCustom(_Symbol,_Period,name) with NO arguments,
@@ -14915,7 +15006,7 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    PlotIndexSetInteger(6,PLOT_ARROW,109); PlotIndexSetInteger(6,PLOT_ARROW_SHIFT, 3);
    // Minimal is display-only: hide the EMA/VWAP plots and legacy mark plots while
    // keeping all backing buffers/calculations intact for the engines.
-   if(InpDisplayMode==QSMC_MODE_MINIMAL)
+   if(InpDisplayMode==QSMC_MODE_MINIMAL || QSMC_IsReaderSilent())
       for(int p=0;p<7;p++) PlotIndexSetInteger(p,PLOT_DRAW_TYPE,DRAW_NONE);
    else
    {
@@ -15363,16 +15454,19 @@ void OnDeinit(const int reason)
 { g_instance_deinit_reason=reason;
   Print("[QSMC_INSTANCE] DEINIT reason=",IntegerToString(reason),
         " | INSTANCE_ID=",g_instance_id);
-  LV_Hide(); ObjectDelete(0,PFX+"CORE_CURRENT_STATE"); // owned display only
+  if(!QSMC_IsReaderSilent())
+    {
+     LV_Hide(); ObjectDelete(0,PFX+"CORE_CURRENT_STATE");
+    }
 QSMC_RootDestroy();   // v6.6.0: the arbitration root (RAII + leak report)
 IndicatorRelease(h_ema_fast); IndicatorRelease(h_ema_slow);
    IndicatorRelease(h_atr); IndicatorRelease(h_adx); IndicatorRelease(h_rsi);
    if(h_macd!=INVALID_HANDLE) { IndicatorRelease(h_macd); h_macd=INVALID_HANDLE; }  // AUDIT-MR1
-   ZRE_DeleteObjects();   // v6.3.0: every PFX+"ZRE_" object
-   RXN_DeleteObjects();   // v6.5.0: every PFX+"RXN_" object
-   ScenarioDeleteObjects(); // v6.5.0 DSE: every PFX+"SCN_" conditional-plan object
-   MTF_SniperZone_DeleteObjects(); // v6.5.2: every PFX+"SNIPER_" object
-   ObjectsDeleteAll(0,PFX+"SNIPER_");
+   if(!QSMC_IsReaderSilent())
+     {
+      ZRE_DeleteObjects(); RXN_DeleteObjects(); ScenarioDeleteObjects();
+      MTF_SniperZone_DeleteObjects(); ObjectsDeleteAll(0,PFX+"SNIPER_");
+     }
    for(int i=0;i<5;i++) IndicatorRelease(h_ema_mtf[i]);
    for(int s=0;s<SNIPER_TF_COUNT;s++)
    {
@@ -15385,8 +15479,11 @@ IndicatorRelease(h_ema_fast); IndicatorRelease(h_ema_slow);
    // the global object sweep, and print the memory/replay audit summary.
    PMI_Deinit();
    // Explicit panel cleanup, followed by the indicator-wide ownership sweep.
-   CoreDashboardDeleteObjects();
-   ObjectsDeleteAll(0,PFX);
+   if(!QSMC_IsReaderSilent())
+     {
+      CoreDashboardDeleteObjects();
+      ObjectsDeleteAll(0,PFX);
+     }
    Print("=========================================");
    Print(" Quantum SMC "+QSMC_VERSION_TEXT+" Stopped");
    Print(" Total Signals Generated: ",g_signal_count);
@@ -15397,6 +15494,7 @@ IndicatorRelease(h_ema_fast); IndicatorRelease(h_ema_slow);
 }
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
+   g_qsmc_paint_slice=true;   // explicit user/chart events are never throttled
    if(id==CHARTEVENT_OBJECT_CLICK)
    {
       // A single Core panel: click its title row to reveal/hide the detail rows.
@@ -15571,8 +15669,20 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // Copy to temporary arrays first; commit complete copies only. On exhaustion
    // mark an incomplete full buffer unavailable, or only the newly closed/live
    // tail for an incremental copy (leave older closed values unchanged).
-   bool full_indicators=(first_run || full_detection);
-   int  need=(full_indicators ? rates_total : MathMin(3,rates_total));
+   // A periodic causal replay is NOT a reason to recopy the whole indicator
+   // history: the aligned buffers already hold the older closed-bar values.
+   // Full copies are for attach/refresh, resize, or a history gap only.
+   bool indicator_full_copy=(prev_calculated==0 || g_last_rates_total==0 ||
+                             needResize || rates_total>g_last_rates_total+1);
+   bool full_indicators=(indicator_full_copy || full_detection);
+   // v6.6.19: copy the complete aligned history once per attach/rebuild so
+   // historical ATR/ADX/RSI readers keep their own causal values. Later bars
+   // copy only the changed tail (plus any history gap). The previous 2000-bar
+   // cap ran on EVERY new bar and left older slots unavailable while still
+   // paying a large repeated copy; it was neither cheap nor history-complete.
+   int tail_need=(int)MathMax(3,rates_total-g_last_rates_total+2);
+   if(tail_need>rates_total) tail_need=rates_total;
+   int  need=(indicator_full_copy ? rates_total : tail_need);
    double ta[],td[],tr[];
    int na=CopyBuffer(h_atr,0,0,need,ta);
    int nd=CopyBuffer(h_adx,0,0,need,td);
@@ -15602,24 +15712,29 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       }
    }
    else g_ind_copy_retries=0;
-   int from=(full_indicators ? 0 : rates_total-need);
+   // CopyBuffer(,0,0,need,ta) returns the MOST RECENT `need` bars
+   // (index 0 in ta[] is the forming bar); regardless of full-vs-incremental
+   // mode they belong at the TAIL of g_atr_buf/adx/rsi. Older slots stay 0
+   // and callers fall back to g_atr.
+   int from=rates_total-need;
+   if(from<0) from=0;
    for(int k=from;k<rates_total;k++)
    {
       int src=k-from;
       if(k<ArraySize(g_atr_buf))
       {
          if(atr_ok) g_atr_buf[k]=ta[src];
-         else if(full_indicators || k>=rates_total-2) g_atr_buf[k]=0.0;
+         else if(indicator_full_copy || k>=rates_total-2) g_atr_buf[k]=0.0;
       }
       if(k<ArraySize(g_adx_buf))
       {
          if(adx_ok) g_adx_buf[k]=td[src];
-         else if(full_indicators || k>=rates_total-2) g_adx_buf[k]=0.0;
+         else if(indicator_full_copy || k>=rates_total-2) g_adx_buf[k]=0.0;
       }
       if(k<ArraySize(g_rsi_buf))
       {
          if(rsi_ok) g_rsi_buf[k]=tr[src];
-         else if(full_indicators || k>=rates_total-2) g_rsi_buf[k]=0.0;
+         else if(indicator_full_copy || k>=rates_total-2) g_rsi_buf[k]=0.0;
       }
    }
 
@@ -15644,7 +15759,9 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // zero-initialised vector as though it were a measurement.
    MTF_RefreshAlignment(is_new_bar || detection_updated || prev_calculated==0);
 
-   FillEMAAndVWAP(rates_total,g_buf_o,g_buf_h,g_buf_l,g_buf_c,g_buf_t,g_buf_tv,full_indicators);
+   // EMA/VWAP have their own rollover-safe incremental path; do not rebuild
+   // their entire history merely because a new chart bar closed.
+   FillEMAAndVWAP(rates_total,g_buf_o,g_buf_h,g_buf_l,g_buf_c,g_buf_t,g_buf_tv,indicator_full_copy);
 
    if(useIncremental)
    {
@@ -15916,13 +16033,22 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       g_needs_full_rebuild=true;
    }
 
+   // v6.6.19 display coalescing: closed-bar work and live preview STATE still
+   // run on every tick; only chart-object writes wait for a 100 ms slice.
+   // A new bar/rebuild paints immediately. The EA reader never paints.
+   const uint paint_now=GetTickCount();
+   const bool paint_bar=(is_new_bar || detection_updated || prev_calculated==0);
+   g_qsmc_paint_slice=(!QSMC_IsReaderSilent() &&
+                       (paint_bar || paint_now-g_ui_last_live_ms>=QSMC_LIVE_UI_COALESCE_MS));
+   if(g_qsmc_paint_slice) g_ui_last_live_ms=paint_now;
+
    if(InpSmartObjectManagement) SmartObjectCleanup(is_new_bar);
 
-   bool needs_full_redraw=(is_new_bar || prev_calculated==0);
+   bool needs_full_redraw=paint_bar;
    if(needs_full_redraw)
    {
       if(InpSmartObjectManagement) PrepareDynamicRedraw();
-      else ObjectsDeleteAll(0,PFX);
+      else if(QSMC_PaintAllowed()) ObjectsDeleteAll(0,PFX);
 
       ResetVisualZoneRegistry();
       if(InpShowPremiumDiscount || InpShowFibonacci || InpShowOTE)
@@ -15965,14 +16091,14 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // Panels and label layout still refresh IMMEDIATELY on each new closed bar and
    // on first attach; between bars they refresh at ~QSMC_UI_COALESCE_MS cadence.
    // Signal logic is untouched: these only draw what the closed-bar state holds.
-   const uint ui_now=GetTickCount();
-   const bool ui_tick=(is_new_bar || prev_calculated==0);
-   bool ui_lbl_due  =(ui_tick || ui_now-g_ui_last_lbl_ms  >=QSMC_UI_COALESCE_MS);
+   const uint ui_now=paint_now;
+   const bool ui_tick=paint_bar;
+   bool ui_lbl_due  =(ui_tick || (g_qsmc_paint_slice && ui_now-g_ui_last_lbl_ms>=QSMC_UI_COALESCE_MS));
    if(ui_lbl_due){ ResolveChartLabelCollisions(); g_ui_last_lbl_ms=ui_now; }
 
    // The compact decision panel is rendered after the closed-bar context,
    // volume profile, ZRE and reaction layers have refreshed.
-   bool ui_dash_due=(ui_tick || ui_now-g_ui_last_dash_ms>=QSMC_UI_COALESCE_MS);
+   bool ui_dash_due=(ui_tick || (g_qsmc_paint_slice && ui_now-g_ui_last_dash_ms>=QSMC_UI_COALESCE_MS));
 
    if(InpUseRetestLifecycle && g_active_setup.active &&
       (g_active_setup.state==STATE_ARMED || g_active_setup.state==STATE_PREVIEW ||
@@ -15983,17 +16109,17 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       else
       {
          string name=PFX+"SETUPZONE";
-         if(ObjectFind(0,name)>=0)
+         if(QSMC_PaintAllowed() && ObjectFind(0,name)>=0)
          {
             datetime t2=g_buf_t[rates_total-1]+(datetime)(PeriodSeconds()*15);
-            ObjectMove(0,name,1,t2,g_active_setup.zone_bottom);
+            QSMC_MoveObj(name,1,t2,g_active_setup.zone_bottom);
          }
       }
    }
 
    // Explicit live entry marker: visually distinct from the authoritative
    // CONFIRMED trade signal and tied to the immutable setup entry price.
-   if(InpShowEntryPreview && InpUseRetestLifecycle && g_active_setup.active &&
+   if(QSMC_PaintAllowed() && InpShowEntryPreview && InpUseRetestLifecycle && g_active_setup.active &&
       g_active_setup.state==STATE_PREVIEW)
    {
       string epname=PFX+"ENTRY_PREVIEW";
@@ -16007,7 +16133,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       ObjectSetInteger(0,epname,OBJPROP_SELECTABLE,false);
       ObjectSetInteger(0,epname,OBJPROP_BACK,true);
    }
-   else
+   else if(QSMC_PaintAllowed())
    {
       string epname=PFX+"ENTRY_PREVIEW";
       if(ObjectFind(0,epname)>=0) ObjectDelete(0,epname);
@@ -16102,7 +16228,8 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    ScenarioUpdate(rates_total, is_new_bar || detection_updated || prev_calculated==0);
    // Phase 1 signal outcome log + hidden signal buffers: reads published
    // facts after the fact; never alters a setup, a journal or ZRE state.
-   SigLog_Update(rates_total,prev_calculated); QA_CoreDisplayRefresh(closed); QA_DrawCoreStatus();
+   SigLog_Update(rates_total,prev_calculated); QA_CoreDisplayRefresh(closed);
+   if(ui_dash_due) QA_DrawCoreStatus();
    // v6.6.10: publish the verdict of this closed bar for QSMC_AutoTrader.
    DiagPublishCoreState(closed);
    GateProfilePublish(closed);
@@ -16121,8 +16248,11 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // this pass has been drawn, so an owned text object without text is debris.
    if(ui_dash_due || ui_lbl_due) QSMC_PurgePlaceholderTextObjects();
 
+   g_qsmc_paint_slice=true;   // leave events/self-tests in their normal painting mode
+
    long perf_elapsed=(long)GetMicrosecondCount()-t0perf; // ulong; cast before the long EMA
    g_perf_calc_us=(g_perf_calc_us<=0 ? perf_elapsed : (g_perf_calc_us*7+perf_elapsed)/8);
+   QSMC_PerfObserve(perf_elapsed,paint_bar);
    return rates_total;
 }
 
@@ -18904,6 +19034,7 @@ int QSMC_DataHealthLevel()
 // The early-return path draws this instead of leaving a silent blank chart.
 void QSMC_DrawDataHealthBanner(const string reason)
 {
+   if(!QSMC_PaintAllowed()) return;
    string nm=PFX+"DH_BANNER";
    if(ObjectFind(0,nm)<0) ObjectCreate(0,nm,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,nm,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -23004,16 +23135,17 @@ void UpdateAnalyticalScalePlan(const int total)
 //--------------------------------------------------------------------
 void DrawScaleLevel(const string suffix,const double price,const color col,const string text)
 {
+   if(!QSMC_PaintAllowed()) return;
    if(price<=0.0) return;
    string name=PFX+"SCALE_"+suffix;
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_HLINE,0,0,price);
-   ObjectSetDouble(0,name,OBJPROP_PRICE,price);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,col);
-   ObjectSetInteger(0,name,OBJPROP_STYLE,STYLE_DASHDOT);
-   ObjectSetInteger(0,name,OBJPROP_WIDTH,1);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_BACK,true);
-   ObjectSetString(0,name,OBJPROP_TEXT,text);
+   QSMC_SetObjDbl(name,OBJPROP_PRICE,price);
+   QSMC_SetObjInt(name,OBJPROP_COLOR,col);
+   QSMC_SetObjInt(name,OBJPROP_STYLE,STYLE_DASHDOT);
+   QSMC_SetObjInt(name,OBJPROP_WIDTH,1);
+   QSMC_SetObjInt(name,OBJPROP_SELECTABLE,false);
+   QSMC_SetObjInt(name,OBJPROP_BACK,true);
+   QSMC_SetObjStr(name,OBJPROP_TEXT,text);
 }
 void CleanupScaleObjects()
 {
@@ -27586,18 +27718,19 @@ void DetectKillZones(const int total,const datetime &t[],const double &h[],const
 //====================================================================
 void DrawHLine(const string name,const double price,const color col,const string label,const int width=1)
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!QSMC_DisplayAllowsObject(name) || !QSMC_InVisualDistance(price))
    { if(ObjectFind(0,name)>=0) ObjectDelete(0,name); return; }
    if(ObjectFind(0,name)<0)
       ObjectCreate(0,name,OBJ_HLINE,0,0,price);
-   ObjectSetDouble(0,name,OBJPROP_PRICE,price);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,col);
-   ObjectSetInteger(0,name,OBJPROP_STYLE,STYLE_DOT);
-   ObjectSetInteger(0,name,OBJPROP_WIDTH,width);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_BACK,true);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-   ObjectSetString(0,name,OBJPROP_TEXT,label);
+   QSMC_SetObjDbl(name,OBJPROP_PRICE,price);
+   QSMC_SetObjInt(name,OBJPROP_COLOR,col);
+   QSMC_SetObjInt(name,OBJPROP_STYLE,STYLE_DOT);
+   QSMC_SetObjInt(name,OBJPROP_WIDTH,width);
+   QSMC_SetObjInt(name,OBJPROP_SELECTABLE,false);
+   QSMC_SetObjInt(name,OBJPROP_BACK,true);
+   QSMC_SetObjInt(name,OBJPROP_HIDDEN,true);
+   QSMC_SetObjStr(name,OBJPROP_TEXT,label);
 }
 int LabelFontPx(const int requested)
 {
@@ -27610,6 +27743,7 @@ int LabelFontPx(const int requested)
 
 void DrawTextLabel(const string name,const datetime tm,const double price,const string text,const color col,const bool above,const int font_size=8)
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!QSMC_DisplayAllowsObject(name) || !QSMC_InVisualDistance(price))
    { if(ObjectFind(0,name)>=0) ObjectDelete(0,name); return; }
    int label_font_size=LabelFontPx(font_size);
@@ -27617,16 +27751,16 @@ void DrawTextLabel(const string name,const datetime tm,const double price,const 
       ObjectCreate(0,name,OBJ_TEXT,0,tm,price);
    string old_label_text=ObjectGetString(0,name,OBJPROP_TEXT);
    if(old_label_text!=text) g_lbl_merge_dirty=true;
-   ObjectSetInteger(0,name,OBJPROP_TIME,tm);
-   ObjectSetDouble(0,name,OBJPROP_PRICE,price);
-   ObjectSetString(0,name,OBJPROP_TEXT,text);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,col);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,label_font_size);
-   ObjectSetString(0,name,OBJPROP_FONT,"Arial Black");
-   ObjectSetInteger(0,name,OBJPROP_ANCHOR,(above?ANCHOR_LOWER:ANCHOR_UPPER));
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,name,OBJPROP_TIMEFRAMES,OBJ_ALL_PERIODS);
+   QSMC_SetObjInt(name,OBJPROP_TIME,tm);
+   QSMC_SetObjDbl(name,OBJPROP_PRICE,price);
+   QSMC_SetObjStr(name,OBJPROP_TEXT,text);
+   QSMC_SetObjInt(name,OBJPROP_COLOR,col);
+   QSMC_SetObjInt(name,OBJPROP_FONTSIZE,label_font_size);
+   QSMC_SetObjStr(name,OBJPROP_FONT,"Arial Black");
+   QSMC_SetObjInt(name,OBJPROP_ANCHOR,(above?ANCHOR_LOWER:ANCHOR_UPPER));
+   QSMC_SetObjInt(name,OBJPROP_SELECTABLE,false);
+   QSMC_SetObjInt(name,OBJPROP_HIDDEN,true);
+   QSMC_SetObjInt(name,OBJPROP_TIMEFRAMES,OBJ_ALL_PERIODS);
    // v6.1.3 (L2): remember the desired anchor; the collision resolver may
    // move the drawn position but always starts again from this anchor.
    RegisterChartLabel(name,tm,price,above);
@@ -27636,39 +27770,49 @@ void DrawTextLabel(const string name,const datetime tm,const double price,const 
 }
 void DrawFibLine(const string name,const datetime t1,const datetime t2,const double price,const color col,const int style=STYLE_DOT,const int width=1)
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!QSMC_DisplayAllowsObject(name) || !QSMC_InVisualDistance(price))
    { if(ObjectFind(0,name)>=0) ObjectDelete(0,name); return; }
    if(ObjectFind(0,name)<0)
       ObjectCreate(0,name,OBJ_TREND,0,t1,price,t2,price);
-   ObjectMove(0,name,0,t1,price);
-   ObjectMove(0,name,1,t2,price);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,col);
-   ObjectSetInteger(0,name,OBJPROP_STYLE,style);
-   ObjectSetInteger(0,name,OBJPROP_WIDTH,width);
-   ObjectSetInteger(0,name,OBJPROP_RAY_RIGHT,false);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   if(ObjectGetInteger(0,name,OBJPROP_TIME,0)!=(long)t1 ||
+      ObjectGetDouble(0,name,OBJPROP_PRICE,0)!=price)
+      ObjectMove(0,name,0,t1,price);
+   if(ObjectGetInteger(0,name,OBJPROP_TIME,1)!=(long)t2 ||
+      ObjectGetDouble(0,name,OBJPROP_PRICE,1)!=price)
+      ObjectMove(0,name,1,t2,price);
+   QSMC_SetObjInt(name,OBJPROP_COLOR,col);
+   QSMC_SetObjInt(name,OBJPROP_STYLE,style);
+   QSMC_SetObjInt(name,OBJPROP_WIDTH,width);
+   QSMC_SetObjInt(name,OBJPROP_RAY_RIGHT,false);
+   QSMC_SetObjInt(name,OBJPROP_SELECTABLE,false);
+   QSMC_SetObjInt(name,OBJPROP_HIDDEN,true);
    if(StringFind(name,PFX+"PD_")==0) CheckVisualAnchorTime(name,t1,t2);
 }
 void DrawZoneBox(const string name,const datetime t1,const double p1,const datetime t2,const double p2,const color col,const string label,const int transparency=88)
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!QSMC_DisplayAllowsObject(name) || !QSMC_InVisualBand(MathMin(p1,p2),MathMax(p1,p2)))
    { if(ObjectFind(0,name)>=0) ObjectDelete(0,name); return; }
    if(ObjectFind(0,name)<0)
       ObjectCreate(0,name,OBJ_RECTANGLE,0,t1,p1,t2,p2);
-   ObjectMove(0,name,0,t1,p1);
-   ObjectMove(0,name,1,t2,p2);
+   if(ObjectGetInteger(0,name,OBJPROP_TIME,0)!=(long)t1 ||
+      ObjectGetDouble(0,name,OBJPROP_PRICE,0)!=p1)
+      ObjectMove(0,name,0,t1,p1);
+   if(ObjectGetInteger(0,name,OBJPROP_TIME,1)!=(long)t2 ||
+      ObjectGetDouble(0,name,OBJPROP_PRICE,1)!=p2)
+      ObjectMove(0,name,1,t2,p2);
    int tint_pct=(int)MathMax(8,MathMin(18,100-transparency));
    color display_col=(InpUltraCleanMode ? col : BlendAgainstChartBackground(col,tint_pct));
-   ObjectSetInteger(0,name,OBJPROP_COLOR,display_col);
+   QSMC_SetObjInt(name,OBJPROP_COLOR,display_col);
    // OBJ_RECTANGLE has no alpha blending. Use a real, chart-background
    // blended solid fill; Clean Mode leaves only a thin outline.
-   ObjectSetInteger(0,name,OBJPROP_FILL,!InpUltraCleanMode);
-   ObjectSetInteger(0,name,OBJPROP_BACK,true);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,name,OBJPROP_WIDTH,1);
-   ObjectSetString(0,name,OBJPROP_TEXT,label);
+   QSMC_SetObjInt(name,OBJPROP_FILL,!InpUltraCleanMode);
+   QSMC_SetObjInt(name,OBJPROP_BACK,true);
+   QSMC_SetObjInt(name,OBJPROP_SELECTABLE,false);
+   QSMC_SetObjInt(name,OBJPROP_HIDDEN,true);
+   QSMC_SetObjInt(name,OBJPROP_WIDTH,1);
+   QSMC_SetObjStr(name,OBJPROP_TEXT,label);
    if(StringFind(name,PFX+"PD_")==0 || StringFind(name,PFX+"SR_BAND_")==0)
       CheckVisualAnchorTime(name,t1,t2);
 }
@@ -27707,6 +27851,7 @@ bool DrawUniqueSMCZoneBox(const string name,const datetime t1,const double top,c
 //====================================================================
 void DrawZones()
 {
+   if(!QSMC_PaintAllowed()) return;
    // v6.4.2 DECLUTTER: cap demand and supply SEPARATELY (the audit asked for
    // "ShowOnlyNearestZones = 2 per side"), so a one-sided market cannot flood
    // the chart with ten identical supply boxes.
@@ -27732,6 +27877,7 @@ void DrawZones()
 }
 void DrawStructureAndOB()
 {
+   if(!QSMC_PaintAllowed()) return;
    // structure labels (confirmed only)
    int shown=0;
    for(int i=ArraySize(g_structures)-1;i>=0 && shown<InpMaxStructureShown;i--)
@@ -27768,6 +27914,7 @@ void DrawStructureAndOB()
 }
 void DrawBreakerZones()
 {
+   if(!QSMC_PaintAllowed()) return;
    for(int i=0;i<ArraySize(g_breakers);i++)
    {
       SBreaker bk=g_breakers[i];
@@ -27780,6 +27927,7 @@ void DrawBreakerZones()
 }
 void DrawFVGZones()
 {
+   if(!QSMC_PaintAllowed()) return;
    int shown=0;
    for(int i=ArraySize(g_fvgs)-1;i>=0 && shown<InpMaxFVGShown;i--)
    {
@@ -27795,6 +27943,7 @@ void DrawFVGZones()
 }
 void DrawLiquidityMarkers()
 {
+   if(!QSMC_PaintAllowed()) return;
    int shown=0;
    for(int i=ArraySize(g_liquidity)-1;i>=0 && shown<InpMaxLiquidityShown*2;i--)
    {
@@ -27817,6 +27966,7 @@ void DrawLiquidityMarkers()
 }
 void DrawKillZones()
 {
+   if(!QSMC_PaintAllowed()) return;
    for(int i=0;i<ArraySize(g_kill_zones);i++)
    {
       SKillZone kz=g_kill_zones[i];
@@ -27830,6 +27980,7 @@ void DrawKillZones()
 //====================================================================
 void DrawPremiumDiscount(const int total,const datetime &t[])
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!g_range.valid || total<3) return;
    int closed=total-2;
    string base="PD_";
@@ -27874,6 +28025,7 @@ void DrawPremiumDiscount(const int total,const datetime &t[])
 }
 void DrawProvisionalFractals(const int total,const datetime &t[],const double &h[],const double &l[])
 {
+   if(!QSMC_PaintAllowed()) return;
    ObjectsDeleteAll(0,PFX+"PROVH_");
    ObjectsDeleteAll(0,PFX+"PROVL_");
    if(!InpRealTimeFractal || InpUltraCleanMode || total<5) return;
@@ -27941,12 +28093,12 @@ void UpdateEarlyBreakPreview(const int total,const datetime &t[],const double &h
                         StringFormat("LIVE PREVIEW (NON-AUTHORITATIVE) | %s STRUCTURE LEVEL | candle forming",
                                      last.bullish?"BULLISH":"BEARISH"));
          DrawTextLabel(PFX+"EARLYBREAK",t[forming],last.price,eb_txt,clrAqua,true,8);
-         if(ObjectFind(0,PFX+"EARLYBREAK")>=0)
+         if(QSMC_PaintAllowed() && ObjectFind(0,PFX+"EARLYBREAK")>=0)
             ObjectSetString(0,PFX+"EARLYBREAK",OBJPROP_TOOLTIP,
                             "LIVE PREVIEW (NON-AUTHORITATIVE) | "+(last.bullish?"BULLISH":"BEARISH")+
                             " STRUCTURE LEVEL | candle forming - nothing is confirmed until the bar closes");
       }
-      else ObjectDelete(0,PFX+"EARLYBREAK");
+      else if(QSMC_PaintAllowed()) ObjectDelete(0,PFX+"EARLYBREAK");
       return;
    }
    if(bull_break || bear_break)
@@ -27967,12 +28119,12 @@ void UpdateEarlyBreakPreview(const int total,const datetime &t[],const double &h
                                       bull_break?"UP":"DN",g_early_break_structure_type));
          DrawTextLabel(PFX+"EARLYBREAK",t[forming],last.price,eb2_txt,
                        bull_break?clrAqua:clrMagenta,true,8);
-         if(ObjectFind(0,PFX+"EARLYBREAK")>=0)
+         if(QSMC_PaintAllowed() && ObjectFind(0,PFX+"EARLYBREAK")>=0)
             ObjectSetString(0,PFX+"EARLYBREAK",OBJPROP_TOOLTIP,
                             "LIVE PREVIEW (NON-AUTHORITATIVE) | EARLY BREAK "+(bull_break?"UP":"DN")+
                             " ("+g_early_break_structure_type+") - candle forming");
       }
-      else ObjectDelete(0,PFX+"EARLYBREAK");
+      else if(QSMC_PaintAllowed()) ObjectDelete(0,PFX+"EARLYBREAK");
       return;
    }
    // stale FAILED state decays after one bar
@@ -27988,7 +28140,7 @@ void UpdateEarlyBreakPreview(const int total,const datetime &t[],const double &h
               t[forming]-g_early_break_failed_time>PeriodSeconds()*10)
          g_early_break_status="";
    }
-   ObjectDelete(0,PFX+"EARLYBREAK");
+   if(QSMC_PaintAllowed()) ObjectDelete(0,PFX+"EARLYBREAK");
 }
 
 //====================================================================
@@ -28008,6 +28160,7 @@ bool D1HistoryAvailable()
 }
 void DrawPDHPDL()
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!InpShowPDHPDL) return;
    if(!D1HistoryAvailable()) return; // A9
    SPriorPeriodRef r;
@@ -28017,6 +28170,7 @@ void DrawPDHPDL()
 }
 void DrawPivotPoints()
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!InpShowPivots) return;
    if(!D1HistoryAvailable()) return; // A9
    SPriorPeriodRef r;
@@ -28036,6 +28190,7 @@ void DrawPivotPoints()
 }
 void DrawCamarilla()
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!InpShowCamarilla) return;
    if(!D1HistoryAvailable()) return; // A9
    SPriorPeriodRef r;
@@ -28055,6 +28210,7 @@ void DrawCamarilla()
 }
 void DrawSessionHighLow(const int total,const datetime &t[],const double &h[],const double &l[])
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!InpShowSessionHL) return;
    int closed=total-2;
    if(closed<10) return;
@@ -28566,6 +28722,7 @@ int AvoidTradeLevelKeepOut(int y,const int h,const bool push_down)
 // are data sources/annotations, not separate decision panels.
 void RedrawAllPanels()
 {
+   if(!QSMC_PaintAllowed()) return;
    if(InpShowAIDashboard && g_rates_total>0)
       DrawQuantumDashboard(g_rates_total,g_buf_c);
    else
@@ -28672,6 +28829,7 @@ string QSMC_StructureLabelToken(const string text)
 
 void QSMC_MergeNearbyChartLabels()
 {
+   if(!QSMC_PaintAllowed()) return;
    int gap=(int)MathMax(8,MathMin(40,InpLabelMinGapPx));
    int sec=PeriodSeconds();
    if(sec<=0) sec=60;
@@ -28731,6 +28889,7 @@ void QSMC_MergeNearbyChartLabels()
 
 void ResolveChartLabelCollisions()
 {
+   if(!QSMC_PaintAllowed()) return;
    CompactChartLabelRegistry();
    if(InpResolveLabelCollisions && g_lbl_merge_dirty)
    {
@@ -28842,6 +29001,7 @@ void ResolveChartLabelCollisions()
 
 void DrawBattleAnnotations(const int total,const datetime &t[],const double &o[],const double &h[],const double &l[],const double &c[],const long &tv[],const long &rv[])
 {
+   if(!QSMC_PaintAllowed()) return;
    ObjectsDeleteAll(0,PFX+"BATTLE_");
    if(!InpShowBattleAnnotations || total<8) return;
    int closed=total-2;
@@ -28872,6 +29032,7 @@ void DrawBattleAnnotations(const int total,const datetime &t[],const double &o[]
 //====================================================================
 void DrawSetupZone(const int total,const datetime &t[])
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!InpUseRetestLifecycle || !g_active_setup.active) return;
    string name=PFX+"SETUPZONE";
    datetime t1=g_active_setup.created_time;
@@ -28889,6 +29050,7 @@ void DrawSetupZone(const int total,const datetime &t[])
 }
 void DrawTradeBox()
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!g_trade_setup.valid) {ObjectDelete(0,PFX+"TRADEBOX"); return;}
    datetime t1=g_trade_setup.created_time;
    datetime t2=t1+(datetime)(PeriodSeconds()*20);
@@ -28903,6 +29065,7 @@ void DrawTradeBox()
 }
 void DrawTradeLevels(const int total,const datetime &t[])
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!g_trade_setup.valid){ 
       ObjectDelete(0,PFX+"TL_E"); ObjectDelete(0,PFX+"TL_SL");
       ObjectDelete(0,PFX+"TL_TP1"); ObjectDelete(0,PFX+"TL_TP2"); ObjectDelete(0,PFX+"TL_TP3");
@@ -31984,6 +32147,7 @@ void ScenarioDrawOne(const SScenarioPlan &p,const string tag)
 
 void ScenarioDraw()
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!InpUseDirectionalScenarioEngine || !InpShowScenarioPlans)
    {
       if(g_scn_draw_sig!="") ScenarioDeleteObjects();
@@ -32248,6 +32412,9 @@ void ScenarioDashFull(string &L[],color &C[],int &ln,const int cap)
 
 void CoreDashboardDeleteObjects()
 {
+   if(QSMC_IsReaderSilent()) return;
+   if(QSMC_IsReaderSilent()) return;
+   if(QSMC_IsReaderSilent()) return;
    ObjectsDeleteAll(0,PFX+"CORE_DASH_");
    g_dash_lines=0;
    g_dash_h=0;
@@ -32272,6 +32439,7 @@ bool g_placeholder_purge_logged=false;
 int  g_placeholder_purge_total=0;
 void QSMC_PurgePlaceholderTextObjects()
 {
+   if(!QSMC_PaintAllowed()) return;
    int total=ObjectsTotal(0,-1,-1);
    for(int i=total-1;i>=0;i--)
    {
@@ -32295,6 +32463,7 @@ void QSMC_PurgePlaceholderTextObjects()
 
 void DrawQuantumDashboard(const int total,const double &c[])
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!InpShowAIDashboard)
    {
       CoreDashboardDeleteObjects();
@@ -34390,6 +34559,7 @@ void MVP_Clear()
 void MVP_Rect(const string name, const datetime t1, const double p1,
               const datetime t2, const double p2, const color col, const string tip)
 {
+   if(!QSMC_PaintAllowed()) return;
    datetime a=t1, b=t2;
    double hi=p1, lo=p2;
    if(b<a) { datetime tmp=a; a=b; b=tmp; }
@@ -34397,22 +34567,23 @@ void MVP_Rect(const string name, const datetime t1, const double p1,
    if(b<=a) b=a+60;
    if(ObjectFind(0, name)<0)
       ObjectCreate(0, name, OBJ_RECTANGLE, 0, a, hi, b, lo);
-   ObjectMove(0, name, 0, a, hi);
-   ObjectMove(0, name, 1, b, lo);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, col);
-   ObjectSetInteger(0, name, OBJPROP_FILL, true);
-   ObjectSetInteger(0, name, OBJPROP_BACK, true);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
-   ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
-   ObjectSetString(0, name, OBJPROP_TOOLTIP, tip);
+   QSMC_MoveObj(name,0,a,hi);
+   QSMC_MoveObj(name,1,b,lo);
+   QSMC_SetObjInt(name, OBJPROP_COLOR, col);
+   QSMC_SetObjInt(name, OBJPROP_FILL, true);
+   QSMC_SetObjInt(name, OBJPROP_BACK, true);
+   QSMC_SetObjInt(name, OBJPROP_SELECTABLE, false);
+   QSMC_SetObjInt(name, OBJPROP_HIDDEN, true);
+   QSMC_SetObjInt(name, OBJPROP_WIDTH, 1);
+   QSMC_SetObjInt(name, OBJPROP_ZORDER, 0);
+   QSMC_SetObjStr(name, OBJPROP_TOOLTIP, tip);
 }
 
 void MVP_Line(const string name, const datetime t1, const datetime t2,
               const double price, const color col, const int style, const int width,
               const bool ray, const string tip)
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!MathIsValidNumber(price)) return;
    datetime a=t1, b=t2;
    if(b<=a) b=a+60;
@@ -34695,6 +34866,7 @@ void MVP_DrawLegend(const int idx, const bool waiting)
 
 void MVP_Draw(const int rates_total)
 {
+   if(!QSMC_PaintAllowed()) return;
    ObjectsDeleteAll(0, PFX+"MVP_");
    if(InpDisplayMode==QSMC_MODE_MINIMAL) return; // computation remains available; only chart clutter is hidden
    int closed=rates_total-2;
@@ -37126,6 +37298,7 @@ void ZRE_DeleteObjects()
 void ZRE_Arrow(const string name,const datetime t1,const double p1,const datetime t2,const double p2,
                const color col,const int style,const int width)
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!QSMC_DisplayAllowsObject(name) ||
       (!QSMC_InVisualDistance(p1) && !QSMC_InVisualDistance(p2)))
    { if(ObjectFind(0,name)>=0) ObjectDelete(0,name); return; }
@@ -37213,6 +37386,7 @@ void ZRE_DrawOnePath(const SZRESignal &s,const SZREOutcome &o,const bool best,co
 // first when a fourth appears). Called on a closed bar or when objects vanish.
 void ZRE_DrawPaths()
 {
+   if(!QSMC_PaintAllowed()) return;
    ObjectsDeleteAll(0,PFX+"ZRE_P_");
    g_zre_path_first_obj="";
    g_zre_draw_count=0;
@@ -37241,6 +37415,7 @@ void ZRE_DrawPaths()
 
 void ZRE_DrawPreview(const int best,const datetime live_time)
 {
+   if(!QSMC_PaintAllowed()) return;
    string name=PFX+"ZRE_PV_LBL";
    if(!InpUseZRE || !InpZREShowPreview || best<0 || best>=ArraySize(g_zre_zones))
    {
@@ -40210,6 +40385,7 @@ bool QSMC_InVisualBand(const double lo,const double hi)
 
 bool QSMC_DisplayAllowsObject(const string name)
 {
+   if(QSMC_IsReaderSilent()) return false;
    if(InpDisplayMode!=QSMC_MODE_MINIMAL) return true;
    if(StringFind(name,PFX+"PRIMARY_")==0 || StringFind(name,PFX+"SR_LINE_")==0 ||
       StringFind(name,PFX+"SR_BAND_")==0 || StringFind(name,PFX+"SR_TAG_")==0 ||
@@ -40221,6 +40397,7 @@ bool QSMC_DisplayAllowsObject(const string name)
 
 void QSMC_ApplyVisualPolicy()
 {
+   if(!QSMC_PaintAllowed()) return;
    int total=ObjectsTotal(0,-1,-1);
    for(int i=total-1;i>=0;i--)
    {
@@ -41734,6 +41911,7 @@ void RXN_DrawOne(const SRxnEvidence &e,const string suffix)
 
 void RXN_Draw()
 {
+   if(!QSMC_PaintAllowed()) return;
    if(!InpUseRXN || !InpRXNShowReaction || InpDisplayMode!=QSMC_MODE_FULL)
    { RXN_DeleteObjects(); return; }
    SRxnEvidence show;
@@ -43466,6 +43644,7 @@ void MTF_SniperZone_DeleteObjects()
 
 void MTF_SniperZone_Draw()
 {
+   if(!QSMC_PaintAllowed()) return;
    MTF_SniperZone_DeleteObjects();
    if(!InpUseSniperZoneEngine || !InpShowSniperZones) return;
    if(g_rates_total<3) return;

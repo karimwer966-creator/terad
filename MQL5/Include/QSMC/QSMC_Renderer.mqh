@@ -56,6 +56,7 @@ public:
    //--- blanket ObjectsDeleteAll over the host's objects).
    int               Clear()
      {
+      if(!m_enabled) return 0;   // a private reader owns no chart objects
       int n=0;
       int total=ObjectsTotal(m_chart,-1,-1);
       for(int i=total-1;i>=0;i--)

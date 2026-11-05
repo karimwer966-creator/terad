@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-QSMC v6.6.13 - RELEASE GATE
+QSMC RELEASE GATE
 
 A go / no-go check for taking this layer to a live chart. It does not re-check
 what static_check.py already checks (dialect rules, includes, balance); it
@@ -133,7 +133,8 @@ else:
 NEEDED = (["QSMC_%s.mqh" % n for n in
             ("Types", "Structure", "EarlyBreakDetector", "MarketData", "Zones", "ZoneScorer",
              "Reaction", "Bias", "Preset", "Gates", "AlertManager", "Arbiter",
-             "Stats", "Renderer", "Root", "Selftest", "Scanners", "DataProvider", "LiquidityValue", "UnifiedDecision")],
+             "Stats", "Renderer", "Root", "Selftest", "Scanners", "DataProvider", "LiquidityValue", "UnifiedDecision",
+             "IncidentSafety", "InputFingerprint", "InstanceIdentity")],
           [os.path.join("MQL5", "Indicators", "QSMC_ScannerProbe.mq5"),
            os.path.join("MQL5", "Scripts", "QSMC_ArbiterTest.mq5"),
            os.path.join("MQL5", "Experts", "KLJ_DataFeeder.mq5"),
@@ -149,8 +150,8 @@ extra = sorted(set(x for x in os.listdir(INC) if x.endswith(".mqh")) - set(NEEDE
 if extra:
     warn("G2 headers present but not in the documented layout: %s" % ", ".join(extra))
 else:
-    NOTES.append("G2 layout complete: 20 headers + 1 indicator + 1 probe + 1 script + 1 feeder EA "
-                 "+ 1 execution EA")
+    NOTES.append("G2 layout complete: %d headers + 1 indicator + 1 probe + 1 script + 1 feeder EA "
+                 "+ 1 execution EA" % len(NEEDED[0]))
 
 # ------------------------------------------------------------- G3 inputs
 preset = read(os.path.join(INC, "QSMC_Preset.mqh"))
@@ -206,7 +207,6 @@ DEAD_ALLOWED = {
     "InpShowMTFPanel": "INERT: its only reader was dead code, deleted in doc 11.14",
     "InpPanelIdleMaxHeightPct": "INERT: its only reader was dead code, deleted in doc 11.14",
     "InpShowTopDownPanel": "INERT: its only reader was dead code, deleted in doc 11.14",
-    "InpShowPerfMeter": "INERT: its only reader was dead code, deleted in doc 11.14",
     "InpUseAdvancedSweepEngine": "INERT: its only reader was dead code, deleted in doc 11.14",
     "InpSweepEntryMinScore": "INERT: its only reader was dead code, deleted in doc 11.14",
     "InpSweepEntryMaxBarsAfterSweep": "INERT: its only reader was dead code, deleted in doc 11.14",
@@ -300,19 +300,47 @@ for _m in re.finditer(r"(?<![A-Za-z0-9_])([A-Za-z_]\w*)[ \t]*\(", _code):
     _occ.setdefault(_m.group(1), []).append(_m.start())
 def _is_decl(_p):
     return _DECLRE.match(_code[_code.rfind("\n", 0, _p) + 1:_p]) is not None
-_defpos = {}
-_depth, _pos = 0, 0
-for _m in re.finditer(r"([A-Za-z_]\w*)[ \t]*\((?:[^(){}]|\([^(){}]*\))*\)[ \t\r\n]*\{", _code):
-    _depth += _code.count("{", _pos, _m.start()) - _code.count("}", _pos, _m.start())
-    _pos = _m.start()
-    if _depth == 0:
-        _defpos.setdefault(_m.group(1), _m.end() - 1)
+# v6.6.19: the previous definition scanner used a nested-quantifier regex over
+# the whole 2 MB host. On a chart-heavy file it could backtrack for minutes and
+# made the release gate unusable. The replacement is linear: match parentheses
+# and braces once, then accept only `name(...) {` whose opening brace is at
+# global scope. It keeps the same contract (free-function definitions) without
+# catastrophic backtracking.
+_paren_close, _paren_stack = {}, []
+_brace_opens, _brace_closes = [], []
 _pairs, _stack = {}, []
 for _i, _ch in enumerate(_code):
-    if _ch == "{":
+    if _ch == "(":
+        _paren_stack.append(_i)
+    elif _ch == ")" and _paren_stack:
+        _paren_close[_paren_stack.pop()] = _i
+    elif _ch == "{":
         _stack.append(_i)
-    elif _ch == "}" and _stack:
-        _pairs[_stack.pop()] = _i
+        _brace_opens.append(_i)
+    elif _ch == "}":
+        _brace_closes.append(_i)
+        if _stack:
+            _pairs[_stack.pop()] = _i
+
+def _brace_depth_before(pos):
+    return bisect_right(_brace_opens, pos - 1) - bisect_right(_brace_closes, pos - 1)
+
+_defpos = {}
+for _name, _positions in _occ.items():
+    for _p in _positions:
+        _q = _p + len(_name)
+        while _q < len(_code) and _code[_q] in " \t":
+            _q += 1
+        if _q >= len(_code) or _code[_q] != "(":
+            continue
+        _r = _paren_close.get(_q)
+        if _r is None:
+            continue
+        _b = _r + 1
+        while _b < len(_code) and _code[_b] in " \t\r\n":
+            _b += 1
+        if _b < len(_code) and _code[_b] == "{" and _brace_depth_before(_b) == 0:
+            _defpos.setdefault(_name, _b)
 _dead_fns = {}
 for _n, _brace in _defpos.items():
     if _n in ENTRY_POINTS:
@@ -323,6 +351,26 @@ for _n, _brace in _defpos.items():
     _calls = [p for p in _occ.get(_n, []) if not _is_decl(p)]
     if not _calls:
         _dead_fns[_n] = (_line_of(_brace), _line_of(_pairs.get(_brace, _brace)))
+
+# The host exposes small role helpers to the included QSMC headers. A call from
+# an included header is a real call; scanning only nadir2.mq5 would delete a
+# live API. Strip strings/comments first so a comment cannot keep rot alive.
+def _cross_strip(src):
+    src = re.sub(r'"(?:\\.|[^"\\\n])*"', '""', src)
+    src = re.sub(r"//[^\n]*", "", src)
+    return re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+
+_cross_alive = set()
+for _path in layer_files():
+    if not _path.endswith(".mqh"):
+        continue
+    _txt = _cross_strip(read(_path))
+    for _n in list(_dead_fns):
+        if re.search(r"(?<![A-Za-z0-9_])" + re.escape(_n) + r"\s*\(", _txt):
+            _cross_alive.add(_n)
+for _n in _cross_alive:
+    del _dead_fns[_n]
+
 _dead_only = []
 for _n, _dl in _decl.items():
     _reads = [j for j in _read_at.get(_n, []) if j != _dl]
@@ -393,17 +441,22 @@ LIBRARY = [f for f in layer_files() if os.sep + "Include" + os.sep in f
 PROGRAMS = [f for f in layer_files() if f not in LIBRARY]
 
 # The single reviewed exception to "this release cannot trade". Execution is a
-# separate program precisely so that the indicator and the 18 headers stay
+# separate program precisely so that the indicator and the 23 headers stay
 # unable to reach the trade API - that is what makes the dashboard safe to leave
 # on a chart. Everything about this file is checked: it ships inert, it needs a
 # demo account by default, and it is the only name on this list.
 EXEC_EA = os.path.join(ROOT, "MQL5", "Experts", "QSMC_AutoTrader.mq5")
 EXEC_TRADE_ALLOWED = {os.path.abspath(EXEC_EA)}
 
+# Execution/mutation API is forbidden. Read-only account queries are not an
+# order path: the visual indicator may inspect open positions/orders to keep
+# labels off trade levels (UpdateTradeLevelKeepOut), but it may never send,
+# modify, close or check an order. The execution companion remains the only
+# file allowed to reach the mutating API (G8).
 TRADE = [(r"\bOrderSend\s*\(",                    "OrderSend"),
+         (r"\bOrderSendAsync\s*\(",               "OrderSendAsync"),
          (r"\bOrderCheck\s*\(",                   "OrderCheck"),
-         (r"\bOrderGetTicket|\bOrderSelect\s*\(", "order API"),
-         (r"\bPositionOpen\b|PositionsTotal\s*\(|\bPositionModify\s*\(", "position API"),
+         (r"\bPositionOpen\b|\bPositionModify\s*\(|\bPositionClose\s*\(", "position mutation API"),
          (r"\bCTrade\s+\w+|\btrade\.[A-Za-z]+\s*\(", "CTrade / trade.*"),
          (r"\bOrderCalcMargin|\bAccountInfoDouble\s*\(\s*ACCOUNT_MARGIN", "margin accounting")]
 SIDE_EFFECTS = [(r"\bWebRequest\s*\(",   "WebRequest"),
@@ -450,9 +503,9 @@ for path in LIBRARY + PROGRAMS:
                      % (os.path.relpath(path, ROOT), code[:m.start()].count("\n") + 1, why,
                         ALLOW_SITE.get(why, "nothing")))
                 g4_sites += 1
-NOTES.append("G4 no trade API in the layer (headers + indicator + probe) and none in the "
-             "feeder; Alert/push/sound only in CAlertManager; QSMC CSV writes only in QSMC_Stats; "
-             "the only trade API in the repository is the execution companion's")
+NOTES.append("G4 no order-send/modify/close API in the layer (headers + indicator + probe) and none in the "
+             "feeder; read-only position/order inspection is display-only; Alert/push/sound only in CAlertManager; "
+             "QSMC CSV writes only in QSMC_Stats; the only mutating trade API in the repository is the execution companion's")
 
 # ------------------------------------------- G8 the execution companion (v6.6.8)
 # This is the file that can lose money, so its deployment invariants are checked
@@ -551,13 +604,52 @@ if os.path.isfile(feeder):
                          % m.group(1))
 
 # ------------------------------------------------------------ G6 leftovers
+# The old DOTALL regex started at every `//` and searched to the end of the file
+# for a marker; on a 44k-line host with thousands of comments that is quadratic.
+# Scan comments line-by-line (and track block comments) instead. The contract is
+# the same: leftover markers in shipped comments are warnings, not code facts.
+_G6_MARK = re.compile(r"\b(TODO|FIXME|XXX|HACK|not implemented|unimplemented)\b", re.I)
 for path in layer_files():
     src = read(path)
-    for m in re.finditer(r"//.*?\b(TODO|FIXME|XXX|HACK|not implemented|unimplemented)\b",
-                         src, re.I | re.S):
-        line = src[:m.start()].count("\n") + 1
-        warn("G6 %s:%d leftover marker: %s"
-             % (os.path.relpath(path, ROOT), line, m.group(0).strip()[:78]))
+    in_block = False
+    for lineno, line in enumerate(src.splitlines(), 1):
+        comment_parts = []
+        i = 0
+        while i < len(line):
+            if in_block:
+                end = line.find("*/", i)
+                if end < 0:
+                    comment_parts.append(line[i:])
+                    i = len(line)
+                else:
+                    comment_parts.append(line[i:end])
+                    in_block = False
+                    i = end + 2
+                continue
+            if line.startswith("//", i):
+                comment_parts.append(line[i + 2:])
+                break
+            if line.startswith("/*", i):
+                in_block = True
+                i += 2
+                continue
+            if line[i] == '"':
+                i += 1
+                while i < len(line):
+                    if line[i] == "\\":
+                        i += 2
+                    elif line[i] == '"':
+                        i += 1
+                        break
+                    else:
+                        i += 1
+                continue
+            i += 1
+        comment = " ".join(comment_parts)
+        m = _G6_MARK.search(comment)
+        if m:
+            warn("G6 %s:%d leftover marker: %s"
+                 % (os.path.relpath(path, ROOT), lineno, comment.strip()[:78]))
 
 # ---------------------------------------------------------------- G7 CI
 wf = os.path.join(ROOT, ".github", "workflows", "qsmc-verify.yml")

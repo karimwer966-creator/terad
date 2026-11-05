@@ -1,4 +1,4 @@
-# QSMC v6.6.13 — BUILD, RUN, VERIFY
+# QSMC v6.6.19 — BUILD, RUN, VERIFY
 
 Operational guide for `nadir2.mq5` + the `MQL5/Include/QSMC` arbitration layer.
 Design and root-cause analysis live in `docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md`;
@@ -37,12 +37,13 @@ v6.6.2: literal hygiene + the CI gate).
    `QSMC_Scanners.mqh` يُترجم فعلًا — قبل v6.6.3 لم يكن لهذا الملف أي مضيف.
 4. في MT5: `Navigator` ← `Indicators` ← `nadir2` اسحبه على مخطط M5/M15.
 5. راجع تبويب `Experts`/`Journal`: السطر الأول يجب أن يكون
-   `[QSMC_ARB] v6.6.13 arbitration layer ON | preset …`.
+   `[QSMC_ARB] v6.6.19 arbitration layer ON | preset …`.
 6. للاختبار الذاتي: اسحب `QSMC_ArbiterTest` (Scripts) على أي مخطط —
    النتيجة المطلوبة `RESULT: 45 passed, 0 failed` (includes quant, structure, and zone-scoring assertions).
 7. للتحقق بدون MT5 (من الطرفية، داخل المستودع):
-   `python3 tools/static_check.py` ثم `python3 tools/test_arbiter.py`.
-8. **قبل تشغيله على مخطط حقيقي**: `python3 tools/check_release_gate.py` —
+   `python3 tools/check_production_ready.py` ثم `python3 tools/check_release_gate.py`.
+   النتيجة المتوقعة: `OFFLINE GO` و `GO (with 0 warning(s))`. هذا لا يغني عن F7.
+8. **قبل تشغيله على مخطط حقيقي**: `python3 tools/check_production_ready.py` و `python3 tools/check_release_gate.py` —
    يجب أن تُخبِر السطر الأخير `GO` (تتحقق من توحّد الإصدار، اكتمال الملفات،
    توثيق كل مدخلات، أن الطبقة لا تتداول ولا تفتح شبكة، وأنها لا تسجّل كل شمعة).
    التشغيل والأرقام المطلوب مراقبتها في الساعة و24 ساعة الأولى:
@@ -55,6 +56,35 @@ here`، ويظهر جدول `top setups by EVIDENCE SCORE` مع قائمة «not
 
 **زر الإيقاف:** `InpArbEnabled = false` → الطبقة تصبح معطّلة تمامًا ويتصرف
 المؤشر مثل v6.5.5 (بدون إعادة تجميع، بدون تغيير في لوحة العرض).
+
+### v6.6.19 — tick/UI performance and the Bid-line complaint
+
+This release separates **calculation** from **chart painting**. It does not
+change the closed-bar signal model, the exported signal buffers, or the
+AutoTrader execution contract.
+
+* The EA-owned `iCustom` reader is detected before the arbitration root is
+  created. It no longer wipes the visual chart's `QSMC_` objects, no longer
+  enables the arbitration renderer, and no longer draws the liquidity-value
+  badge or Core status badge.
+* Live preview **state** still updates on every tick. Chart-object writes are
+  coalesced to roughly 100 ms between bars; a new bar, rebuild, or explicit
+  chart event paints immediately. Panels keep their existing 300 ms cadence.
+* Drawing primitives compare properties before writing them, so an unchanged
+  closed-bar label/line/zone does not invalidate the chart again.
+* ATR/ADX/RSI history is copied in full on attach/rebuild, then only the
+  changed tail is copied. EMA/VWAP keep their incremental path.
+* `InpShowPerfMeter=true` prints a visual-instance `[QSMC_PERF]` report every
+  30 seconds: average/max `OnCalculate` microseconds, max bar-slice
+  microseconds, owned object count, and server-clock quote age. It measures
+  the indicator body only — **not** broker RTT, terminal paint time, or the
+  EA's order path. A delayed Bid line alone is not proof of a network fault.
+
+To compare builds, attach the same symbol/timeframe with the same inputs,
+enable `InpShowPerfMeter` on the visual instance, and record several
+`[QSMC_PERF]` lines during comparable quote activity. Then press **F7** in
+MetaEditor and verify `0 errors, 0 warnings`; the offline checks below are
+not a compiler.
 
 **أخطاء الترجمة التي كانت تظهر** (`reference cannot used`, `'0xFF' - invalid number`,
 `'IntegerToString' - class type expected`) تم إصلاحها في v6.6.1 — راجع
@@ -77,7 +107,7 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 
 ```
 <Data Folder>\MQL5\
-├─ Include\QSMC\QSMC_Types.mqh          <- all 20 headers go here, flat
+├─ Include\QSMC\QSMC_Types.mqh          <- all 23 headers go here, flat
 ├─ Include\QSMC\QSMC_MarketData.mqh
 ├─ Include\QSMC\…  (QSMC_Zones, _Reaction, _Bias, _Preset, _Gates,
 │                   _AlertManager, _Arbiter, _Stats, _Renderer, _Root,
@@ -86,7 +116,7 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 ├─ Indicators\QSMC_ScannerProbe.mq5      <- PART C Phase 7 scanner host (v6.6.3)
 ├─ Scripts\QSMC_ArbiterTest.mq5         <- deterministic self-test harness
 ├─ Experts\KLJ_DataFeeder.mq5           <- optional CSV data feeder (PART C)
-└─ Experts\QSMC_AutoTrader.mq5          <- v6.6.13 execution companion (opt-in, inert)
+└─ Experts\QSMC_AutoTrader.mq5          <- v6.6.19 execution companion (opt-in, inert)
 ```
 
 The two `Experts` files are separate programs, and only one of them can trade:
@@ -120,7 +150,7 @@ layer able to trade or reach the network, and no log line on the per-bar path.
 1. MetaEditor → `File → Open Data Folder` → copy the files as above.
 2. Open `nadir2.mq5`, press **F7**. Then `QSMC_ArbiterTest.mq5`, then
    `KLJ_DataFeeder.mq5`, then — if you want the Phase 7 scanners —
-   `QSMC_ScannerProbe.mq5`. Every one of them pulls in the same 18 headers, so
+   `QSMC_ScannerProbe.mq5`. Every one of them pulls in the same 23 headers, so
    compiling any of them proves those headers; compiling the probe is the only
    thing that proves `QSMC_Scanners.mqh`.
 3. Target: **`0 errors, 0 warnings`** in the Results tab.
@@ -159,7 +189,7 @@ its host is ever removed). It is not a type checker: a clean run still needs F7.
 3. Journal must show, in this order:
 
 ```
-[QSMC_ARB] v6.6.13 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
+[QSMC_ARB] v6.6.19 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
              | exec TF M15 | tactical may confirm: NO (informational only)
              | on XAUUSD M15
 ```

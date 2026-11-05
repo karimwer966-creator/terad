@@ -1,0 +1,52 @@
+name: QSMC production readiness
+
+# Curated offline gate that can actually go green on the shipped source layout.
+# It is still NOT a MetaEditor compile and NOT a backtest. The historical
+# line-number audit suites live in qsmc-verify.yml; this workflow owns the
+# one-command production-readiness verdict used by INSTALL_AR.md.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  production-offline:
+    name: curated offline production gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash -o pipefail -e {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Curated production readiness (OFFLINE GO / NO-GO)
+        run: |
+          mkdir -p out
+          python3 tools/check_production_ready.py --timeout 240 2>&1 | tee out/production_ready.log
+
+      - name: Manual gate still required
+        run: |
+          echo "OFFLINE GO is not F7. Open nadir2.mq5 in MetaEditor and press F7."
+          echo "Required banner: [QSMC_ARB] v6.6.19 arbitration layer ON"
+          echo "EA ships inert + dry-run + demo-only. Real money requires the go-live runbook."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-offline-gates
+          path: |
+            out/production_ready.log
+            out/production/
+          if-no-files-found: ignore

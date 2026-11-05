@@ -682,9 +682,9 @@ check(EXISTING_HANDLE_TEST.replace("\r\n", "\n") in TEXT.replace("\r\n", "\n"),
 check(code_only.count("IndicatorRelease(h_rsi);") == 1 and
       code_only.count("IndicatorRelease(h_atr);") == 1,
       "D the pre-existing handle releases are untouched")
-check("FillEMAAndVWAP(rates_total,g_buf_o,g_buf_h,g_buf_l,g_buf_c,g_buf_t,g_buf_tv,full_indicators);"
+check("FillEMAAndVWAP(rates_total,g_buf_o,g_buf_h,g_buf_l,g_buf_c,g_buf_t,g_buf_tv,indicator_full_copy);"
       in code_only,
-      "D the pre-existing FillEMAAndVWAP call is untouched")
+      "D FillEMAAndVWAP uses the attach/rebuild flag, not the indicator-copy flag")
 check(code_only.count("g_rsi_buf[k]=tr[src];") == 1,
       "D the pre-existing per-bar RSI copy is untouched")
 # Membership is not a pin: this idiom occurs at five separate sites, so `in` still
@@ -700,8 +700,8 @@ check(code_only.count("int closed=ArraySize(g_buf_c)-2;") == 2,
       "lived in a dead function deleted in doc 11.14)")
 check(code_only.count("int closed=g_rates_total-2;") == 8,
       "D all 8 replay-path closed-bar sites are unchanged")
-check(TEXT.count('#property version   "6.618"') == 1, "D the version property is 6.618 (bumped for v6.6.18 release)")
-check(TEXT.count('"v6.6.18"') >= 1, "D the version text is v6.6.18 (bumped for v6.6.18 release)")
+check(TEXT.count('#property version   "6.619"') == 1, "D the version property is 6.619 (tick/UI performance release)")
+check(TEXT.count('"v6.6.19"') >= 1, "D the version text is v6.6.19 (tick/UI performance release)")
 check(len(re.findall(r'(?m)^#property indicator_buffers\s+21\b', TEXT)) == 1,
       "D indicator_buffers is still 21 - no buffer was appended")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,

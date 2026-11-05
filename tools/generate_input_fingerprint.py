@@ -61,7 +61,7 @@ def main():
            '#ifndef QSMC_INPUT_FINGERPRINT_MQH','#define QSMC_INPUT_FINGERPRINT_MQH',
            f'// Inputs represented: {len(entries)}; order and defaults are part of identity.',
            'void QA_InputHashes(uint &actual,uint &defaults)','{',
-           '   static bool ready=false; static uint a=2166136261,d=2166136261;',
+           '   static bool ready=false; static uint a=0x811C9DC5,d=0x811C9DC5;',
            '   if(!ready)','   {']
     for t,n,v in entries:
         lines.append(f'      QSMC_AddInputHash(a,"{n}",{value(t,n)});')
