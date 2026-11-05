@@ -1852,6 +1852,27 @@ input double            InpSniperMaxRiskPct    = 1.50;   // Golden Rule 7: Advis
 input bool              InpSniperRunSelfTest   = true;   // Run MTF_SniperZone_SelfTest() at OnInit()
 
 //====================================================================
+// v6.6.15 iCustom init-race WRITABLE SHADOWS for threshold ATR doubles.
+//
+// 'input' variables in MQL5 are compile-time constants; code below
+// OnInit cannot assign to them. On the first iCustom attach in a
+// terminal session MT5 transiently delivers several double inputs as
+// 0.0 before the input manifest is deserialized, which would cause
+// OnInit to return INIT_PARAMETERS_INCORRECT. Rather than fail the
+// attach we declare writable copies of the affected inputs, populate
+// them at the top of OnInit (clamping non-positive to documented
+// defaults), and use these globals everywhere else in the indicator.
+// Inputs whose 0 value is legitimate (InpSLBufferATR,
+// InpRetestMaxDistanceATR, integer inputs) are NOT shadowed.
+//====================================================================
+double g_cfgMaxStopATR           = 4.0;
+double g_cfgMinRR1               = 1.5;
+double g_cfgCausalDispBodyATR    = 0.35;
+double g_cfgEquilibriumBufferATR = 0.15;
+double g_cfgProximityMaxATR      = 0.35;
+double g_cfgChaseMaxATR          = 1.50;
+
+//====================================================================
 // v6.5.2 MTF_SniperZone_Engine — CONSTANTS
 //====================================================================
 #define SNIPER_TF_COUNT           7
@@ -5680,7 +5701,7 @@ void UpdateMTFExecutionEntry()
    bool far=(dist_atr>MathMax(0.1,InpMTFEntryMaxDistanceATR));
    bool too_far=(far && dist_close_atr>MathMax(0.1,InpMTFEntryMaxDistanceATR));
    if(too_far){ ClearMTFExecutionEntry(); return; }
-   g_mtf_entry_late=(InpChaseFilter && dist_close_atr>InpChaseMaxATR);
+   g_mtf_entry_late=(InpChaseFilter && dist_close_atr>g_cfgChaseMaxATR);
    bool live_cross=bull ? (lh>=trigger && lc>=lo) : (ll<=trigger && lc<=lo);
    // v6.4.1 NO-REPAINT: CONFIRMED is a CLOSED execution-bar fact only. The
    // forming M5/M1 bar used to confirm via live_cross, which re-labelled the
@@ -7425,7 +7446,7 @@ void DrawEntrySignalVisuals(const int total,const bool is_new_bar)
    double atr=MathMax(g_atr,_Point);
    double c_now=g_buf_c[te];
    double dist_atr=MathAbs(c_now-g_trade_setup.entry)/atr;
-   g_entry_last_late=(InpChaseFilter && dist_atr>InpChaseMaxATR);
+   g_entry_last_late=(InpChaseFilter && dist_atr>g_cfgChaseMaxATR);
    string grade=InstitutionalLetterGrade(g_trade_setup.confidence,g_trade_setup.reliability,
                                          g_trade_setup.causal_path_score);
    string key=StringFormat("%s|%.5f|%s",g_trade_setup.setup_event_id,
@@ -7454,7 +7475,7 @@ void DrawEntrySignalVisuals(const int total,const bool is_new_bar)
    if(InpProximityFilter)
    {
       double wall=NearestOpposingEdgeATR(g_trade_setup.is_buy,g_trade_setup.entry,atr);
-      if(wall>=0.0 && wall<InpProximityMaxATR)
+      if(wall>=0.0 && wall<g_cfgProximityMaxATR)
       {
          txt+=StringFormat(" | TOO CLOSE TO OPPOSING LEVEL (%.2f ATR) - not an entry",wall);
          col=clrOrange;
@@ -7464,7 +7485,7 @@ void DrawEntrySignalVisuals(const int total,const bool is_new_bar)
                            g_trade_setup.sl,g_trade_setup.zone_source,"CONFIRMED",
                            g_buf_o[cb],g_buf_h[cb],g_buf_l[cb],g_buf_c[cb],
                            DoubleToString(g_candle_intel.wick_rejection,2),
-                           "entry inside InpProximityMaxATR of an opposing zone edge");
+                           "entry inside g_cfgProximityMaxATR of an opposing zone edge");
       }
    }
    DrawTextLabel(PFX+"ENTLVL_"+IntegerToString((long)g_buf_t[cb])+"_TXT",g_buf_t[cb],
@@ -14240,9 +14261,9 @@ void SigLog_FillZRE(SSigLogRec &r,const string id,const string status,const bool
    string ff="";
    SigLog_GateAdd(g,nf,ff,"reaction",1,"");
    if(r.atr>0.0)
-      SigLog_GateAdd(g,nf,ff,"stop_atr<="+DoubleToString(InpMaxStopATR,2),
-                     (risk<=InpMaxStopATR*r.atr+1e-9 ? 1 : 0),DoubleToString(risk/r.atr,2));
-   SigLog_GateAdd(g,nf,ff,"rr1>="+DoubleToString(InpMinRR1,2),(rr1+1e-9>=InpMinRR1 ? 1 : 0),DoubleToString(rr1,2));
+      SigLog_GateAdd(g,nf,ff,"stop_atr<="+DoubleToString(g_cfgMaxStopATR,2),
+                     (risk<=g_cfgMaxStopATR*r.atr+1e-9 ? 1 : 0),DoubleToString(risk/r.atr,2));
+   SigLog_GateAdd(g,nf,ff,"rr1>="+DoubleToString(g_cfgMinRR1,2),(rr1+1e-9>=g_cfgMinRR1 ? 1 : 0),DoubleToString(rr1,2));
    SigLog_GateAdd(g,nf,ff,"score>="+IntegerToString(InpZREMinScore),(score>=InpZREMinScore ? 1 : 0),IntegerToString(score));
    r.gates=g;
    r.gates_failed=nf;
@@ -14489,32 +14510,36 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          DoubleToString(g_instrument.volume_step,8),"/",
          DoubleToString(g_instrument.volume_max,8));
 
-   // v6.6.15: auto-heal the iCustom init race. When the EA calls
-   // iCustom(_Symbol,_Period,name) with NO arguments, MT5 passes the
-   // indicator's compiled defaults, but on the very first OnInit of the
-   // very first attach in a terminal session some double inputs arrive
-   // as 0.0 before the input manifest is deserialized. We have seen
-   // this manifest as InpMaxCausalEventsKeep=0,
-   // InpCausalDisplacementBodyATR=0 (and potentially other ATR/threshold
-   // doubles) in sequence, each time blocking OnInit and forcing a
-   // second attach which succeeds. Rather than reject init and make the
-   // operator re-attach, silently clamp non-positive threshold doubles
-   // to their DOCUMENTED DEFAULTS (values right there in the input
-   // declarations above) and print a note. This ONLY runs when the
-   // incoming value is 0 or negative; operator-set positive values are
-   // never touched. Integer inputs (EMAFast, bars limits, session
-   // hours) still hard-fail because 0 is a legitimate value for some of
-   // those inputs (session start/end = 0 means "off").
+   // v6.6.15: auto-heal iCustom init-race zero defaults.
+   // When the EA calls iCustom(_Symbol,_Period,name) with NO arguments,
+   // MT5 passes the indicator's compiled defaults, but on the very first
+   // OnInit of the very first attach in a terminal session some double
+   // inputs arrive as 0.0 before the input manifest is deserialized.
+   // MQL5 'input' variables are compile-time constants and cannot be
+   // written to; instead, the shadow doubles g_cfgMaxStopATR etc.
+   // (declared after the input block) are initialized here and used by
+   // the rest of the indicator. When the EA iCustom race delivers 0 we
+   // set those working copies to their DOCUMENTED DEFAULTS (values from
+   // the input declarations above) and continue. Operator-set positive
+   // values are never touched. InpRetestMaxDistanceATR / InpSLBufferATR
+   // are intentionally NOT healed because 0 is a legitimate 'off' value
+   // for them; they retain their input value directly. Integer inputs
+   // (EMA periods, bar counts, session hours) still hard-fail because
+   // 0 is a legitimate value (session start/end = 0 means 'off').
    string auto_heal="";
-#define QSMC_HEAL_DBL(var,dft,nm) if(var<=0.0){ var=dft; auto_heal+=nm+"->"+DoubleToString(dft,2)+" "; }
-   QSMC_HEAL_DBL(InpMaxStopATR,4.0,"InpMaxStopATR");
-   QSMC_HEAL_DBL(InpMinRR1,1.5,"InpMinRR1");
-   QSMC_HEAL_DBL(InpCausalDisplacementBodyATR,0.35,"InpCausalDisplacementBodyATR");
-   QSMC_HEAL_DBL(InpEquilibriumBufferATR,0.15,"InpEquilibriumBufferATR");
-   // InpRetestMaxDistanceATR and InpSLBufferATR can be 0 meaningfully
-   // (off / no buffer), so do not clamp them.
-   if(InpProximityFilter && InpProximityMaxATR<=0.0){ InpProximityMaxATR=0.35; auto_heal+="InpProximityMaxATR->0.35 "; }
-   if(InpChaseFilter && InpChaseMaxATR<=0.0){ InpChaseMaxATR=1.50; auto_heal+="InpChaseMaxATR->1.50 "; }
+   g_cfgMaxStopATR           = InpMaxStopATR;
+   g_cfgMinRR1               = InpMinRR1;
+   g_cfgCausalDispBodyATR    = InpCausalDisplacementBodyATR;
+   g_cfgEquilibriumBufferATR = InpEquilibriumBufferATR;
+   g_cfgProximityMaxATR      = InpProximityMaxATR;
+   g_cfgChaseMaxATR          = InpChaseMaxATR;
+#define QSMC_HEAL_CFG(var,dft,nm) if(var<=0.0){ var=dft; auto_heal+=nm+"->"+DoubleToString(dft,2)+" "; }
+   QSMC_HEAL_CFG(g_cfgMaxStopATR,4.0,"InpMaxStopATR");
+   QSMC_HEAL_CFG(g_cfgMinRR1,1.5,"InpMinRR1");
+   QSMC_HEAL_CFG(g_cfgCausalDispBodyATR,0.35,"InpCausalDisplacementBodyATR");
+   QSMC_HEAL_CFG(g_cfgEquilibriumBufferATR,0.15,"InpEquilibriumBufferATR");
+   if(InpProximityFilter && g_cfgProximityMaxATR<=0.0){ g_cfgProximityMaxATR=0.35; auto_heal+="InpProximityMaxATR->0.35 "; }
+   if(InpChaseFilter && g_cfgChaseMaxATR<=0.0){ g_cfgChaseMaxATR=1.50; auto_heal+="InpChaseMaxATR->1.50 "; }
    if(auto_heal!="")
       Print("[QSMC_INIT] auto-healed iCustom race defaults: ",auto_heal,
             " (first iCustom OnInit before input deserialization; harmless)");
@@ -14523,9 +14548,9 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       InpSwingFractalN<1 || InpLiquidityFractalN<1 || InpMaxStrongOB<1 ||
       InpMaxStructuresKeep<1 || InpMaxLiquidityKeep<1 || InpMaxFVGKeep<1 ||
       InpMaxZonesKeep<1 || InpSweepToStructureMaxBars<1 || InpMinRightConfirmBars<1 ||
-      InpMaxStopATR<=0.0 || InpMinRR1<=0.0 || InpHTFStructureFractalN<1 ||
-      InpMaxCausalEventsKeep<0 || InpAnchorSearchBars<1 || InpCausalDisplacementBodyATR<=0.0 ||
-      InpReplayAuditEveryBars<0 || InpEquilibriumBufferATR<0.0 || InpRetestMaxDistanceATR<0.0 || InpSLBufferATR<0.0 ||
+      g_cfgMaxStopATR<=0.0 || g_cfgMinRR1<=0.0 || InpHTFStructureFractalN<1 ||
+      InpMaxCausalEventsKeep<0 || InpAnchorSearchBars<1 || g_cfgCausalDispBodyATR<=0.0 ||
+      InpReplayAuditEveryBars<0 || g_cfgEquilibriumBufferATR<0.0 || InpRetestMaxDistanceATR<0.0 || InpSLBufferATR<0.0 ||
       InpAsianStart<0 || InpAsianStart>23 || InpAsianEnd<0 || InpAsianEnd>23 ||
       InpLondonStart<0 || InpLondonStart>23 || InpLondonEnd<0 || InpLondonEnd>23 ||
       InpNewYorkStart<0 || InpNewYorkStart>23 || InpNewYorkEnd<0 || InpNewYorkEnd>23 ||
@@ -14538,8 +14563,8 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       // v6.4.2: the new entry/display inputs get the same treatment - a filter
       // that is switched ON with a non-positive threshold would refuse (or
       // allow) everything silently, so it is rejected at init instead.
-      (InpProximityFilter && InpProximityMaxATR<=0.0) ||
-      (InpChaseFilter && InpChaseMaxATR<=0.0) ||
+      (InpProximityFilter && g_cfgProximityMaxATR<=0.0) ||
+      (InpChaseFilter && g_cfgChaseMaxATR<=0.0) ||
       InpMaxChartObjects<0 || InpMaxZonesPerSide<1 ||
       (InpLabelFontSize<0 || InpLabelFontSize>72) ||
       InpSignalDedupCooldownBars<0)
@@ -14562,18 +14587,18 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       else if(InpMaxZonesKeep<1) bad="InpMaxZonesKeep";
       else if(InpSweepToStructureMaxBars<1) bad="InpSweepToStructureMaxBars";
       else if(InpMinRightConfirmBars<1) bad="InpMinRightConfirmBars";
-      else if(InpMaxStopATR<=0.0) bad="InpMaxStopATR";
-      else if(InpMinRR1<=0.0) bad="InpMinRR1";
+      else if(g_cfgMaxStopATR<=0.0) bad="InpMaxStopATR";
+      else if(g_cfgMinRR1<=0.0) bad="InpMinRR1";
       else if(InpHTFStructureFractalN<1) bad="InpHTFStructureFractalN";
       else if(InpMaxCausalEventsKeep<0) bad="InpMaxCausalEventsKeep (must be >= 0; 0 = unlimited)";
       else if(InpAnchorSearchBars<1) bad="InpAnchorSearchBars";
-      else if(InpCausalDisplacementBodyATR<=0.0) bad="InpCausalDisplacementBodyATR";
+      else if(g_cfgCausalDispBodyATR<=0.0) bad="InpCausalDisplacementBodyATR";
       else if(InpReplayAuditEveryBars<0) bad="InpReplayAuditEveryBars";
-      else if(InpEquilibriumBufferATR<0.0) bad="InpEquilibriumBufferATR";
+      else if(g_cfgEquilibriumBufferATR<0.0) bad="InpEquilibriumBufferATR";
       else if(InpRetestMaxDistanceATR<0.0) bad="InpRetestMaxDistanceATR";
       else if(InpSLBufferATR<0.0) bad="InpSLBufferATR";
-      else if(InpProximityFilter && InpProximityMaxATR<=0.0) bad="InpProximityMaxATR";
-      else if(InpChaseFilter && InpChaseMaxATR<=0.0) bad="InpChaseMaxATR";
+      else if(InpProximityFilter && g_cfgProximityMaxATR<=0.0) bad="InpProximityMaxATR";
+      else if(InpChaseFilter && g_cfgChaseMaxATR<=0.0) bad="InpChaseMaxATR";
       else if(InpMaxChartObjects<0) bad="InpMaxChartObjects";
       else if(InpMaxZonesPerSide<1) bad="InpMaxZonesPerSide";
       else if(InpLabelFontSize<0 || InpLabelFontSize>72) bad="InpLabelFontSize";
@@ -16401,7 +16426,7 @@ bool ValidateDisplacementLeg(const int sweep_bar,const int structure_bar,const b
       if(ak<=0.0) continue;
       double signed_body=bullish ? c[k]-o[k] : o[k]-c[k];
       double ratio=signed_body/ak;
-      if(ratio>=InpCausalDisplacementBodyATR && ratio>best_ratio)
+      if(ratio>=g_cfgCausalDispBodyATR && ratio>best_ratio)
       {
          best_ratio=ratio;
          impulse_bar=k;
@@ -16409,7 +16434,7 @@ bool ValidateDisplacementLeg(const int sweep_bar,const int structure_bar,const b
    }
    if(!(impulse_bar>sweep_bar && impulse_bar<structure_bar))
    {
-      GateAuditReject("leg: no separate impulse candle >= InpCausalDisplacementBodyATR");
+      GateAuditReject("leg: no separate impulse candle >= g_cfgCausalDispBodyATR");
       return false;
    }
    return true;
@@ -16493,8 +16518,8 @@ bool ValidateCausalFVGAsOf(const int fvg_index,const int sweep_bar,const int str
          g_atr_buf[B]<=0.0) return false;
       double atr=g_atr_buf[B];
       double body=c[B]-o[B];
-      if((bullish && body<atr*InpCausalDisplacementBodyATR) ||
-         (!bullish && -body<atr*InpCausalDisplacementBodyATR)) return false;
+      if((bullish && body<atr*g_cfgCausalDispBodyATR) ||
+         (!bullish && -body<atr*g_cfgCausalDispBodyATR)) return false;
    }
 
    // Reconstruct mitigation only through the caller's decision bar. A later
@@ -17955,7 +17980,7 @@ bool IsInstitutionalLocation(const bool is_buy,const double zone_top,const doubl
       return false;
    }
    double mid=(zone_top+zone_bottom)*0.5;
-   double buffer=(atr>0.0 ? atr*InpEquilibriumBufferATR : 0.0);
+   double buffer=(atr>0.0 ? atr*g_cfgEquilibriumBufferATR : 0.0);
    if(is_buy && mid>=eq-buffer)
    {
       why="BUY zone is not in discount";
@@ -18836,13 +18861,13 @@ int EffMinReliability()
 }
 double EffMinRR1()
 {
-   if(InpGateProfile!=QSMC_GATE_PRACTICAL) return InpMinRR1;
-   return MathMin(InpMinRR1,1.20);                      // practical floor: 1.2R
+   if(InpGateProfile!=QSMC_GATE_PRACTICAL) return g_cfgMinRR1;
+   return MathMin(g_cfgMinRR1,1.20);                      // practical floor: 1.2R
 }
 double EffMaxStopATR()
 {
-   if(InpGateProfile!=QSMC_GATE_PRACTICAL) return InpMaxStopATR;
-   return MathMax(InpMaxStopATR,6.0);                   // practical ceiling: 6 ATR
+   if(InpGateProfile!=QSMC_GATE_PRACTICAL) return g_cfgMaxStopATR;
+   return MathMax(g_cfgMaxStopATR,6.0);                   // practical ceiling: 6 ATR
 }
 int EffAnchorSearchBars()
 {
@@ -18857,7 +18882,7 @@ void PrintGateProfileBanner()
    {
       Print(">>> ",QSMC_VERSION_TEXT," GATE PROFILE: STRICT | every threshold is the input as entered"+
             " | confidence ",InpMinConfidenceScore," | reliability ",InpMinReliability,
-            " | RR1 ",DoubleToString(InpMinRR1,2)," | stop ",DoubleToString(InpMaxStopATR,2),
+            " | RR1 ",DoubleToString(g_cfgMinRR1,2)," | stop ",DoubleToString(g_cfgMaxStopATR,2),
             " ATR | anchor window ",InpAnchorSearchBars," bars");
       return;
    }
@@ -18866,10 +18891,10 @@ void PrintGateProfileBanner()
          "  (InpMinConfidenceScore, floored at 60)");
    Print(">>>   reliability ",InpMinReliability," -> ",EffMinReliability(),
          "  (InpMinReliability, floored at 60)");
-   Print(">>>   RR1         ",DoubleToString(InpMinRR1,2)," -> ",DoubleToString(EffMinRR1(),2),
-         "  (InpMinRR1, floored at 1.20)");
-   Print(">>>   stop max    ",DoubleToString(InpMaxStopATR,2)," -> ",DoubleToString(EffMaxStopATR(),2),
-         " ATR  (InpMaxStopATR, capped at 6.00)");
+   Print(">>>   RR1         ",DoubleToString(g_cfgMinRR1,2)," -> ",DoubleToString(EffMinRR1(),2),
+         "  (g_cfgMinRR1, floored at 1.20)");
+   Print(">>>   stop max    ",DoubleToString(g_cfgMaxStopATR,2)," -> ",DoubleToString(EffMaxStopATR(),2),
+         " ATR  (g_cfgMaxStopATR, capped at 6.00)");
    Print(">>>   anchor window ",InpAnchorSearchBars," -> ",EffAnchorSearchBars(),
          " bars  (InpAnchorSearchBars, widened to 120)");
    Print(">>>   UNCHANGED: causal chain, location, blacklist, journal gate, top-down switch,",
@@ -20292,7 +20317,7 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    if(InpProximityFilter)
    {
       double wall=NearestOpposingEdgeATR(is_buy,price,atr);
-      if(wall>=0.0 && wall<InpProximityMaxATR)
+      if(wall>=0.0 && wall<g_cfgProximityMaxATR)
       {
          g_causal_diag.watch=true;
          g_causal_diag.causal_fail_reason=StringFormat("entry %.2f ATR from the opposing level",wall);
@@ -20364,7 +20389,7 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       g_causal_diag.watch=true;
       g_causal_diag.causal_fail_reason=StringFormat("stop geometry out of range (%.1f ATR)",
                                                     risk/MathMax(atr,_Point));
-      GateAuditReject("geometry: stop distance above InpMaxStopATR");
+      GateAuditReject("geometry: stop distance above g_cfgMaxStopATR");
       ApplyCausalDecisionState();
       DiagnoseDirectionalWatch(total,o,h,l,c);
       DiagnoseCausalChain(total,o,h,l,c,g_buf_t);
@@ -20382,13 +20407,13 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    int b1=-1,b2=-1,b3=-1; bool cons1=false,cons2=false,cons3=false,bb1=false,bb2=false,bb3=false;
    double min_dist=MathMax(atr*0.50,InstrumentMinStopDistance());
    double from=entry;
-   tp1=FindInstitutionalTarget(from,entry,sl,is_buy,min_dist,InpMinRR1,1,barrier,
+   tp1=FindInstitutionalTarget(from,entry,sl,is_buy,min_dist,g_cfgMinRR1,1,barrier,
                                t1s,ev1,b1,cons1,bb1);
    if(tp1>0.0){from=tp1;
-      tp2=FindInstitutionalTarget(from,entry,sl,is_buy,min_dist,InpMinRR1,2,barrier,
+      tp2=FindInstitutionalTarget(from,entry,sl,is_buy,min_dist,g_cfgMinRR1,2,barrier,
                                   t2s,ev2,b2,cons2,bb2);}
    if(tp2>0.0){from=tp2;
-      tp3=FindInstitutionalTarget(from,entry,sl,is_buy,min_dist,InpMinRR1,3,barrier,
+      tp3=FindInstitutionalTarget(from,entry,sl,is_buy,min_dist,g_cfgMinRR1,3,barrier,
                                   t3s,ev3,b3,cons3,bb3);}
    // ATR projections capped by the barrier keep all three objectives ordered.
    if(tp1<=0.0)
@@ -20714,7 +20739,7 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       GateProfileNeed("rrneed",EffMinRR1()-rr1);
       g_causal_diag.watch=true;
       g_causal_diag.causal_fail_reason=StringFormat("RR1 %.2f < min %.2f",rr1,EffMinRR1());
-      GateAuditReject("geometry: RR1 below InpMinRR1");
+      GateAuditReject("geometry: RR1 below g_cfgMinRR1");
       ApplyCausalDecisionState();
       DiagnoseDirectionalWatch(total,o,h,l,c);
       DiagnoseCausalChain(total,o,h,l,c,g_buf_t);
@@ -23490,8 +23515,8 @@ bool TryDetectFVGAt(const int C,const int total,const double &o[],const double &
    double body=c[B]-o[B];
    if(InpRequireCausalFVGBody)
    {
-      if((bullish && body<atr*InpCausalDisplacementBodyATR) ||
-         (!bullish && -body<atr*InpCausalDisplacementBodyATR)) return false;
+      if((bullish && body<atr*g_cfgCausalDispBodyATR) ||
+         (!bullish && -body<atr*g_cfgCausalDispBodyATR)) return false;
    }
    string id=GenerateFVGId(bullish,t[B],t[C],top,bottom);
    for(int i=0;i<ArraySize(g_fvgs);i++)
@@ -29509,20 +29534,20 @@ void ScenarioBuildContext(const int closed)
 
    if(g_scn_ctx.dealing_range_ok && g_scn_ctx.close_price>0.0 && g_scn_ctx.d1.atr>0.0)
    {
-      double eq_buffer=MathMax(_Point,InpEquilibriumBufferATR*g_scn_ctx.d1.atr);
+      double eq_buffer=MathMax(_Point,g_cfgEquilibriumBufferATR*g_scn_ctx.d1.atr);
       if(g_scn_ctx.close_price<g_scn_ctx.dealing_eq-eq_buffer)
       {
          g_scn_ctx.daily_location=-1;
          g_scn_ctx.daily_location_text="DISCOUNT: closed price "+DoubleToString(g_scn_ctx.close_price,_Digits)+
             " below D1 EQ "+DoubleToString(g_scn_ctx.dealing_eq,_Digits)+" by more than "+
-            DoubleToString(eq_buffer,_Digits)+" (buffer = InpEquilibriumBufferATR x closed D1 ATR)";
+            DoubleToString(eq_buffer,_Digits)+" (buffer = g_cfgEquilibriumBufferATR x closed D1 ATR)";
       }
       else if(g_scn_ctx.close_price>g_scn_ctx.dealing_eq+eq_buffer)
       {
          g_scn_ctx.daily_location=1;
          g_scn_ctx.daily_location_text="PREMIUM: closed price "+DoubleToString(g_scn_ctx.close_price,_Digits)+
             " above D1 EQ "+DoubleToString(g_scn_ctx.dealing_eq,_Digits)+" by more than "+
-            DoubleToString(eq_buffer,_Digits)+" (buffer = InpEquilibriumBufferATR x closed D1 ATR)";
+            DoubleToString(eq_buffer,_Digits)+" (buffer = g_cfgEquilibriumBufferATR x closed D1 ATR)";
       }
       else
       {
@@ -29910,7 +29935,7 @@ void ScenarioEvaluateGeometry(SScenarioPlan &p)
    bool spread_ok=(!spread_gate_active || p.m5_spread_points<=InpMaxSpreadPts);
    bool stop_side_ok=(p.is_buy ? p.stop_loss<p.reference_entry : p.stop_loss>p.reference_entry);
    bool stop_ok=(p.stop_loss>0.0 && stop_side_ok && stop_risk>_Point &&
-                 p.stop_distance_atr<=InpMaxStopATR+1e-9);
+                 p.stop_distance_atr<=g_cfgMaxStopATR+1e-9);
    if(!spread_ok)
    {
       p.stop_unavailable=StringFormat("M5 spread %d pts exceeds InpMaxSpreadPts %d",
@@ -29922,8 +29947,8 @@ void ScenarioEvaluateGeometry(SScenarioPlan &p)
    }
    if(!stop_ok)
    {
-      p.stop_unavailable=StringFormat("structural stop distance %.2f ATR exceeds InpMaxStopATR %.2f or is below one tick",
-                                      p.stop_distance_atr,InpMaxStopATR);
+      p.stop_unavailable=StringFormat("structural stop distance %.2f ATR exceeds g_cfgMaxStopATR %.2f or is below one tick",
+                                      p.stop_distance_atr,g_cfgMaxStopATR);
       p.blocking_gate="risk gate: "+p.stop_unavailable;
       p.entry_unavailable=p.blocking_gate;
       ScenarioM5RetestScan(p,m5,last_m5,g_scn_ctx.boundary);
@@ -29942,12 +29967,12 @@ void ScenarioEvaluateGeometry(SScenarioPlan &p)
    bool t1_used=false,t2_used=false,t3_used=false;
    bool t1_bound=false,t2_bound=false,t3_bound=false;
    double tp1=FindInstitutionalTarget(p.reference_entry,p.reference_entry,p.stop_loss,p.is_buy,
-      min_dist,InpMinRR1,1,hard_barrier,t1_type,t1_id,t1_bar,t1_used,t1_bound,
+      min_dist,g_cfgMinRR1,1,hard_barrier,t1_type,t1_id,t1_bar,t1_used,t1_bound,
       g_scn_ctx.boundary,p.m5_atr);
    if(tp1<=0.0)
    {
       p.barrier_unavailable=(p.barrier_unavailable=="" ?
-         "NO_DATA — existing FindInstitutionalTarget found no valid TP1 beyond InpMinRR1 by ModelBoundary" :
+         "NO_DATA — existing FindInstitutionalTarget found no valid TP1 beyond g_cfgMinRR1 by ModelBoundary" :
          p.barrier_unavailable+"; no valid TP1 passed the existing target selector/RR floor");
       p.blocking_gate="target gate: "+p.barrier_unavailable;
       p.entry_unavailable=p.blocking_gate;
@@ -29958,7 +29983,7 @@ void ScenarioEvaluateGeometry(SScenarioPlan &p)
    double spread_price=(double)p.m5_spread_points*_Point;
    double net_risk=stop_risk+spread_price;
    double net_reward=MathAbs(tp1-p.reference_entry)-spread_price;
-   if(base_rr+1e-9<InpMinRR1 || !(net_risk>_Point) || !(net_reward>_Point))
+   if(base_rr+1e-9<g_cfgMinRR1 || !(net_risk>_Point) || !(net_reward>_Point))
    {
       p.blocking_gate="risk/target gate: existing DirectionalRR failed or M5 spread consumes the TP1 reward";
       p.entry_unavailable=p.blocking_gate;
@@ -29966,10 +29991,10 @@ void ScenarioEvaluateGeometry(SScenarioPlan &p)
       return;
    }
    p.expected_r=net_reward/net_risk;
-   if(p.expected_r+1e-9<InpMinRR1)
+   if(p.expected_r+1e-9<g_cfgMinRR1)
    {
-      p.blocking_gate=StringFormat("risk gate: net-of-M5-spread RR %.2f is below InpMinRR1 %.2f",
-                                   p.expected_r,InpMinRR1);
+      p.blocking_gate=StringFormat("risk gate: net-of-M5-spread RR %.2f is below g_cfgMinRR1 %.2f",
+                                   p.expected_r,g_cfgMinRR1);
       p.entry_unavailable=p.blocking_gate;
       ScenarioM5RetestScan(p,m5,last_m5,g_scn_ctx.boundary);
       return;
@@ -29987,10 +30012,10 @@ void ScenarioEvaluateGeometry(SScenarioPlan &p)
    p.barrier_room_atr=(p.m5_atr>0.0?p.barrier_distance/p.m5_atr:0.0);
 
    double tp2=FindInstitutionalTarget(tp1,p.reference_entry,p.stop_loss,p.is_buy,
-      min_dist,InpMinRR1,2,hard_barrier,t2_type,t2_id,t2_bar,t2_used,t2_bound,
+      min_dist,g_cfgMinRR1,2,hard_barrier,t2_type,t2_id,t2_bar,t2_used,t2_bound,
       g_scn_ctx.boundary,p.m5_atr);
    double tp3=(tp2>0.0 ? FindInstitutionalTarget(tp2,p.reference_entry,p.stop_loss,p.is_buy,
-      min_dist,InpMinRR1,3,hard_barrier,t3_type,t3_id,t3_bar,t3_used,t3_bound,
+      min_dist,g_cfgMinRR1,3,hard_barrier,t3_type,t3_id,t3_bar,t3_used,t3_bound,
       g_scn_ctx.boundary,p.m5_atr) : 0.0);
    if(tp2>0.0 && tp3>0.0 &&
       ValidateTargetGeometry(p.is_buy,p.reference_entry,p.stop_loss,tp1,tp2,tp3))
@@ -30004,10 +30029,10 @@ void ScenarioEvaluateGeometry(SScenarioPlan &p)
       p.target2=0.0; p.target3=0.0;
       p.target2_type="N/A"; p.target3_type="N/A";
       p.tp2_unavailable=(tp2<=0.0 ?
-         "N/A + no next causally available institutional target passed InpMinRR1" :
+         "N/A + no next causally available institutional target passed g_cfgMinRR1" :
          "N/A + TP2/TP3 pair failed existing ValidateTargetGeometry strict ordering");
       p.tp3_unavailable=(tp3<=0.0 ?
-         "N/A + no third causally available institutional target passed InpMinRR1" :
+         "N/A + no third causally available institutional target passed g_cfgMinRR1" :
          "N/A + TP2/TP3 pair failed existing ValidateTargetGeometry strict ordering");
    }
    p.blocking_gate="M30 rejection/displacement -> same-level M15 structure -> closed M5 retest -> Core authorization";
@@ -30276,7 +30301,7 @@ void ScenarioMarkLate(SScenarioPlan &p)
    p.late=false;
    if(!InpChaseFilter || !(g_scn_ctx.selection_atr>0.0) || !(g_scn_ctx.close_price>0.0) ||
       !(p.zone_high>p.zone_low)) return;
-   double chase=(InpChaseMaxATR>0.0?InpChaseMaxATR:InpLateEntryMaxATR);
+   double chase=(g_cfgChaseMaxATR>0.0?g_cfgChaseMaxATR:InpLateEntryMaxATR);
    if(!(chase>0.0)) return;
    p.late=(p.is_buy ? g_scn_ctx.close_price>p.zone_high+chase*g_scn_ctx.selection_atr
                     : g_scn_ctx.close_price<p.zone_low-chase*g_scn_ctx.selection_atr);
@@ -30859,7 +30884,7 @@ void ScenarioMarkRelevant(SScenarioPlan &p)
    // and it is named as such so it can never be read as contradicting FEED OK.
    else if(!age_known) p.qualification_reason="AGE_UNKNOWN — this zone publishes no birth bar, so freshness cannot be verified (provenance fact; the feed itself is unaffected)";
    else if(!fresh) p.qualification_reason="NO_QUALIFIED_CANDIDATE — zone age exceeds InpZREFreshBars";
-   else if(p.late) p.qualification_reason="LATE_WAIT_RETEST — existing InpChaseFilter/InpChaseMaxATR limit exceeded";
+   else if(p.late) p.qualification_reason="LATE_WAIT_RETEST — existing InpChaseFilter/g_cfgChaseMaxATR limit exceeded";
    else if(!p.distance_available) p.qualification_reason="METRIC_MISSING — closed H1 ATR / last closed chart price distance is unavailable (provenance fact; the feed itself is unaffected)";
    else if(!within_horizon) p.qualification_reason="NO_QUALIFIED_CANDIDATE — distance exceeds the existing ZRE approach horizon in closed H1 ATR";
    else p.qualification_reason="Priority A passed: live, correctly sided, fresh, unchased zone within the closed-H1 approach horizon";
@@ -36464,9 +36489,9 @@ void ZRE_ParamsFromInputs(SZREParams &p)
    p.conflict_gap=MathMax(0.0,InpZREConflictGap);
    p.fresh_entry_bars=(int)MathMax(0,QSMC_PresetInt(InpZREFreshEntryBars,3,2,3));
    p.weak_zone=(int)MathMax(0,MathMin(100,InpZREWeakZoneScore));
-   p.min_rr1=MathMax(0.0,InpMinRR1);
+   p.min_rr1=MathMax(0.0,g_cfgMinRR1);
    p.sl_buf_atr=MathMax(0.0,InpSLBufferATR);
-   p.max_stop_atr=MathMax(0.1,InpMaxStopATR);
+   p.max_stop_atr=MathMax(0.1,g_cfgMaxStopATR);
    double tk=InstrumentTickSize();
    p.tick=(tk>0.0 ? tk : _Point);
    p.min_sample=(int)MathMax(1,InpMinHistoricalSampleSize);
@@ -37028,7 +37053,7 @@ void ZRE_ProcessClosedBar(const int rates_total,const int closed,const double at
          if(ok && InpProximityFilter)
          {
             double wall=NearestOpposingEdgeATR(buy,bar.c,atr);
-            if(wall>=0.0 && wall<InpProximityMaxATR)
+            if(wall>=0.0 && wall<g_cfgProximityMaxATR)
             {
                ok=false; st.reaction=false;
                st.note=StringFormat("proximity veto: %.2f ATR to the opposing %s",wall,(buy?"resistance":"support"));
