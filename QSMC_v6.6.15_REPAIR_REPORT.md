@@ -142,3 +142,58 @@ These were observed in the 21:05–21:12 log but are **diagnostic / state-machin
 * **Did NOT widen synthetic bars to 85–122** (PR #34 mistake; breaks touch counts).
 * **Did NOT lower ZRE min_sample to make the self-test pass** (would fabricate frequencies before n ≥ min_sample).
 * **Did NOT remove init validation to silence the "Invalid parameters" error**; instead we made the diagnostic name the offending input.
+
+---
+
+## v6.6.15-post-merge audit (follow-up fixes before operator recompile)
+
+Audit of the as-merged v6.6.15 source after PR #36 found three issues that
+would have shown up the same way as before on first attach even with v6.6.15
+compiled:
+
+### Audit finding A — bad-param chain was incomplete
+The `if(…)` guard at L14492-L14516 validated InpAsianStart/End,
+InpLondonStart/End, InpNewYorkStart/End, InpLondonKillZoneStart/End,
+InpNewYorkKillZoneStart/End, and the empty-window check Start==End, but the
+cascading else-if chain only named InpEMAFast…InpSignalDedupCooldownBars.
+If one of the KillZone-hour defaults tripped the guard (which is the prime
+suspect for the first iCustom-attach race because EA_DEFAULT hash
+2074000394 supplies 8/16 defaults for KillZone hours but the preset-CUSTOM
+hash expects 7/10 local), the diagnostic would have printed `bad="?"` — still
+generic, defeating the purpose of the fix.
+
+Fixed: extended the chain to name every input in the guard, including
+`Inp{Asian,London,NewYork}{Start,End}` and
+`Inp{London,NewYork}KillZone{Start,End}`, plus explicit "window empty"
+identifiers for the Start==End sub-case.
+
+### Audit finding B — QSMC_Root Deinit() printed LeakReport BEFORE releasing market/render
+`CQuantumRoot::Shutdown()` called `m_arbiter.Shutdown()` (which freed its 10
+gates) but then immediately called `LeakReport()`, which reads
+`m_md.AllocCalls()/FreeCalls()` and `m_render.Created()/Deleted()`. The 5
+CBarSeries owned by `m_md` were only freed later by `m_md`'s destructor when
+the automatic member went out of scope (AFTER `Shutdown()` returned). Similarly
+`m_render.Clear()` (which deletes chart objects and increments m_deleted) was
+called AFTER the report. So the report *always* printed `market 5/0` and
+`chart objects 2/0` even on a perfectly clean shutdown — a destruct-order bug,
+not a real leak.
+
+Fixed:
+- Added `CMarketData::Shutdown()` which SafeDeletes all 5 CBarSeries with the
+  same POINTER_DYNAMIC guard used in Init, and increments m_free_calls.
+- Reordered `CQuantumRoot::Shutdown()` to call `m_render.Clear()` FIRST,
+  then `m_md.Shutdown()`, then `m_arbiter.Shutdown()`, THEN `LeakReport()`.
+  The destructors remain as a safety net (SafeDelete on NULL becomes a no-op).
+- Counter-hygiene now correct: a clean init+shutdown lifecycle reports
+  `market 5/5 | gates 10/10 | chart objects n/n => no leak`.
+
+### Audit finding C — ScannerProbe aggregator had a double-count
+The first pass at aggregating g_setup + g_md counters had an erroneous line
+`sf+=(g_setup.FreeCalls()-(sf-(g_md?g_md.FreeCalls():0)))` which tried to add
+frees from Shutdown but ended up subtracting the wrong baseline. Simplified
+to a snapshot-before-delete pattern:
+- Snapshot md_a/md_a and su_a/su_f_before BEFORE any delete.
+- Call g_setup.Shutdown(); read su_f_after.
+- For g_md destructor: add exactly `(md_a - md_f)` (the number of BarSeries
+  actually alive) to md_f, then delete g_md.
+- Sum sa=md_a+su_a / sf=md_f+su_f_after.

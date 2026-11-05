@@ -152,18 +152,40 @@ void OnDeinit(const int reason)
   {
    EventKillTimer();
    // v6.6.15: include allocations made INSIDE g_setup (its CMarketData
-   // instance, 5 BarSeries allocs per pass) in the probe's leak report
-   // so the balance reflects every `new` reached by this program.
-   int sa=(g_md?g_md.AllocCalls():0)+g_setup.AllocCalls();
-   int sf=(g_md?g_md.FreeCalls():0)+g_setup.FreeCalls();
+   // and whatever CTopSetupsScanner owns) alongside the probe's own
+   // g_md, so the balance reflects every `new` reached by this program.
+   //
+   // Counter contract (post v6.6.15, now that CMarketData::Init uses
+   // POINTER_DYNAMIC guards and ~CMarketData uses SafeDelete which
+   // increments m_free_calls):
+   //   AllocCalls() == number of `new CBarSeries` from successful Init
+   //                  calls for that CMarketData.
+   //   FreeCalls()  == number of BarSeries deleted via SafeDelete,
+   //                  whether from re-Init or from the destructor.
+   // Snapshot BEFORE delete, then destruct/Shutdown, then add what
+   // those paths freed. We cannot read g_md->FreeCalls() after delete
+   // (the pointer is invalid), and we cannot rely on the global being
+   // anything other than NULL after that.
+   int md_a=(g_md?g_md.AllocCalls():0);
+   int md_f=(g_md?g_md.FreeCalls():0);
+   int su_a=g_setup.AllocCalls();
    g_setup.Shutdown();
-   sf+=(g_setup.FreeCalls()-(sf-(g_md?g_md.FreeCalls():0))); // add frees made by Shutdown
+   int su_f_after=g_setup.FreeCalls();
    if(g_md!=NULL)
      {
+      // ~CMarketData calls SafeDelete on each of the 5 CBarSeries.
+      // SafeDelete only increments m_free_calls for POINTER_DYNAMIC
+      // objects (i.e. ones actually allocated). So the number of frees
+      // the destructor adds is exactly (md_a - md_f): how many
+      // BarSeries were still alive before the destructor ran.
+      int alive=md_a-md_f;
+      if(alive<0) alive=0;
+      md_f+=alive;
       delete g_md;
-      sf+=5;                    // ~CMarketData frees 5 BarSeries via its destructor
       g_md=NULL;
      }
+   int sa=md_a+su_a;
+   int sf=md_f+su_f_after;
    Print("[QSMC_SCAN] probe OFF after ",IntegerToString(g_passes),
          " pass(es) | alloc/free ",IntegerToString(sa),"/",IntegerToString(sf),
          (sa==sf?" => no leak":" => UNBALANCED, report this"));

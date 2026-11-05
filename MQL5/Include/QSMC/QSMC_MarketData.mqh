@@ -426,6 +426,26 @@ public:
    int               AllocCalls() const { return m_alloc_calls; }
    int               FreeCalls()  const { return m_free_calls;  }
 
+   // v6.6.15: explicit Shutdown. Previously the only place the 5
+   // CBarSeries were freed was the destructor, which runs when
+   // CMarketData goes out of scope - AFTER CQuantumRoot::Shutdown()
+   // printed its LeakReport, so counters printed 5/0 even though no
+   // real leak existed. Calling Shutdown() explicitly before the
+   // leak report means FreeCalls counts those deletes and the report
+   // is honest. The destructor is still a safety net (calls
+   // SafeDelete on non-null pointers, which becomes a no-op after
+   // Shutdown NULLs them out).
+   void              Shutdown()
+     {
+      if(CheckPointer(m_chart)==POINTER_DYNAMIC){ delete m_chart; m_free_calls++; } m_chart=NULL;
+      if(CheckPointer(m_exec )==POINTER_DYNAMIC){ delete m_exec;  m_free_calls++; } m_exec=NULL;
+      if(CheckPointer(m_d1   )==POINTER_DYNAMIC){ delete m_d1;    m_free_calls++; } m_d1=NULL;
+      if(CheckPointer(m_h4   )==POINTER_DYNAMIC){ delete m_h4;    m_free_calls++; } m_h4=NULL;
+      if(CheckPointer(m_h1   )==POINTER_DYNAMIC){ delete m_h1;    m_free_calls++; } m_h1=NULL;
+      m_ready=false;
+      m_reason="shut down";
+     }
+
    //--- RAII: every allocation made here is released by the destructor.
    //--- Verify with CMarketData::AllocCalls() == FreeCalls() on Deinit.
    bool              Init(const string symbol,const ENUM_TIMEFRAMES chart_tf,

@@ -477,13 +477,19 @@ public:
                " | suppressed ",IntegerToString(m_alerts.Suppressed()));
          Print("[QSMC_ARB] outcomes: ",m_stats.Summary());
         }
-      //--- Release the gates FIRST so the counters balance before the
-      //--- leak report is printed (the destructor must not be the only
-      //--- place a `new` is matched).
+      //--- Release subsystems EXPLICITLY before the leak report is
+      //--- printed, so alloc == free in the counters. Previously only
+      //--- m_arbiter was shut down here; m_md and m_render relied on
+      //--- their destructors which run AFTER Shutdown() returned, so
+      //--- the report always saw market 5/0 and chart-objects 2/0
+      //--- even though no real leak existed (destruct order bug).
+      //--- v6.6.15: Shutdown m_md and m_render.Clear() FIRST, then
+      //--- m_arbiter.Shutdown() (gates), then LeakReport.
+      m_render.Clear();       // deletes QSMC_ARB_PFX chart objects and increments m_deleted
+      m_md.Shutdown();        // SafeDelete the 5 CBarSeries and increments m_free_calls
       m_arbiter.Shutdown();
       if(m_bars>0 || m_ready) Print("[QSMC_ARB] ",LeakReport());
       if(m_cfg.use_global_vars) m_alerts.CleanupGlobalVars();
-      m_render.Clear();
       m_stats.Close();
       m_ready=false;
      }
