@@ -738,7 +738,8 @@ int CountConsecutiveLosses()
       // skip partial closes that still left the position open - only count
       // the final close that returned POSITION_ID empty
       ulong pos_id=(ulong)HistoryDealGetInteger(t,DEAL_POSITION_ID);
-      if(pos_id>0 && HistoryDealGetInteger(t,DEAL_VOLUME)>0.0)
+      double deal_vol=HistoryDealGetDouble(t,DEAL_VOLUME);
+      if(pos_id>0 && deal_vol>0.0)
         {
          // if there is still an open position for this pos_id, it's a partial
          if(PositionSelectByTicket(pos_id)) continue;
@@ -1123,9 +1124,13 @@ void HandleSignal(SQsigSignal &s)
         }
      }
 
-   if(!IsConnected())
+   // MQL5 has no global IsConnected() - connection state is per-terminal via
+   // TerminalInfoInteger(TERMINAL_CONNECTED). Refuse to send when the terminal
+   // reports it has lost the link to the trade server; orders queued during a
+   // disconnect can fill at unpredictable prices.
+   if(!(bool)TerminalInfoInteger(TERMINAL_CONNECTED))
      {
-      Note(key,"terminal reports !IsConnected() - trading blocked while disconnected");
+      Note(key,"terminal reports TERMINAL_CONNECTED=false - trading blocked while disconnected");
       return;
      }
 
@@ -2284,7 +2289,7 @@ int OnInit()
          " risk/trade ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",
          " | daily cap ",DoubleToString(InpMaxDailyLossPercent,2),"%",
          " | account DD ",(InpMaxAccountDrawdownPct>0.0?DoubleToString(InpMaxAccountDrawdownPct,2)+"%":"off"),
-         " | consec-loss breaker ",(InpStopAfterConsecLoss>0?IntegerToString(InpStopAfterConsecLoss):(int)0),
+         " | consec-loss breaker ",(InpStopAfterConsecLoss>0?IntegerToString(InpStopAfterConsecLoss):string("off")),
          " | spread<=",(InpMaxSpreadFracOfStop>0.0?DoubleToString(InpMaxSpreadFracOfStop*100.0,0)+"% of SL":"off"),
          " | data fresh<",(InpMaxDataAgeSeconds>0?IntegerToString(InpMaxDataAgeSeconds)+"s":"off"),
          " | max positions ",IntegerToString(InpMaxOpenPositions));
