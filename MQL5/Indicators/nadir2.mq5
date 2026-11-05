@@ -14594,21 +14594,35 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
      {
       string _gn=GlobalVariableName(_gi);
       if(StringFind(_gn,_hk_prefix)!=0) continue;
-      // match this symbol and tf: parse trailing "_<symbol>_<tf>"
+      // match this symbol and tf: key format is <login>_<magic>_<sym>_<tf>.
+      // Find the LAST underscore (sym_tf boundary) and the SECOND-TO-LAST
+      // (magic_sym boundary). Reverse scan from end — robust regardless of
+      // how many underscores appear in the login/magic/symbol components.
       string _tail=StringSubstr(_gn,StringLen(_hk_prefix));
-      int _lastUS=StringFind(_tail,"_",0);
-      if(_lastUS<0) continue;
-      // find the second-to-last underscore (separates magic from symbol)
-      int _prevUS=-1;
-      for(int _p=_lastUS-1;_p>=0;_p--){ if(StringGetCharacter(_tail,_p)=='_'){_prevUS=_p;break;} }
-      if(_prevUS<0) continue;
+      int _lastUS=-1,_prevUS=-1;
+      for(int _p=StringLen(_tail)-1;_p>=0;_p--)
+        {
+         if(StringGetCharacter(_tail,_p)=='_')
+           {
+            if(_lastUS<0)_lastUS=_p;
+            else{_prevUS=_p;break;}
+           }
+        }
+      if(_lastUS<0 || _prevUS<0) continue;
       string _symPart=StringSubstr(_tail,_prevUS+1,_lastUS-_prevUS-1);
       string _tfPart=StringSubstr(_tail,_lastUS+1);
       string _magicPart=StringSubstr(_tail,0,_prevUS);
       if(_symPart==_Symbol && (long)_tfPart==(long)_Period)
         {
          datetime _when=(datetime)GlobalVariableGet(_gn);
-         if(_when>0 && g_instance_init_time-_when<=5)
+         // v6.6.16 (audit B fix): TTL widened to 30s. iCustom() in MT5 is not
+         // guaranteed to run OnInit synchronously — on a cold terminal the
+         // indicator can be instantiated seconds after the EA calls iCustom(),
+         // particularly when multiple indicators are being reloaded (scanner,
+         // datafeeder, EA reader + VISUAL). 30 s is wide enough to absorb
+         // that latency while still refusing any stale handshake left over
+         // from a previous session.
+         if(_when>0 && g_instance_init_time-_when<=30)
            {
             g_instance_role=ROLE_EA_READER;
             g_instance_owner_magic="EA_magic_"+_magicPart;
