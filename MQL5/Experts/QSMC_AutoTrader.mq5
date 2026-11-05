@@ -302,7 +302,7 @@ int       g_handle=INVALID_HANDLE;
 
 datetime  g_start_bar=0;        // open time of the bar that was forming at attach
 int       g_day_index=-1;
-double    g_day_start_equity=0.0;
+double    g_day_start_equity=0.0;  // v6.6.16: EQUITY captured at server-day roll (includes any open floating P&L, commissions, swaps, closed P&L at day start). Name kept for minimal diff; the value IS equity.
 bool      g_day_blocked=false;
 // v6.6.15 trial guards - persisted across ticks, survive day roll
 double    g_session_start_equity=0.0; // equity at EA attach (account drawdown reference)
@@ -494,19 +494,44 @@ double NormalizeLots(const string sym,const double raw)
   }
 
 //+------------------------------------------------------------------+
-//| Broker stops level: SL/TP must be at least this far from price.   |
+//| Broker stops level: SL/TP must be at least this far from current  |
+//| market at ORDER TIME. Both STOPS_LEVEL and FREEZE_LEVEL are       |
+//| checked: STOPS_LEVEL is the minimum distance for new orders,       |
+//| FREEZE_LEVEL is the additional minimum for MODIFICATIONS of        |
+//| existing orders (trail/BE/partial-close moves). On most brokers    |
+//| they are identical, but on ECN/STP they can differ. Using the     |
+//| maximum of the two for modifications is safe; on initial send we  |
+//| only require STOPS_LEVEL. If we refuse a modification because of   |
+//| the freeze level we log it and leave the existing stop in place — |
+//| never widening risk to make the broker accept the call.           |
 //+------------------------------------------------------------------+
-bool StopsDistanceOK(const string sym,const double price,const double sl,const double tp)
+double MinOrderDistance(const string sym)
   {
    double point=SymbolInfoDouble(sym,SYMBOL_POINT);
-   if(point<=0.0) return false;
+   if(point<=0.0) return 0.0;
    long lvl=SymbolInfoInteger(sym,SYMBOL_TRADE_STOPS_LEVEL);
-   double min_dist=(double)lvl*point;
+   return (double)MathMax(0,lvl)*point;
+  }
+double MinModifyDistance(const string sym)
+  {
+   double point=SymbolInfoDouble(sym,SYMBOL_POINT);
+   if(point<=0.0) return 0.0;
+   long stops=SymbolInfoInteger(sym,SYMBOL_TRADE_STOPS_LEVEL);
+   long freeze=SymbolInfoInteger(sym,SYMBOL_TRADE_FREEZE_LEVEL);
+   return (double)MathMax(MathMax(0,(int)stops),MathMax(0,(int)freeze))*point;
+  }
+bool StopsDistanceOK(const string sym,const double price,const double sl,const double tp,const bool modifying)
+  {
+   double min_dist=(modifying ? MinModifyDistance(sym) : MinOrderDistance(sym));
    if(min_dist<=0.0) return true;
    if(sl>0.0 && MathAbs(price-sl)<min_dist) return false;
    if(tp>0.0 && MathAbs(tp-price)<min_dist) return false;
    return true;
   }
+// Convenience wrapper for the existing open-order call sites that send
+// a new order (initial send path — not a modification).
+bool StopsDistanceOK(const string sym,const double price,const double sl,const double tp)
+  { return StopsDistanceOK(sym,price,sl,tp,false); }
 
 bool SpreadOK(const string sym)
   {
@@ -664,14 +689,23 @@ void DayGuardLoad(const int day)
    if(!GlobalVariableCheck(kd) || (int)GlobalVariableGet(kd)!=day)
      {
       // New server day (or first run): freeze the baseline NOW and write it.
-      // v6.6.16 (audit A): use ACCOUNT_BALANCE for the baseline. Equity includes
-      // floating P&L on unrelated positions; using it as the reference meant a
-      // +$20 open profit at day roll would set the floor at a temporarily
-      // elevated number and trip the guard on a tiny pullback. The live floor
-      // check below still measures against ACCOUNT_EQUITY, so drawdown is
-      // correctly detected — but the reference is a stable number.
+      // v6.6.16 (final safety review): baseline is ACCOUNT_EQUITY at day roll,
+      // not balance. Rationale:
+      //   - EQUITY includes closed P&L from earlier today (which already
+      //     happened), open floating P&L from overnight positions, commissions
+      //     and swaps that posted since day roll.
+      //   - If we captured BALANCE, an existing $20 floating loss from an
+      //     overnight position would NOT be counted against today's cap, and
+      //     the guard would allow another $25 of loss before tripping
+      //     (0.50% on $5k = $25) — effectively 0.90% drawdown from the true
+      //     starting point, bypassing the daily limit.
+      //   - DayGuardUpdate then compares EQUITY against this baseline each
+      //     tick, so any worsening (further loss) OR improvement (profit that
+      //     later retraces) is measured correctly.
+      // The baseline is FROZEN at first sight of the new day and never
+      // refreshed within the day; an EA reload restores the frozen value.
       g_day_index=day;
-      g_day_start_equity=AccountInfoDouble(ACCOUNT_BALANCE);
+      g_day_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
       g_day_blocked=false;
       GlobalVariableSet(kd,(double)day);
       GlobalVariableSet(keq,g_day_start_equity);
@@ -679,7 +713,7 @@ void DayGuardLoad(const int day)
       GlobalVariableSet(ktr,0.0);   // new day, new entry budget
       GlobalVariablesFlush();
       Print("[QSMC_AT] day guard: new baseline ",
-            DoubleToString(g_day_start_equity,2)," (balance) for server day ",
+            DoubleToString(g_day_start_equity,2)," (equity) for server day ",
             TimeToString((datetime)((long)day*86400),TIME_DATE),
             " | DAY_BASELINE=",DoubleToString(g_day_start_equity,2),
             " | CURRENT_BALANCE=",DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE),2),
@@ -687,10 +721,12 @@ void DayGuardLoad(const int day)
       return;
      }
    // Same day, restored from the terminal: the baseline and the block survive
-   // a reload, which is the whole point of persisting them.
+   // a reload, which is the whole point of persisting them. Baseline is EQUITY
+   // (as captured at day roll); never re-capture inside the same day, because
+   // that would silently raise the floor after a win or lower it after a loss.
    g_day_index=day;
    double eq0=GlobalVariableGet(keq);
-   g_day_start_equity=(eq0>0.0 ? eq0 : AccountInfoDouble(ACCOUNT_BALANCE));
+   g_day_start_equity=(eq0>0.0 ? eq0 : AccountInfoDouble(ACCOUNT_EQUITY));
    g_day_blocked=(GlobalVariableCheck(kblk) && GlobalVariableGet(kblk)>0.5);
    if(g_day_blocked)
       Print("[QSMC_AT] day guard RESTORED: this server day is already blocked at floor ",
@@ -1802,7 +1838,30 @@ void ManagePipLadder(const ulong ticket,const bool buy,const double entry,
      {
       if(sl<=want_sl || want_sl<=cur) return;
      }
-   if(!StopsDistanceOK(_Symbol,cur,want_sl,0.0)) return;
+   // v6.6.16 (final safety review): modification path must respect both
+   // STOPS_LEVEL and FREEZE_LEVEL (MinModifyDistance). The reference price
+   // for SL on an existing position is the opposing quote (Bid for longs,
+   // Ask for shorts) - that is the price the broker uses for the level
+   // check on PositionModify.
+   double ref_price=(buy ? SymbolInfoDouble(_Symbol,SYMBOL_BID)
+                         : SymbolInfoDouble(_Symbol,SYMBOL_ASK));
+   if(!StopsDistanceOK(_Symbol,ref_price,want_sl,0.0,true))
+     {
+      // Log once per position: not a transient retcode, and we never widen
+      // the stop to make the modify pass.
+      if(g_be_warned_ticket!=ticket)
+        {
+         g_be_warned_ticket=ticket;
+         Print("[QSMC_AT] ladder stop MODIFY REJECTED by broker freeze/stops level on #",
+               IntegerToString((long)ticket)," want_sl=",DoubleToString(want_sl,_Digits),
+               " ref=",DoubleToString(ref_price,_Digits),
+               " min_dist=",DoubleToString(MinModifyDistance(_Symbol),_Digits),
+               " | stop unchanged (never widened to pass)",
+               " | STOPS_LEVEL=",IntegerToString((int)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL)),
+               " FREEZE_LEVEL=",IntegerToString((int)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_FREEZE_LEVEL)));
+        }
+      return;
+     }
    if(ticket==g_be_ticket && (long)(TimeCurrent()-g_be_last_try)<30) return;
    g_be_ticket=ticket;
    g_be_last_try=TimeCurrent();
@@ -2032,7 +2091,23 @@ void ManageOpenPositions()
       if(buy && sl>=entry) continue;
       if(!buy && sl<=entry) continue;
       double new_sl=NormalizeDouble(entry,_Digits);
-      if(!StopsDistanceOK(_Symbol,cur,new_sl,0.0)) continue;
+      double ref2=(buy ? SymbolInfoDouble(_Symbol,SYMBOL_BID)
+                        : SymbolInfoDouble(_Symbol,SYMBOL_ASK));
+      if(!StopsDistanceOK(_Symbol,ref2,new_sl,0.0,true))
+        {
+         if(g_be_warned_ticket!=ticket)
+           {
+            g_be_warned_ticket=ticket;
+            Print("[QSMC_AT] break-even MODIFY REJECTED by broker freeze/stops level on #",
+                  IntegerToString((long)ticket)," new_sl=",DoubleToString(new_sl,_Digits),
+                  " ref=",DoubleToString(ref2,_Digits),
+                  " min_dist=",DoubleToString(MinModifyDistance(_Symbol),_Digits),
+                  " | stop unchanged, retried every 30 s, never widened",
+                  " | STOPS_LEVEL=",IntegerToString((int)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_STOPS_LEVEL)),
+                  " FREEZE_LEVEL=",IntegerToString((int)SymbolInfoInteger(_Symbol,SYMBOL_TRADE_FREEZE_LEVEL)));
+           }
+         continue;
+        }
       // One attempt per ticket per 30 s. The old loop re-sent PositionModify on
       // every tick while the broker kept refusing it and printed nothing on
       // failure, so a refused break-even looked like "the EA does not manage
@@ -2239,7 +2314,12 @@ int OnInit()
    g_start_bar=iTime(_Symbol,_Period,0);
    if(g_start_bar<=0) g_start_bar=(datetime)TimeCurrent();
    g_day_index=-1;
-   // v6.6.15: session-start equity for account-drawdown circuit breaker
+   // v6.6.16 (final safety review): session baseline captured from EQUITY so
+   // that floating P&L from positions already open at EA attach is counted
+   // against the DD cap. (Day baseline is also EQUITY at day roll — see
+   // DayGuardLoad.) The "transient floating P&L on unrelated positions" hazard
+   // from the earlier patch is solved by FREEZING the baseline once (never
+   // re-capturing on reload), not by switching the reference to BALANCE.
    g_session_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
    g_consec_losses=0;
    g_loss_streak_blocked=false;
@@ -2269,8 +2349,9 @@ int OnInit()
       if(GlobalVariableCheck(sk_dayeq)){GlobalVariableDel(sk_dayeq);wiped=true;}
       if(GlobalVariableCheck(sk_dayblk)){GlobalVariableDel(sk_dayblk);wiped=true;}
       if(GlobalVariableCheck(sk_daytr)){GlobalVariableDel(sk_daytr);wiped=true;}
-      // re-capture fresh baselines from CURRENT balance/equity (post-reset).
-      g_session_start_equity=AccountInfoDouble(ACCOUNT_BALANCE);
+      // re-capture fresh baselines from CURRENT EQUITY (post-reset) so open
+      // floating P&L is counted against the DD cap.
+      g_session_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
       g_loss_streak_blocked=false;
       g_drawdown_blocked=false;
       g_consec_losses=0;
@@ -2294,11 +2375,9 @@ int OnInit()
      }
    else
      {
-      // v6.6.16 (audit A): session baseline uses ACCOUNT_BALANCE, not equity, so a
-      // transient floating P&L on an unrelated position cannot raise the floor
-      // and cause a trip on a tiny retrace. Live floor checks still use EQUITY
-      // (that is how drawdown is measured).
-      g_session_start_equity=AccountInfoDouble(ACCOUNT_BALANCE);
+      // v6.6.16 (final safety review): session baseline is frozen from EQUITY
+      // at first attach; same rationale as DayGuardLoad (see comment there).
+      g_session_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
       GlobalVariableSet(sk_eq,g_session_start_equity);
       GlobalVariableSet(sk_ddb,0.0);
       GlobalVariableSet(sk_lsb,0.0);

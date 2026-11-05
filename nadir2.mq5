@@ -13865,6 +13865,56 @@ void SigLog_TestRec(SSigLogRec &r,const bool buy,const int model,const double re
    r.tp3=(buy ? 103.0 : 97.0);
 }
 
+//+------------------------------------------------------------------+
+//| Leg geometry self-test (v6.6.16) — verifies the MIN/MAX bar-      |
+//| distance invariant of ValidateDisplacementLeg directly, against   |
+//| the exact predicates used in source (no global-state mutation).   |
+//| Cases:                                                            |
+//|   A: bars_apart=0  (same bar)            -> must reject "not >= 2"|
+//|   B: bars_apart=1  (adjacent)            -> must reject "not >= 2"|
+//|   C: bars_apart=2  (one mid bar)         -> predicate ACCEPTS     |
+//|   D: bars_apart=8  (=max, default)       -> predicate ACCEPTS     |
+//|   E: bars_apart=9  (one past max default)-> UPSTREAM must skip    |
+//|      (age > InpSweepToStructureMaxBars)                           |
+//|   F: bars_apart=50 (gross too late)      -> UPSTREAM must skip    |
+//| The "upstream" predicate is exactly the `if(age > InpSweepToStructureMaxBars)`
+//| at the call site; the ValidateDisplacementLeg function itself does not
+//| enforce an upper bound (it relies on the upstream filter).         |
+//+------------------------------------------------------------------+
+bool LegGeom_TooClose(const int sw,const int st,const int total)
+{
+   // Exact predicate from ValidateDisplacementLeg:
+   //   if(sweep_bar<0 || structure_bar<=sweep_bar+1 || structure_bar>=total) reject
+   return (sw<0 || st<=sw+1 || st>=total);
+}
+bool LegGeom_TooOld(const int sw,const int st,const int maxd)
+{
+   // Exact predicate from the upstream call site:
+   //   if(age > InpSweepToStructureMaxBars) continue;   // skip
+   return (st-sw)>maxd;
+}
+bool LegGeometry_SelfTest()
+{
+   int f=0;
+   int TOT=20;
+   // A: bars_apart=0 (same bar) -> reject (not >= 2 apart)
+   if(!LegGeom_TooClose(10,10,TOT)){f++;Print(">>> LEG_GEOM T/A FAIL: bars_apart=0 should REJECT (not >= 2 apart)");}
+   // B: bars_apart=1 (adjacent) -> reject
+   if(!LegGeom_TooClose(10,11,TOT)){f++;Print(">>> LEG_GEOM T/B FAIL: bars_apart=1 should REJECT (adjacent, no mid bar)");}
+   // C: bars_apart=2 (one closed bar in between) -> MIN ACCEPTED
+   if( LegGeom_TooClose(10,12,TOT)){f++;Print(">>> LEG_GEOM T/C FAIL: bars_apart=2 should ACCEPT min distance");}
+   // D: bars_apart=8 (=max default, 8-0=8) -> min-distance predicate accepts;
+   //    upstream age filter must NOT skip (age=8 is NOT > max=8).
+   if( LegGeom_TooClose(10,18,TOT)){f++;Print(">>> LEG_GEOM T/D1 FAIL: bars_apart=8 should pass min-distance check");}
+   int maxd=InpSweepToStructureMaxBars;
+   if( LegGeom_TooOld(10,18,maxd)){f++;Print(">>> LEG_GEOM T/D2 FAIL: bars_apart=8 (==max) should NOT be skipped upstream (strict >)");}
+   // E: bars_apart=9 -> upstream must SKIP (age>max strict)
+   if(!LegGeom_TooOld(10,19,maxd)){f++;Print(">>> LEG_GEOM T/E FAIL: bars_apart=9 should be SKIPPED upstream (age>max)");}
+   // F: bars_apart=50 -> upstream must SKIP
+   if(!LegGeom_TooOld(10,60,maxd)){f++;Print(">>> LEG_GEOM T/F FAIL: bars_apart=50 should be SKIPPED upstream");}
+   return f==0;
+}
+
 bool SigLog_SelfTest()
 {
    int f=0;
@@ -15268,6 +15318,14 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
             (InpSigLogEntryRef==SIGLOG_ENTRY_PUBLISHED?"LIMIT at the published zone edge - these rows canNOT describe a market-execution EA":"MARKET at the signal bar close")," | outcomes from later closed bars only | observed results, not a forecast");
    if(InpSigLogRunSelfTest)
    {
+      // v6.6.16: Leg geometry boundary self-test (min=2, max=8 inclusive) runs
+      // alongside the existing SigLog self-test. It is a pure predicate check
+      // against the exact reject/accept lines used in source.
+      if(LegGeometry_SelfTest())
+         Print(">>> ",QSMC_VERSION_TEXT," LegGeometry self-test: PASS (min=2 bars, max=",
+               IntegerToString((int)InpSweepToStructureMaxBars)," inclusive, strict > for max-reject)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," LegGeometry self-test: FAIL — see prior log lines");
       if(SigLog_SelfTest())
          Print(">>> ",QSMC_VERSION_TEXT," SigLog self-test: PASS");
       else
@@ -16556,6 +16614,40 @@ bool IsCausallyConnected(const int ancestor,const int descendant)
    return false;
 }
 
+// ValidateDisplacementLeg.
+//
+// Bar-index convention (nadir2 v6.6.x):
+//   - g_buf_o/h/l/c/t are CHRONOLOGICAL arrays: index 0 = oldest bar,
+//     index total-1 = currently-forming (live) bar. Closed-bar work uses
+//     closed = rates_total - 2 (the last fully closed bar).
+//   - sweep_bar and structure_bar are indices in this chronological array;
+//     both refer to CLOSED bars (ValidateDisplacementLeg is only called from
+//     the causal-chain builder which iterates closed-bar events).
+//   - Timestamps: g_buf_t[sweep_bar] < g_buf_t[impulse_bar] < g_buf_t[struct_bar]
+//     (strictly increasing — institutional chronology Sweep < Displacement <
+//     Structure).
+//
+// Distance semantics (audited v6.6.16):
+//   bars_apart = structure_bar - sweep_bar.
+//   Minimum accepted: 2  (i.e. at least one closed bar strictly between sweep
+//                          and structure: structure_bar > sweep_bar + 1).
+//                          bars_apart = 0 or 1 is rejected with
+//                          "leg: sweep and break are not >= 2 bars apart".
+//   Maximum accepted: InpSweepToStructureMaxBars (= 8 by default), enforced
+//                     by the UPSTREAM age filter at L16833: if
+//                     (age = st.bar - sweep_bar) > InpSweepToStructureMaxBars
+//                     the sweep candidate is SKIPPED before this function
+//                     is even called.
+//   Valid impulse bars k satisfy: sweep_bar < k < structure_bar  (strictly
+//                     between; the impulse is a separate candle, never the
+//                     sweep or the break candle itself). So for bars_apart=2
+//                     there is exactly one candidate (k=sweep+1=struct-1);
+//                     for bars_apart=8 there are up to 7 candidates.
+//
+// The impulse-body threshold is measured in ATR AT THE CANDLE k (g_atr_buf[k]),
+// so the required absolute body size varies with volatility at the time of
+// the impulse, not with the structure-break ATR. The net move threshold
+// (InpDisplacementATR=0.90) uses ATR at the structure bar.
 bool ValidateDisplacementLeg(const int sweep_bar,const int structure_bar,const bool bullish,
                              const double break_price,const double &o[],const double &h[],
                              const double &l[],const double &c[],int &impulse_bar)

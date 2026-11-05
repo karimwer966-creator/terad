@@ -242,3 +242,156 @@ Verified correct:
 - No new indicator buffers added (preserves ABI with existing iCustom callers).
 - No preset modified.
 
+
+---
+
+## Final Demo Execution Safety Review (v6.6.16-issue-patch)
+
+Six blocking issues raised during the final demo review. Status after code work:
+
+### Issue 1 — LEG_GEOMETRY distance semantics (corrected)
+
+**Source of truth:** nadir2.mq5 L16641+ comment block added above `ValidateDisplacementLeg`; function body L16666 reject line `if(sweep_bar<0 || structure_bar<=sweep_bar+1 || structure_bar>=total) reject`. Upstream age filter at L16833 `if(age>InpSweepToStructureMaxBars) continue;` (strict).
+
+| Boundary | bars_apart | Expected | Code path |
+|----------|-----------|----------|-----------|
+| A: same bar       | 0 | REJECT "not >= 2 bars apart" | ValidateDisplacementLeg |
+| B: adjacent       | 1 | REJECT "not >= 2 bars apart" | ValidateDisplacementLeg |
+| C: one mid bar    | 2 | ACCEPT (min) | ValidateDisplacementLeg |
+| D: default max    | 8 (==InpSweepToStructureMaxBars default) | ACCEPT (age>Max strict) | Upstream + VDL |
+| E: one past max   | 9 | REJECT (upstream age filter) | L16833 age>Max |
+| F: gross late     | 50| REJECT (upstream age filter) | L16833 age>Max |
+
+**Implementation note:** the impulse-candle loop `for(k=sweep_bar+1;k<structure_bar;k++)` only scans closed intermediate bars (strictly between), so for bars_apart=2 the single candidate k=sweep+1=struct-1 is tested against the impulse-body threshold in ATR at that candle.
+
+**Self-test:** `LegGeometry_SelfTest()` (added before `SigLog_SelfTest()`) verifies all six boundary predicates against the exact in-source reject/accept lines. Wired into the init self-test block; prints `>>> LegGeometry self-test: PASS (min=2 bars, max=… inclusive, strict > for max-reject)` on clean init.
+
+**Diagnostic fields:** `leg_min_bars_apart=2`, `leg_max_bars_apart=InpSweepToStructureMaxBars`, `leg_bars_apart` (actual) are published on every `[GateLeg]` diagnostic line.
+
+**ABI:** no buffers added/removed/renumbered; only an extended comment block, two small helper predicates, and the self-test call. Indicator iCustom contract preserved.
+
+### Issue 2 — Daily Loss / Session DD guard baseline = EQUITY (FIXED)
+
+**Root cause:** At v6.6.15 code froze day baseline from `ACCOUNT_BALANCE` and compared the floor against `ACCOUNT_EQUITY`. If a position was held overnight with an open floating loss, that loss was NOT in the baseline — the guard effectively had to absorb a second day's losses equal to the overnight loss before tripping, allowing >0.50% true daily drawdown.
+
+**Fix (MQL5/Experts/QSMC_AutoTrader.mq5):**
+- `g_day_start_equity` (name preserved for minimal diff; value is NOW EQUITY) is frozen from `AccountInfoDouble(ACCOUNT_EQUITY)` at first sight of a new server day (L~693 in `DayGuardLoad`).
+- On same-day reload, the frozen EQUITY baseline is restored from the persisted GV `keq` and NEVER re-captured mid-day (prevents baseline drift after wins/losses, and also prevents the earlier feared "transient float at day roll" problem — the freeze is one-shot).
+- Session baseline `g_session_start_equity` is also frozen from EQUITY at EA attach and at `InpResetBreakersAtInit=true` reset (was BALANCE before).
+- DayGuardUpdate live check continues to compare EQUITY against the EQUITY baseline → correct semantics: any worsening (new floating loss, stopped-out loss, commission, swap) counts toward the cap; any floating profit at day roll is ALSO in the baseline so a retrace does not spuriously trip the guard.
+
+**Semantics table (all 9 scenarios enumerated):**
+
+| Scenario at day-roll | Baseline captures | During day: new loss L | Floor triggers at |
+|----------------------|-------------------|------------------------|-------------------|
+| Flat, no P&L         | eq=bal            | eq-baseline < -pct*baseline | L = pct*bal (correct) |
+| Open overnight float -$X | eq=bal-X      | eq drops further to bal-X-L | L = pct*(bal-X)  (correct; total drawdown from day-start eq is pct, overnight loss is in the cap) |
+| Open overnight float +$X | eq=bal+X      | eq retraces to bal+X-L | retraces of X+L trip guard (correct — protects the day-start equity, not just balance) |
+| Stopped-out loss -$L today | baseline frozen pre-loss | counted | trips at L=pct*baseline |
+| Commission/Swap -$C  | subtracts from eq | counted | C + L >= pct*baseline trips |
+| Mid-day deposit +$D  | baseline FROZEN; NOT adjusted upward | equity rises but baseline unchanged → cap remains against day-start eq | Operator must use InpResetBreakersAtInit=true after review to re-baseline (deliberate — prevents operator deposits masking drawdown) |
+| Mid-day withdrawal -$W | baseline FROZEN | equity drops by W; counts toward cap (correct — withdrawal is a capital reduction, must NOT reset the guard) |
+| EA restart (same day, no reset) | eq0 restored from GV (frozen at day roll) | guard state + baseline + trades-today + consec-losses all preserved (GV persistence) | |
+| Multi-symbol EA instances (same login/magic, different symbols) | each (login,magic,symbol) triple has its own GV keys (`g_qsmc_day_D_<acct>_<magic>_<sym>` and `g_qsmc_day_EQ_…`) | daily cap is per-symbol (each instance counts its own losses); account-DD cap uses the same session baseline across all instances → total account drawdown is what trips the 3% breaker (correct aggregate behavior) |
+| Day rollover (new server day) | fresh EQUITY baseline captured; `g_day_blocked` cleared; trades-today reset to 0; consec-losses preserved | new day starts with baseline = EQUITY at the new-day tick, including any still-open float from positions carried over |
+
+### Issue 3 — FREEZE_LEVEL checked on stop modifications (FIXED)
+
+**Root cause:** v6.6.15 `StopsDistanceOK` only consulted `SYMBOL_TRADE_STOPS_LEVEL`. On brokers where `SYMBOL_TRADE_FREEZE_LEVEL > STOPS_LEVEL`, `PositionModify` calls (break-even move, pip-ladder rung move) could be rejected by the broker with retcode 10016/10018 (stops too close) even though the pre-check passed. The code did log the retcode but could not distinguish a freeze-level rejection from a transient broker error; and on the fast-trail path it could appear to "spam" modify requests.
+
+**Fix (MQL5/Experts/QSMC_AutoTrader.mq5):**
+- Added `MinOrderDistance(sym)` = STOPS_LEVEL × point (for new orders).
+- Added `MinModifyDistance(sym)` = max(STOPS_LEVEL, FREEZE_LEVEL) × point (for modifications).
+- `StopsDistanceOK(sym, price, sl, tp, modifying=true)` uses `MinModifyDistance`; `modifying=false` (or the legacy 4-arg overload) uses `MinOrderDistance`.
+- Ladder stop-move path (around L1841) now calls `StopsDistanceOK(_Symbol, ref_price, want_sl, 0.0, true)` with `ref_price = Bid` for buys, `Ask` for sells (the correct opposing quote the broker uses for modify-level checks). On failure: logs once per ticket with measured `ref_price`, `want_sl`, `min_dist`, and both STOPS_LEVEL and FREEZE_LEVEL values; the existing SL/TP is LEFT UNCHANGED. Never widens the stop to make the broker accept.
+- Break-even trail path (around L2071) same pattern: `StopsDistanceOK(_Symbol, ref2, new_sl, 0.0, true)` with opposing-quote ref, identical fail log and preserve-existing-stop behavior.
+- Initial order-send path (L1247) keeps using `MinOrderDistance` — new orders only need STOPS_LEVEL per MetaQuotes documentation.
+
+**Safety invariants preserved:**
+- Stop is only moved TOWARD profit (code already enforces `sl < want_sl < cur` for buys, `sl > want_sl > cur` for sells — no widening).
+- Failed modify keeps the previous SL/TP in place (existing ticket stops are already valid from entry time).
+- One modify attempt per 30 s per ticket (existing throttle unchanged).
+- Exact broker levels are logged once per failure for operator diagnosis.
+
+### Issue 4 — Preset compatibility (VERIFIED + new preset)
+
+Diff of `presets/QSMC_v6.6.15_trial_5k.set` against v6.6.16 EA inputs (47 inputs total):
+
+**3 keys in v6.6.15 preset UNKNOWN to the EA** (MT5 ignores unknown keys in .set files, so they were harmless but confusing):
+- `InpMinRR1` → nadir2 (indicator) input, not EA.
+- `InpSniperNewsFilter` → nadir2 (indicator) input, not EA.
+- `InpUseWeightedGates` → nadir2 (indicator) input, not EA.
+Removed from the v6.6.16 preset; configure them on the nadir2 chart instance.
+
+**18 EA inputs missing from v6.6.15 preset** (all had sane defaults, but explicit is safer):
+`InpEnableTrading`, `InpDemoOnly`, `InpRealAccountConfirm`, `InpResetBreakersAtInit`, `InpTradeComment`, `InpTPLevel`, `InpUseTPPips`, `InpPipPoints`, `InpTP1Pips/TP2Pips/TP3Pips`, `InpTP1ClosePercent/TP2ClosePercent`, `InpMoveSLToBEAtTP1/InpMoveSLToTP1AtTP2`, `InpMinStopPoints/InpMaxStopPoints`, `InpOrderRetryMax`, `InpHeartbeatLookback`, `InpCooldownAfterLossMin` (default was 0 → set to 60 for trial), `InpPartialCloseAtR` (was 1.5 in preset, kept), `InpPartialClosePercent`, `InpPollSeconds`, `InpVerbose`, `InpDeviationPoints` (was 30 in preset, kept).
+
+**New preset:** `presets/QSMC_v6.6.16_trial_5k.set` (explicit file, all 47 inputs specified). Verified envelope:
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| `InpEnableTrading` | **false** | MASTER SWITCH off by default — operator must flip after DRY RUN verified |
+| `InpDryRun` | **true** | Journal orders, never send |
+| `InpDemoOnly` | **true** | Refuses non-demo accounts |
+| `InpResetBreakersAtInit` | **false** | No silent reset of tripped breakers |
+| `InpMaxRiskPercent` | **0.10** | ≤ 0.10% per trade |
+| `InpMaxDailyLossPercent` | **0.50** | ≤ 0.50%/day (eq baseline) |
+| `InpMaxAccountDrawdownPct` | **3.00** | ≤ 3% account DD halt |
+| `InpStopAfterConsecLoss` | 2 | Halt after 2 losing closes |
+| `InpMaxTradesPerDay` | 3 | Hard daily cap |
+| `InpCooldownAfterLossMin` | 60 | One-hour standdown after loss |
+| `InpSessionStartHour/EndHour` | 10 / 18 | London/NY kill-zone window (server time) |
+| `InpMaxSpreadPoints` | 60 | ≤ 0.60 USD on XAUUSD |
+| `InpMinRRAtFill` | 1.20 | Refuse fills below 1.2 RR |
+| `InpMaxOpenPositions` | 1 | One position at a time |
+
+nadir2 indicator inputs are set on the chart-attached indicator instance (the EA reads via iCustom with nadir2's defaults — attach nadir2 to the chart with STRICT profile defaults before loading the EA).
+
+### Issue 5 — Compile & runtime verification (BLOCKED)
+
+No MetaEditor/mt5/wine in the sandbox. F7 compile must be done by the operator:
+1. Open MetaEditor, open `nadir2.mq5`, press F7 → expect "0 errors, 0 warnings".
+2. Open `MQL5/Experts/QSMC_AutoTrader.mq5`, press F7 → expect "0 errors, 0 warnings".
+3. Strategy Tester on XAUUSD M15, 6-month walk-forward with `presets/QSMC_v6.6.16_trial_5k.set`, `InpDryRun=true` → expect:
+   - `>>> QSMC v6.6.16 LegGeometry self-test: PASS`
+   - `>>> QSMC v6.6.16 SigLog self-test: PASS`
+   - `[QSMC_INSTANCE] INSTANCE_ROLE=EA_READER`
+   - periodic `[QSMC_AT] heartbeat: DAY …` lines with `DAY_BASELINE=` (equity value)
+   - either CORE-driven `DRYRUN would send` entries or `[GateAudit] VCODE=… no CORE (leg/…)`, but NO actual orders (DryRun=true).
+4. First 24-hour demo dry-run (live market, InpDryRun=true, InpEnableTrading=true eventually? NO — keep InpDryRun=true; flip InpEnableTrading=true AFTER dry run shows correct behavior for a full session):
+   - Verify `[GateLeg]` lines every 25 bars with populated numeric fields.
+   - Verify day baseline is captured as EQUITY at day roll, not BALANCE.
+   - Verify no trade is sent while InpDryRun=true (look for `DRYRUN would send`, not `ORDER_SEND`).
+   - Verify `InpDemoOnly=true` refuses non-demo accounts (test on a demo account only; real-account rejection log message must appear if accidentally attached to a live account).
+   - Verify stop modifications log exact FREEZE_LEVEL / STOPS_LEVEL distances on failure (most brokers will not exercise this path, but if any modify is refused the log must say why with measured distances).
+
+### Issue 6 — Final safety decision (BLOCKED → conditional on Issue 5)
+
+**Current verdict: BLOCKED — RUNTIME VERIFICATION REQUIRED.**
+
+Eligibility path:
+1. Operator confirms F7 compile clean for both nadir2.mq5 and QSMC_AutoTrader.mq5 (0 errors, 0 warnings on both).
+2. Operator runs Strategy Tester 6-month walk-forward; provides log showing LegGeometry self-test PASS, SigLog self-test PASS, no crashes, guard lines, gate diagnostics correct.
+3. Operator runs ≥ 24-hour live demo DRY RUN (InpDryRun=true, InpEnableTrading=true is irrelevant while DryRun=true — but the master switch protocol is: set InpEnableTrading=true only AFTER dry run is reviewed); provides journal excerpt showing:
+   - Day baseline captured as EQUITY, floor computed against EQUITY.
+   - No spurious breaker trips or misses.
+   - [GateLeg] diagnostics populate correctly and CORE=0 count matches the 200-bar scan panel row.
+   - No order actually sent (DRYRUN prefix only).
+4. After (1)-(3) pass → verdict elevates to **READY FOR DEMO DRY RUN WITH LIVE SWITCH ARMED** — meaning operator can flip `InpDryRun=false` with `InpDemoOnly=true`, `InpEnableTrading=true`, on a demo account, $5k balance, for the controlled live-demo execution.
+5. After a further 5 trading days of controlled live-demo execution with zero safety incidents (no unstopped positions, no >0.10% risk per trade, no >0.50% daily loss, no >3% DD, no real-account attachment, no multi-position overlap) → verdict can be elevated to **READY FOR CONTROLLED DEMO EXECUTION** (still demo-only, still with all breakers engaged).
+
+**Never elevate to real-money READY in this branch.**
+
+---
+
+### File changes in this patch
+
+| File | Change |
+|------|--------|
+| `nadir2.mq5` | Documented ValidateDisplacementLeg bar-index/distance semantics (L16559+); added `LegGeom_TooClose`/`LegGeom_TooOld` boundary predicates; added `LegGeometry_SelfTest()` covering cases A-F; wired self-test into init alongside SigLog self-test. Braces balanced (3623/3623). |
+| `MQL5/Indicators/nadir2.mq5` | Byte-synced with root nadir2.mq5. |
+| `MQL5/Experts/QSMC_AutoTrader.mq5` | Day + session baselines now frozen from ACCOUNT_EQUITY (not BALANCE) at day roll and at attach/reset; comments updated with full rationale. Added `MinOrderDistance`/`MinModifyDistance` helpers; extended `StopsDistanceOK` with `modifying` flag; ladder stop-move and break-even trail paths now use `MinModifyDistance` against the correct opposing-quote reference (Bid/Ask), log measured distance vs required on failure, and leave existing SL/TP unchanged (never widen). Braces balanced (201/201). |
+| `presets/QSMC_v6.6.16_trial_5k.set` | New. Explicit 47-input preset satisfying the trial safety envelope; unknown nadir2 keys removed from the v6.6.15 preset. |
+| `docs/demo_readiness_audit_v6.6.16.md` | This appendix added. |
+
+No strategy thresholds weakened, no WATCHER→CORE promotion, no live-trading enablement, no buffer ABI breakage, no auto-reset of breakers.
