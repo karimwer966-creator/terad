@@ -454,15 +454,15 @@ public:
       m_stats.Open(m_symbol,m_chart_tf,min_sample,csv_log);
       m_ready=true;
       m_bars=0;
-      Print("[QSMC_ARB] v6.6.15 arbitration layer ON | preset ",m_preset.EffectiveName(),
-            " | gates ",IntegerToString(m_arbiter.GateCount()),
-            " | exec TF ",QSMC_TFName(m_exec_tf),
-            " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"),
-            //--- the identity every threshold in this build is measured against.
-            //--- It is in the first line on purpose: a wrong symbol, a wrong chart
-            //--- timeframe or a stale copy of the layer is visible HERE, before it
-            //--- becomes a signal that is quietly wrong by a factor of ten points.
-            " | on ",m_symbol," ",QSMC_TFName(m_chart_tf));
+      // v6.6.16 (audit B): EA_READER instances do not print the ARB banner (the
+      // VISUAL instance already owns user-facing diagnostics). QSMC_SilentReader()
+      // is forward-declared in nadir2.mq5 before this include.
+      if(!QSMC_SilentReader())
+         Print("[QSMC_ARB] v6.6.16 arbitration layer ON | preset ",m_preset.EffectiveName(),
+               " | gates ",IntegerToString(m_arbiter.GateCount()),
+               " | exec TF ",QSMC_TFName(m_exec_tf),
+               " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"),
+               " | on ",m_symbol," ",QSMC_TFName(m_chart_tf));
       return true;
      }
 

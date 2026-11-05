@@ -256,6 +256,7 @@ input double InpMaxDailyLossPercent  = 0.50;   // stop for the day after this eq
 // reference the equity at EA attach time (or the persisted high-water mark).
 input double InpMaxAccountDrawdownPct= 3.00;   // halt all new entries when equity drops this % from the EA's session-start equity (0 = off)
 input int    InpStopAfterConsecLoss  = 2;      // halt new entries after this many losing closes in a row (0 = off)
+input bool   InpResetBreakersAtInit  = false;  // SAFETY RESET: when true at EA attach, clears persisted day/session breaker state for this (login, magic, symbol) and re-captures a fresh baseline. Logs RESET_REASON. MEANT FOR OPERATOR USE AFTER REVIEW — does NOT auto-clear on TF change or mid-session reload.
 input int    InpMaxDataAgeSeconds    = 30;     // refuse entries when the last tick is older than this (stale feed / disconnect); 0 = off
 input int    InpMaxSignalAgeBars     = 2;      // ignore a signal older than this many closed bars
 input int    InpMinStopPoints        = 20;     // refuse a stop closer than this
@@ -645,39 +646,57 @@ double CalcLots(const string sym,const double entry,const double sl,const bool b
 //+------------------------------------------------------------------+
 string DayGuardKey(const string leaf)
   {
+   // v6.6.16 (audit A): key scoped per account + magic + SYMBOL. Without the
+   // symbol, attaching the same magic on XAUUSD and EURUSD shared one daily
+   // baseline, letting a loss on one symbol trip the guard on the other.
+   // Timeframe intentionally omitted: the daily cap is per (account,magic,symbol)
+   // regardless of which chart the EA is observing from.
    return ("QSMC_AT_DAY_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
-           "_"+IntegerToString(InpMagic)+"_"+leaf);
+           "_"+IntegerToString(InpMagic)+"_"+_Symbol+"_"+leaf);
   }
 
 void DayGuardLoad(const int day)
   {
    string kd=DayGuardKey("DAY");
+   string keq=DayGuardKey("EQ");
+   string kblk=DayGuardKey("BLOCKED");
+   string ktr=DayGuardKey("TRADES");
    if(!GlobalVariableCheck(kd) || (int)GlobalVariableGet(kd)!=day)
      {
       // New server day (or first run): freeze the baseline NOW and write it.
+      // v6.6.16 (audit A): use ACCOUNT_BALANCE for the baseline. Equity includes
+      // floating P&L on unrelated positions; using it as the reference meant a
+      // +$20 open profit at day roll would set the floor at a temporarily
+      // elevated number and trip the guard on a tiny pullback. The live floor
+      // check below still measures against ACCOUNT_EQUITY, so drawdown is
+      // correctly detected — but the reference is a stable number.
       g_day_index=day;
-      g_day_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
+      g_day_start_equity=AccountInfoDouble(ACCOUNT_BALANCE);
       g_day_blocked=false;
       GlobalVariableSet(kd,(double)day);
-      GlobalVariableSet(DayGuardKey("EQ"),g_day_start_equity);
-      GlobalVariableSet(DayGuardKey("BLOCKED"),0.0);
-      GlobalVariableSet(DayGuardKey("TRADES"),0.0);   // new day, new entry budget
+      GlobalVariableSet(keq,g_day_start_equity);
+      GlobalVariableSet(kblk,0.0);
+      GlobalVariableSet(ktr,0.0);   // new day, new entry budget
       GlobalVariablesFlush();
       Print("[QSMC_AT] day guard: new baseline ",
-            DoubleToString(g_day_start_equity,2)," for server day ",
-            TimeToString((datetime)((long)day*86400),TIME_DATE));
+            DoubleToString(g_day_start_equity,2)," (balance) for server day ",
+            TimeToString((datetime)((long)day*86400),TIME_DATE),
+            " | DAY_BASELINE=",DoubleToString(g_day_start_equity,2),
+            " | CURRENT_BALANCE=",DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE),2),
+            " | CURRENT_EQUITY=",DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY),2));
       return;
      }
    // Same day, restored from the terminal: the baseline and the block survive
    // a reload, which is the whole point of persisting them.
    g_day_index=day;
-   double eq0=GlobalVariableGet(DayGuardKey("EQ"));
-   g_day_start_equity=(eq0>0.0 ? eq0 : AccountInfoDouble(ACCOUNT_EQUITY));
-   g_day_blocked=(GlobalVariableGet(DayGuardKey("BLOCKED"))>0.5);
+   double eq0=GlobalVariableGet(keq);
+   g_day_start_equity=(eq0>0.0 ? eq0 : AccountInfoDouble(ACCOUNT_BALANCE));
+   g_day_blocked=(GlobalVariableCheck(kblk) && GlobalVariableGet(kblk)>0.5);
    if(g_day_blocked)
-      Print("[QSMC_AT] day guard RESTORED: this server day is already blocked at ",
+      Print("[QSMC_AT] day guard RESTORED: this server day is already blocked at floor ",
             DoubleToString(g_day_start_equity*(1.0-MathMax(0.0,InpMaxDailyLossPercent)/100.0),2),
-            " (a reload does not reset it)");
+            " (baseline ",DoubleToString(g_day_start_equity,2),
+            ", a reload/TF change does NOT reset it)");
   }
 
 void DayGuardUpdate()
@@ -689,13 +708,22 @@ void DayGuardUpdate()
      {
       double floor_eq=g_day_start_equity*(1.0-InpMaxDailyLossPercent/100.0);
       double eq=AccountInfoDouble(ACCOUNT_EQUITY);
+      double bal=AccountInfoDouble(ACCOUNT_BALANCE);
+      double dd_pct=(g_day_start_equity>0.0 ? (g_day_start_equity-eq)/g_day_start_equity*100.0 : 0.0);
       if(eq<=floor_eq && !g_day_blocked)
         {
          g_day_blocked=true;
          GlobalVariableSet(DayGuardKey("BLOCKED"),1.0);
          GlobalVariablesFlush();
-         Print("[QSMC_AT] daily loss guard: equity ",DoubleToString(eq,2),
-               " <= ",DoubleToString(floor_eq,2)," - no new entries today (persisted)");
+         // v6.6.16 (audit A): structured trip line with every required field.
+         Print("[QSMC_AT GUARD] BREAKER_STATE=TRIPPED | BREAKER_REASON=DAILY_LOSS",
+               " | DAY_BASELINE=",DoubleToString(g_day_start_equity,2),
+               " | FLOOR=",DoubleToString(floor_eq,2),
+               " | CURRENT_BALANCE=",DoubleToString(bal,2),
+               " | CURRENT_EQUITY=",DoubleToString(eq,2),
+               " | DAILY_LOSS_PERCENT=",(dd_pct>=0.0?DoubleToString(dd_pct,2):"0.00"),"%",
+               " | LIMIT=",DoubleToString(InpMaxDailyLossPercent,2),"%",
+               " | (persisted; reload/TF change does not reset; use InpResetBreakersAtInit to clear after review)");
         }
      }
   }
@@ -709,8 +737,9 @@ void DayGuardUpdate()
 //+------------------------------------------------------------------+
 string SessionGuardKey(const string leaf)
   {
+   // v6.6.16 (audit A): same symbol scoping as DayGuardKey for the same reason.
    return ("QSMC_AT_SESS_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
-           "_"+IntegerToString(InpMagic)+"_"+leaf);
+           "_"+IntegerToString(InpMagic)+"_"+_Symbol+"_"+leaf);
   }
 
 void SessionGuardPersist()
@@ -756,18 +785,24 @@ int CountConsecutiveLosses()
 
 void SessionGuardUpdate()
   {
-   // account drawdown vs session-start equity
+   // account drawdown vs session-start baseline (balance-captured)
    if(InpMaxAccountDrawdownPct>0.0 && g_session_start_equity>0.0 && !g_drawdown_blocked)
      {
       double eq=AccountInfoDouble(ACCOUNT_EQUITY);
+      double bal=AccountInfoDouble(ACCOUNT_BALANCE);
       double floor_eq=g_session_start_equity*(1.0-InpMaxAccountDrawdownPct/100.0);
+      double dd_pct=(g_session_start_equity>0.0 ? (g_session_start_equity-eq)/g_session_start_equity*100.0 : 0.0);
       if(eq<=floor_eq)
         {
          g_drawdown_blocked=true;
-         Print("[QSMC_AT] ACCOUNT DRAWDOWN guard: equity ",DoubleToString(eq,2),
-               " <= ",DoubleToString(floor_eq,2)," (",DoubleToString(InpMaxAccountDrawdownPct,2),
-               "% from session start ",DoubleToString(g_session_start_equity,2),
-               ") - no new entries (EA restart required to resume)");
+         Print("[QSMC_AT GUARD] BREAKER_STATE=TRIPPED | BREAKER_REASON=ACCOUNT_DRAWDOWN",
+               " | SESSION_BASELINE=",DoubleToString(g_session_start_equity,2),
+               " | FLOOR=",DoubleToString(floor_eq,2),
+               " | CURRENT_BALANCE=",DoubleToString(bal,2),
+               " | CURRENT_EQUITY=",DoubleToString(eq,2),
+               " | DRAWDOWN_PERCENT=",DoubleToString(MathMax(0.0,dd_pct),2),"%",
+               " | LIMIT=",DoubleToString(InpMaxAccountDrawdownPct,2),"%",
+               " | (persisted; reload/TF change does not reset; use InpResetBreakersAtInit to clear after review)");
          SessionGuardPersist();
         }
      }
@@ -778,10 +813,10 @@ void SessionGuardUpdate()
       if(g_consec_losses>=InpStopAfterConsecLoss)
         {
          g_loss_streak_blocked=true;
-         Print("[QSMC_AT] CONSECUTIVE-LOSS guard: ",IntegerToString(g_consec_losses),
-               " losing closes in a row >= InpStopAfterConsecLoss ",
-               IntegerToString(InpStopAfterConsecLoss),
-               " - no new entries (EA restart required to resume)");
+         Print("[QSMC_AT GUARD] BREAKER_STATE=TRIPPED | BREAKER_REASON=CONSECUTIVE_LOSSES",
+               " | count=",IntegerToString(g_consec_losses),
+               " | limit=",IntegerToString(InpStopAfterConsecLoss),
+               " | (persisted; reload/TF change does not reset; use InpResetBreakersAtInit to clear after review)");
          SessionGuardPersist();
         }
      }
@@ -1883,12 +1918,27 @@ void DiagnosticHeartbeat()
       if(last_shift>(int)MathMax(1,InpMaxSignalAgeBars))
          line+=" - older than InpMaxSignalAgeBars="+IntegerToString(InpMaxSignalAgeBars)+", no longer tradable";
      }
+   // v6.6.16 (audit A): structured guard state on every heartbeat line.
+   double _curEq=AccountInfoDouble(ACCOUNT_EQUITY);
+   double _curBal=AccountInfoDouble(ACCOUNT_BALANCE);
+   string _guard=" | GUARD day_base="+(g_day_start_equity>0.0?DoubleToString(g_day_start_equity,2):"n/a")+
+                 " sess_base="+(g_session_start_equity>0.0?DoubleToString(g_session_start_equity,2):"n/a")+
+                 " bal="+DoubleToString(_curBal,2)+" eq="+DoubleToString(_curEq,2);
+   if(InpMaxDailyLossPercent>0.0 && g_day_start_equity>0.0)
+     {
+      double _used=(g_day_start_equity-_curEq)/g_day_start_equity*100.0;
+      _guard+=" daily_dd="+( _used>0.0?DoubleToString(_used,2):"0.00")+"%/"+DoubleToString(InpMaxDailyLossPercent,2)+"%";
+     }
+   if(g_day_blocked) _guard+=" DAY_BLOCKED";
+   if(g_drawdown_blocked) _guard+=" SESSION_DRAWDOWN_BLOCKED";
+   if(g_loss_streak_blocked) _guard+=" CONSEC_LOSS_BLOCKED(cnt="+IntegerToString(g_consec_losses)+")";
+   if(!g_day_blocked && !g_drawdown_blocked && !g_loss_streak_blocked) _guard+=" ARMED";
    line+=" | processed "+IntegerToString(g_signals)+
          " sent "+IntegerToString(g_sent)+
          " dry "+IntegerToString(g_dry)+
          " refused "+IntegerToString(g_refused)+
          " open "+IntegerToString(OpenCount(_Symbol))+
-         (g_day_blocked ? " | daily loss guard ACTIVE" : "")+
+         _guard+
          DisciplineSuffix();
    if(g_last_note!="")
       line+=" | last skip: "+g_last_note;
@@ -2124,6 +2174,18 @@ int OnInit()
    else if((fill&SYMBOL_FILLING_IOC)!=0) g_trade.SetTypeFilling(ORDER_FILLING_IOC);
    else                                  g_trade.SetTypeFilling(ORDER_FILLING_RETURN);
 
+   // v6.6.16 (audit B): set a short-lived handshake GV before creating the
+   // iCustom handle. The indicator reads this in its OnInit to detect "I am
+   // an EA-owned reader, not a chart-attached visual instance" and silences
+   // its own Alerts, PMI replay print, ARB banner and chart objects to avoid
+   // double-popups and double CPU. The GV is scoped per (login, magic, symbol,
+   // tf) and is consumed (deleted) by the indicator inside OnInit, so it does
+   // not confuse VISUAL instances that start afterwards.
+   string hk="QSMC_EA_READER_HANDSHAKE_"+IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN))+
+             "_"+IntegerToString(InpMagic)+"_"+_Symbol+"_"+IntegerToString((int)_Period);
+   GlobalVariableSet(hk,(double)TimeCurrent());
+   GlobalVariablesFlush();
+
    g_handle=iCustom(_Symbol,_Period,InpIndicatorName);
    // v6.6.15 hotfix: error 4802 almost always means nadir2.ex5 is NOT in
    // MQL5/Indicators/ (where iCustom resolves short names). If the default
@@ -2140,6 +2202,10 @@ int OnInit()
       for(int pi=0;pi<ArraySize(try_paths);pi++)
         {
          ResetLastError();
+         // refresh handshake before each fallback attempt (iCustom runs OnInit
+         // synchronously; the GV must exist at the moment of the call).
+         GlobalVariableSet(hk,(double)TimeCurrent());
+         GlobalVariablesFlush();
          int h=iCustom(_Symbol,_Period,try_paths[pi]);
          if(h!=INVALID_HANDLE)
            {
@@ -2152,6 +2218,11 @@ int OnInit()
          last_err=GetLastError();
         }
      }
+   // handshake GV is consumed by the indicator; if we still see it after a
+   // successful handle it means the indicator build is pre-v6.6.16 — harmless,
+   // just clean it up so a later VISUAL attach doesn't misread it.
+   if(g_handle!=INVALID_HANDLE && GlobalVariableCheck(hk))
+      GlobalVariableDel(hk);
    if(g_handle==INVALID_HANDLE)
      {
       int last_err=GetLastError();
@@ -2174,21 +2245,64 @@ int OnInit()
    g_loss_streak_blocked=false;
    g_drawdown_blocked=false;
    // restore persisted breaker state if the EA was reloaded mid-session
-   string sk="QSMC_AT_SESS_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"_"+IntegerToString(InpMagic);
-   if(GlobalVariableCheck(sk+"_EQ"))
+   // v6.6.16 (audit A): use the canonical symbol-scoped session key, and
+   // optionally execute an operator-requested breaker reset BEFORE restoring
+   // state. Reset is EXPLICIT (input flag) and logged — it is NEVER triggered
+   // by a timeframe change or mid-session reload.
+   string sk_eq=SessionGuardKey("_EQ");
+   string sk_ddb=SessionGuardKey("_DDB");
+   string sk_lsb=SessionGuardKey("_LSB");
+   string sk_cl=SessionGuardKey("_CL");
+   string sk_day=DayGuardKey("DAY");
+   string sk_dayeq=DayGuardKey("EQ");
+   string sk_dayblk=DayGuardKey("BLOCKED");
+   string sk_daytr=DayGuardKey("TRADES");
+   if(InpResetBreakersAtInit)
      {
-      double e0=GlobalVariableGet(sk+"_EQ");
+      // Auditable reset: wipe all persisted breaker state for this (login, magic, symbol).
+      bool wiped=false;
+      if(GlobalVariableCheck(sk_eq)){GlobalVariableDel(sk_eq);wiped=true;}
+      if(GlobalVariableCheck(sk_ddb)){GlobalVariableDel(sk_ddb);wiped=true;}
+      if(GlobalVariableCheck(sk_lsb)){GlobalVariableDel(sk_lsb);wiped=true;}
+      if(GlobalVariableCheck(sk_cl)){GlobalVariableDel(sk_cl);wiped=true;}
+      if(GlobalVariableCheck(sk_day)){GlobalVariableDel(sk_day);wiped=true;}
+      if(GlobalVariableCheck(sk_dayeq)){GlobalVariableDel(sk_dayeq);wiped=true;}
+      if(GlobalVariableCheck(sk_dayblk)){GlobalVariableDel(sk_dayblk);wiped=true;}
+      if(GlobalVariableCheck(sk_daytr)){GlobalVariableDel(sk_daytr);wiped=true;}
+      // re-capture fresh baselines from CURRENT balance/equity (post-reset).
+      g_session_start_equity=AccountInfoDouble(ACCOUNT_BALANCE);
+      g_loss_streak_blocked=false;
+      g_drawdown_blocked=false;
+      g_consec_losses=0;
+      Print("[QSMC_AT RESET] RESET_REASON=InpResetBreakersAtInit=true | scope (login,magic,symbol)=(",
+            IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)),",",
+            IntegerToString(InpMagic),",",_Symbol,") | existing keys wiped=",wiped,
+            " | new SESSION_BASELINE=",DoubleToString(g_session_start_equity,2));
+      GlobalVariableSet(sk_eq,g_session_start_equity);
+      GlobalVariableSet(sk_ddb,0.0);
+      GlobalVariableSet(sk_lsb,0.0);
+      GlobalVariableSet(sk_cl,0.0);
+      GlobalVariablesFlush();
+     }
+   else if(GlobalVariableCheck(sk_eq))
+     {
+      double e0=GlobalVariableGet(sk_eq);
       if(e0>0.0) g_session_start_equity=e0;
-      g_drawdown_blocked=(GlobalVariableCheck(sk+"_DDB") && GlobalVariableGet(sk+"_DDB")>0.5);
-      g_loss_streak_blocked=(GlobalVariableCheck(sk+"_LSB") && GlobalVariableGet(sk+"_LSB")>0.5);
-      g_consec_losses=(int)GlobalVariableGet(sk+"_CL");
+      g_drawdown_blocked=(GlobalVariableCheck(sk_ddb) && GlobalVariableGet(sk_ddb)>0.5);
+      g_loss_streak_blocked=(GlobalVariableCheck(sk_lsb) && GlobalVariableGet(sk_lsb)>0.5);
+      if(GlobalVariableCheck(sk_cl)) g_consec_losses=(int)GlobalVariableGet(sk_cl);
      }
    else
      {
-      GlobalVariableSet(sk+"_EQ",g_session_start_equity);
-      GlobalVariableSet(sk+"_DDB",0.0);
-      GlobalVariableSet(sk+"_LSB",0.0);
-      GlobalVariableSet(sk+"_CL",0.0);
+      // v6.6.16 (audit A): session baseline uses ACCOUNT_BALANCE, not equity, so a
+      // transient floating P&L on an unrelated position cannot raise the floor
+      // and cause a trip on a tiny retrace. Live floor checks still use EQUITY
+      // (that is how drawdown is measured).
+      g_session_start_equity=AccountInfoDouble(ACCOUNT_BALANCE);
+      GlobalVariableSet(sk_eq,g_session_start_equity);
+      GlobalVariableSet(sk_ddb,0.0);
+      GlobalVariableSet(sk_lsb,0.0);
+      GlobalVariableSet(sk_cl,0.0);
       GlobalVariablesFlush();
      }
    DayGuardUpdate();

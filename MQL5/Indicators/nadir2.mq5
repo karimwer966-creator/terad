@@ -636,6 +636,15 @@
 //| If the include cannot be resolved, set InpArbEnabled=false and    |
 //| the indicator behaves exactly like v6.5.5.                        |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| v6.6.16 (audit B) forward-declared silent flag. .mqh includes    |
+//| reference this to suppress print/Alert/ObjectCreate on EA-owned  |
+//| reader instances. Concrete role enum+globals live after the      |
+//| input block (see audit B comment there) for full diagnostics.    |
+//+------------------------------------------------------------------+
+int  g_qsmc_silent_reader = 0;    // set to 1 in OnInit when detected EA_READER
+bool QSMC_SilentReader() { return (g_qsmc_silent_reader!=0); }
+
 #include <QSMC/QSMC_Root.mqh>
 // v6.6.0 QSMC_ARB_PATCH_MARKER
 #property indicator_label1  "EMA Fast"
@@ -1871,6 +1880,42 @@ double g_cfgCausalDispBodyATR    = 0.35;
 double g_cfgEquilibriumBufferATR = 0.15;
 double g_cfgProximityMaxATR      = 0.35;
 double g_cfgChaseMaxATR          = 1.50;
+
+//====================================================================
+// v6.6.16 (audit B): INSTANCE ROLE.
+//
+// nadir2 can be loaded in two modes on the same (symbol, tf):
+//   ROLE_VISUAL   = 0  -- manually attached to a chart window; fires
+//                        Alert() popups, draws chart objects, prints PMI
+//                        replay audits, shows the dashboard.
+//   ROLE_EA_READER= 1  -- created by QSMC_AutoTrader via iCustom() for buffer
+//                        reading only. Must NOT fire Alerts, must NOT draw
+//                        chart objects, must NOT print PMI replay failures
+//                        (they duplicate the VISUAL instance's prints and
+//                        double CPU + spam the log). All calculations and
+//                        buffers still run — the EA depends on them.
+//   ROLE_SCANNER  = 2  -- reserved for future multi-symbol sweep.
+//
+// Detection is done via a short-lived GV handshake set by the EA just before
+// calling iCustom (QSMC_EA_READER_HANDSHAKE_<login>_<magic>_<sym>_<tf>).
+// If the GV is present during OnInit and is fresh (<5 s old), this instance
+// takes the EA_READER role and consumes (deletes) the GV. Otherwise this is
+// a VISUAL instance.
+//
+// Adding a new input parameter for role would require the EA to enumerate 583
+// positional defaults on every iCustom call; the handshake avoids that ABI
+// break. The g_instance_* globals are written once in OnInit and then read
+// everywhere else — never mutated.
+//====================================================================
+enum ENUM_QSMC_INSTANCE_ROLE { ROLE_VISUAL=0, ROLE_EA_READER=1, ROLE_SCANNER=2 };
+ENUM_QSMC_INSTANCE_ROLE g_instance_role = ROLE_VISUAL;
+long   g_instance_chart_id = 0;
+string g_instance_owner_magic = "";     // "VISUAL" | "EA_magic_<n>" | "SCANNER"
+string g_instance_id = "";
+datetime g_instance_init_time = 0;
+int    g_instance_deinit_reason = -1;
+
+bool QSMC_IsReaderSilent() { return (g_qsmc_silent_reader!=0); }
 
 //====================================================================
 // v6.5.2 MTF_SniperZone_Engine — CONSTANTS
@@ -12828,6 +12873,20 @@ bool PMI_RederiveDigest(const int slot,int &compared_out,int &mismatch_out)
    if(slot<0 || slot>=PMI_DIGEST_RING) return false;
    SPMIDigest d=g_pmi_digests[slot];
    if(!d.used) return false;
+   // v6.6.16 (audit C): defensive guards on stale / drifted digests.
+   // - Bar index out of range: skip.
+   // - Timestamp identity check: if g_buf_t[d.bar] != d.time, the history has
+   //   been reloaded (shifted) and the digest's indices are no longer valid
+   //   for this array. Skip rather than counting as a repaint.
+   // - Fresh-digest exclusion: digests captured in the last replay_every bars
+   //   may include levels whose dedup outcome hasn't stabilized across builds;
+   //   re-deriving them immediately is what produces the "+2 per cycle" false
+   //   positives. Wait one full audit cycle before comparing.
+   if(d.bar<0 || d.bar>=ArraySize(g_buf_t)) return false;
+   if(d.time>0 && g_buf_t[d.bar]!=d.time) return false;
+   int _stable_window=(g_pmicfg.replay_every>0?g_pmicfg.replay_every:25);
+   int _now=ArraySize(g_buf_t)-2;
+   if(d.bar>_now-_stable_window) return true;    // too fresh — don't audit yet
    for(int i=0;i<d.level_count;i++)
    {
       if(d.lv_avail[i]<0 || d.lv_avail[i]>d.bar) continue;
@@ -12844,6 +12903,10 @@ void PMI_ReplayAudit(const int closed,const bool force)
 {
    if(!InpPMIRunReplayAudit) return;
    if(!force && g_pmicfg.replay_every>0 && (closed%g_pmicfg.replay_every)!=0) return;
+   // v6.6.16 (audit C): cold-start guard — don't run the audit on the very
+   // first closed-bar pass when the ring has barely been populated. A fresh
+   // ring has no historical comparison basis.
+   if(g_pmi_replay.digests_stored<2) return;
 
    int compared=0,mismatch=0,digests=0;
    for(int i=0;i<PMI_DIGEST_RING;i++)
@@ -12890,11 +12953,18 @@ void PMI_ReplayAudit(const int closed,const bool force)
       (g_pmi_replay.pass_lookahead?"PASS":"FAIL"),
       (g_pmi_replay.pass_causality?"PASS":"FAIL"),
       digests,compared,g_pmi_replay.repaint_failures);
+   // v6.6.16 (audit B+C): EA_READER instances keep the mismatch counters
+   // (so genuine lookahead bugs are still caught in diagnostics) but do not
+   // print periodic audit lines — they would duplicate the VISUAL instance.
+   // C-fix: also tag the audit line with instance id so two VISUAL instances
+   // can never be confused.
+   if(QSMC_IsReaderSilent()) return;
    if(!g_pmi_replay.pass_repaint || !g_pmi_replay.pass_lookahead)
       Print("[PMI Replay Audit] ",g_pmi_replay.last_report,
-            (StringLen(g_pmi_replay.first_failure_detail)>0?" | "+g_pmi_replay.first_failure_detail:""));
+            (StringLen(g_pmi_replay.first_failure_detail)>0?" | "+g_pmi_replay.first_failure_detail:""),
+            " | inst=",g_instance_id);
    else if(InpPMILogEvents)
-      Print("[PMI Replay Audit] ",g_pmi_replay.last_report);
+      Print("[PMI Replay Audit] ",g_pmi_replay.last_report," | inst=",g_instance_id);
 }
 
 //====================================================================
@@ -14510,6 +14580,51 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
          DoubleToString(g_instrument.volume_step,8),"/",
          DoubleToString(g_instrument.volume_max,8));
 
+   // v6.6.16 (audit B): detect whether this is a VISUAL chart instance or an
+   // EA-owned iCustom reader. The EA sets a handshake GV just before calling
+   // iCustom; if a fresh (<5 s) handshake exists for this (symbol, period)
+   // we become ROLE_EA_READER and consume the GV.
+   g_instance_init_time=TimeCurrent();
+   g_instance_chart_id=ChartID();
+   g_instance_role=ROLE_VISUAL;
+   g_instance_owner_magic="VISUAL";
+   string _hk_prefix="QSMC_EA_READER_HANDSHAKE_";
+   int _nGV=GlobalVariablesTotal();
+   for(int _gi=_nGV-1;_gi>=0;_gi--)
+     {
+      string _gn=GlobalVariableName(_gi);
+      if(StringFind(_gn,_hk_prefix)!=0) continue;
+      // match this symbol and tf: parse trailing "_<symbol>_<tf>"
+      string _tail=StringSubstr(_gn,StringLen(_hk_prefix));
+      int _lastUS=StringFind(_tail,"_",0);
+      if(_lastUS<0) continue;
+      // find the second-to-last underscore (separates magic from symbol)
+      int _prevUS=-1;
+      for(int _p=_lastUS-1;_p>=0;_p--){ if(StringGetCharacter(_tail,_p)=='_'){_prevUS=_p;break;} }
+      if(_prevUS<0) continue;
+      string _symPart=StringSubstr(_tail,_prevUS+1,_lastUS-_prevUS-1);
+      string _tfPart=StringSubstr(_tail,_lastUS+1);
+      string _magicPart=StringSubstr(_tail,0,_prevUS);
+      if(_symPart==_Symbol && (long)_tfPart==(long)_Period)
+        {
+         datetime _when=(datetime)GlobalVariableGet(_gn);
+         if(_when>0 && g_instance_init_time-_when<=5)
+           {
+            g_instance_role=ROLE_EA_READER;
+            g_instance_owner_magic="EA_magic_"+_magicPart;
+            g_qsmc_silent_reader=1;      // drives forward-declared silent flag for .mqh includes
+            GlobalVariableDel(_gn);     // consume handshake so VISUAL instances don't see it
+            GlobalVariablesFlush();
+           }
+        }
+     }
+   g_instance_id=StringFormat("%s_%s_%s_%s_%lld",
+                              (g_instance_role==ROLE_VISUAL?"VISUAL":
+                               g_instance_role==ROLE_EA_READER?"EA_READER":"SCANNER"),
+                              g_instance_owner_magic,_Symbol,
+                              EnumToString((ENUM_TIMEFRAMES)_Period),
+                              (long)g_instance_chart_id);
+
    // v6.6.15: auto-heal iCustom init-race zero defaults.
    // When the EA calls iCustom(_Symbol,_Period,name) with NO arguments,
    // MT5 passes the indicator's compiled defaults, but on the very first
@@ -15127,8 +15242,10 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
    MTF_SniperZone_Init();
    if(InpUseSniperZoneEngine)
    {
-      Print(">>> ",QSMC_VERSION_TEXT," MTF_SniperZone_Engine: ON | 7-TF confluence (W1->M5) | closed-bar only | 8th pillar (25% weight) | no orders");
-      if(InpSniperRunSelfTest)
+      // v6.6.16 (audit B): silence sub-engine startup banners in EA_READER role.
+      if(!QSMC_IsReaderSilent())
+         Print(">>> ",QSMC_VERSION_TEXT," MTF_SniperZone_Engine: ON | 7-TF confluence (W1->M5) | closed-bar only | 8th pillar (25% weight) | no orders");
+      if(InpSniperRunSelfTest && !QSMC_IsReaderSilent())
       {
          if(MTF_SniperZone_SelfTest())
             Print(">>> ",QSMC_VERSION_TEXT," MTF_SniperZone_SelfTest: PASS");
@@ -15136,10 +15253,25 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
             Print(">>> ",QSMC_VERSION_TEXT," MTF_SniperZone_SelfTest: FAIL");
       }
    }
+
+   // v6.6.16 (audit B): structured instance identity line (always printed, for
+   // both roles, exactly once per init). This is what tells the operator which
+   // role each running instance owns and proves there are no anonymous ones.
+   Print("[QSMC_INSTANCE] INSTANCE_ID=",g_instance_id,
+         " | INSTANCE_ROLE=",EnumToString(g_instance_role),
+         " | OWNER_ID=",g_instance_owner_magic,
+         " | CHART_ID=",IntegerToString((long)g_instance_chart_id),
+         " | SYMBOL=",_Symbol,
+         " | TIMEFRAME=",EnumToString((ENUM_TIMEFRAMES)_Period),
+         " | INIT_TIMESTAMP=",TimeToString(g_instance_init_time,TIME_DATE|TIME_SECONDS),
+         " | silent=",(QSMC_IsReaderSilent()?"YES":"no"));
    return INIT_SUCCEEDED;
 }
 void OnDeinit(const int reason)
-{ LV_Hide(); ObjectDelete(0,PFX+"CORE_CURRENT_STATE"); // owned display only
+{ g_instance_deinit_reason=reason;
+  Print("[QSMC_INSTANCE] DEINIT reason=",IntegerToString(reason),
+        " | INSTANCE_ID=",g_instance_id);
+  LV_Hide(); ObjectDelete(0,PFX+"CORE_CURRENT_STATE"); // owned display only
 QSMC_RootDestroy();   // v6.6.0: the arbitration root (RAII + leak report)
 IndicatorRelease(h_ema_fast); IndicatorRelease(h_ema_slow);
    IndicatorRelease(h_atr); IndicatorRelease(h_adx); IndicatorRelease(h_rsi);
@@ -22691,6 +22823,9 @@ int    g_quant_alert_ring_pos=0;
 bool FireQuantAlert(const string event_id,const string message)
 {
    if(event_id=="") return false;
+   // v6.6.16 (audit B): EA_READER instances must not fire popups, push or
+   // sound — the VISUAL chart instance owns all user-facing alerts.
+   if(QSMC_IsReaderSilent()) return false;
    for(int i=0;i<8;i++)
       if(g_quant_alert_ring[i]==event_id) return false;
    bool directional=QSMC_IsDirectionalAlertMessage(message);
