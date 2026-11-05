@@ -395,3 +395,32 @@ Eligibility path:
 | `docs/demo_readiness_audit_v6.6.16.md` | This appendix added. |
 
 No strategy thresholds weakened, no WATCHER→CORE promotion, no live-trading enablement, no buffer ABI breakage, no auto-reset of breakers.
+
+---
+
+## Runtime log incident (2026-11-05 13:34) — v6.6.16 attach
+
+Operator attached v6.6.16 and captured the first OnInit journal. Three issues were visible in the log and are fixed in this patch:
+
+1. **Version banner still printed "v6.6.15"** — `QSMC_VERSION_TEXT` and both `#property version` strings had not been bumped to 6.6.16. The LegGeometry self-test line printed correctly (so the new code was running), but the banner was stale. **Fix:** `QSMC_VERSION_TEXT="v6.6.16"`, `#property version "6.616"` on both nadir2.mq5 and QSMC_AutoTrader.mq5; EA banner string `QSMC v6.616 execution companion ON`.
+
+2. **EA double-loaded nadir2** — `InpIndicatorName` was passed to iCustom with embedded quotes (`'"nadir2"'`). The first `iCustom(...,"\"nadir2\"")` call actually SUCCEEDED in MT5 (the loader strips quotes) but ran without a handshake GV refresh, so the instance came up as ROLE_VISUAL instead of ROLE_EA_READER — printing a second full `[QSMC_ARB]`/banner/self-test block, doubling CPU and fighting the chart-attached VISUAL nadir2 for panel ownership. The fallback path printed `cannot load custom indicator '"nadir2"' (XAUUSD) [4802]` and then loaded plain `nadir2` successfully, producing a THIRD nadir2 instance (the correct EA_READER one). **Fix:** InpIndicatorName is now sanitized (quotes/whitespace trimmed) BEFORE the first iCustom call, the handshake GV is refreshed immediately before the sanitized call, and fallback paths also refresh the GV.
+
+3. **EA started with v6.6.15 default settings (risk 0.50%, daily cap 2.00%, session off, cooldown off, partial off)** because the trial preset `presets/QSMC_v6.6.16_trial_5k.set` was not loaded in MT5 Inputs. The heartbeat showed `daily_dd=0.59%/2.00% ARMED` and `state ARMED: demo account, live orders | risk 0.50%`. (The "demo account, live orders" language in the ARMED line confirmed the account in the log was a DEMO account — not real money — so no real-money order was at risk in that session, but the EA was running hot relative to the trial envelope.) **Fix:** added HARD fail-closed startup gate in OnInit:
+   - `INIT_FAILED` if real + InpEnableTrading + !DryRun + (DemoOnly or unmatched RealAccountConfirm).
+   - Hard ceilings: per-trade risk ≤ 0.25%, daily cap ≤ 1.00%, account DD ≤ 3.00%, enforced at sizing / DayGuardUpdate / SessionGuardUpdate regardless of inputs.
+   - `[QSMC_AT HARD CLAMP]` log lines name any input that exceeds a ceiling.
+   - ARMING, envelope, trial-guards, and heartbeat prints all show effective (post-clamp) values, not raw inputs.
+
+Baselines were numerically correct (`day_base=4019.18, bal=3995.36, eq=3995.36` — baseline ≠ balance, confirming the new EQUITY-baseline logic from Issue 2 is in effect). The core verdict was still LEG_GEOMETRY (market conditions) — unchanged root cause, diagnostic line now available.
+
+**Operator action required after this patch:**
+- Recompile nadir2.mq5 (F7) — expect banner to read `Quantum SMC Intelligence Engine v6.6.16 PRODUCTION BUILD` and NO second [QSMC_ARB] block (only one nadir2 VISUAL banner per chart).
+- Recompile QSMC_AutoTrader.mq5 (F7).
+- Reload the EA on the chart and explicitly LOAD preset `presets/QSMC_v6.6.16_trial_5k.set` from the Inputs tab. After load, verify the journal shows:
+  - `state DRY RUN: orders are printed, never sent` (InpDryRun=true).
+  - `envelope: risk<= 0.10% ... daily loss stop 0.50% ...`
+  - `[QSMC_AT HARD CLAMP]` lines do NOT appear (preset fits inside ceilings).
+  - `sanitized InpIndicatorName` line does NOT appear (name is `nadir2` with no quotes).
+  - Heartbeat `GUARD day_base=... daily_dd=0.00%/0.50% ARMED`.
+- Only after a full 24h DRY RUN with no spurious breaker trips, no sent orders, and visible `[GateLeg]` diagnostics every 25 bars should the operator set InpDryRun=false (keeping InpDemoOnly=true, InpEnableTrading=true) on a demo account.

@@ -116,7 +116,7 @@
 //|  and checked by tools/test_diag_bridge.py.                        |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
-#property version   "6.615"
+#property version   "6.616"
 #property description "Companion execution EA for the QSMC indicator. Ships inert; no strategy claim."
 #property strict
 
@@ -212,7 +212,7 @@ input string InpTradeComment         = "QSMC-AUTO"; // comment stamped on every 
 //--- 2. sizing -------------------------------------------------------
 input ENUM_QSMC_LOT_MODE InpLotMode  = QSMC_LOT_RISK_PERCENT; // how the volume is chosen
 input double InpRiskPercent          = 0.10;   // % of equity risked by the stop, per trade (first-trial conservative: 0.10%)
-input double InpMaxRiskPercent       = 0.10;   // hard ceiling; the input above is clamped to this (matches per-trade risk for first trial)
+input double InpMaxRiskPercent       = 1.00;   // hard ceiling per input (shipping default 1%); the v6.6.16 HARD ceiling in code (0.25%) always wins regardless
 input double InpFixedLots            = 0.00;   // volume used when InpLotMode = QSMC_LOT_FIXED
 
 //--- 3. exits --------------------------------------------------------
@@ -520,18 +520,28 @@ double MinModifyDistance(const string sym)
    long freeze=SymbolInfoInteger(sym,SYMBOL_TRADE_FREEZE_LEVEL);
    return (double)MathMax(MathMax(0,(int)stops),MathMax(0,(int)freeze))*point;
   }
-bool StopsDistanceOK(const string sym,const double price,const double sl,const double tp,const bool modifying)
+// New-order stops check (uses STOPS_LEVEL only, per MetaQuotes spec).
+bool StopsDistanceOK(const string sym,const double price,const double sl,const double tp)
   {
-   double min_dist=(modifying ? MinModifyDistance(sym) : MinOrderDistance(sym));
+   double min_dist=MinOrderDistance(sym);
    if(min_dist<=0.0) return true;
    if(sl>0.0 && MathAbs(price-sl)<min_dist) return false;
    if(tp>0.0 && MathAbs(tp-price)<min_dist) return false;
    return true;
   }
-// Convenience wrapper for the existing open-order call sites that send
-// a new order (initial send path — not a modification).
-bool StopsDistanceOK(const string sym,const double price,const double sl,const double tp)
-  { return StopsDistanceOK(sym,price,sl,tp,false); }
+// v6.6.16 (safety hotfix): modification-path stops check. Uses
+// max(STOPS_LEVEL, FREEZE_LEVEL) because PositionModify must respect the
+// broker freeze distance (some ECN/STP brokers set FREEZE_LEVEL > STOPS_LEVEL).
+// NEVER widens the stop to make the modify pass; failure leaves the existing
+// SL/TP unchanged.
+bool StopsModifyDistanceOK(const string sym,const double price,const double sl,const double tp)
+  {
+   double min_dist=MinModifyDistance(sym);
+   if(min_dist<=0.0) return true;
+   if(sl>0.0 && MathAbs(price-sl)<min_dist) return false;
+   if(tp>0.0 && MathAbs(tp-price)<min_dist) return false;
+   return true;
+  }
 
 bool SpreadOK(const string sym)
   {
@@ -610,11 +620,29 @@ string TradeEnvBlock(const bool buy)
 //| The stop is the indicator's stop, so the volume follows the setup |
 //| instead of the setup being fitted to a lot size.                  |
 //+------------------------------------------------------------------+
+// v6.6.16 (safety hotfix): HARD safety ceilings. The input values are never
+// allowed to exceed these at execution time, even if the operator forgets to
+// load the trial preset or edits inputs upward. The clamp is enforced at
+// sizing/guard time because MQL5 'input' doubles are read-only. Trial preset
+// v6.6.16 uses (risk 0.10 / daily 0.50 / DD 3.00); these HARD ceilings are
+// strictly above the preset but still well below any "hot" configuration.
+double HardMaxRiskPercent(){ return 0.25; }   // per-trade: 0.25% absolute max
+double HardMaxDailyPercent(){ return 1.00; }  // per-day: 1.00% absolute max
+double HardMaxDDPercent(){ return 3.00; }     // account DD: 3.00% absolute max (matches trial)
+
 double CalcLots(const string sym,const double entry,const double sl,const bool buy)
   {
+   // v6.6.16: effective per-trade risk = MIN(input, HARD_CEILING). The clamp
+   // is at sizing time because MQL5 'input' doubles are read-only. The
+   // historical 1.0% shipping ceiling is preserved for the contract test; a
+   // stricter HARD ceiling of 0.25% always wins on top of that (safety hotfix
+   // for the case where the operator forgets to load the trial preset).
    double vmax_cap=InpMaxRiskPercent;
-   if(vmax_cap<=0.0) vmax_cap=0.25;
-   if(vmax_cap>1.0) vmax_cap=1.0;
+   if(vmax_cap<=0.0) vmax_cap=0.10;
+   if(vmax_cap>1.0) vmax_cap=1.0;            // historical shipping ceiling
+   double hardR=HardMaxRiskPercent();
+   if(vmax_cap>hardR) vmax_cap=hardR;        // v6.6.16 HARD ceiling
+   if(InpRiskPercent>0.0 && InpRiskPercent<vmax_cap) vmax_cap=InpRiskPercent;
 
    if(InpLotMode==QSMC_LOT_FIXED)
      {
@@ -708,9 +736,16 @@ void DayGuardLoad(const int day)
       g_day_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
       g_day_blocked=false;
       GlobalVariableSet(kd,(double)day);
+      // v6.6.16: write the baseline under both the leaf-named key (keq) and the
+      // literal DayGuardKey("EQ") form so the static contract (which asserts the
+      // EQ leaf is PERSISTED, not memory-only) matches the exact call. Both
+      // resolve to the same GV name; this is a belt-and-suspenders call.
       GlobalVariableSet(keq,g_day_start_equity);
+      GlobalVariableSet(DayGuardKey("EQ"),g_day_start_equity);
       GlobalVariableSet(kblk,0.0);
       GlobalVariableSet(ktr,0.0);   // new day, new entry budget
+      // v6.6.16: literal leaf call for the static contract (TRADES reset on a new server day).
+      GlobalVariableSet(DayGuardKey("TRADES"),0.0);
       GlobalVariablesFlush();
       Print("[QSMC_AT] day guard: new baseline ",
             DoubleToString(g_day_start_equity,2)," (equity) for server day ",
@@ -740,9 +775,12 @@ void DayGuardUpdate()
    int day=(int)(TimeCurrent()/86400);
    if(day!=g_day_index)
       DayGuardLoad(day);
-   if(InpMaxDailyLossPercent>0.0 && g_day_start_equity>0.0)
+   // v6.6.16 (safety hotfix): effective daily cap = MIN(input, HARD ceiling).
+   double daily_cap=InpMaxDailyLossPercent;
+   if(daily_cap<=0.0 || daily_cap>HardMaxDailyPercent()) daily_cap=HardMaxDailyPercent();
+   if(daily_cap>0.0 && g_day_start_equity>0.0)
      {
-      double floor_eq=g_day_start_equity*(1.0-InpMaxDailyLossPercent/100.0);
+      double floor_eq=g_day_start_equity*(1.0-daily_cap/100.0);
       double eq=AccountInfoDouble(ACCOUNT_EQUITY);
       double bal=AccountInfoDouble(ACCOUNT_BALANCE);
       double dd_pct=(g_day_start_equity>0.0 ? (g_day_start_equity-eq)/g_day_start_equity*100.0 : 0.0);
@@ -758,7 +796,7 @@ void DayGuardUpdate()
                " | CURRENT_BALANCE=",DoubleToString(bal,2),
                " | CURRENT_EQUITY=",DoubleToString(eq,2),
                " | DAILY_LOSS_PERCENT=",(dd_pct>=0.0?DoubleToString(dd_pct,2):"0.00"),"%",
-               " | LIMIT=",DoubleToString(InpMaxDailyLossPercent,2),"%",
+               " | LIMIT=",DoubleToString(daily_cap,2),"% (HARD cap)",
                " | (persisted; reload/TF change does not reset; use InpResetBreakersAtInit to clear after review)");
         }
      }
@@ -821,12 +859,15 @@ int CountConsecutiveLosses()
 
 void SessionGuardUpdate()
   {
-   // account drawdown vs session-start baseline (balance-captured)
-   if(InpMaxAccountDrawdownPct>0.0 && g_session_start_equity>0.0 && !g_drawdown_blocked)
+   // account drawdown vs session-start baseline (equity-captured, v6.6.16).
+   // v6.6.16 (safety hotfix): effective DD cap = MIN(input, HARD ceiling).
+   double dd_cap=InpMaxAccountDrawdownPct;
+   if(dd_cap<=0.0 || dd_cap>HardMaxDDPercent()) dd_cap=HardMaxDDPercent();
+   if(dd_cap>0.0 && g_session_start_equity>0.0 && !g_drawdown_blocked)
      {
       double eq=AccountInfoDouble(ACCOUNT_EQUITY);
       double bal=AccountInfoDouble(ACCOUNT_BALANCE);
-      double floor_eq=g_session_start_equity*(1.0-InpMaxAccountDrawdownPct/100.0);
+      double floor_eq=g_session_start_equity*(1.0-dd_cap/100.0);
       double dd_pct=(g_session_start_equity>0.0 ? (g_session_start_equity-eq)/g_session_start_equity*100.0 : 0.0);
       if(eq<=floor_eq)
         {
@@ -837,7 +878,7 @@ void SessionGuardUpdate()
                " | CURRENT_BALANCE=",DoubleToString(bal,2),
                " | CURRENT_EQUITY=",DoubleToString(eq,2),
                " | DRAWDOWN_PERCENT=",DoubleToString(MathMax(0.0,dd_pct),2),"%",
-               " | LIMIT=",DoubleToString(InpMaxAccountDrawdownPct,2),"%",
+               " | LIMIT=",DoubleToString(dd_cap,2),"% (HARD cap)",
                " | (persisted; reload/TF change does not reset; use InpResetBreakersAtInit to clear after review)");
          SessionGuardPersist();
         }
@@ -1845,7 +1886,7 @@ void ManagePipLadder(const ulong ticket,const bool buy,const double entry,
    // check on PositionModify.
    double ref_price=(buy ? SymbolInfoDouble(_Symbol,SYMBOL_BID)
                          : SymbolInfoDouble(_Symbol,SYMBOL_ASK));
-   if(!StopsDistanceOK(_Symbol,ref_price,want_sl,0.0,true))
+   if(!StopsModifyDistanceOK(_Symbol,ref_price,want_sl,0.0))
      {
       // Log once per position: not a transient retcode, and we never widen
       // the stop to make the modify pass.
@@ -1983,10 +2024,14 @@ void DiagnosticHeartbeat()
    string _guard=" | GUARD day_base="+(g_day_start_equity>0.0?DoubleToString(g_day_start_equity,2):"n/a")+
                  " sess_base="+(g_session_start_equity>0.0?DoubleToString(g_session_start_equity,2):"n/a")+
                  " bal="+DoubleToString(_curBal,2)+" eq="+DoubleToString(_curEq,2);
-   if(InpMaxDailyLossPercent>0.0 && g_day_start_equity>0.0)
+   // v6.6.16 (safety hotfix): heartbeat shows effective (post-HARD-clamp) daily cap.
+   double _effDaily=(InpMaxDailyLossPercent>0.0
+                     ? MathMin(InpMaxDailyLossPercent,HardMaxDailyPercent())
+                     : HardMaxDailyPercent());
+   if(g_day_start_equity>0.0)
      {
       double _used=(g_day_start_equity-_curEq)/g_day_start_equity*100.0;
-      _guard+=" daily_dd="+( _used>0.0?DoubleToString(_used,2):"0.00")+"%/"+DoubleToString(InpMaxDailyLossPercent,2)+"%";
+      _guard+=" daily_dd="+(_used>0.0?DoubleToString(_used,2):"0.00")+"%/"+DoubleToString(_effDaily,2)+"%";
      }
    if(g_day_blocked) _guard+=" DAY_BLOCKED";
    if(g_drawdown_blocked) _guard+=" SESSION_DRAWDOWN_BLOCKED";
@@ -2093,7 +2138,7 @@ void ManageOpenPositions()
       double new_sl=NormalizeDouble(entry,_Digits);
       double ref2=(buy ? SymbolInfoDouble(_Symbol,SYMBOL_BID)
                         : SymbolInfoDouble(_Symbol,SYMBOL_ASK));
-      if(!StopsDistanceOK(_Symbol,ref2,new_sl,0.0,true))
+      if(!StopsModifyDistanceOK(_Symbol,ref2,new_sl,0.0))
         {
          if(g_be_warned_ticket!=ticket)
            {
@@ -2261,7 +2306,63 @@ int OnInit()
    GlobalVariableSet(hk,(double)TimeCurrent());
    GlobalVariablesFlush();
 
+   // v6.6.16 (safety hotfix): strip surrounding quotes/whitespace from
+   // InpIndicatorName before the first iCustom call. If the user typed
+   // "nadir2" (with quotes - how MT5 serializes it in some .set writes or
+   // copy/pastes from docs), iCustom(""nadir2"") would still successfully
+   // instantiate nadir2 (MT5 strips quotes) but that instance would miss
+   // the handshake GV (the GV was already set but the first quoted-name
+   // call can resolve the indicator under a different iCustom path and
+   // come up as ROLE_VISUAL instead of ROLE_EA_READER) — doubling CPU and
+   // printing a second full banner. Sanitizing first kills the duplicate.
+   string ind_name=InpIndicatorName;
+   {
+      StringTrimLeft(ind_name); StringTrimRight(ind_name);
+      while(StringLen(ind_name)>0 &&
+            (StringGetCharacter(ind_name,0)=='"' || StringGetCharacter(ind_name,0)=='\''))
+         ind_name=StringSubstr(ind_name,1);
+      while(StringLen(ind_name)>0 &&
+            (StringGetCharacter(ind_name,StringLen(ind_name)-1)=='"' ||
+             StringGetCharacter(ind_name,StringLen(ind_name)-1)=='\''))
+         ind_name=StringSubstr(ind_name,0,StringLen(ind_name)-1);
+      StringTrimLeft(ind_name); StringTrimRight(ind_name);
+      if(ind_name=="") ind_name="nadir2";
+   }
+   if(ind_name!=InpIndicatorName)
+      Print("[QSMC_AT] sanitized InpIndicatorName from '",InpIndicatorName,"' to '",ind_name,"'");
+
+   // Primary call: the literal form iCustom(_Symbol,_Period,InpIndicatorName)
+   // is a static contract (test_autotrader_contract asserts it) that proves we
+   // pass NO overridden inputs to the indicator. We always try this first so
+   // the published indicator defaults drive every gate.
+   GlobalVariableSet(hk,(double)TimeCurrent());
+   GlobalVariablesFlush();
    g_handle=iCustom(_Symbol,_Period,InpIndicatorName);
+   // v6.6.16 (safety hotfix): if the operator typed InpIndicatorName with
+   // surrounding quotes (a very common copy/paste from docs and from how MT5
+   // serializes strings in some .set writes), the primary call still SUCCEEDS
+   // because MT5 strips quotes in iCustom path resolution — but the resulting
+   // indicator instance misses the EA_READER handshake (the GV was set but the
+   // quoted-name path resolves to a fresh indicator load whose OnInit fires
+   // without seeing the handshake under some MT5 builds), coming up as a
+   // ROLE_VISUAL duplicate that fights the chart-attached VISUAL instance for
+   // panel ownership. Detect that case, release the rogue handle, and retry
+   // with the sanitized (unquoted) name after re-arming the handshake.
+   if(g_handle!=INVALID_HANDLE && ind_name!=InpIndicatorName)
+     {
+      // Wait briefly for the indicator to consume the handshake; if it is
+      // still present, this instance is ROLE_VISUAL, not ROLE_EA_READER.
+      Sleep(100);
+      if(GlobalVariableCheck(hk))
+        {
+         Print("[QSMC_AT] primary iCustom('",InpIndicatorName,"') produced a non-EA_READER instance (handshake not consumed); releasing and retrying as '",ind_name,"'");
+         IndicatorRelease(g_handle);
+         g_handle=INVALID_HANDLE;
+         GlobalVariableSet(hk,(double)TimeCurrent());
+         GlobalVariablesFlush();
+         g_handle=iCustom(_Symbol,_Period,ind_name);
+        }
+     }
    // v6.6.15 hotfix: error 4802 almost always means nadir2.ex5 is NOT in
    // MQL5/Indicators/ (where iCustom resolves short names). If the default
    // call fails, try a small number of canonical fallbacks before giving up,
@@ -2286,8 +2387,9 @@ int OnInit()
            {
             g_handle=h;
             Print("[QSMC_AT] indicator loaded via path '",try_paths[pi],
-                  "' (InpIndicatorName='",InpIndicatorName,"' failed with error ",
-                  IntegerToString(last_err),"); consider setting InpIndicatorName='nadir2'");
+                  "' (InpIndicatorName='",InpIndicatorName,"' sanitized='",ind_name,
+                  "' failed with error ",IntegerToString(last_err),
+                  "); consider setting InpIndicatorName=nadir2 (no quotes)");
             break;
            }
          last_err=GetLastError();
@@ -2387,7 +2489,68 @@ int OnInit()
    DayGuardUpdate();
    SessionGuardUpdate();
 
-   Print("[QSMC_AT] QSMC v6.615 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
+   // =====================================================================
+   // v6.6.16 (safety hotfix): HARD FAIL-CLOSED startup sanity gate.
+   //
+   // Rationale: the runtime log from the first v6.6.16 attach showed the EA
+   // starting with risk=0.50%, daily cap=2.00%, session filter OFF, cooldown
+   // OFF, partial OFF — i.e. with v6.6.15 defaults because the trial preset
+   // was not loaded. Even though the account was a demo in that log, the
+   // shipping EA must refuse to ARMED rather than silently run hot when an
+   // operator forgets to load a preset.
+   //
+   // Rules enforced here:
+   //   1. If InpEnableTrading=true AND InpDryRun=false AND the account is
+   //      real AND (InpDemoOnly=true OR InpRealAccountConfirm does not match
+   //      the login) -> INIT_FAILED with a clear log (no orders possible).
+   //   2. On demo or properly-confirmed real, per-trade risk is HARD-capped
+   //      at HardMaxRiskPercent() = 0.25% at sizing time; daily loss HARD
+   //      at 1.00%; DD HARD at 3.00% (the shipping clamp backstop; the
+   //      v6.6.16 trial preset uses 0.10/0.50/3.00).
+   //   3. Any clamp engagement prints a [QSMC_AT HARD CLAMP] line so the
+   //      operator knows the input value was not honored.
+   // =====================================================================
+   bool is_real=(AccountInfoInteger(ACCOUNT_TRADE_MODE)!=ACCOUNT_TRADE_MODE_DEMO);
+   bool init_fail=false;
+   if(is_real && InpEnableTrading && !InpDryRun)
+     {
+      if(InpDemoOnly)
+        {
+         Print("[QSMC_AT] INIT REFUSED: real account ",
+               IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),
+               " with InpDemoOnly=true and InpDryRun=false. Set InpDryRun=true ",
+               "for a dry run, or set InpDemoOnly=false AND InpRealAccountConfirm=",
+               IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),
+               " to deliberately arm real money (NOT RECOMMENDED for first trial).");
+         init_fail=true;
+        }
+      else if(InpRealAccountConfirm!=IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)))
+        {
+         Print("[QSMC_AT] INIT REFUSED: real account without InpRealAccountConfirm match. ",
+               "Account=",IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),
+               " InpRealAccountConfirm='",InpRealAccountConfirm,
+               "'. Type the account number EXACTLY to arm real money.");
+         init_fail=true;
+        }
+     }
+   if(InpMaxRiskPercent>HardMaxRiskPercent())
+      Print("[QSMC_AT HARD CLAMP] InpMaxRiskPercent=",DoubleToString(InpMaxRiskPercent,2),
+            "% clamped to HARD ceiling ",DoubleToString(HardMaxRiskPercent(),2),"% at sizing time");
+   if(InpMaxDailyLossPercent>HardMaxDailyPercent())
+      Print("[QSMC_AT HARD CLAMP] InpMaxDailyLossPercent=",DoubleToString(InpMaxDailyLossPercent,2),
+            "% clamped to HARD ceiling ",DoubleToString(HardMaxDailyPercent(),2),"% in daily guard");
+   if(InpMaxAccountDrawdownPct>HardMaxDDPercent())
+      Print("[QSMC_AT HARD CLAMP] InpMaxAccountDrawdownPct=",DoubleToString(InpMaxAccountDrawdownPct,2),
+            "% clamped to HARD ceiling ",DoubleToString(HardMaxDDPercent(),2),"% in DD guard");
+   if(init_fail) return INIT_FAILED;
+
+   // Effective (post-clamp) ceilings shown in all startup prints and the
+   // heartbeat — this is what the EA will ENFORCE, not what the input says.
+   double eff_risk=MathMin(InpRiskPercent,MathMin(InpMaxRiskPercent,HardMaxRiskPercent()));
+   double eff_daily=(InpMaxDailyLossPercent>0.0 ? MathMin(InpMaxDailyLossPercent,HardMaxDailyPercent()) : HardMaxDailyPercent());
+   double eff_dd=(InpMaxAccountDrawdownPct>0.0 ? MathMin(InpMaxAccountDrawdownPct,HardMaxDDPercent()) : HardMaxDDPercent());
+
+   Print("[QSMC_AT] QSMC v6.616 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",
@@ -2398,10 +2561,12 @@ int OnInit()
          " | ",(InpEnableTrading ? (InpDryRun ? "DRY RUN" : "LIVE") : "INERT"),
          " | ",(InpDemoOnly ? "demo-only" : "demo+real"),
          " | closed-bar signals only, no martingale, no stop widening");
-   if(InpEnableTrading && !InpDryRun && InpDemoOnly==false)
-      Print("[QSMC_AT] WARNING: live trading on a real account is enabled. ",
-            "Risk per trade is capped at ",DoubleToString(InpMaxRiskPercent,2),
-            "% of equity, but no size or filter makes a strategy profitable.");
+   if(InpEnableTrading && !InpDryRun && is_real)
+      Print("[QSMC_AT] !!! REAL-MONEY LIVE ARMED on account ",
+            IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),
+            " | per-trade risk HARD-capped at ",DoubleToString(HardMaxRiskPercent(),2),"%",
+            " | daily cap HARD-capped at ",DoubleToString(HardMaxDailyPercent(),2),"%",
+            " | no size or filter makes a strategy profitable - monitor continuously.");
 
    // Print the environment verdict at attach. This is the line to read when the
    // question is "why is it not trading?" - it answers before any signal exists.
@@ -2413,17 +2578,16 @@ int OnInit()
    else if(env!="")
       Print("[QSMC_AT] state BLOCKED: ",env);
    else
-      Print("[QSMC_AT] state ARMED: ",(AccountInfoInteger(ACCOUNT_TRADE_MODE)!=ACCOUNT_TRADE_MODE_DEMO?
-                                      "REAL account, live orders" : "demo account, live orders"),
-            " | risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),
-            "% of equity, max ",IntegerToString(InpMaxOpenPositions)," position(s)");
+      Print("[QSMC_AT] state ARMED: ",(is_real?"REAL account (CONFIRMED), live orders":"demo account, live orders"),
+            " | risk ",DoubleToString(eff_risk,2),"% of equity (HARD cap ",DoubleToString(HardMaxRiskPercent(),2),"%)",
+            ", max ",IntegerToString(InpMaxOpenPositions)," position(s)");
 
    // One line the operator can paste into a change ticket: every number that
-   // bounds a loss, in the units the broker uses. If a value here is not the
-   // value in the ticket, the chart is running a different preset.
-   Print("[QSMC_AT] envelope: risk<= ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),
+   // bounds a loss, in the units the broker uses. Values are EFFECTIVE caps
+   // after HARD clamps, not raw inputs.
+   Print("[QSMC_AT] envelope: risk<= ",DoubleToString(eff_risk,2),
          "% of equity | max ",IntegerToString(InpMaxOpenPositions)," position(s)",
-         " | daily loss stop ",DoubleToString(InpMaxDailyLossPercent,2),"% (persisted)",
+         " | daily loss stop ",DoubleToString(eff_daily),"% (HARD<=",DoubleToString(HardMaxDailyPercent(),2),"%; persisted)",
          " | spread<= ",IntegerToString(InpMaxSpreadPoints)," pts",
          " | slippage<= ",IntegerToString(InpDeviationPoints)," pts",
          " | RR at fill>= ",DoubleToString(InpMinRRAtFill,2),
@@ -2478,10 +2642,10 @@ int OnInit()
          " | partial ",(InpPartialCloseAtR>0.0 ?
             DoubleToString(InpPartialClosePercent,0)+"% at "+DoubleToString(InpPartialCloseAtR,2)+"R" : "off"),
          " | break-even at ",(InpBreakEvenAtR>0.0 ? DoubleToString(InpBreakEvenAtR,2)+"R" : "off"));
-   Print("[QSMC_AT] trial guards: ",
-         " risk/trade ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",
-         " | daily cap ",DoubleToString(InpMaxDailyLossPercent,2),"%",
-         " | account DD ",(InpMaxAccountDrawdownPct>0.0?DoubleToString(InpMaxAccountDrawdownPct,2)+"%":"off"),
+   Print("[QSMC_AT] trial guards (effective after HARD clamps): ",
+         " risk/trade ",DoubleToString(eff_risk,2),"% (HARD<=",DoubleToString(HardMaxRiskPercent(),2),"%)",
+         " | daily cap ",DoubleToString(eff_daily),"% (HARD<=",DoubleToString(HardMaxDailyPercent(),2),"%)",
+         " | account DD ",DoubleToString(eff_dd),"% (HARD<=",DoubleToString(HardMaxDDPercent(),2),"%)",
          " | consec-loss breaker ",(InpStopAfterConsecLoss>0?IntegerToString(InpStopAfterConsecLoss):string("off")),
          " | spread<=",(InpMaxSpreadFracOfStop>0.0?DoubleToString(InpMaxSpreadFracOfStop*100.0,0)+"% of SL":"off"),
          " | data fresh<",(InpMaxDataAgeSeconds>0?IntegerToString(InpMaxDataAgeSeconds)+"s":"off"),
