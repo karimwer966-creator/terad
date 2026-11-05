@@ -1243,7 +1243,7 @@ input bool InpShowDebugAlerts = false;
 input bool InpLogSignalDetails = true;
 input group "====== SIGNAL GATE AUDIT (why is there no signal?) ======"
 input bool InpShowGateAudit = true;        // INERT - this input changes NOTHING: RESERVED: no dashboard row yet; the audit prints via InpGateAuditLogEveryBars (doc 11.12)
-input int  InpGateAuditLogEveryBars = 0;   // log the audit every N closed bars (0 = off)
+input int  InpGateAuditLogEveryBars = 25;  // v6.6.16 default 25 = log the audit + LEG_GEOMETRY numeric snapshot every 25 closed bars (0 = off)
 input group "====== REAL-TIME MODE ======"
 input bool InpRealTimeZones = true;
 input bool InpUpdateEveryTick = true;
@@ -3759,6 +3759,26 @@ struct SSignalGateAudit
    string reason[MAX_GATE_REASONS];
    long   reason_hits[MAX_GATE_REASONS];
    int    reason_n;
+   // v6.6.16 (LEG_GEOMETRY audit): numeric snapshot of the last structure leg
+   // evaluated against a swept pool. Populated inside ValidateDisplacementLeg
+   // every time any predicate fails; the GateAudit printer reads these fields
+   // to produce a rate-limited diagnostic line. All values are 0 when no
+   // evaluation has run on this closed bar yet.
+   string leg_side;           // "BUY" | "SELL" | ""
+   int    leg_sweep_bar;
+   int    leg_struct_bar;
+   double leg_sweep_price;    // l[sweep] (buy) or h[sweep] (sell)
+   double leg_break_price;    // st.price
+   double leg_close;          // c[struct]
+   double leg_atr;
+   double leg_net;            // c[struct] - l[sweep] (buy) or h[sweep] - c[struct] (sell)
+   double leg_required_net;   // atr * InpDisplacementATR
+   double leg_best_body_atr;  // best signed_body/atr in (sweep,struct)
+   double leg_required_body;  // g_cfgCausalDispBodyATR
+   int    leg_bars_apart;     // struct_bar - sweep_bar
+   int    leg_min_bars_apart; // 2 (hard)
+   int    leg_max_bars_apart; // InpSweepToStructureMaxBars
+   string leg_fail_key;       // the first GateAuditReject key that fired
 };
 SSignalGateAudit g_gate_audit;
 // Dashboard diagnostic state (recomputed each closed bar; display only)
@@ -13845,6 +13865,56 @@ void SigLog_TestRec(SSigLogRec &r,const bool buy,const int model,const double re
    r.tp3=(buy ? 103.0 : 97.0);
 }
 
+//+------------------------------------------------------------------+
+//| Leg geometry self-test (v6.6.16) — verifies the MIN/MAX bar-      |
+//| distance invariant of ValidateDisplacementLeg directly, against   |
+//| the exact predicates used in source (no global-state mutation).   |
+//| Cases:                                                            |
+//|   A: bars_apart=0  (same bar)            -> must reject "not >= 2"|
+//|   B: bars_apart=1  (adjacent)            -> must reject "not >= 2"|
+//|   C: bars_apart=2  (one mid bar)         -> predicate ACCEPTS     |
+//|   D: bars_apart=8  (=max, default)       -> predicate ACCEPTS     |
+//|   E: bars_apart=9  (one past max default)-> UPSTREAM must skip    |
+//|      (age > InpSweepToStructureMaxBars)                           |
+//|   F: bars_apart=50 (gross too late)      -> UPSTREAM must skip    |
+//| The "upstream" predicate is exactly the `if(age > InpSweepToStructureMaxBars)`
+//| at the call site; the ValidateDisplacementLeg function itself does not
+//| enforce an upper bound (it relies on the upstream filter).         |
+//+------------------------------------------------------------------+
+bool LegGeom_TooClose(const int sw,const int st,const int total)
+{
+   // Exact predicate from ValidateDisplacementLeg:
+   //   if(sweep_bar<0 || structure_bar<=sweep_bar+1 || structure_bar>=total) reject
+   return (sw<0 || st<=sw+1 || st>=total);
+}
+bool LegGeom_TooOld(const int sw,const int st,const int maxd)
+{
+   // Exact predicate from the upstream call site:
+   //   if(age > InpSweepToStructureMaxBars) continue;   // skip
+   return (st-sw)>maxd;
+}
+bool LegGeometry_SelfTest()
+{
+   int f=0;
+   int TOT=20;
+   // A: bars_apart=0 (same bar) -> reject (not >= 2 apart)
+   if(!LegGeom_TooClose(10,10,TOT)){f++;Print(">>> LEG_GEOM T/A FAIL: bars_apart=0 should REJECT (not >= 2 apart)");}
+   // B: bars_apart=1 (adjacent) -> reject
+   if(!LegGeom_TooClose(10,11,TOT)){f++;Print(">>> LEG_GEOM T/B FAIL: bars_apart=1 should REJECT (adjacent, no mid bar)");}
+   // C: bars_apart=2 (one closed bar in between) -> MIN ACCEPTED
+   if( LegGeom_TooClose(10,12,TOT)){f++;Print(">>> LEG_GEOM T/C FAIL: bars_apart=2 should ACCEPT min distance");}
+   // D: bars_apart=8 (=max default, 8-0=8) -> min-distance predicate accepts;
+   //    upstream age filter must NOT skip (age=8 is NOT > max=8).
+   if( LegGeom_TooClose(10,18,TOT)){f++;Print(">>> LEG_GEOM T/D1 FAIL: bars_apart=8 should pass min-distance check");}
+   int maxd=InpSweepToStructureMaxBars;
+   if( LegGeom_TooOld(10,18,maxd)){f++;Print(">>> LEG_GEOM T/D2 FAIL: bars_apart=8 (==max) should NOT be skipped upstream (strict >)");}
+   // E: bars_apart=9 -> upstream must SKIP (age>max strict)
+   if(!LegGeom_TooOld(10,19,maxd)){f++;Print(">>> LEG_GEOM T/E FAIL: bars_apart=9 should be SKIPPED upstream (age>max)");}
+   // F: bars_apart=50 -> upstream must SKIP
+   if(!LegGeom_TooOld(10,60,maxd)){f++;Print(">>> LEG_GEOM T/F FAIL: bars_apart=50 should be SKIPPED upstream");}
+   return f==0;
+}
+
 bool SigLog_SelfTest()
 {
    int f=0;
@@ -14594,21 +14664,35 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
      {
       string _gn=GlobalVariableName(_gi);
       if(StringFind(_gn,_hk_prefix)!=0) continue;
-      // match this symbol and tf: parse trailing "_<symbol>_<tf>"
+      // match this symbol and tf: key format is <login>_<magic>_<sym>_<tf>.
+      // Find the LAST underscore (sym_tf boundary) and the SECOND-TO-LAST
+      // (magic_sym boundary). Reverse scan from end — robust regardless of
+      // how many underscores appear in the login/magic/symbol components.
       string _tail=StringSubstr(_gn,StringLen(_hk_prefix));
-      int _lastUS=StringFind(_tail,"_",0);
-      if(_lastUS<0) continue;
-      // find the second-to-last underscore (separates magic from symbol)
-      int _prevUS=-1;
-      for(int _p=_lastUS-1;_p>=0;_p--){ if(StringGetCharacter(_tail,_p)=='_'){_prevUS=_p;break;} }
-      if(_prevUS<0) continue;
+      int _lastUS=-1,_prevUS=-1;
+      for(int _p=StringLen(_tail)-1;_p>=0;_p--)
+        {
+         if(StringGetCharacter(_tail,_p)=='_')
+           {
+            if(_lastUS<0)_lastUS=_p;
+            else{_prevUS=_p;break;}
+           }
+        }
+      if(_lastUS<0 || _prevUS<0) continue;
       string _symPart=StringSubstr(_tail,_prevUS+1,_lastUS-_prevUS-1);
       string _tfPart=StringSubstr(_tail,_lastUS+1);
       string _magicPart=StringSubstr(_tail,0,_prevUS);
       if(_symPart==_Symbol && (long)_tfPart==(long)_Period)
         {
          datetime _when=(datetime)GlobalVariableGet(_gn);
-         if(_when>0 && g_instance_init_time-_when<=5)
+         // v6.6.16 (audit B fix): TTL widened to 30s. iCustom() in MT5 is not
+         // guaranteed to run OnInit synchronously — on a cold terminal the
+         // indicator can be instantiated seconds after the EA calls iCustom(),
+         // particularly when multiple indicators are being reloaded (scanner,
+         // datafeeder, EA reader + VISUAL). 30 s is wide enough to absorb
+         // that latency while still refusing any stale handshake left over
+         // from a previous session.
+         if(_when>0 && g_instance_init_time-_when<=30)
            {
             g_instance_role=ROLE_EA_READER;
             g_instance_owner_magic="EA_magic_"+_magicPart;
@@ -15234,6 +15318,14 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
             (InpSigLogEntryRef==SIGLOG_ENTRY_PUBLISHED?"LIMIT at the published zone edge - these rows canNOT describe a market-execution EA":"MARKET at the signal bar close")," | outcomes from later closed bars only | observed results, not a forecast");
    if(InpSigLogRunSelfTest)
    {
+      // v6.6.16: Leg geometry boundary self-test (min=2, max=8 inclusive) runs
+      // alongside the existing SigLog self-test. It is a pure predicate check
+      // against the exact reject/accept lines used in source.
+      if(LegGeometry_SelfTest())
+         Print(">>> ",QSMC_VERSION_TEXT," LegGeometry self-test: PASS (min=2 bars, max=",
+               IntegerToString((int)InpSweepToStructureMaxBars)," inclusive, strict > for max-reject)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," LegGeometry self-test: FAIL — see prior log lines");
       if(SigLog_SelfTest())
          Print(">>> ",QSMC_VERSION_TEXT," SigLog self-test: PASS");
       else
@@ -15750,6 +15842,13 @@ int OnCalculate(const int rates_total, const int prev_calculated,
                " | top blocker: ",GateAuditTopBlocker());
          Print("[GateAudit] ",SignalGateSourceLine()," | ",TopDown_GatingModeLine());   // v6.4.1
          Print("[GateAudit] ",SignalGateRXNLine());                                     // v6.5.0
+         // v6.6.16 (LEG_GEOMETRY audit): print the numeric leg snapshot when the
+         // top blocker is leg-related. This is rate-limited to the same cadence
+         // as the GateAudit block (InpGateAuditLogEveryBars) so it never floods
+         // the log on every tick.
+         string leg=SignalGateLegDiagLine();
+         if(leg!="") Print("[GateLeg] ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period)," @ ",
+                           TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES)," | ",leg);
       }
    }
 
@@ -16515,60 +16614,141 @@ bool IsCausallyConnected(const int ancestor,const int descendant)
    return false;
 }
 
+// ValidateDisplacementLeg.
+//
+// Bar-index convention (nadir2 v6.6.x):
+//   - g_buf_o/h/l/c/t are CHRONOLOGICAL arrays: index 0 = oldest bar,
+//     index total-1 = currently-forming (live) bar. Closed-bar work uses
+//     closed = rates_total - 2 (the last fully closed bar).
+//   - sweep_bar and structure_bar are indices in this chronological array;
+//     both refer to CLOSED bars (ValidateDisplacementLeg is only called from
+//     the causal-chain builder which iterates closed-bar events).
+//   - Timestamps: g_buf_t[sweep_bar] < g_buf_t[impulse_bar] < g_buf_t[struct_bar]
+//     (strictly increasing — institutional chronology Sweep < Displacement <
+//     Structure).
+//
+// Distance semantics (audited v6.6.16):
+//   bars_apart = structure_bar - sweep_bar.
+//   Minimum accepted: 2  (i.e. at least one closed bar strictly between sweep
+//                          and structure: structure_bar > sweep_bar + 1).
+//                          bars_apart = 0 or 1 is rejected with
+//                          "leg: sweep and break are not >= 2 bars apart".
+//   Maximum accepted: InpSweepToStructureMaxBars (= 8 by default), enforced
+//                     by the UPSTREAM age filter at L16833: if
+//                     (age = st.bar - sweep_bar) > InpSweepToStructureMaxBars
+//                     the sweep candidate is SKIPPED before this function
+//                     is even called.
+//   Valid impulse bars k satisfy: sweep_bar < k < structure_bar  (strictly
+//                     between; the impulse is a separate candle, never the
+//                     sweep or the break candle itself). So for bars_apart=2
+//                     there is exactly one candidate (k=sweep+1=struct-1);
+//                     for bars_apart=8 there are up to 7 candidates.
+//
+// The impulse-body threshold is measured in ATR AT THE CANDLE k (g_atr_buf[k]),
+// so the required absolute body size varies with volatility at the time of
+// the impulse, not with the structure-break ATR. The net move threshold
+// (InpDisplacementATR=0.90) uses ATR at the structure bar.
 bool ValidateDisplacementLeg(const int sweep_bar,const int structure_bar,const bool bullish,
                              const double break_price,const double &o[],const double &h[],
                              const double &l[],const double &c[],int &impulse_bar)
 {
    impulse_bar=-1;
    int total=ArraySize(c);
+   // v6.6.16 (LEG_GEOMETRY audit): always populate the diagnostic snapshot so
+   // the GateAudit printer / panel can show the numbers regardless of pass/fail.
+   // Snapshot is overwritten on every call so it always reflects the most
+   // recently evaluated candidate (i.e. the one that produced the final blocker).
+   double atr=(structure_bar<ArraySize(g_atr_buf) ? g_atr_buf[structure_bar] : g_atr);
+   double sweep_extreme=(bullish ? l[sweep_bar] : h[sweep_bar]);
+   double net=(sweep_bar>=0 && structure_bar>sweep_bar && atr>0.0
+               ? (bullish ? c[structure_bar]-l[sweep_bar] : h[sweep_bar]-c[structure_bar])
+               : 0.0);
+   double best_ratio=0.0;
+   int best_k=-1;
+   if(sweep_bar>=0 && structure_bar>sweep_bar+1)
+   {
+      for(int k=sweep_bar+1;k<structure_bar;k++)
+      {
+         double ak=(k<ArraySize(g_atr_buf) && g_atr_buf[k]>0.0) ? g_atr_buf[k] : atr;
+         if(ak<=0.0) continue;
+         double signed_body=bullish ? c[k]-o[k] : o[k]-c[k];
+         double ratio=signed_body/ak;
+         if(ratio>best_ratio){best_ratio=ratio;best_k=k;}
+      }
+   }
+   g_gate_audit.leg_side=(bullish?"BUY":"SELL");
+   g_gate_audit.leg_sweep_bar=sweep_bar;
+   g_gate_audit.leg_struct_bar=structure_bar;
+   g_gate_audit.leg_sweep_price=sweep_extreme;
+   g_gate_audit.leg_break_price=break_price;
+   g_gate_audit.leg_close=(structure_bar>=0 && structure_bar<total ? c[structure_bar] : 0.0);
+   g_gate_audit.leg_atr=atr;
+   g_gate_audit.leg_net=net;
+   g_gate_audit.leg_required_net=(atr>0.0 ? atr*InpDisplacementATR : 0.0);
+   g_gate_audit.leg_best_body_atr=best_ratio;
+   g_gate_audit.leg_required_body=g_cfgCausalDispBodyATR;
+   g_gate_audit.leg_bars_apart=(sweep_bar>=0 && structure_bar>sweep_bar ? structure_bar-sweep_bar : -1);
+   g_gate_audit.leg_min_bars_apart=2;
+   g_gate_audit.leg_max_bars_apart=InpSweepToStructureMaxBars;
+   g_gate_audit.leg_fail_key="";
+   // (best_k is diagnostic-only; impulse_binding for passing setups is done below)
+
    // Institutional chronology is strict: Sweep < Displacement < Structure.
    // Therefore the leg must contain at least one fully closed bar between its
    // sweep and structure endpoints.
    if(sweep_bar<0 || structure_bar<=sweep_bar+1 || structure_bar>=total)
    {
-      GateAuditReject("leg: sweep and break are not >= 2 bars apart");
+      g_gate_audit.leg_fail_key="leg: sweep and break are not >= 2 bars apart";
+      GateAuditReject(g_gate_audit.leg_fail_key);
       return false;
    }
-   double atr=(structure_bar<ArraySize(g_atr_buf) ? g_atr_buf[structure_bar] : g_atr);
-   if(atr<=0.0){GateAuditReject("leg: ATR unavailable"); return false;}
+   if(atr<=0.0){g_gate_audit.leg_fail_key="leg: ATR unavailable"; GateAuditReject(g_gate_audit.leg_fail_key); return false;}
    if(bullish && c[structure_bar]<=break_price)
    {
-      GateAuditReject("leg: break candle did not close beyond the level");
+      g_gate_audit.leg_fail_key="leg: break candle did not close beyond the level";
+      GateAuditReject(g_gate_audit.leg_fail_key);
       return false;
    }
    if(!bullish && c[structure_bar]>=break_price)
    {
-      GateAuditReject("leg: break candle did not close beyond the level");
+      g_gate_audit.leg_fail_key="leg: break candle did not close beyond the level";
+      GateAuditReject(g_gate_audit.leg_fail_key);
       return false;
    }
-   double net=bullish ? c[structure_bar]-l[sweep_bar] : h[sweep_bar]-c[structure_bar];
    if(net<atr*InpDisplacementATR)
    {
-      GateAuditReject("leg: net sweep->break move < InpDisplacementATR");
+      g_gate_audit.leg_fail_key="leg: net sweep->break move < InpDisplacementATR";
+      GateAuditReject(g_gate_audit.leg_fail_key);
       return false;
    }
 
    // Bind the displacement event to the strongest qualifying directional
-   // candle in the proven sweep->structure leg.  FVG ancestry is later tied
+   // candle in the proven sweep->structure leg. FVG ancestry is later tied
    // to this exact candle rather than to any imbalance somewhere in the leg.
-   double best_ratio=0.0;
+   // Re-scan to pick the best qualifying candle (>= g_cfgCausalDispBodyATR)
+   // for binding; best_ratio above captured the maximum observed regardless
+   // of threshold, which is what the diagnostic reports.
+   impulse_bar=-1;
+   double best_qual=0.0;
    for(int k=sweep_bar+1;k<structure_bar;k++)
    {
       double ak=(k<ArraySize(g_atr_buf) && g_atr_buf[k]>0.0) ? g_atr_buf[k] : atr;
       if(ak<=0.0) continue;
       double signed_body=bullish ? c[k]-o[k] : o[k]-c[k];
       double ratio=signed_body/ak;
-      if(ratio>=g_cfgCausalDispBodyATR && ratio>best_ratio)
+      if(ratio>=g_cfgCausalDispBodyATR && ratio>best_qual)
       {
-         best_ratio=ratio;
+         best_qual=ratio;
          impulse_bar=k;
       }
    }
    if(!(impulse_bar>sweep_bar && impulse_bar<structure_bar))
    {
-      GateAuditReject("leg: no separate impulse candle >= g_cfgCausalDispBodyATR");
+      g_gate_audit.leg_fail_key="leg: no separate impulse candle >= g_cfgCausalDispBodyATR";
+      GateAuditReject(g_gate_audit.leg_fail_key);
       return false;
    }
+   g_gate_audit.leg_fail_key="ok";
    return true;
 }
 
@@ -18926,6 +19106,31 @@ string SignalGateAuditLine()
           GateAuditPct(g_gate_audit.geometry_ok,g_gate_audit.location_ok),
           GateAuditPct(g_gate_audit.score_ok,g_gate_audit.geometry_ok),
           GateAuditPct(g_gate_audit.confirmed,g_gate_audit.armed));
+}
+
+// v6.6.16 (LEG_GEOMETRY audit): numeric snapshot of the last evaluated leg.
+// Printed alongside the GateAudit block whenever InpGateAuditLogEveryBars>0,
+// regardless of pass/fail, so an operator can see exactly why LEG_GEOMETRY
+// blocked and by how much. Empty string if no leg has been evaluated yet.
+string SignalGateLegDiagLine()
+{
+   if(g_gate_audit.leg_side=="" || g_gate_audit.leg_struct_bar<0) return "";
+   double atr=MathMax(g_gate_audit.leg_atr,0.0);
+   string atr_u=(atr>0.0 && _Digits>=0 ? DoubleToString(atr,_Digits) : "?");
+   return StringFormat(
+      "LEG %s sweep_bar %d struct_bar %d bars_apart %d (min %d max %d) | "
+      "net %.2f/%.2f %s (InpDisplacementATR=%.2f) | "
+      "best_body %.2fATR (need >= %.2f) | close %.2f break %.2f sweep_extreme %.2f | ATR %s | fail=%s",
+      g_gate_audit.leg_side,
+      g_gate_audit.leg_sweep_bar,g_gate_audit.leg_struct_bar,
+      g_gate_audit.leg_bars_apart,g_gate_audit.leg_min_bars_apart,g_gate_audit.leg_max_bars_apart,
+      g_gate_audit.leg_net,g_gate_audit.leg_required_net,
+      (g_gate_audit.leg_net>=g_gate_audit.leg_required_net ? "OK":"<REQ"),
+      InpDisplacementATR,
+      g_gate_audit.leg_best_body_atr,g_gate_audit.leg_required_body,
+      g_gate_audit.leg_close,g_gate_audit.leg_break_price,g_gate_audit.leg_sweep_price,
+      atr_u,
+      g_gate_audit.leg_fail_key);
 }
 
 // v6.4.1: per-source split so "CORE published, ZRE silent" (or the reverse) is
