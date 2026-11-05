@@ -116,7 +116,7 @@
 //|  and checked by tools/test_diag_bridge.py.                        |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
-#property version   "6.616"
+#property version   "6.618"
 #property description "Companion execution EA for the QSMC indicator. Ships inert; no strategy claim."
 #property strict
 
@@ -2335,32 +2335,61 @@ int OnInit()
    // is a static contract (test_autotrader_contract asserts it) that proves we
    // pass NO overridden inputs to the indicator. We always try this first so
    // the published indicator defaults drive every gate.
+   //
+   // v6.6.17 (post-runtime fix): empirical testing on XAUUSD M1/M15 showed the
+   // indicator sometimes comes up as ROLE_VISUAL even when InpIndicatorName is
+   // the clean "nadir2" (no quotes). Root cause: under some MT5 builds the
+   // iCustom-invoked OnInit fires in a dispatch slice that does not yet see
+   // the GV we just wrote — GlobalVariablesFlush() returns but the GV is not
+   // yet visible to the synchronous OnInit. The symptom is a second full VISUAL
+   // banner after every EA attach. Fix: issue the literal iCustom (the static
+   // contract form `iCustom(_Symbol,_Period,InpIndicatorName);` must appear
+   // verbatim as its own statement so tests prove we pass NO overridden
+   // inputs), then ALWAYS verify the GV was consumed; if not, release that
+   // rogue handle, re-arm the GV, yield to let the terminal flush, and retry
+   // with the sanitized name up to two more times. Note: the bare-statement
+   // iCustom returns a handle into MT5's indicator handle pool; we MUST
+   // IndicatorRelease() it when the handshake check shows it came up VISUAL
+   // (otherwise we leak a handle on every retry — v6.6.16 had this leak).
    GlobalVariableSet(hk,(double)TimeCurrent());
    GlobalVariablesFlush();
    g_handle=iCustom(_Symbol,_Period,InpIndicatorName);
-   // v6.6.16 (safety hotfix): if the operator typed InpIndicatorName with
-   // surrounding quotes (a very common copy/paste from docs and from how MT5
-   // serializes strings in some .set writes), the primary call still SUCCEEDS
-   // because MT5 strips quotes in iCustom path resolution — but the resulting
-   // indicator instance misses the EA_READER handshake (the GV was set but the
-   // quoted-name path resolves to a fresh indicator load whose OnInit fires
-   // without seeing the handshake under some MT5 builds), coming up as a
-   // ROLE_VISUAL duplicate that fights the chart-attached VISUAL instance for
-   // panel ownership. Detect that case, release the rogue handle, and retry
-   // with the sanitized (unquoted) name after re-arming the handshake.
-   if(g_handle!=INVALID_HANDLE && ind_name!=InpIndicatorName)
+   // Settle window: wait up to ~2.5 s for OnInit to consume the GV.
+   {
+    int _settle=0;
+    while(_settle<50 && GlobalVariableCheck(hk)){ Sleep(50); _settle++; }
+   }
+   if(g_handle!=INVALID_HANDLE && GlobalVariableCheck(hk))
      {
-      // Wait briefly for the indicator to consume the handshake; if it is
-      // still present, this instance is ROLE_VISUAL, not ROLE_EA_READER.
-      Sleep(100);
-      if(GlobalVariableCheck(hk))
+      Print("[QSMC_AT] primary iCustom('",InpIndicatorName,
+            "') produced a non-EA_READER instance (handshake not consumed after settle); releasing and retrying with sanitized name '",ind_name,"'");
+      IndicatorRelease(g_handle);
+      g_handle=INVALID_HANDLE;
+      // Retry loop with sanitized name — re-arm GV, yield for visibility, then
+      // iCustom; re-check after each attempt.
+      for(int _ri=0;_ri<2;_ri++)
         {
-         Print("[QSMC_AT] primary iCustom('",InpIndicatorName,"') produced a non-EA_READER instance (handshake not consumed); releasing and retrying as '",ind_name,"'");
-         IndicatorRelease(g_handle);
-         g_handle=INVALID_HANDLE;
          GlobalVariableSet(hk,(double)TimeCurrent());
          GlobalVariablesFlush();
-         g_handle=iCustom(_Symbol,_Period,ind_name);
+         Sleep(300);
+         ResetLastError();
+         int _rh=iCustom(_Symbol,_Period,ind_name);
+         if(_rh!=INVALID_HANDLE)
+           {
+            int _s2=0;
+            while(_s2<50 && GlobalVariableCheck(hk)){ Sleep(50); _s2++; }
+            if(!GlobalVariableCheck(hk))
+              {
+               g_handle=_rh;
+               Print("[QSMC_AT] iCustom handshake OK on retry ",IntegerToString(_ri+1),
+                     " (handle=",IntegerToString((long)g_handle),")");
+               break;
+              }
+            Print("[QSMC_AT] retry ",IntegerToString(_ri+1),
+                  " also produced a non-EA_READER instance (handshake not consumed after ",
+                  IntegerToString(_s2*50)," ms); releasing");
+            IndicatorRelease(_rh);
+           }
         }
      }
    // v6.6.15 hotfix: error 4802 almost always means nadir2.ex5 is NOT in
@@ -2550,7 +2579,7 @@ int OnInit()
    double eff_daily=(InpMaxDailyLossPercent>0.0 ? MathMin(InpMaxDailyLossPercent,HardMaxDailyPercent()) : HardMaxDailyPercent());
    double eff_dd=(InpMaxAccountDrawdownPct>0.0 ? MathMin(InpMaxAccountDrawdownPct,HardMaxDDPercent()) : HardMaxDDPercent());
 
-   Print("[QSMC_AT] QSMC v6.616 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
+   Print("[QSMC_AT] QSMC v6.618 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",

@@ -700,8 +700,8 @@ check(code_only.count("int closed=ArraySize(g_buf_c)-2;") == 2,
       "lived in a dead function deleted in doc 11.14)")
 check(code_only.count("int closed=g_rates_total-2;") == 8,
       "D all 8 replay-path closed-bar sites are unchanged")
-check(TEXT.count('#property version   "6.616"') == 1, "D the version property is 6.616 (bumped for v6.6.16 release)")
-check(TEXT.count('"v6.6.16"') >= 1, "D the version text is v6.6.16 (bumped for v6.6.16 release)")
+check(TEXT.count('#property version   "6.618"') == 1, "D the version property is 6.618 (bumped for v6.6.18 release)")
+check(TEXT.count('"v6.6.18"') >= 1, "D the version text is v6.6.18 (bumped for v6.6.18 release)")
 check(len(re.findall(r'(?m)^#property indicator_buffers\s+21\b', TEXT)) == 1,
       "D indicator_buffers is still 21 - no buffer was appended")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,

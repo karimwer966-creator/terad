@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.616"
+#property version   "6.618"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -622,7 +622,7 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.15).
-#define QSMC_VERSION_TEXT "v6.6.16"
+#define QSMC_VERSION_TEXT "v6.6.18"
 #property indicator_chart_window
 #property indicator_buffers 21   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -15572,11 +15572,23 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // mark an incomplete full buffer unavailable, or only the newly closed/live
    // tail for an incremental copy (leave older closed values unchanged).
    bool full_indicators=(first_run || full_detection);
-   int  need=(full_indicators ? rates_total : MathMin(3,rates_total));
+   // v6.6.18 performance fix: CopyBuffer of iATR/iADX/iRSI for the ENTIRE
+   // rates_total (often 100k+ bars when the terminal loads max chart history)
+   // was the dominant startup stall — it blocked the UI thread for seconds
+   // on every attach and is the root cause of "price and candle out of
+   // sync" reports. ATR/ADX/RSI values are only consulted on a rolling
+   // window (sweep lookback, reaction lookback, ATR percentile ~200 bars,
+   // current closed bar); every read site already falls back to g_atr
+   // (latest) when a buffer slot is 0/invalid. Cap full-history copy to
+   // QSMC_IND_FULL_WINDOW bars; keep ArrayResize to rates_total so index
+   // math elsewhere (k<rates_total) doesn't change.
+   #define QSMC_IND_FULL_WINDOW 2000
+   int  need=(full_indicators ? MathMin(rates_total,QSMC_IND_FULL_WINDOW) : MathMin(3,rates_total));
    double ta[],td[],tr[];
    int na=CopyBuffer(h_atr,0,0,need,ta);
    int nd=CopyBuffer(h_adx,0,0,need,td);
    int nr=CopyBuffer(h_rsi,0,0,need,tr);
+   #undef QSMC_IND_FULL_WINDOW
    bool atr_ok=(na==need && ArraySize(ta)>=need && ArraySize(g_atr_buf)>=rates_total);
    bool adx_ok=(nd==need && ArraySize(td)>=need && ArraySize(g_adx_buf)>=rates_total);
    bool rsi_ok=(nr==need && ArraySize(tr)>=need && ArraySize(g_rsi_buf)>=rates_total);
@@ -15602,7 +15614,12 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       }
    }
    else g_ind_copy_retries=0;
-   int from=(full_indicators ? 0 : rates_total-need);
+   // v6.6.18: CopyBuffer(,0,0,need,ta) returns the MOST RECENT `need` bars
+   // (index 0 in ta[] is the forming bar); regardless of full-vs-incremental
+   // mode they belong at the TAIL of g_atr_buf/adx/rsi. Older slots stay 0
+   // and callers fall back to g_atr.
+   int from=rates_total-need;
+   if(from<0) from=0;
    for(int k=from;k<rates_total;k++)
    {
       int src=k-from;
