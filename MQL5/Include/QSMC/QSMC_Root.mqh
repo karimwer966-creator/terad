@@ -504,14 +504,23 @@ public:
    //--- Building text here therefore means '+' concatenation or StringFormat.
    string            LeakReport() const
      {
+      // v6.6.15: include chart objects in the balance check. Previously the
+      // verdict compared only market+gates alloc/free so chart objects 2/0
+      // produced "no leak" even though two ObjectCreate calls had no matching
+      // ObjectDelete. Each m_render.ObjectCreate increments m_created and each
+      // ObjectDelete increments m_deleted, so (m_created - m_deleted) is the
+      // number of chart objects still alive - add that as an imbalance.
       int a=m_md.AllocCalls()+m_arbiter.AllocCalls();
       int f=m_md.FreeCalls()+m_arbiter.FreeCalls();
+      int live_chart=m_render.Created()-m_render.Deleted();
       string s=StringFormat("alloc/free: market %d/%d | gates %d/%d | chart objects created/deleted %d/%d",
                             m_md.AllocCalls(),m_md.FreeCalls(),
                             m_arbiter.AllocCalls(),m_arbiter.FreeCalls(),
                             m_render.Created(),m_render.Deleted());
-      if(a==f) s+=" => no leak";
-      else     s+=StringFormat(" => LEAK (alloc %d vs free %d)",a,f);
+      if(a==f && live_chart==0) s+=" => no leak";
+      else if(a==f && live_chart>0)
+         s+=StringFormat(" => chart objects still alive (%d) - harmless if this is a startup re-init",live_chart);
+      else s+=StringFormat(" => LEAK (alloc %d vs free %d, chart live %d)",a,f,live_chart);
       return s;
      }
 
