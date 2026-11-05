@@ -1,5 +1,5 @@
 ; =====================================================================
-; QSMC v6.6.19 — PRODUCTION SAFE execution preset (EA: QSMC_AutoTrader)
+; QSMC v6.6.20 — PRODUCTION SAFE execution preset (EA: QSMC_AutoTrader)
 ;
 ; THIS PRESET DOES NOT ARM THE ACCOUNT.
 ;   InpEnableTrading=false  -> no order is sent

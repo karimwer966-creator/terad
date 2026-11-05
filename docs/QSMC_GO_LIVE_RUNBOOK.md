@@ -1,6 +1,6 @@
 # دليل التشغيل الإنتاجي — QSMC (nadir2 + QSMC_AutoTrader)
 
-**آخر تحديث:** 2026-11-05 · **الفرع:** `arena/d11bca00-terad` · **الإصدار:** v6.6.19
+**آخر تحديث:** 2026-11-05 · **الفرع:** `arena/4df91e6a-terad` · **الإصدار:** v6.6.20
 
 هذا ليس تسويقًا ولا وعدًا بأداء. هذا **إجراء تشغيل**: ما تفعله بالضبط، وبأي ترتيب، وما يجب أن
 تراه في السجل بعد كل خطوة، وماذا تفعل حين لا تراه. كل رقم هنا مأخوذ من كود هذا المستودع، لا من
@@ -16,7 +16,7 @@
 
 ```bash
 python3 tools/static_check.py            # الميكانيكا + قواعد لهجة MQL5
-python3 tools/test_execution_safety.py   # عقد مسار إرسال الأمر (33+ فحصًا)
+python3 tools/test_execution_safety.py   # عقد مسار إرسال الأمر (105 فحوص)
 python3 tools/check_release_gate.py      # بوابة الإصدار: GO / NO-GO
 ```
 
@@ -27,7 +27,7 @@ python3 tools/check_production_ready.py
 ```
 
 ويشغّلها سير العمل `qsmc-production.yml`. أي فشل فيها = **توقّف**. يحتوي `qsmc-verify.yml`
-أيضًا تدقيقات تاريخية مثبتة بأرقام أسطر/إصدارات قديمة وكانت حمراء قبل v6.6.19؛ لا تُستخدم
+أيضًا تدقيقات تاريخية مثبتة بأرقام أسطر/إصدارات قديمة وكانت حمراء قبل v6.6.20؛ لا تُستخدم
 وحدها حكمًا على الإنتاج، لكن لا تتجاهل فشلًا جديدًا في البوابة المنسقة أو في `check_release_gate.py`.
 
 بوابة الإصدار يجب أن تنتهي بـ:
@@ -168,7 +168,7 @@ iCustom(_Symbol,_Period,InpIndicatorName)   // بلا أي إدخال
 
 | السطر | متى | إن لم يظهر |
 |---|---|---|
-| `QSMC v6.619 execution companion ON …` | عند التحميل | لم يُشغّل الـEA / Algo Trading مطفأ |
+| `QSMC v6.620 execution companion ON …` | عند التحميل | لم يُشغّل الـEA / Algo Trading مطفأ |
 | `envelope: risk<= … \| daily loss stop … (persisted)` | عند التحميل | نسخة قديمة من الملف |
 | `state INERT / DRY RUN / BLOCKED / ARMED` | عند التحميل | — |
 | `day guard: new baseline … for server day …` | مرة كل يوم | الساعة/الخادم غير متصل |

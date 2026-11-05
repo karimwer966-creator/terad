@@ -553,8 +553,9 @@ st_at = TEXT.find("PA_SelfTest(mtee_fail)")
 gate_seg = TEXT[max(0, st_at - 6000):st_at]
 check("InpMTEERunSelfTest" in gate_seg,
       "C PA_SelfTest is gated by the existing InpMTEERunSelfTest switch")
-check('Print(">>> ",QSMC_VERSION_TEXT," Pure Price Action self-test: PASS (9/9)");' in TEXT,
-      "C the self-test result is logged through the existing version-tagged format")
+check('QSMC_InitPass(" Pure Price Action self-test: PASS (9/9)");' in TEXT and
+      'if(!QSMC_IsReaderSilent()) Print(">>> ",QSMC_VERSION_TEXT,message);' in TEXT,
+      "C the self-test result is logged through the version-tagged visual-only PASS helper")
 
 # Dashboard: tooltip only, never the hard-capped 11-row card.
 check('tooltip+="\\nPA: "' in TEXT, "C the PA rows go to the dashboard tooltip")

@@ -193,6 +193,7 @@ NOTES.append("G3 verbose log + CSV logging default to false")
 # comment, so stripping block comments first deletes 21 000 lines and reports every
 # input as dead. Strings, then line comments, then block comments.
 DEAD_ALLOWED = {
+    "InpRealTimeZones": "LEGACY/INERT: closed-bar authority is fixed; calculation cadence is InpUpdateEveryTick (v6.6.20 log review)",
     "InpDockDashboard": "legacy, and its own comment says so",
     "InpPanelsStartCollapsed": "legacy, and its own comment says so",
     "InpAlertOnEntryPreview": "legacy, and its own comment says so",

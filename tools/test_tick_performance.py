@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""v6.6.19 tick/UI contract.
+"""v6.6.20 tick/UI contract.
 
 This is a source + native-subset check, NOT a MetaEditor compile and NOT a
 latency measurement. It pins three things that are easy to regress:
@@ -46,8 +46,8 @@ def body(signature):
 
 
 check("\r\n" in RAW and "\n" not in RAW.replace("\r\n", ""), "host remains pure CRLF")
-check('#property version   "6.619"' in TEXT and
-      '#define QSMC_VERSION_TEXT "v6.6.19"' in TEXT, "release identity is v6.6.19")
+check('#property version   "6.620"' in TEXT and
+      '#define QSMC_VERSION_TEXT "v6.6.20"' in TEXT, "release identity is v6.6.20")
 
 init = TEXT[TEXT.index("int OnInit()"):TEXT.index("void OnDeinit(")]
 role = init.index("g_qsmc_silent_reader=1")

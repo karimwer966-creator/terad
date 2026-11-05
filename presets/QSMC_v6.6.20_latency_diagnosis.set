@@ -1,4 +1,4 @@
-; QSMC v6.6.19 — latency diagnosis (DISPLAY ONLY)
+; QSMC v6.6.20 — latency diagnosis (DISPLAY ONLY)
 ; Load on the VISUAL nadir2 instance when comparing Bid-line delay.
 ; It prints [QSMC_PERF] every ~30 s. It does not change any entry gate.
 InpShowPerfMeter=true

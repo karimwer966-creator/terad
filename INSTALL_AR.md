@@ -1,4 +1,4 @@
-# تثبيت QSMC v6.6.19 للإنتاج — خطوة بخطوة
+# تثبيت QSMC v6.6.20 للإنتاج — خطوة بخطوة
 
 **الحالة الآلية:** `OFFLINE GO` من `python3 tools/check_production_ready.py`، و`GO (0 warnings)` من `python3 tools/check_release_gate.py`.
 
@@ -47,15 +47,15 @@ MQL5/Experts/KLJ_DataFeeder.mq5             (اختياري، يصل معطلً�
 2. أزل أي `nadir2` قديم من الشارت.
 3. أضف `nadir2` الجديد.
 4. حمّل الإعداد الاستعراضي:
-   - `presets/QSMC_v6.6.19_production_chart.set`
+   - `presets/QSMC_v6.6.20_production_chart.set`
    - هذا الإعداد **عرضي فقط** ولا يغيّر بوابات الدخول.
 5. في Experts/Journal يجب أن ترى:
 
 ```text
-[QSMC_ARB] v6.6.19 arbitration layer ON | preset ...
+[QSMC_ARB] v6.6.20 arbitration layer ON | preset ...
 ```
 
-إذا رأيت `v6.6.18` أو أقدم، فأنت ما زلت تشغّل نسخة قديمة. أوقف كل شيء وأعد النسخ/الترجمة.
+إذا رأيت `v6.6.19` أو أقدم، فأنت ما زلت تشغّل نسخة قديمة. أوقف كل شيء وأعد النسخ/الترجمة.
 
 ---
 
@@ -72,12 +72,12 @@ InpDemoOnly=true
 أي أنه **لا يرسل أوامر** عند التحميل.
 
 1. حمّل:
-   - `presets/QSMC_AutoTrader_v6.6.19_PRODUCTION_SAFE.set`
+   - `presets/QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set`
 2. أرفق `QSMC_AutoTrader` على نفس الرمز/الفريم.
 3. ابحث عن:
 
 ```text
-[QSMC_AT] QSMC v6.619 execution companion ON
+[QSMC_AT] QSMC v6.620 execution companion ON
 [QSMC_AT] iCustom handshake OK ... silent EA_READER
 ```
 
@@ -92,7 +92,7 @@ InpDemoOnly=true
 لتشخيص التأخير، حمّل على النسخة المرئية فقط:
 
 ```text
-presets/QSMC_v6.6.19_latency_diagnosis.set
+presets/QSMC_v6.6.20_latency_diagnosis.set
 ```
 
 ثم اجمع عدة أسطر:
@@ -109,12 +109,22 @@ presets/QSMC_v6.6.19_latency_diagnosis.set
 
 ---
 
+## 5b. قراءة سجل الإقلاع/الإيقاف في v6.6.20
+
+- شعار المؤشر يقول `LIVE MARKET | ANALYSIS ONLY (no orders)`؛ هذا لا يعني أن الـEA أرسل أمرًا. حالة التنفيذ تُقرأ من سطر الـEA نفسه (`INERT` / `DRY RUN` / `BLOCKED`).
+- انتظار ATR/ADX الأولي قد يظهر كـ `not ready` أو `partial history` مع دور النسخة والخطأ وعدد القيم المحسوبة. ابحث بعدها عن `READY`. إذا تكرر `WARNING` بعد نفاد المحاولات، أرسل السطر كاملًا ولا تغيّر بوابات الدخول عشوائيًا.
+- القارئ الخاص يطبع هويته وأخطاء الفشل، لكن لا يكرر لافتات PASS/الإيقاف المرئية. الاختبارات الذاتية ما زالت تعمل.
+- عند الإزالة، الميزان المهم هو `owned remaining 0` وتوازن alloc/free. عدّادات `created/deleted` عمرية وقد تختلف إذا حذف المضيف كائنًا أولًا.
+- `BLOCKED` من حارس الخسارة اليومية حالة سلامة محفوظة. لا تمسحها تلقائيًا؛ راجع `docs/QSMC_RUNTIME_LOG_REVIEW_AR.md` وrunbook الإيقاف/التراجع.
+
+---
+
 ## 6. الملاحظة قبل الحقيقي
 
 شغّل على demo أو paper على الأقل دورة كاملة من الإشارات/الـheartbeats، وراقب:
 
 - لا توجد أخطاء ترجمة أو runtime.
-- الشعار v6.6.19.
+- الشعار v6.6.20.
 - handshake صحيح.
 - لا يوجد تسريب كائنات/مقابض عند الإزالة.
 - قواطعDaily/DD/consecutive تعمل كما هو موثق.
@@ -146,7 +156,7 @@ python3 tools/check_release_gate.py
 النتيجة المتوقعة:
 
 ```text
-OFFLINE GO: 40/40 curated checks passed.
+OFFLINE GO: 41/41 curated checks passed.
 GO (with 0 warning(s)) - mechanical invariants hold.
 ```
 

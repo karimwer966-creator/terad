@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-command curated OFFLINE production-readiness gate for QSMC v6.6.19.
+"""One-command curated OFFLINE production-readiness gate for QSMC v6.6.20.
 
 This is deliberately not a MetaEditor compile, not a backtest, and not a proof
 of profitability. It runs the mechanical/release/safety checks that can be
@@ -34,6 +34,7 @@ CHECKS = [
     ("static-check", [sys.executable, "tools/static_check.py"]),
     ("comment-integrity", [sys.executable, "tools/test_comment_integrity.py"]),
     ("tick-performance", [sys.executable, "tools/test_tick_performance.py"]),
+    ("runtime-diagnostics", [sys.executable, "tools/test_runtime_diagnostics.py"]),
     ("ux1-master-switch", [sys.executable, "tools/test_ux1_master_switch.py"]),
     ("display-authority", [sys.executable, "tools/test_display_authority.py"]),
     ("price-provenance", [sys.executable, "tools/test_price_provenance.py"]),
@@ -85,7 +86,7 @@ def main():
     os.chdir(ROOT)
     results = []
     print("=" * 76)
-    print(" QSMC v6.6.19 - curated OFFLINE production-readiness gate")
+    print(" QSMC v6.6.20 - curated OFFLINE production-readiness gate")
     print(" NOT a compile, NOT a backtest, NOT a broker-latency measurement")
     print("=" * 76)
     for name, cmd in CHECKS:
@@ -112,11 +113,11 @@ def main():
     failed = [r for r in results if not r[1]]
     summary = os.path.join(OUT, "SUMMARY.txt")
     with open(summary, "w", encoding="utf-8") as f:
-        f.write("QSMC v6.6.19 curated offline production-readiness summary\n")
+        f.write("QSMC v6.6.20 curated offline production-readiness summary\n")
         f.write("checks=%d failed=%d\n" % (len(results), len(failed)))
         for name, ok, rc, dt, log in results:
             f.write("%s rc=%s %.1fs %s\n" % ("PASS" if ok else "FAIL", rc, dt, name))
-        f.write("\nManual gates still required: MetaEditor F7 (0 errors), banner v6.6.19,\n")
+        f.write("\nManual gates still required: MetaEditor F7 (0 errors), banner v6.6.20,\n")
         f.write("EA handshake OK, demo/paper observation, and the go-live runbook before real money.\n")
     print("-" * 76)
     if failed:
@@ -124,7 +125,7 @@ def main():
         return 1
     print("OFFLINE GO: %d/%d curated checks passed." % (len(results), len(results)))
     print("Summary: %s" % summary)
-    print("Still manual: F7 in MetaEditor, v6.6.19 banner, EA iCustom handshake, demo/paper run.")
+    print("Still manual: F7 in MetaEditor, v6.6.20 banner, EA iCustom handshake, demo/paper run.")
     print("Real money only after docs/QSMC_GO_LIVE_RUNBOOK.md; the EA ships inert + dry-run + demo-only.")
     return 0
 

@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.619"
+#property version   "6.620"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -622,7 +622,7 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.15).
-#define QSMC_VERSION_TEXT "v6.6.19"
+#define QSMC_VERSION_TEXT "v6.6.20"
 #property indicator_chart_window
 #property indicator_buffers 21   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)
 #property indicator_plots   7
@@ -1245,7 +1245,7 @@ input group "====== SIGNAL GATE AUDIT (why is there no signal?) ======"
 input bool InpShowGateAudit = true;        // INERT - this input changes NOTHING: RESERVED: no dashboard row yet; the audit prints via InpGateAuditLogEveryBars (doc 11.12)
 input int  InpGateAuditLogEveryBars = 25;  // v6.6.16 default 25 = log the audit + LEG_GEOMETRY numeric snapshot every 25 closed bars (0 = off)
 input group "====== REAL-TIME MODE ======"
-input bool InpRealTimeZones = true;
+input bool InpRealTimeZones = true; // LEGACY/INERT: not a runtime switch; zone/signal authority is closed-bar, cadence is InpUpdateEveryTick
 input bool InpUpdateEveryTick = true;
 input bool InpRealTimeFractal = true; // draws provisional markers only; never feeds decisions
 input group "====== PREVIEW LATENCY (NON-AUTHORITATIVE) ======"
@@ -1898,7 +1898,7 @@ double g_cfgChaseMaxATR          = 1.50;
 //
 // Detection is done via a short-lived GV handshake set by the EA just before
 // calling iCustom (QSMC_EA_READER_HANDSHAKE_<login>_<magic>_<sym>_<tf>).
-// If the GV is present during OnInit and is fresh (<5 s old), this instance
+// If the GV is present during OnInit and is fresh (<=30 s old), this instance
 // takes the EA_READER role and consumes (deletes) the GV. Otherwise this is
 // a VISUAL instance.
 //
@@ -1916,6 +1916,12 @@ datetime g_instance_init_time = 0;
 int    g_instance_deinit_reason = -1;
 
 bool QSMC_IsReaderSilent() { return (g_qsmc_silent_reader!=0); }
+
+// Visual-only startup PASS line. FAIL prints never use this helper.
+void QSMC_InitPass(const string message)
+{
+   if(!QSMC_IsReaderSilent()) Print(">>> ",QSMC_VERSION_TEXT,message);
+}
 
 //====================================================================
 // v6.5.2 MTF_SniperZone_Engine — CONSTANTS
@@ -13114,7 +13120,10 @@ int PMI_RunSelfTests()
    // Test 6b: future candle cannot repair a broken causal order
    PMI_SelfTestExpect("T6b broken order",true,true,true,true,true,true,true,false,"BLOCKED",false);
    if(g_pmi_self_test_failures==0)
-      Print("[PMI SelfTest] PASS - Tests 1-4, 6 (chain classifier: incomplete chains cannot be entry-ready)");
+   {
+      if(!QSMC_IsReaderSilent())
+         Print("[PMI SelfTest] PASS - Tests 1-4, 6 (chain classifier: incomplete chains cannot be entry-ready)");
+   }
    else
       Print("[PMI SelfTest] FAIL - ",g_pmi_self_test_failures," scenario(s)");
    return g_pmi_self_test_failures;
@@ -13336,6 +13345,8 @@ void PMI_Init()
       Print("[PMI] Predictive layer disabled (InpUsePredictiveEngine=false); existing engine runs unchanged");
       return;
    }
+   if(!QSMC_IsReaderSilent())
+   {
    Print("======================================================");
    Print(" v6.1.1 PREDICTIVE MARKET INTELLIGENCE LAYER ENABLED");
    Print("======================================================");
@@ -13353,6 +13364,7 @@ void PMI_Init()
    Print(" Sessions: internal UTC (Asia 00-09, London 07-16, overlap 12-16, NY 12-21); panel shows Algeria UTC+1");
    Print(" Replay audit: ",(InpPMIRunReplayAudit?"ON":"OFF")," every ",g_pmicfg.replay_every,
          " bars over ",g_pmicfg.replay_bars," bars");
+   }
    if(InpPMIRunSelfTestOnInit) PMI_RunSelfTests();
 }
 
@@ -14721,25 +14733,14 @@ AlertDispatcherClear();
       Print("[InstrumentAdapter] Invalid symbol specification: ",_Symbol);
       return INIT_FAILED;
    }
-   BuildPrimeSieve(MathMax(1,InpPrimeLevelCount));
-   BuildInstitutionalRelationshipMatrix();
-   Print("[InstrumentAdapter] ",_Symbol,
-         " class=",InstrumentClassName(),
-         " digits=",g_instrument.digits,
-         " point=",DoubleToString(g_instrument.point,g_instrument.digits),
-         " tick=",DoubleToString(g_instrument.tick_size,g_instrument.digits),
-         " contract=",DoubleToString(g_instrument.contract_size,2),
-         " vol=",DoubleToString(g_instrument.volume_min,8),"/",
-         DoubleToString(g_instrument.volume_step,8),"/",
-         DoubleToString(g_instrument.volume_max,8));
-
    // v6.6.16 (audit B): detect whether this is a VISUAL chart instance or an
    // EA-owned iCustom reader. The EA sets a handshake GV just before calling
    // iCustom; if a fresh (<5 s) handshake exists for this (symbol, period)
-   // we become ROLE_EA_READER and consume the GV.
+   // we become ROLE_EA_READER and consume the GV. TTL is 30 s (see below).
    g_instance_init_time=TimeCurrent();
    g_instance_chart_id=ChartID();
    g_instance_role=ROLE_VISUAL;
+   g_qsmc_silent_reader=0;   // reinit must not inherit a previous reader role
    g_instance_owner_magic="VISUAL";
    string _hk_prefix="QSMC_EA_READER_HANDSHAKE_";
    int _nGV=GlobalVariablesTotal();
@@ -14785,6 +14786,19 @@ AlertDispatcherClear();
            }
         }
      }
+   BuildPrimeSieve(MathMax(1,InpPrimeLevelCount));
+   BuildInstitutionalRelationshipMatrix();
+   if(!QSMC_IsReaderSilent())
+      Print("[InstrumentAdapter] ",_Symbol,
+         " class=",InstrumentClassName(),
+         " digits=",g_instrument.digits,
+         " point=",DoubleToString(g_instrument.point,g_instrument.digits),
+         " tick=",DoubleToString(g_instrument.tick_size,g_instrument.digits),
+         " contract=",DoubleToString(g_instrument.contract_size,2),
+         " vol=",DoubleToString(g_instrument.volume_min,8),"/",
+         DoubleToString(g_instrument.volume_step,8),"/",
+         DoubleToString(g_instrument.volume_max,8));
+
    g_instance_id=StringFormat("%s_%s_%s_%s_%lld",
                               (g_instance_role==ROLE_VISUAL?"VISUAL":
                                g_instance_role==ROLE_EA_READER?"EA_READER":"SCANNER"),
@@ -14951,8 +14965,11 @@ AlertDispatcherClear();
       return INIT_PARAMETERS_INCORRECT;
      }
    if(InpEnableScalping)
+      {
+      if(!QSMC_IsReaderSilent())
       Print(">>> ",QSMC_VERSION_TEXT," Scalping overlay: ON | advisory | display only | "
             "closed-bar only | no orders | weights ",IntegerToString(SCALP_WeightsSum()),"/100");
+      }
 
    // AUDIT-OBS1: the journal's sizes are validated, not clamped silently - a
    // tooltip asking for more rows than the buffer keeps would display rows that
@@ -14965,8 +14982,11 @@ AlertDispatcherClear();
       return INIT_PARAMETERS_INCORRECT;
      }
    if(InpEnableDecisionJournal)
+      {
+      if(!QSMC_IsReaderSilent())
       Print(">>> ",QSMC_VERSION_TEXT," Decision journal: ON | display and audit only | "
             "one row per closed bar | keeps ",InpObsJournalBars," shows ",InpObsTooltipBars);
+      }
 
    // v5.8.0: quant/scaling input validation with safe clamped defaults.
    ApplyQuantInputConfig();
@@ -15260,12 +15280,14 @@ AlertDispatcherClear();
    g_replay_audit_status="NOT RUN";
    ResetCausalHopReport();
 
+   if(!QSMC_IsReaderSilent())
+   {
    Print("======================================================");
    Print(" Quantum SMC Intelligence Engine "+QSMC_VERSION_TEXT+" PRODUCTION BUILD");
    Print("======================================================");
    Print(" Symbol: ",_Symbol," | Digits: ",(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS));
    Print(" Point: ",DoubleToString(_Point,5)," | PipSize: ",DoubleToString(PipSize(),5));
-   Print(" Mode: ",g_is_backtest ? "BACKTEST" : "LIVE TRADING");
+   Print(" Mode: ",g_is_backtest ? "BACKTEST | ANALYSIS ONLY (no orders)" : "LIVE MARKET | ANALYSIS ONLY (no orders)");
    Print("------------------------------------------------------");
    Print(" LATENCY SETTINGS:");
    Print(" - Swing Fractal N: ",InpSwingFractalN);
@@ -15280,8 +15302,8 @@ AlertDispatcherClear();
          InpBrokerUTCOffsetWinterMinutes," | rule ",EnumToString(InpBrokerDSTRule));
    Print(" - Independent KZ windows: London ",InpLondonKillZoneStart,"-",InpLondonKillZoneEnd,
          " local | New York ",InpNewYorkKillZoneStart,"-",InpNewYorkKillZoneEnd," local");
-   Print(" - RealTime Zones: ",InpRealTimeZones ? "ON (Tick)" : "OFF (Confirmed)");
-   Print(" - Update Every Tick: ",InpUpdateEveryTick ? "YES" : "NO (Bar Close)");
+   Print(" - Zone/signal authority: CLOSED BARS; live retest preview only");
+   Print(" - Calculation cadence: ",InpUpdateEveryTick ? "EVERY TICK" : "NEW BAR ONLY");
    Print(" - Incremental: ", InpUseIncrementalDetection ? "ON" : "OFF");
    Print(" - Caps: Struct ",InpMaxStructuresKeep," Liq ",InpMaxLiquidityKeep," FVG ",InpMaxFVGKeep," Zones ",InpMaxZonesKeep);
    Print(" - RetestTimeout: ",InpRetestTimeoutBars," bars / ",DoubleToString(InpRetestMaxDistanceATR,1)," ATR");
@@ -15289,8 +15311,7 @@ AlertDispatcherClear();
    Print(" - Mandatory: MSS=",InpRequireMSSAfterSweep,
          " discount/premium=",InpBlockEquilibriumEntries);
    Print("======================================================");
-   if(InpRealTimeZones)
-      Print(">>> REALTIME MODE ACTIVE: zones/signals on closed bars only; RETEST allowed live.");
+   Print(">>> CLOSED-BAR AUTHORITY: zones/signals confirmed after bar close; RETEST may preview live.");
    Print(">>> v5.7.3 audit: scoring pipeline order fixed; TP tracking; binary blacklist; gated prune logs");
    Print(">>> v5.8.0 quant: features=",g_qcfg.enabled?"ON":"OFF",
          " | VWAP reset=",EnumToString(InpVWAPReset),
@@ -15302,15 +15323,19 @@ AlertDispatcherClear();
          DoubleToString(g_qcfg.scale1_pct,0),"%/",DoubleToString(g_qcfg.scale2_pct,0),
          "% | TP exits: ",DoubleToString(g_qcfg.tp1_exit_pct,0),"%/",
          DoubleToString(g_qcfg.tp2_exit_pct,0),"%/",DoubleToString(g_qcfg.tp3_exit_pct,0),"%");
+   }
    PMI_Init();
    if(InpUseMasterVolumeProfile)
    {
+      {
+      if(!QSMC_IsReaderSilent())
       Print(">>> ",QSMC_VERSION_TEXT," Master Volume Profile: ON | mode=",EnumToString(InpMVPMode),
             " | closed-bar only | close-location split is not bid/ask | does not score or authorize entries");
+      }
       if(InpMVPRunSelfTest)
       {
          if(MVP_SelfTest())
-            Print(">>> ",QSMC_VERSION_TEXT," Master Volume Profile self-test: PASS");
+            QSMC_InitPass(" Master Volume Profile self-test: PASS");
          else
             Print(">>> ",QSMC_VERSION_TEXT," Master Volume Profile self-test: FAIL");
       }
@@ -15328,69 +15353,75 @@ AlertDispatcherClear();
    {
       string mtee_fail="";
       if(TacticalAuthoritySelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Tactical-authority self-test: PASS (7/7)");
+         QSMC_InitPass(" Tactical-authority self-test: PASS (7/7)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Tactical-authority self-test: FAIL - ",mtee_fail);
       if(ScenarioMTEESelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," MTEE synthetic self-test: PASS (7/7)");
+         QSMC_InitPass(" MTEE synthetic self-test: PASS (7/7)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," MTEE synthetic self-test: FAIL — ",mtee_fail);
       if(SBP3_SelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Power-of-3 / Silver-Bullet self-test: PASS (9/9)");
+         QSMC_InitPass(" Power-of-3 / Silver-Bullet self-test: PASS (9/9)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Power-of-3 / Silver-Bullet self-test: FAIL - ",mtee_fail);
       if(WY_SelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Wyckoff Spring/Upthrust self-test: PASS (9/9)");
+         QSMC_InitPass(" Wyckoff Spring/Upthrust self-test: PASS (9/9)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Wyckoff Spring/Upthrust self-test: FAIL - ",mtee_fail);
       if(PA_SelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Pure Price Action self-test: PASS (9/9)");
+         QSMC_InitPass(" Pure Price Action self-test: PASS (9/9)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Pure Price Action self-test: FAIL - ",mtee_fail);
       if(MR_SelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Mean-reversion / momentum self-test: PASS (9/9)");
+         QSMC_InitPass(" Mean-reversion / momentum self-test: PASS (9/9)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Mean-reversion / momentum self-test: FAIL - ",mtee_fail);
       if(CF_SelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Confluence Engine self-test: PASS (10/10)");
+         QSMC_InitPass(" Confluence Engine self-test: PASS (10/10)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Confluence Engine self-test: FAIL - ",mtee_fail);
       if(RM_SelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Risk model self-test: PASS (10/10)");
+         QSMC_InitPass(" Risk model self-test: PASS (10/10)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Risk model self-test: FAIL - ",mtee_fail);
       if(SCALP_SelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Scalping strategies self-test: PASS (10/10)");
+         QSMC_InitPass(" Scalping strategies self-test: PASS (10/10)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Scalping strategies self-test: FAIL - ",mtee_fail);
       if(OBS_SelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Decision journal self-test: PASS (11/11)");
+         QSMC_InitPass(" Decision journal self-test: PASS (11/11)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Decision journal self-test: FAIL - ",mtee_fail);
       if(QSMC_DeclutterSelfTest(mtee_fail))
-         Print(">>> ",QSMC_VERSION_TEXT," Declutter cap self-test: PASS (11/11)");
+         QSMC_InitPass(" Declutter cap self-test: PASS (11/11)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Declutter cap self-test: FAIL - ",mtee_fail);
    }
    if(InpUseZRE)
    {
+      {
+      if(!QSMC_IsReaderSilent())
       Print(">>> ",QSMC_VERSION_TEXT," Zone Reaction Engine: ON | observational | closed-bar only | ZONE STRENGTH and ZONE REACTION SCORE are evidence quality, not a win rate | PREVIEW = live candle, unconfirmed | no orders");
+      }
       if(InpZRERunSelfTest)
       {
          if(ZRE_SelfTest())
-            Print(">>> ",QSMC_VERSION_TEXT," ZRE self-test: PASS");
+            QSMC_InitPass(" ZRE self-test: PASS");
          else
             Print(">>> ",QSMC_VERSION_TEXT," ZRE self-test: FAIL");
       }
    }
    if(InpUseRXN && InpUseZRE)
    {
+      {
+      if(!QSMC_IsReaderSilent())
       Print(">>> ",QSMC_VERSION_TEXT," Reaction Signal Layer: ON | classification only, closed-bar | levels WATCH -> REACTION -> STRONG -> CONFIRMED -> EXECUTION READY | REACTION SCORE is evidence quality, not a forecast | EXECUTION READY is mirrored from the core engine and never asserted here | no orders");
+      }
       if(InpRXNRunSelfTest)
       {
          string rxn_fail="";
          if(RXN_SelfTestRun(rxn_fail))
-            Print(">>> ",QSMC_VERSION_TEXT," RXN self-test: PASS");
+            QSMC_InitPass(" RXN self-test: PASS");
          else
             Print(">>> ",QSMC_VERSION_TEXT," RXN self-test: FAIL - ",rxn_fail);
       }
@@ -15404,21 +15435,24 @@ AlertDispatcherClear();
    // Phase 1 signal outcome log: measurement only, no entry authority.
    SigLog_Init();
    if(InpSigLogCSV)
+      {
+      if(!QSMC_IsReaderSilent())
       Print(">>> ",QSMC_VERSION_TEXT," Signal outcome log: ON | file ",SigLog_FileName(),
             (InpSigLogCommonFolder?" (Common\\Files)":" (MQL5\\Files)")," | entry model: ",
             (InpSigLogEntryRef==SIGLOG_ENTRY_PUBLISHED?"LIMIT at the published zone edge - these rows canNOT describe a market-execution EA":"MARKET at the signal bar close")," | outcomes from later closed bars only | observed results, not a forecast");
+      }
    if(InpSigLogRunSelfTest)
    {
       // v6.6.16: Leg geometry boundary self-test (min=2, max=8 inclusive) runs
       // alongside the existing SigLog self-test. It is a pure predicate check
       // against the exact reject/accept lines used in source.
       if(LegGeometry_SelfTest())
-         Print(">>> ",QSMC_VERSION_TEXT," LegGeometry self-test: PASS (min=2 bars, max=",
-               IntegerToString((int)InpSweepToStructureMaxBars)," inclusive, strict > for max-reject)");
+         QSMC_InitPass(" LegGeometry self-test: PASS (min=2 bars, max="+
+                       IntegerToString((int)InpSweepToStructureMaxBars)+" inclusive, strict > for max-reject)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," LegGeometry self-test: FAIL — see prior log lines");
       if(SigLog_SelfTest())
-         Print(">>> ",QSMC_VERSION_TEXT," SigLog self-test: PASS");
+         QSMC_InitPass(" SigLog self-test: PASS");
       else
          Print(">>> ",QSMC_VERSION_TEXT," SigLog self-test: FAIL");
    }
@@ -15427,11 +15461,14 @@ AlertDispatcherClear();
    {
       // v6.6.16 (audit B): silence sub-engine startup banners in EA_READER role.
       if(!QSMC_IsReaderSilent())
+         {
+         if(!QSMC_IsReaderSilent())
          Print(">>> ",QSMC_VERSION_TEXT," MTF_SniperZone_Engine: ON | 7-TF confluence (W1->M5) | closed-bar only | 8th pillar (25% weight) | no orders");
-      if(InpSniperRunSelfTest && !QSMC_IsReaderSilent())
+         }
+      if(InpSniperRunSelfTest)
       {
          if(MTF_SniperZone_SelfTest())
-            Print(">>> ",QSMC_VERSION_TEXT," MTF_SniperZone_SelfTest: PASS");
+            QSMC_InitPass(" MTF_SniperZone_SelfTest: PASS");
          else
             Print(">>> ",QSMC_VERSION_TEXT," MTF_SniperZone_SelfTest: FAIL");
       }
@@ -15484,6 +15521,8 @@ IndicatorRelease(h_ema_fast); IndicatorRelease(h_ema_slow);
       CoreDashboardDeleteObjects();
       ObjectsDeleteAll(0,PFX);
      }
+   if(!QSMC_IsReaderSilent())
+   {
    Print("=========================================");
    Print(" Quantum SMC "+QSMC_VERSION_TEXT+" Stopped");
    Print(" Total Signals Generated: ",g_signal_count);
@@ -15491,6 +15530,7 @@ IndicatorRelease(h_ema_fast); IndicatorRelease(h_ema_slow);
    // "did it see the reactions?" separately from "did the core confirm an entry?".
    Print(" Reaction layer: ",SignalGateRXNLine());
    Print("=========================================");
+   }
 }
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
@@ -15696,15 +15736,16 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       if(g_ind_copy_retries<=QSMC_IND_COPY_MAX_RETRY)
       {
          if(g_ind_copy_retries==1)
-            Print("[DataHealth] indicator copy incomplete (ATR ",na,"/",need,
+            Print("[DataHealth] role=",EnumToString(g_instance_role)," indicator copy incomplete (ATR ",na,"/",need,
                   ", ADX ",nd,"/",need,", RSI ",nr,"/",need,
-                  ") - bar not consumed, retried on the next tick");
+                  ") - waiting up to ",IntegerToString(QSMC_IND_COPY_MAX_RETRY),
+                  " update attempts; bar not consumed, retried on the next tick");
          return prev_calculated;   // RETRY: g_last_bar_time is NOT committed here
       }
       if(!g_ind_copy_warned)
       {
          g_ind_copy_warned=true;
-         Print("[DataHealth] WARNING: after ",g_ind_copy_retries,
+         Print("[DataHealth] WARNING role=",EnumToString(g_instance_role)," after ",g_ind_copy_retries,
                " retries the terminal still serves only ATR ",na,"/",need,
                ", ADX ",nd,"/",need,", RSI ",nr,"/",need,
                " bars - continuing; incomplete inputs are unavailable (0.0),",
@@ -42259,6 +42300,19 @@ void MTF_SniperZone_Init()
    g_sniper_last_bar_time=0;
 }
 
+// QSMC_COPY_STATUS_BEGIN
+// Diagnostic only: distinguish a failed/not-ready copy from a short history.
+string QSMC_CopyStatus(const int copied,const int need,const int terminal_error,
+                       const int calculated)
+{
+   string state=(copied<0 ? "not ready" : "partial history");
+   string s=state+" (copied "+IntegerToString(copied)+"/"+IntegerToString(need)+
+              ", terminal_error "+IntegerToString(terminal_error);
+   if(calculated>=0) s+=", calculated "+IntegerToString(calculated);
+   return s+")";
+}
+// QSMC_COPY_STATUS_END
+
 //--------------------------------------------------------------------
 // Phase 1.1: Bounded CopyRates & CopyBuffer (AUDIT-01 Pattern)
 // Reads CLOSED bars only (start_pos = 1, never bar 0).
@@ -42270,6 +42324,7 @@ int MTF_SniperCopyRatesBounded(const int tf_idx,const ENUM_TIMEFRAMES tf,
    ArrayResize(rates_out,0);
    ArraySetAsSeries(rates_out,false);
    int copied=CopyRates(_Symbol,tf,1,count,rates_out);
+   int copy_error=GetLastError();
    int sz=ArraySize(rates_out);
    bool full_ok=(copied==count && sz>=count);
    if(!full_ok)
@@ -42281,22 +42336,23 @@ int MTF_SniperCopyRatesBounded(const int tf_idx,const ENUM_TIMEFRAMES tf,
          if(g_sniper_rates_retries[tf_idx]<=QSMC_IND_COPY_MAX_RETRY)
          {
             if(g_sniper_rates_retries[tf_idx]==1)
-               Print("[SniperDataHealth] CopyRates incomplete on ",EnumToString(tf),
-                     " (",copied,"/",count,") - retrying up to QSMC_IND_COPY_MAX_RETRY");
+               Print("[SniperDataHealth] role=",EnumToString(g_instance_role),
+                     " rates ",EnumToString(tf)," ",
+                     QSMC_CopyStatus(copied,count,copy_error,-1),
+                     " - waiting up to ",IntegerToString(QSMC_IND_COPY_MAX_RETRY),
+                     " update attempts; this update is skipped");
             return 0;
          }
          if(!g_sniper_rates_warned[tf_idx])
          {
             g_sniper_rates_warned[tf_idx]=true;
-            Print("[SniperDataHealth] WARNING: after ",g_sniper_rates_retries[tf_idx],
-                  " retries ",EnumToString(tf)," serves ",copied,"/",count,
-                  " closed bars - accepting available closed history");
+            Print("[SniperDataHealth] WARNING role=",EnumToString(g_instance_role),
+                  " rates ",EnumToString(tf)," still incomplete after ",
+                  g_sniper_rates_retries[tf_idx]," update attempts - accepting ",
+                  copied,"/",count," closed bars");
          }
       }
    }
-   else if(tf_idx>=0 && tf_idx<SNIPER_TF_COUNT)
-      g_sniper_rates_retries[tf_idx]=0;
-
    int valid_n=(int)MathMin(copied,sz);
    if(valid_n<=0) return 0;
    ArraySetAsSeries(rates_out,false);
@@ -42308,6 +42364,15 @@ int MTF_SniperCopyRatesBounded(const int tf_idx,const ENUM_TIMEFRAMES tf,
       if(i>0 && rates_out[i].time<=rates_out[i-1].time)
          return 0;
    }
+   if(full_ok && tf_idx>=0 && tf_idx<SNIPER_TF_COUNT)
+   {
+      if(g_sniper_rates_retries[tf_idx]>0)
+         Print("[SniperDataHealth] role=",EnumToString(g_instance_role),
+               " rates ",EnumToString(tf)," READY ",copied,"/",count,
+               " after ",g_sniper_rates_retries[tf_idx]," waiting attempts");
+      g_sniper_rates_retries[tf_idx]=0;
+      g_sniper_rates_warned[tf_idx]=false;
+   }
    return valid_n;
 }
 
@@ -42315,9 +42380,19 @@ int MTF_SniperCopyBufferBounded(const int handle,const int count,double &buf_out
                                 int &retry_counter,bool &warned_flag,const string tag)
 {
    ArrayResize(buf_out,0);
-   if(handle==INVALID_HANDLE || count<=0) return 0;
+   if(handle==INVALID_HANDLE || count<=0)
+   {
+      if(!warned_flag)
+        {
+         warned_flag=true;
+         Print("[SniperDataHealth] role=",EnumToString(g_instance_role)," ",tag,
+               " unavailable (invalid handle or non-positive count) - no buffer values published");
+        }
+      return 0;
+   }
    ArraySetAsSeries(buf_out,false);
    int copied=CopyBuffer(handle,0,1,count,buf_out);
+   int copy_error=GetLastError();
    int sz=ArraySize(buf_out);
    bool full_ok=(copied==count && sz>=count);
    if(!full_ok)
@@ -42326,18 +42401,28 @@ int MTF_SniperCopyBufferBounded(const int handle,const int count,double &buf_out
       if(retry_counter<=QSMC_IND_COPY_MAX_RETRY)
       {
          if(retry_counter==1)
-            Print("[SniperDataHealth] CopyBuffer ",tag," incomplete (",copied,"/",count,
-                  ") - retrying up to QSMC_IND_COPY_MAX_RETRY");
+            Print("[SniperDataHealth] role=",EnumToString(g_instance_role)," ",tag," ",
+                  QSMC_CopyStatus(copied,count,copy_error,BarsCalculated(handle)),
+                  " - waiting up to ",IntegerToString(QSMC_IND_COPY_MAX_RETRY),
+                  " update attempts; this update is skipped");
          return 0;
       }
       if(!warned_flag)
       {
          warned_flag=true;
-         Print("[SniperDataHealth] WARNING: after ",retry_counter," retries ",tag,
-               " serves ",copied,"/",count," bars - accepting partial closed data");
+         Print("[SniperDataHealth] WARNING role=",EnumToString(g_instance_role)," ",tag,
+               " still incomplete after ",retry_counter," update attempts (",
+               copied,"/",count,") - accepting partial closed data");
       }
    }
-   else retry_counter=0;
+   else
+   {
+      if(retry_counter>0)
+         Print("[SniperDataHealth] role=",EnumToString(g_instance_role)," ",tag,
+               " READY ",copied,"/",count," after ",retry_counter," waiting attempts");
+      retry_counter=0;
+      warned_flag=false;
+   }
 
    int valid_n=(int)MathMin(copied,sz);
    if(valid_n<=0) return 0;
