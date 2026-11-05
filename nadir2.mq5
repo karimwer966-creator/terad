@@ -14548,7 +14548,19 @@ QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
       else if(InpMaxZonesPerSide<1) bad="InpMaxZonesPerSide";
       else if(InpLabelFontSize<0 || InpLabelFontSize>72) bad="InpLabelFontSize";
       else if(InpSignalDedupCooldownBars<0) bad="InpSignalDedupCooldownBars";
-      Print("Invalid Quantum SMC input parameters: ",bad,
+      else if(InpAsianStart<0 || InpAsianStart>23) bad="InpAsianStart";
+      else if(InpAsianEnd<0 || InpAsianEnd>23) bad="InpAsianEnd";
+      else if(InpLondonStart<0 || InpLondonStart>23) bad="InpLondonStart";
+      else if(InpLondonEnd<0 || InpLondonEnd>23) bad="InpLondonEnd";
+      else if(InpNewYorkStart<0 || InpNewYorkStart>23) bad="InpNewYorkStart";
+      else if(InpNewYorkEnd<0 || InpNewYorkEnd>23) bad="InpNewYorkEnd";
+      else if(InpLondonKillZoneStart<0 || InpLondonKillZoneStart>23) bad="InpLondonKillZoneStart";
+      else if(InpLondonKillZoneEnd<0 || InpLondonKillZoneEnd>23) bad="InpLondonKillZoneEnd";
+      else if(InpNewYorkKillZoneStart<0 || InpNewYorkKillZoneStart>23) bad="InpNewYorkKillZoneStart";
+      else if(InpNewYorkKillZoneEnd<0 || InpNewYorkKillZoneEnd>23) bad="InpNewYorkKillZoneEnd";
+      else if(InpLondonKillZoneStart==InpLondonKillZoneEnd) bad="InpLondonKillZoneStart==End (window empty)";
+      else if(InpNewYorkKillZoneStart==InpNewYorkKillZoneEnd) bad="InpNewYorkKillZoneStart==End (window empty)";
+      Print("Invalid Quantum SMC input parameters: bad=",bad,
             " is out of range (symbol=",_Symbol," tf=",EnumToString((ENUM_TIMEFRAMES)_Period),
             " caller=",StringSubstr(IntegerToString(MQLInfoInteger(MQL_PROGRAM_TYPE)),0,4),")");
       return INIT_PARAMETERS_INCORRECT;
