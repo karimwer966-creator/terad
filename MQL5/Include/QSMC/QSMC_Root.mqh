@@ -458,7 +458,7 @@ public:
       // VISUAL instance already owns user-facing diagnostics). QSMC_SilentReader()
       // is forward-declared in nadir2.mq5 before this include.
       if(!QSMC_SilentReader())
-         Print("[QSMC_ARB] v6.6.16 arbitration layer ON | preset ",m_preset.EffectiveName(),
+         Print("[QSMC_ARB] v6.6.19 arbitration layer ON | preset ",m_preset.EffectiveName(),
                " | gates ",IntegerToString(m_arbiter.GateCount()),
                " | exec TF ",QSMC_TFName(m_exec_tf),
                " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"),
@@ -470,7 +470,7 @@ public:
      {
       if(m_deinit_done) return;         // idempotent: Init/Deinit/Destructor
       m_deinit_done=true;
-      if(m_bars>0 || m_ready)
+      if(!QSMC_SilentReader() && (m_bars>0 || m_ready))
         {
          Print("[QSMC_ARB] stop | bars ",IntegerToString(m_bars),
                " | published ",IntegerToString(m_alerts.Published()),
@@ -488,7 +488,7 @@ public:
       m_render.Clear();       // deletes QSMC_ARB_PFX chart objects and increments m_deleted
       m_md.Shutdown();        // SafeDelete the 5 CBarSeries and increments m_free_calls
       m_arbiter.Shutdown();
-      if(m_bars>0 || m_ready) Print("[QSMC_ARB] ",LeakReport());
+      if(!QSMC_SilentReader() && (m_bars>0 || m_ready)) Print("[QSMC_ARB] ",LeakReport());
       if(m_cfg.use_global_vars) m_alerts.CleanupGlobalVars();
       m_stats.Close();
       m_ready=false;
@@ -1054,7 +1054,7 @@ bool QSMC_RootCreate(const ENUM_TIMEFRAMES exec_tf,const int bars,const int atr_
    if(g_qsmc_root==NULL) { Print("[QSMC_ARB] root allocation failed"); return false; }
    return g_qsmc_root.Init(_Symbol,(ENUM_TIMEFRAMES)_Period,exec_tf,bars,atr_period,
                            InpArbTacticalMayConfirm,InpArbGateCore,InpArbCSVLog,
-                           InpArbMinSample,true);
+                           InpArbMinSample,!QSMC_SilentReader());
   }
 
 void QSMC_RootDestroy()

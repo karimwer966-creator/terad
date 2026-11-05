@@ -104,12 +104,17 @@ string QA_PriceDescription()
 }
 
 // Display-only: fit badge to the viewport, then avoid existing docked rectangles.
-// Full verdict, identities and prices remain available in the tooltip after clipping.
+// The object scan is cached by text+viewport; unchanged badges do not rescan.
+string g_qa_badge_full="",g_qa_badge_shown="";
+int g_qa_badge_cw=0,g_qa_badge_ch=0;
 void QA_LayoutBadge(const string name,const string full)
 {
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS);
    if(cw<=0 || ch<=0) return;
+   if(full==g_qa_badge_full && cw==g_qa_badge_cw && ch==g_qa_badge_ch &&
+      ObjectFind(0,name)>=0 && ObjectGetString(0,name,OBJPROP_TEXT)==g_qa_badge_shown)
+      return;
    int available=(int)MathMax(20,cw-24),n=StringLen(full);
    string shown=full;
    while(n>4 && TextWidthPx(shown,"Consolas",9)>available)
@@ -143,10 +148,13 @@ void QA_LayoutBadge(const string name,const string full)
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
    ObjectSetString(0,name,OBJPROP_FONT,"Consolas");
    ObjectSetString(0,name,OBJPROP_TEXT,shown);
+   g_qa_badge_full=full; g_qa_badge_shown=shown;
+   g_qa_badge_cw=cw; g_qa_badge_ch=ch;
 }
 
 void QA_DrawCoreStatus()
 {
+   if(QSMC_IsReaderSilent() || !QSMC_PaintAllowed()) return;
    string name=PFX+"CORE_CURRENT_STATE";
    if(ObjectFind(0,name)<0 && !ObjectCreate(0,name,OBJ_LABEL,0,0,0)) return;
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);

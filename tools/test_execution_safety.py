@@ -196,7 +196,7 @@ check("candidates that reached the anchor gate" in noc,
 host = (ROOT / "nadir2.mq5").read_text(encoding="utf-8", errors="replace")
 host_lines = [l for l in host.replace("\r\n", "\n").split("\n") if re.match(r"^\s*(sinput|input)\s", l)]
 labelled = [l for l in host_lines if "INERT" in l]
-check(len(labelled) >= 41,
+check(len(labelled) >= 40,  # v6.6.19 wires InpShowPerfMeter, so one fewer INERT label
       "D6e every input that nothing reads says INERT in its own label (%d found)" % len(labelled))
 check("Signal outcome log: ON" in host and "entry model:" in host,
       "D6f the signal-log banner names its entry model (a limit entry cannot describe the EA)")

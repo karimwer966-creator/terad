@@ -2,7 +2,7 @@
 #define QSMC_INSTANCE_IDENTITY_MQH
 // Diagnostic ABI v2 only. Trading buffers 7..12 are unchanged.
 // FNV-1a fingerprint is an identity checksum, NOT a security primitive.
-uint QSMC_IdentityHash(const string text,const uint seed=2166136261)
+uint QSMC_IdentityHash(const string text,const uint seed=0x811C9DC5)
 {
    uint h=seed;
    for(int i=0;i<StringLen(text);i++) h=(h^(uint)StringGetCharacter(text,i))*(uint)16777619;

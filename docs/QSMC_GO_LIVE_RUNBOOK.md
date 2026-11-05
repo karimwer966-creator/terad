@@ -1,6 +1,6 @@
 # دليل التشغيل الإنتاجي — QSMC (nadir2 + QSMC_AutoTrader)
 
-**آخر تحديث:** 2026-10-30 · **الفرع:** `arena/fca4b97f-terad` · **PR:** #23
+**آخر تحديث:** 2026-11-05 · **الفرع:** `arena/d11bca00-terad` · **الإصدار:** v6.6.19
 
 هذا ليس تسويقًا ولا وعدًا بأداء. هذا **إجراء تشغيل**: ما تفعله بالضبط، وبأي ترتيب، وما يجب أن
 تراه في السجل بعد كل خطوة، وماذا تفعل حين لا تراه. كل رقم هنا مأخوذ من كود هذا المستودع، لا من
@@ -20,8 +20,15 @@ python3 tools/test_execution_safety.py   # عقد مسار إرسال الأمر
 python3 tools/check_release_gate.py      # بوابة الإصدار: GO / NO-GO
 ```
 
-ويشغّل الـ CI كل شيء (`qsmc-verify.yml`، 37 خطوة). أي خطوة حمراء = **توقّف**. لا تُترجم ملفًا
-والأداة المقابلة حمراء، لأن الخطأ سيكون في المصدر لا في المترجم.
+بوابة الإنتاج المنسقة هي:
+
+```bash
+python3 tools/check_production_ready.py
+```
+
+ويشغّلها سير العمل `qsmc-production.yml`. أي فشل فيها = **توقّف**. يحتوي `qsmc-verify.yml`
+أيضًا تدقيقات تاريخية مثبتة بأرقام أسطر/إصدارات قديمة وكانت حمراء قبل v6.6.19؛ لا تُستخدم
+وحدها حكمًا على الإنتاج، لكن لا تتجاهل فشلًا جديدًا في البوابة المنسقة أو في `check_release_gate.py`.
 
 بوابة الإصدار يجب أن تنتهي بـ:
 
@@ -161,7 +168,7 @@ iCustom(_Symbol,_Period,InpIndicatorName)   // بلا أي إدخال
 
 | السطر | متى | إن لم يظهر |
 |---|---|---|
-| `QSMC v6.613 execution companion ON …` | عند التحميل | لم يُشغّل الـEA / Algo Trading مطفأ |
+| `QSMC v6.619 execution companion ON …` | عند التحميل | لم يُشغّل الـEA / Algo Trading مطفأ |
 | `envelope: risk<= … \| daily loss stop … (persisted)` | عند التحميل | نسخة قديمة من الملف |
 | `state INERT / DRY RUN / BLOCKED / ARMED` | عند التحميل | — |
 | `day guard: new baseline … for server day …` | مرة كل يوم | الساعة/الخادم غير متصل |
@@ -244,4 +251,4 @@ iCustom(_Symbol,_Period,InpIndicatorName)   // بلا أي إدخال
 | EX12 | سطر سجل الأدلة لا يذكر نموذج الدخول | يذكره صراحةً عند التشغيل |
 | EX13 | اسم المتغيّر العام قد يرفضه الطرفي لرموز بلاحقة (`XAUUSD.m`) | `KeySafe()` ينقّي اسم الرمز في مفاتيح الـEA وحدها (أسماء `DIAG_*` تبقى مطابقة للمؤشر) |
 
-**بوابات CI بعد كل ذلك:** 37/37 خطوة تمر، و`check_release_gate` = **GO (0 warnings)**.
+**بوابات CI بعد كل ذلك:** خطوة `release gate` يجب أن تنتهي بـ **GO (0 warnings)**، و`python3 tools/check_production_ready.py` يجب أن ينتهي بـ **OFFLINE GO**. هذا لا يغني عن F7 وتجربة demo.

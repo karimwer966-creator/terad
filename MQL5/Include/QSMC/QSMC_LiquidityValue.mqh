@@ -42,6 +42,7 @@ void LV_ClearSetup(const string reason)
 
 void LV_Publish()
 {
+   if(QSMC_SilentReader()) return;
    string name=PFX+"LV_STATUS";
    if(ObjectFind(0,name)<0 && !ObjectCreate(0,name,OBJ_LABEL,0,0,0)) return;
    g_lv_visible=true;

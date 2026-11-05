@@ -1,0 +1,84 @@
+; =====================================================================
+; QSMC v6.6.19 — PRODUCTION SAFE execution preset (EA: QSMC_AutoTrader)
+;
+; THIS PRESET DOES NOT ARM THE ACCOUNT.
+;   InpEnableTrading=false  -> no order is sent
+;   InpDryRun=true          -> orders are journaled only
+;   InpDemoOnly=true        -> real-money accounts are refused
+;
+; Use it for the first production install and the demo/paper observation
+; window. Moving to live money is a separate, manual decision described in
+; docs/QSMC_GO_LIVE_RUNBOOK.md; it is not a preset flip.
+;
+; Conservative envelope:
+;   risk 0.10% per trade, hard input ceiling 0.10% (code hard ceiling wins)
+;   daily loss stop 0.50%, account drawdown halt 3.00%, 2 consecutive losses
+;   max 1 position, max 3 entries/server day, 60 min cooldown after a loss
+;   session 10:00-18:00 server (adjust to broker server clock)
+;   break-even +1.00R, partial 50% at +1.50R, pip ladder disabled
+;   spread <=60 points, slippage <=30 points, RR@fill >=1.20,
+;   signal age <=2 bars, tick age <30 s
+; =====================================================================
+
+; ---- master safety switches ------------------------------------------
+InpEnableTrading=false
+InpDryRun=true
+InpDemoOnly=true
+InpRealAccountConfirm=
+InpResetBreakersAtInit=false
+
+; ---- core -------------------------------------------------------------
+InpMagic=20261027
+InpIndicatorName=nadir2
+InpTradeComment=QSMC-AUTO
+
+; ---- risk -------------------------------------------------------------
+InpLotMode=QSMC_LOT_RISK_PERCENT
+InpRiskPercent=0.10
+InpMaxRiskPercent=0.10
+InpFixedLots=0.00
+
+; ---- targets / exits --------------------------------------------------
+InpTPLevel=QSMC_TP_LEVEL1
+InpBreakEvenAtR=1.00
+InpPartialCloseAtR=1.50
+InpPartialClosePercent=50.0
+InpUseTPPips=false
+InpPipPoints=0
+InpTP1Pips=100
+InpTP2Pips=200
+InpTP3Pips=300
+InpTP1ClosePercent=40.0
+InpTP2ClosePercent=40.0
+InpMoveSLToBEAtTP1=true
+InpMoveSLToTP1AtTP2=true
+
+; ---- circuit breakers -------------------------------------------------
+InpMaxDailyLossPercent=0.50
+InpMaxAccountDrawdownPct=3.00
+InpStopAfterConsecLoss=2
+InpMaxOpenPositions=1
+InpMaxTradesPerDay=3
+
+; ---- filters ----------------------------------------------------------
+InpMaxSpreadPoints=60
+InpMaxSpreadFracOfStop=0.10
+InpDeviationPoints=30
+InpMaxDataAgeSeconds=30
+InpMinRRAtFill=1.20
+InpMinStopPoints=20
+InpMaxStopPoints=5000
+InpOrderRetryMax=3
+InpMaxSignalAgeBars=2
+InpCloseOnOpposite=false
+
+; ---- session / discipline ---------------------------------------------
+InpSessionStartHour=10
+InpSessionEndHour=18
+InpCooldownAfterLossMin=60
+
+; ---- execution / diagnostics ------------------------------------------
+InpPollSeconds=2
+InpVerbose=false
+InpHeartbeatSeconds=300
+InpHeartbeatLookback=200

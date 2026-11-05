@@ -51,6 +51,7 @@ struct Pool {int availability_bar=0,parent_pool_availability_bar=0;
 string id,type,parent_pool_id;double parent_level=0;};
 std::vector<Pool> g_liquidity;
 double PMI_ATRAt(int,int){reads++;return atr_value;}
+bool QSMC_SilentReader(){return false;}
 '''
 TESTS = r'''
 void bar(int b,double o=100,double h=101,double l=99,double c=100,bool reset=false){

@@ -116,7 +116,7 @@
 //|  and checked by tools/test_diag_bridge.py.                        |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
-#property version   "6.618"
+#property version   "6.619"
 #property description "Companion execution EA for the QSMC indicator. Ships inert; no strategy claim."
 #property strict
 
@@ -2579,7 +2579,7 @@ int OnInit()
    double eff_daily=(InpMaxDailyLossPercent>0.0 ? MathMin(InpMaxDailyLossPercent,HardMaxDailyPercent()) : HardMaxDailyPercent());
    double eff_dd=(InpMaxAccountDrawdownPct>0.0 ? MathMin(InpMaxAccountDrawdownPct,HardMaxDDPercent()) : HardMaxDDPercent());
 
-   Print("[QSMC_AT] QSMC v6.618 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
+   Print("[QSMC_AT] QSMC v6.619 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",

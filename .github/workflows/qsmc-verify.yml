@@ -45,7 +45,9 @@ jobs:
       # Braces and parens stayed balanced, so every existing check passed - a
       # comment marker is neither. This step owns that gap, lexically.
       - name: Comment integrity (a lost // is a compile error, not a style issue)
-        run: python3 tools/test_comment_integrity.py 2>&1 | tee out/comment_integrity.log
+        run: |
+          python3 tools/test_comment_integrity.py 2>&1 | tee out/comment_integrity.log
+          python3 tools/test_tick_performance.py 2>&1 | tee out/tick_performance.log
 
       # One switch for all seven modules, and no per-tick object churn. Both
       # opt-in, both default false; this pins every gate and tooltip guard that
@@ -227,7 +229,7 @@ jobs:
         run: |
           echo "NOT COMPILED HERE. Open nadir2.mq5 in MetaEditor and press F7."
           echo "The init log must read:"
-          echo '  [QSMC_ARB] v6.6.13 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ...'
+          echo '  [QSMC_ARB] v6.6.19 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ...'
           echo "Any other version in that line means a stale copy is in the Data Folder."
 
       - uses: actions/upload-artifact@v4

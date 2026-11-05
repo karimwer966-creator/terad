@@ -4,7 +4,7 @@
 // Inputs represented: 576; order and defaults are part of identity.
 void QA_InputHashes(uint &actual,uint &defaults)
 {
-   static bool ready=false; static uint a=2166136261,d=2166136261;
+   static bool ready=false; static uint a=0x811C9DC5,d=0x811C9DC5;
    if(!ready)
    {
       QSMC_AddInputHash(a,"InpEMAFast",IntegerToString((long)(InpEMAFast)));
