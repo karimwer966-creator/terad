@@ -284,8 +284,12 @@ check("input int    InpPipPoints            = 0;" in ea,
       "D8e the operator can override the pip definition (0 = auto)")
 check("double PlanTP(const int shift,const double base,const bool buy)" in code,
       "D8f one function decides the TP for both modes, so checks and the ticket cannot disagree")
-check(noc.find("double ladder_tp=PlanTP(s.shift,price,buy);")
-      < noc.find('Note(key,"signal has no stop");'),
+# 2026-11-06: refusal sites are classified now (NoteClass(key,...,REJECT_*)), so
+# this probe matches the MESSAGE rather than the call form. The ordering claim is
+# unchanged: the ladder TP is decided before the first geometry refusal.
+_m_ladder=noc.find("double ladder_tp=PlanTP(s.shift,price,buy);")
+_m_stop=noc.find('"signal has no stop"')
+check(_m_ladder>=0 and _m_stop>=0 and _m_ladder<_m_stop,
       "D8g the ladder TP is applied BEFORE every geometry check (no-chase, RR, stops level)")
 check(code.find("if(InpUseTPPips)") < code.find("double lots=CalcLots("),
       "D8h the ladder decision happens before sizing and before any order call")

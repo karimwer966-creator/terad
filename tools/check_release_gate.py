@@ -536,8 +536,14 @@ else:
              "is 1% of equity per trade")
     if "MathMin(InpRiskPercent,vmax_cap)" not in ea_code:
         fail("G8 the sizing path does not clamp the requested risk to InpMaxRiskPercent")
-    if "if(vmax_cap>1.0) vmax_cap=1.0;" not in ea_code:
-        fail("G8 the sizing path does not cap InpMaxRiskPercent itself at 1.0")
+    # 2026-11-06 audit (A1/A2): the old assertion demanded a 1.0% literal inside
+    # CalcLots, which contradicted HardMaxRiskPercent()=5.00 and the OnInit check.
+    # What matters is that the sizing path is bounded by the HARD ceiling and that
+    # the contradictory literal is gone.
+    if "if(vmax_cap>HardMaxRiskPercent()) vmax_cap=HardMaxRiskPercent();" not in ea_code:
+        fail("G8 the sizing path is not bounded by HardMaxRiskPercent()")
+    if "if(vmax_cap>1.0) vmax_cap=1.0;" in ea_code:
+        fail("G8 a second, undocumented 1.0% ceiling is back in the sizing path")
     if not re.search(r'input\s+string\s+InpRealAccountConfirm\s*=\s*""\s*;', ea):
         fail("G8 InpRealAccountConfirm is missing or non-empty - a real account must be "
              "named by the operator, so a demo preset cannot arm live money")
@@ -548,8 +554,8 @@ else:
              "repository, in any file, at any setting")
     if "PositionModify" in ea_code and "InpBreakEvenAtR" not in ea:
         fail("G8 positions are modified without the break-even input that bounds it")
-    NOTES.append("G8 execution companion ships INERT + DRY RUN + demo-only, risk clamped "
-                 "to %.0f%% of equity, no martingale" % 1.0)
+    NOTES.append("G8 execution companion ships INERT + DRY RUN + demo-only, risk bounded "
+                 "by the one HARD ceiling, no martingale")
 
 # ------------------------------------------------------------- G5 log flood
 # "Flood" has one meaning here: a line printed from the per-bar path. That is a
