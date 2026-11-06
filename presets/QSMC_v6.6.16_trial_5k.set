@@ -59,7 +59,9 @@ InpMoveSLToTP1AtTP2=true
 
 ; ---- trial circuit breakers -------------------------------------------------
 InpMaxDailyLossPercent=0.50        ; ≈ $25/day halt (baseline = equity at day roll)
-InpMaxAccountDrawdownPct=3.00      ; ≈ $150 total halt, manual reset required
+IInpMaxDailyLossMoney=0.00
+InpFixedLotsMaxRiskPercent=2.00
+npMaxAccountDrawdownPct=3.00      ; ≈ $150 total halt, manual reset required
 InpStopAfterConsecLoss=2           ; halt after 2 losing closes
 InpMaxOpenPositions=1              ; one position at a time
 InpMaxTradesPerDay=3               ; hard daily entry cap

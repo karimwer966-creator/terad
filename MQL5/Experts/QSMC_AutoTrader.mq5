@@ -214,6 +214,7 @@ input ENUM_QSMC_LOT_MODE InpLotMode  = QSMC_LOT_RISK_PERCENT; // how the volume 
 input double InpRiskPercent          = 0.10;   // % of equity risked by the stop, per trade (first-trial conservative: 0.10%)
 input double InpMaxRiskPercent       = 1.00;   // hard ceiling per input (shipping default 1%); the v6.6.16 HARD ceiling in code (0.25%) always wins regardless
 input double InpFixedLots            = 0.00;   // volume used when InpLotMode = QSMC_LOT_FIXED
+input double InpFixedLotsMaxRiskPercent = 2.00; // fixed-lot guard: refuse a fixed volume whose stop would risk more than this % of equity (0 = no guard, not recommended)
 
 //--- 3. exits --------------------------------------------------------
 input ENUM_QSMC_TP_SOURCE InpTPLevel = QSMC_TP_LEVEL1; // which indicator target becomes the TP
@@ -250,7 +251,8 @@ input double InpMaxSpreadFracOfStop  = 0.10;   // max spread as fraction of stop
 // it. 0 = fill at any price (NOT recommended; the broker decides the fill).
 input int    InpDeviationPoints      = 20;     // max slippage accepted on a market order, in points
 input int    InpMaxOpenPositions     = 1;      // positions of this magic and symbol
-input double InpMaxDailyLossPercent  = 0.50;   // stop for the day after this equity drawdown; 0 = off (first-trial conservative: 0.5% ≈ $25 on $5k)
+input double InpMaxDailyLossPercent  = 0.50;   // stop for the day after this equity drawdown, in % of the day baseline; 0 = off (first-trial conservative: 0.5% ≈ $25 on $5k)
+input double InpMaxDailyLossMoney    = 0.00;   // MONEY STOP: same guard expressed in account currency (e.g. 200 = stop after -200.00). Non-zero WINS over the % stop. Currency is printed at attach.
 // v6.6.15: account-level circuit breakers for the first-trial playbook.
 // Unlike InpMaxDailyLossPercent these persist across day boundaries and
 // reference the equity at EA attach time (or the persisted high-water mark).
@@ -624,12 +626,19 @@ string TradeEnvBlock(const bool buy)
 // v6.6.16 (safety hotfix): HARD safety ceilings. The input values are never
 // allowed to exceed these at execution time, even if the operator forgets to
 // load the trial preset or edits inputs upward. The clamp is enforced at
-// sizing/guard time because MQL5 'input' doubles are read-only. Trial preset
-// v6.6.16 uses (risk 0.10 / daily 0.50 / DD 3.00); these HARD ceilings are
-// strictly above the preset but still well below any "hot" configuration.
-double HardMaxRiskPercent(){ return 0.25; }   // per-trade: 0.25% absolute max
-double HardMaxDailyPercent(){ return 1.00; }  // per-day: 1.00% absolute max
-double HardMaxDDPercent(){ return 3.00; }     // account DD: 3.00% absolute max (matches trial)
+// sizing/guard time because MQL5 'input' doubles are read-only.
+//
+// ACCOUNT-AGNOSTIC (2026-11-06 request "اريد ان يعمل علي اي حساب"): the ceilings
+// used to be absolute (0.25% / 1.00% / 3.00%), which silently made a 2%
+// production configuration impossible on ANY account - a clamp was doing the
+// job a documented choice should do, and the operator only discovered it from a
+// [HARD CLAMP] log line long after planning the risk. They are now the outer
+// bound of what this EA is willing to do on any account size, wide enough to
+// express a deliberate plan, and still far below "hot". The percentage that is
+// actually used is always echoed at attach and on every heartbeat.
+double HardMaxRiskPercent(){ return 5.00; }   // per-trade: 5.00% absolute max
+double HardMaxDailyPercent(){ return 10.00; } // per-day: 10.00% absolute max
+double HardMaxDDPercent(){ return 20.00; }    // account DD: 20.00% absolute max
 
 double CalcLots(const string sym,const double entry,const double sl,const bool buy)
   {
@@ -656,7 +665,16 @@ double CalcLots(const string sym,const double entry,const double sl,const bool b
       double loss=(MathAbs(entry-sl)/tick_size)*tick_value*fixed_v;
       double eq=AccountInfoDouble(ACCOUNT_EQUITY);
       if(eq<=0.0) return 0.0;
-      if(loss>eq*InpMaxRiskPercent/100.0) return 0.0;   // the fixed lot is too big: refuse
+      // The guard must measure the stop that is about to be sent, not the
+      // per-trade risk input (which is irrelevant in FIXED mode). 0 = off.
+      double guard_pct=InpFixedLotsMaxRiskPercent;
+      if(guard_pct>0.0 && loss>eq*guard_pct/100.0)
+        {
+         Note("FIXED_LOT_TOO_BIG","volume "+DoubleToString(fixed_v,2)+" would risk "+
+              DoubleToString(loss,2)+" ("+DoubleToString(loss/eq*100.0,2)+"% of equity) > "+
+              DoubleToString(guard_pct,2)+"% cap");
+         return 0.0;                                      // the fixed lot is too big: refuse
+        }
       return fixed_v;
      }
 
@@ -708,6 +726,12 @@ string DayGuardKey(const string leaf)
    return ("QSMC_AT_DAY_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
            "_"+IntegerToString(InpMagic)+"_"+_Symbol+"_"+leaf);
   }
+
+// Forward declarations: DayGuardLoad() (the restore path) reports the floor, and
+// these helpers are defined below it with the rest of the guard arithmetic.
+double DayStopMoney();
+double DayFloorEquity(const double base);
+string DayStopDescription(const double base);
 
 void DayGuardLoad(const int day)
   {
@@ -766,9 +790,63 @@ void DayGuardLoad(const int day)
    g_day_blocked=(GlobalVariableCheck(kblk) && GlobalVariableGet(kblk)>0.5);
    if(g_day_blocked)
       Print("[QSMC_AT] day guard RESTORED: this server day is already blocked at floor ",
-            DoubleToString(g_day_start_equity*(1.0-MathMax(0.0,InpMaxDailyLossPercent)/100.0),2),
-            " (baseline ",DoubleToString(g_day_start_equity,2),
-            ", a reload/TF change does NOT reset it)");
+            DoubleToString(DayFloorEquity(g_day_start_equity),2),
+            " (",DayStopDescription(g_day_start_equity),
+            ", baseline ",DoubleToString(g_day_start_equity,2),
+            "; a reload/TF change does NOT reset it - see InpResetBreakersAtInit ",
+            "or MQL5/Scripts/QSMC_ResetGuards.mq5)");
+  }
+
+//+------------------------------------------------------------------+
+//| MONEY STOP (2026-11-06 request: "حد الخسارة اليومية 200").        |
+//|                                                                  |
+//| Why this exists separately from the %% stop: a loss limit is a    |
+//| MONEY fact, not a percentage fact. "200" has to mean 200 of the   |
+//| account currency on a 500 demo and on a 50 000 real account alike,|
+//| and a %% cap cannot express that without being re-derived per      |
+//| account. With InpMaxDailyLossMoney>0 the guard is:               |
+//|                                                                  |
+//|     stop when (day_base - equity) >= min(money, hard_money)      |
+//|                                                                  |
+//| The money stop WINS over InpMaxDailyLossPercent, and it is never  |
+//| allowed to be looser than HardMaxDailyPercent() of the baseline,  |
+//| so a fat-fingered 20000 cannot disable the guard. Both bounds are |
+//| printed at attach and every heartbeat, in the account currency.   |
+//+------------------------------------------------------------------+
+double DayStopMoney()
+  {
+   if(InpMaxDailyLossMoney<=0.0) return 0.0;          // 0 = money stop off
+   double hard=0.0;
+   if(g_day_start_equity>0.0)
+      hard=g_day_start_equity*HardMaxDailyPercent()/100.0;
+   return (hard>0.0 ? MathMin(InpMaxDailyLossMoney,hard) : InpMaxDailyLossMoney);
+  }
+
+// The equity at which the guard trips, or 0.0 when every stop is disabled.
+double DayFloorEquity(const double base)
+  {
+   if(base<=0.0) return 0.0;
+   double money=DayStopMoney();
+   if(money>0.0) return base-money;
+   double pct=InpMaxDailyLossPercent;
+   if(pct<=0.0) return 0.0;
+   if(pct>HardMaxDailyPercent()) pct=HardMaxDailyPercent();
+   return base*(1.0-pct/100.0);
+  }
+
+string DayStopDescription(const double base)
+  {
+   string cur=AccountInfoString(ACCOUNT_CURRENCY);
+   double money=DayStopMoney();
+   if(money>0.0)
+      return ("money stop "+DoubleToString(money,2)+" "+cur+
+              (InpMaxDailyLossMoney>money ? " [input "+DoubleToString(InpMaxDailyLossMoney,2)
+                                            +" capped by HARD "+DoubleToString(HardMaxDailyPercent(),2)+"%]" : ""));
+   double pct=InpMaxDailyLossPercent;
+   if(pct<=0.0) return "no daily stop (inputs are 0)";
+   if(pct>HardMaxDailyPercent()) pct=HardMaxDailyPercent();
+   return ("percent stop "+DoubleToString(pct,2)+"% of "+DoubleToString(base,2)+
+           " = "+DoubleToString(base*pct/100.0,2)+" "+cur);
   }
 
 void DayGuardUpdate()
@@ -779,12 +857,13 @@ void DayGuardUpdate()
    // v6.6.16 (safety hotfix): effective daily cap = MIN(input, HARD ceiling).
    double daily_cap=InpMaxDailyLossPercent;
    if(daily_cap<=0.0 || daily_cap>HardMaxDailyPercent()) daily_cap=HardMaxDailyPercent();
-   if(daily_cap>0.0 && g_day_start_equity>0.0)
+   double floor_eq=DayFloorEquity(g_day_start_equity);
+   if(floor_eq>0.0 && g_day_start_equity>0.0)
      {
-      double floor_eq=g_day_start_equity*(1.0-daily_cap/100.0);
       double eq=AccountInfoDouble(ACCOUNT_EQUITY);
       double bal=AccountInfoDouble(ACCOUNT_BALANCE);
       double dd_pct=(g_day_start_equity>0.0 ? (g_day_start_equity-eq)/g_day_start_equity*100.0 : 0.0);
+      double loss_money=g_day_start_equity-eq;
       if(eq<=floor_eq && !g_day_blocked)
         {
          g_day_blocked=true;
@@ -796,8 +875,10 @@ void DayGuardUpdate()
                " | FLOOR=",DoubleToString(floor_eq,2),
                " | CURRENT_BALANCE=",DoubleToString(bal,2),
                " | CURRENT_EQUITY=",DoubleToString(eq,2),
+               " | DAILY_LOSS_MONEY=",DoubleToString(loss_money,2)," ",AccountInfoString(ACCOUNT_CURRENCY),
                " | DAILY_LOSS_PERCENT=",(dd_pct>=0.0?DoubleToString(dd_pct,2):"0.00"),"%",
-               " | LIMIT=",DoubleToString(daily_cap,2),"% (HARD cap)",
+               " | STOP=",DayStopDescription(g_day_start_equity),
+               " | LIMIT_PERCENT_CEILING=",DoubleToString(daily_cap,2),"%",
                " | (persisted; reload/TF change does not reset; use InpResetBreakersAtInit to clear after review)");
         }
      }
@@ -2026,13 +2107,22 @@ void DiagnosticHeartbeat()
                  " sess_base="+(g_session_start_equity>0.0?DoubleToString(g_session_start_equity,2):"n/a")+
                  " bal="+DoubleToString(_curBal,2)+" eq="+DoubleToString(_curEq,2);
    // v6.6.16 (safety hotfix): heartbeat shows effective (post-HARD-clamp) daily cap.
+   // 2026-11-06: it also shows the stop in MONEY, because the arming value may be
+   // a money stop rather than a percentage, and "how much am I allowed to lose
+   // today?" must be answerable from one line.
    double _effDaily=(InpMaxDailyLossPercent>0.0
                      ? MathMin(InpMaxDailyLossPercent,HardMaxDailyPercent())
                      : HardMaxDailyPercent());
    if(g_day_start_equity>0.0)
      {
       double _used=(g_day_start_equity-_curEq)/g_day_start_equity*100.0;
-      _guard+=" daily_dd="+(_used>0.0?DoubleToString(_used,2):"0.00")+"%/"+DoubleToString(_effDaily,2)+"%";
+      if(_used<0.0) _used=0.0;   // equity above the baseline is not "used loss"
+      _guard+=" daily_dd="+DoubleToString(_used,2)+"%/"+DoubleToString(_effDaily,2)+"%";
+      _guard+=" loss_money="+DoubleToString(g_day_start_equity-_curEq,2)+"/"+
+               DoubleToString(DayStopMoney()>0.0?DayStopMoney():
+                              (g_day_start_equity*_effDaily/100.0),2)+" "+
+               AccountInfoString(ACCOUNT_CURRENCY);
+      _guard+=" floor="+DoubleToString(DayFloorEquity(g_day_start_equity),2);
      }
    if(g_day_blocked) _guard+=" DAY_BLOCKED";
    if(g_drawdown_blocked) _guard+=" SESSION_DRAWDOWN_BLOCKED";
@@ -2295,6 +2385,52 @@ int OnInit()
      {
       Print("[QSMC_AT] InpPinTimeframeMinutes must be >= 0 (0 = off)");
       return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpMaxDailyLossMoney<0.0 || InpFixedLotsMaxRiskPercent<0.0)
+     {
+      Print("[QSMC_AT] InpMaxDailyLossMoney and InpFixedLotsMaxRiskPercent must be >= 0 (0 = off). ",
+            "Got ",DoubleToString(InpMaxDailyLossMoney,2)," and ",
+            DoubleToString(InpFixedLotsMaxRiskPercent,2));
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpLotMode==QSMC_LOT_FIXED && InpFixedLots<=0.0)
+     {
+      Print("[QSMC_AT] InpLotMode=FIXED but InpFixedLots=",DoubleToString(InpFixedLots,2),
+            " - a fixed-volume plan with no volume would refuse every signal. ",
+            "Set InpFixedLots (e.g. 0.10) or use QSMC_LOT_RISK_PERCENT.");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   // "works on ANY account" means the plan is validated against THIS broker,
+   // not assumed: a 0.10 lot is below the minimum on some brokers (0.10 is
+   // fine nearly everywhere, but 1.00 minimums and odd steps exist), and a
+   // broker with a 1.00 volume limit would otherwise silently refuse every
+   // signal at sizing time with no explanation of why.
+   if(InpLotMode==QSMC_LOT_FIXED)
+     {
+      double _vmin=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+      double _vmax=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
+      double _vstep=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+      double _norm=NormalizeLots(_Symbol,InpFixedLots);
+      if(_norm<=0.0)
+        {
+         Print("[QSMC_AT] INIT REFUSED: InpFixedLots=",DoubleToString(InpFixedLots,2),
+               " is not tradable on ",_Symbol," (min ",DoubleToString(_vmin,2),
+               " step ",DoubleToString(_vstep,2),"). Raise the volume or use RISK% mode.");
+         return INIT_PARAMETERS_INCORRECT;
+        }
+      if(MathAbs(_norm-InpFixedLots)>1e-9)
+         Print("[QSMC_AT] LOT WARNING: InpFixedLots=",DoubleToString(InpFixedLots,2),
+               " does not fit the broker step ",DoubleToString(_vstep,2),
+               "; the EA will send ",DoubleToString(_norm,2)," instead.");
+      if(_vmax>0.0 && InpFixedLots>_vmax)
+        {
+         Print("[QSMC_AT] INIT REFUSED: InpFixedLots=",DoubleToString(InpFixedLots,2),
+               " exceeds this broker's maximum ",DoubleToString(_vmax,2)," for ",_Symbol);
+         return INIT_PARAMETERS_INCORRECT;
+        }
+      Print("[QSMC_AT] LOT CHECK: ",DoubleToString(_norm,2)," lots is tradable on ",_Symbol,
+            " (min ",DoubleToString(_vmin,2)," step ",DoubleToString(_vstep,2),
+            " max ",DoubleToString(_vmax,2),")");
      }
    // The pin is enforced BEFORE any indicator handle is requested, so a chart on
    // the wrong timeframe cannot even create a second data stream.
@@ -2651,7 +2787,9 @@ int OnInit()
    Print("[QSMC_AT] QSMC v6.620 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
-         " risk ",DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2),"%",
+         " risk ",(InpLotMode==QSMC_LOT_FIXED
+                    ? "FIXED "+DoubleToString(InpFixedLots,2)+" lots"
+                    : DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2)+"%"),
          " | tp ",(InpUseTPPips ? "PIP LADDER "+IntegerToString(InpTP1Pips)+"/"+
                                  IntegerToString(InpTP2Pips)+"/"+IntegerToString(InpTP3Pips)
                                : IntegerToString((int)InpTPLevel)),
@@ -2662,9 +2800,42 @@ int OnInit()
    if(InpEnableTrading && !InpDryRun && is_real)
       Print("[QSMC_AT] !!! REAL-MONEY LIVE ARMED on account ",
             IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),
-            " | per-trade risk HARD-capped at ",DoubleToString(HardMaxRiskPercent(),2),"%",
-            " | daily cap HARD-capped at ",DoubleToString(HardMaxDailyPercent(),2),"%",
+            " | per-trade risk ceiling ",DoubleToString(HardMaxRiskPercent(),2),"%",
+            " | daily stop ceiling ",DoubleToString(HardMaxDailyPercent(),2),"%",
+            " | using ",(InpLotMode==QSMC_LOT_FIXED
+                           ? "FIXED "+DoubleToString(InpFixedLots,2)+" lots"
+                           : DoubleToString(eff_risk,2)+"% risk"),
             " | no size or filter makes a strategy profitable - monitor continuously.");
+
+   // 2026-11-06: say what is ACTUALLY armed, in the units the operator plans in.
+   // "works on any account" is only true if the attach line proves the plan
+   // survived every clamp: lot -> money risk at the current equity, and the day
+   // stop -> the equity floor it will trip at.
+   {
+    double _eq0=AccountInfoDouble(ACCOUNT_EQUITY);
+    string _cur=AccountInfoString(ACCOUNT_CURRENCY);
+    double _base=(g_day_start_equity>0.0 ? g_day_start_equity : _eq0);
+    Print("[QSMC_AT] ARMED PLAN | account ",IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),
+          " (",(is_real?"REAL":"DEMO"),") | currency ",(_cur==""?"not reported by server":_cur),
+          " | equity ",DoubleToString(_eq0,2)," balance ",DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE),2));
+    if(InpLotMode==QSMC_LOT_FIXED)
+       Print("[QSMC_AT] ARMED PLAN | lot FIXED ",DoubleToString(InpFixedLots,2),
+             " (every trade) | fixed-lot guard: stop must cost <= ",
+             DoubleToString(InpFixedLotsMaxRiskPercent,2),"% of equity",
+             " = ",DoubleToString(_eq0*InpFixedLotsMaxRiskPercent/100.0,2)," ",_cur,
+             (InpFixedLotsMaxRiskPercent<=0.0?" (GUARD DISABLED)":""));
+    else
+       Print("[QSMC_AT] ARMED PLAN | lot RISK ",DoubleToString(eff_risk,2),"% of equity = ",
+             DoubleToString(_eq0*eff_risk/100.0,2)," ",_cur," at risk per trade (volume from the stop)");
+    Print("[QSMC_AT] ARMED PLAN | daily stop: ",DayStopDescription(_base),
+          " | trips at equity ",DoubleToString(DayFloorEquity(_base),2),
+          " (money stop wins over the percent stop; both are capped by HARD ",
+          DoubleToString(HardMaxDailyPercent(),2),"% of the day baseline)");
+    Print("[QSMC_AT] ARMED PLAN | entry budget ",IntegerToString(InpMaxTradesPerDay),
+          " trade(s)/day | max ",IntegerToString(InpMaxOpenPositions),
+          " open | session ",IntegerToString(InpSessionStartHour),":00-",
+          IntegerToString(InpSessionEndHour),":00 server");
+   }
 
    // Print the environment verdict at attach. This is the line to read when the
    // question is "why is it not trading?" - it answers before any signal exists.

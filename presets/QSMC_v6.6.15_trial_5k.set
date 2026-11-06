@@ -16,7 +16,9 @@ InpFixedLots=0.00
 
 ; ---- trial circuit breakers ------------------------------------------------
 InpMaxDailyLossPercent=0.50       ; ≈ $25/day halt
-InpMaxAccountDrawdownPct=3.00     ; ≈ $150 total halt, restart required
+IInpMaxDailyLossMoney=0.00
+InpFixedLotsMaxRiskPercent=2.00
+npMaxAccountDrawdownPct=3.00     ; ≈ $150 total halt, restart required
 InpStopAfterConsecLoss=2          ; halt after 2 losing closes
 InpMaxOpenPositions=1             ; one position at a time
 InpMaxTradesPerDay=3              ; hard cap, well above the 2-loss breaker

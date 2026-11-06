@@ -199,6 +199,70 @@ if reset.is_file():
           "B6 it names the alternative, so the operator can choose")
 
 
+# ------------------------------- B7 (any account: 0.10 lots + 200 money stop)
+# "اريد ان يعمل علي اي حساب و حد الخسارة اليومية 200 و لوت صفقة 0.1"
+# Three things had to be true, and none of them was: the hard clamps made a 2%
+# day stop impossible on ANY account, the fixed-lot guard measured the wrong
+# percentage, and the day guard could only express a percentage.
+check("double HardMaxRiskPercent(){ return 5.00; }" in EA_CODE and
+      "double HardMaxDailyPercent(){ return 10.00; }" in EA_CODE,
+      "B7 the HARD ceilings are account-agnostic (5% risk / 10% day), not 0.25/1.00")
+check("input double InpMaxDailyLossMoney    = 0.00;" in EA,
+      "B7 the day stop can be expressed in MONEY (0 = off, so nothing changes by default)")
+check("double money=DayStopMoney();" in EA_CODE and
+      "if(money>0.0) return base-money;" in EA_CODE,
+      "B7 when a money stop is set it WINS over the percentage stop")
+check("return (hard>0.0 ? MathMin(InpMaxDailyLossMoney,hard) : InpMaxDailyLossMoney);"
+      in EA_CODE,
+      "B7 a fat-fingered money stop is still capped by HARD% of the day baseline")
+check("if(InpMaxDailyLossMoney<0.0 || InpFixedLotsMaxRiskPercent<0.0)" in EA_CODE,
+      "B7 a negative money stop is refused at init")
+check("if(eq<=floor_eq && !g_day_blocked)" in EA_CODE and
+      "DayFloorEquity(g_day_start_equity)" in EA_CODE,
+      "B7 the trip test uses the single floor helper (percent or money)")
+check("DAILY_LOSS_MONEY=" in EA and "AccountInfoString(ACCOUNT_CURRENCY)" in EA_CODE,
+      "B7 the trip line reports the loss in the account currency")
+
+# The attach banner is the contract an operator reads: it must state the ARMED
+# plan, not only the ceilings, and in FIXED mode it must not print a % risk.
+check("[QSMC_AT] ARMED PLAN" in EA, "B7 attach prints an ARMED PLAN block")
+check('"mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED "' in EA_CODE or
+      'InpLotMode==QSMC_LOT_FIXED\n                    ? "FIXED "' in EA.replace("\r\n","\n"),
+      "B7 the main banner names the FIXED volume instead of a % risk")
+check("double guard_pct=InpFixedLotsMaxRiskPercent;" in EA_CODE and
+      "if(guard_pct>0.0 && loss>eq*guard_pct/100.0)" in EA_CODE,
+      "B7 the fixed-lot guard measures the STOP, not the irrelevant risk input")
+check("if(InpLotMode==QSMC_LOT_FIXED && InpFixedLots<=0.0)" in EA_CODE,
+      "B7 FIXED mode with no volume is refused at init instead of refusing every signal")
+
+# The shipped demo preset carries his exact numbers, and still cannot arm a
+# real account.
+demo = ROOT / "presets" / "QSMC_AutoTrader_DEMO_PRODUCTION_0.10_200.set"
+check(demo.is_file(), "B7 the demo production preset ships")
+if demo.is_file():
+    raw = demo.read_bytes()
+    v = dict(re.findall(r"^(Inp\w+)=(.*?)\r*$", raw.decode("utf-8", "replace"), re.M))
+    check(v.get("InpLotMode") == "QSMC_LOT_FIXED" and v.get("InpFixedLots") == "0.10",
+          "B7 preset: 0.10 lots fixed")
+    check(v.get("InpMaxDailyLossMoney") in ("200", "200.0", "200.00"),
+          "B7 preset: daily stop 200 in account currency")
+    check(v.get("InpEnableTrading") == "true" and v.get("InpDryRun") == "false",
+          "B7 preset: armed (otherwise it is not ready for a demo)")
+    check(v.get("InpDemoOnly") == "true" and v.get("InpRealAccountConfirm", "x") == "",
+          "B7 preset: a REAL account is still refused (demo production, not live)")
+    check(v.get("InpResetBreakersAtInit") == "true",
+          "B7 preset: clears a stale day baseline on load")
+    check(int(v.get("InpMaxTradesPerDay", "0")) == 3 and
+          int(v.get("InpMaxOpenPositions", "0")) == 1,
+          "B7 preset: the trial envelope is kept (3/day, 1 open)")
+    check(raw.count(b"\r\r\n") in (0, raw.count(b"\n")) and
+          raw.count(b"\n") == raw.count(b"\r\n"),
+          "B7 preset line endings are valid for the MT5 .set reader")
+    declared = set(re.findall(r"^\s*(?:sinput|input)\s+\w+\s+(\w+)\s*=",
+                              EA.replace("\r\n", "\n"), re.M))
+    check(set(v) <= declared, "B7 every preset key exists in the EA")
+
+
 # ------------------------------------------------------------- house rules
 check(TEXT == DEPLOYED.read_text(encoding="utf-8", errors="replace"),
       "deployment copy is synchronized")
