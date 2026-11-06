@@ -15,6 +15,29 @@ Line numbers below are in the **post-patch** file.
 
 ---
 
+## 0. Addendum — the ceiling numbers in the *comments* (F4)
+
+Reconciling the code was not enough. Four comments still described a **0.25%**
+per-trade HARD cap, a **1.00%** daily cap and a **3.00%** drawdown cap, all of
+which the code stopped enforcing when the ceilings became account-agnostic; the
+live values are **5.00 / 10.00 / 20.00** (`HardMaxRiskPercent()` L670,
+`HardMaxDailyPercent()` L671, `HardMaxDDPercent()` L672). One of those comments
+sat directly on the `InpMaxRiskPercent` input (L216), where an operator reads it
+*before* choosing a size.
+
+Same defect as a stale clamp, same consequence: a plan priced against a limit
+that is not in force. The init policy block (L2975) now names the three
+functions instead of copying their numbers, so it cannot drift again.
+
+Suite section **F4** pins this as a *class*: the three HARD literals are read out
+of the source and asserted to be 5.00/10.00/20.00; the four exact stale sentences
+are asserted **absent**; no executable `0.25%` survives; and the policy text must
+reference the functions rather than restate their values. Writing the comment
+that explained the removal tripped the probe — the literal is gone from the file,
+not merely from the code.
+
+---
+
 ## 1. The single theme
 
 The EA could **tell the operator one number and enforce another**. Thirteen
@@ -59,7 +82,7 @@ must be absent”.
 
 | Suite | Checks | Result |
 |---|---|---|
-| `tools/test_at_risk_audit.py` (new) | 96 (A–F + **G structural**) | **96 / 0** |
+| `tools/test_at_risk_audit.py` (new) | 104 (A–F + **G structural**) | **104 / 0** |
 | `tools/test_execution_safety.py` | 105 | 105 / 0 |
 | `tools/test_autotrader_contract.py` | 112 | pass |
 | `tools/check_release_gate.py` (G8) | — | **GO, 0 warnings** |
