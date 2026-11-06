@@ -1,6 +1,6 @@
 # جاهز للإنتاج على حساب ديمو — 0.10 لوت / حد خسارة يومي 200
 
-**البريست الجاهز:** `presets/QSMC_AutoTrader_DEMO_PRODUCTION_0.10_200.set`
+**البريست الجاهز:** `presets/QSMC_AutoTrader_DEMO_0.10_200.set`
 **تاريخ الإعداد:** 06/11/2026 · **الرمز المقصود:** XAUUSD · **الفريم المقترح:** M15
 
 ---
@@ -50,11 +50,11 @@
 
 **B. المؤشر أولاً**
 4. افتح شارت **XAUUSD M15** نظيفاً (لا مؤشرات أخرى، لا قوالب قديمة).
-5. اسحب `nadir2.ex5` ⇒ Inputs ⇒ `Load` ⇒ `presets/nadir2_PRACTICAL_XAUUSD.set`.
+5. اسحب `nadir2.ex5` ⇒ Inputs ⇒ `Load` ⇒ `presets/nadir2_PRODUCTION_XAUUSD.set`.
 6. انتظر 10–30 ثانية وتحقق من `Journal`: سطور `v6.6.20` وبصمة `input_hash`، وعدم وجود `[CausalInvariant] FAIL` متكرر.
 
 **C. الإكسبرت بعده، على نفس الشارت**
-7. اسحب `QSMC_AutoTrader.ex5` على **نفس** الشارت ⇒ Inputs ⇒ `Load` ⇒ `presets/QSMC_AutoTrader_DEMO_PRODUCTION_0.10_200.set`.
+7. اسحب `QSMC_AutoTrader.ex5` على **نفس** الشارت ⇒ Inputs ⇒ `Load` ⇒ `presets/QSMC_AutoTrader_DEMO_0.10_200.set`.
 8. تأكد من ✅ **Allow Algo Trading** قبل OK.
 
 **D. تحقق من سطر الربط (هذه هي البوابة الحقيقية)**

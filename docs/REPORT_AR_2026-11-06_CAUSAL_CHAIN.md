@@ -91,7 +91,7 @@ void LegNoteFail(const string key,const bool record_diag)
 
 ### 2.4 المفاجأة: البريست كان يمنع الإشارة بنيوياً
 
-الدليل `docs/ATTACH_EA_CORRECTLY_v6.6.14.md` يطلب تحميل `presets/nadir2_PRACTICAL_XAUUSD.set`. هذا الملف كان يحمل:
+الدليل `docs/ATTACH_EA_CORRECTLY_v6.6.14.md` يطلب تحميل `presets/nadir2_PRODUCTION_XAUUSD.set`. هذا الملف كان يحمل:
 
 | المُدخل | كان في البريست | الافتراضي في الشفرة | لماذا يهم |
 |---|---|---|---|

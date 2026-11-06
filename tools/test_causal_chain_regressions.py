@@ -117,7 +117,7 @@ check("structure_bar>=0 ? g_atr_buf[structure_bar] : g_atr" in FLAT,
 # auto-heal, and the retention caps are literal. The practical preset is loaded
 # by one click and used to ship InpDisplacementATR=0 with 3/4/2/2 caps and a
 # causal-graph cap of ONE event - structurally incapable of a CORE signal.
-preset = ROOT / "presets" / "nadir2_PRACTICAL_XAUUSD.set"
+preset = ROOT / "presets" / "nadir2_PRODUCTION_XAUUSD.set"
 check(preset.is_file(), "B4 the practical XAUUSD preset still ships")
 if preset.is_file():
     raw = preset.read_bytes()
@@ -130,8 +130,14 @@ if preset.is_file():
           "B4 preset keeps pool+sweep pairs (sweep ancestry) instead of 4 rows")
     check(int(vals.get("InpMaxCausalEventsKeep", "0")) >= 160,
           "B4 preset keeps a full causal chain, not a single event")
-    check(raw.count(b"\r\r\n") == raw.count(b"\n"),
-          "B4 preset line endings are untouched (MetaEditor .set format)")
+    check(raw.count(b"\n") == raw.count(b"\r\n"),
+          "B4 preset uses CRLF line endings throughout")
+    check(b";\r\n" in raw[:400],
+          "B4 comments are FULL lines: MT5 has no inline comment syntax, so a "
+          "trailing '; why' would become part of the value")
+    check(all(b";" not in ln.split(b"=", 1)[1] for ln in raw.split(b"\r\n")
+              if ln.startswith(b"Inp") and b"=" in ln),
+          "B4 no value line carries a trailing comment")
     declared = set(re.findall(r"^\s*(?:sinput|input)\s+\w+\s+(\w+)\s*=", FLAT, re.M))
     check(declared == set(vals),
           "B4 preset and host input surface are the same set (%d inputs)" % len(declared))
@@ -237,7 +243,7 @@ check("if(InpLotMode==QSMC_LOT_FIXED && InpFixedLots<=0.0)" in EA_CODE,
 
 # The shipped demo preset carries his exact numbers, and still cannot arm a
 # real account.
-demo = ROOT / "presets" / "QSMC_AutoTrader_DEMO_PRODUCTION_0.10_200.set"
+demo = ROOT / "presets" / "QSMC_AutoTrader_DEMO_0.10_200.set"
 check(demo.is_file(), "B7 the demo production preset ships")
 if demo.is_file():
     raw = demo.read_bytes()
@@ -262,6 +268,65 @@ if demo.is_file():
                               EA.replace("\r\n", "\n"), re.M))
     check(set(v) <= declared, "B7 every preset key exists in the EA")
 
+
+# ----------------------- B8 (.set files are an input surface, not decoration)
+# The 2026-11-06 practical preset was CORRUPTED: every line had lost its tail
+# (InpEMAFast=5 vs 50, InpEMASlow=2 vs 200, InpATRPeriod=1 vs 14, group headers
+# cut to '"======E'). A truncated number in a one-click preset is a silent
+# strategy change, so presets are now GENERATED from the source declarations and
+# checked for drift in CI.
+gen = ROOT / "tools" / "generate_set_presets.py"
+check(gen.is_file(), "B8 the preset generator ships")
+nd = ROOT / "presets" / "nadir2_PRODUCTION_XAUUSD.set"
+ea_p = ROOT / "presets" / "QSMC_AutoTrader_DEMO_0.10_200.set"
+check(nd.is_file() and ea_p.is_file(), "B8 both generated presets exist")
+check(not (ROOT / "presets" / "nadir2_PRACTICAL_XAUUSD.set").exists(),
+      "B8 the corrupted practical preset is retired, so nobody loads it by habit")
+
+for path, source, label in ((nd, "nadir2.mq5", "indicator"), (ea_p, None, "EA")):
+    if not path.is_file():
+        continue
+    raw = path.read_bytes()
+    pairs = dict(re.findall(r"^(Inp\w+)=(.*?)\r$", raw.decode("utf-8"), re.M))
+    src = (ROOT / ("nadir2.mq5" if source else "MQL5/Experts/QSMC_AutoTrader.mq5")
+           ).read_text(encoding="utf-8", errors="replace")
+    declared = re.findall(r"^\s*(?:sinput|input)\s+\w+\s+(\w+)\s*=", src.replace("\r\n", "\n"), re.M)
+    check(set(declared) == set(pairs),
+          "B8 %s preset covers EVERY declared input (%d), so MT5 shows no stale value"
+          % (label, len(declared)))
+    check(len(pairs) == len(declared),
+          "B8 %s preset has no duplicate key" % label)
+    # numbers that were truncated before must not come back
+    for key, bad in (("InpEMAFast", "5"), ("InpEMASlow", "2"), ("InpATRPeriod", "1")):
+        if key in pairs:
+            check(pairs[key] != bad, "B8 %s: %s is not the truncated %r" % (label, key, bad))
+
+if nd.is_file():
+    v = dict(re.findall(r"^(Inp\w+)=(.*?)\r$", nd.read_bytes().decode("utf-8"), re.M))
+    check(v.get("InpGateProfile") == "QSMC_GATE_PRACTICAL",
+          "B8 indicator preset selects PRACTICAL through the PROFILE input, "
+          "not by faking the thresholds")
+    check(v.get("InpEnableAllModules") == "true",
+          "B8 all seven advisory modules are on through the one master switch")
+    check(v.get("InpEnableCausalInvariantChecks") == "true" and
+          v.get("InpPMIRunReplayAudit") == "true",
+          "B8 the causal invariant + replay audit are ON (they are what caught "
+          "the OB binding rollback)")
+    check(v.get("InpShowGateAudit") == "true",
+          "B8 gate audit printing is ON, so 'no signal' is answerable from the log")
+    check(v.get("InpUseRetestLifecycle") == "false",
+          "B8 retest lifecycle stays OFF explicitly: the EA's 2-bar window assumes "
+          "entry on the published closed bar")
+    check(v.get("InpUseZRE") == "true" and v.get("InpUseRXN") == "true" and
+          v.get("InpUseSniperZoneEngine") == "true",
+          "B8 the observation layers that make a CORE setup reachable are ON")
+    check(v.get("InpUltraCleanMode") == "false" and v.get("InpShowDebugAlerts") == "false",
+          "B8 clutter/debug opt-ins stay OFF")
+
+check("input bool   InpPinIndicatorDefaults  = true;" in EA,
+      "B8 the EA can print the indicator-defaults divergence inventory")
+check("INDICATOR INPUTS: this EA reads" in EA,
+      "B8 ... and it does, at attach, naming InpGateProfile and the caps")
 
 # ------------------------------------------------------------- house rules
 check(TEXT == DEPLOYED.read_text(encoding="utf-8", errors="replace"),

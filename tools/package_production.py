@@ -85,8 +85,8 @@ def main():
         "INSTALL_AR.md",
         "presets/QSMC_v6.6.20_production_chart.set",
         "presets/QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set",
-        "presets/QSMC_AutoTrader_DEMO_PRODUCTION_0.10_200.set",
-        "presets/nadir2_PRACTICAL_XAUUSD.set",
+        "presets/QSMC_AutoTrader_DEMO_0.10_200.set",
+        "presets/nadir2_PRODUCTION_XAUUSD.set",
         "MQL5/Scripts/QSMC_ResetGuards.mq5",
         "presets/QSMC_v6.6.20_latency_diagnosis.set",
     ]

@@ -206,6 +206,7 @@ input bool   InpDryRun               = true;   // true = log the order it would 
 input bool   InpDemoOnly             = true;   // refuse a real-money account entirely
 input string InpRealAccountConfirm   = "";     // real account: type the account NUMBER here to allow it
 input long   InpMagic                = 20261027; // magic number; this EA only manages its own positions
+input bool   InpPinIndicatorDefaults  = true;   // the EA reads the indicator with its COMPILED defaults (no input list). true = print the divergence inventory at attach, so a chart-loaded .set is never mistaken for what the EA actually sees.
 input string InpIndicatorName        = "nadir2"; // compiled indicator file name (no .mq5)
 input string InpTradeComment         = "QSMC-AUTO"; // comment stamped on every order
 
@@ -2836,6 +2837,29 @@ int OnInit()
           " open | session ",IntegerToString(InpSessionStartHour),":00-",
           IntegerToString(InpSessionEndHour),":00 server");
    }
+
+   // "Why is the panel showing 70/100 while the EA refuses?" - because the EA's
+   // iCustom call passes NO input list (a static contract: the indicator's
+   // COMPILED defaults drive every gate), while a .set loaded on the chart
+   // changes the VISUAL instance only. This is the documented behaviour below,
+   // printed once at attach so it can never be a surprise again.
+   if(InpPinIndicatorDefaults)
+     {
+      Print("[QSMC_AT] INDICATOR INPUTS: this EA reads '",InpIndicatorName,
+            "' on ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
+            " with the indicator's COMPILED DEFAULTS (no overridden input list, by design).");
+      Print("[QSMC_AT] INDICATOR INPUTS: a .set loaded on the chart changes the VISUAL instance only. ",
+            "Divergences that change what the EA can ever receive: ",
+            "InpGateProfile (compiled STRICT 75/80/1.50R vs PRACTICAL 60/60/1.20R), ",
+            "InpMinConfidenceScore/InpMinReliability/InpMinRR1,",
+            " InpEnableCausalInvariantChecks, InpInstitutionalSequence,",
+            " InpEnableAllModules, InpUseZRE/InpUseRXN/InpUseSniperZoneEngine,",
+            " and the retention caps (InpMaxStructuresKeep/InpMaxLiquidityKeep/InpMaxCausalEventsKeep).");
+      Print("[QSMC_AT] INDICATOR INPUTS: to make the EA and the panel agree, either (a) attach them as ",
+            "this EA does, i.e. run the indicator with its defaults, or (b) change the DEFAULTS in ",
+            "nadir2.mq5 and recompile - see docs/DEMO_SETUP_AR_FULL.md section 4. ",
+            "Do NOT tune the chart preset and expect the EA to see it.");
+     }
 
    // Print the environment verdict at attach. This is the line to read when the
    // question is "why is it not trading?" - it answers before any signal exists.
