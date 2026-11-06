@@ -212,7 +212,12 @@ jobs:
   pin-drift:
     name: audit suites still pinned to an old snapshot (report only)
     runs-on: ubuntu-latest
-    continue-on-error: true
+    # No job-level continue-on-error: that keeps the job red and only stops the
+    # RUN from failing, which leaves the pull request permanently "unstable" and
+    # teaches everyone to ignore the row. Each step carries its own
+    # continue-on-error instead, so a stale suite is reported as a failed STEP
+    # with its log attached while the job itself concludes green: the drift is
+    # visible, and it is not a gate.
     defaults:
       run:
         shell: bash -o pipefail -e {0}
@@ -224,6 +229,7 @@ jobs:
           python-version: "3.11"
 
       - name: The crosswalk itself must be consistent
+        continue-on-error: true
         run: |
           mkdir -p out
           python3 tools/pinmap.py --check 2>&1 | tee out/pinmap_check.log
