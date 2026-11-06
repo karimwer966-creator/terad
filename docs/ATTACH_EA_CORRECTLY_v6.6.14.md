@@ -18,7 +18,7 @@
 2. اسحب **nadir2.ex5** من نافذة Navigator → Indicators إلى شارت
    **XAUUSD M15**.
 3. في نافذة الإعدادات الخاصة بالمؤشر → تبويب Inputs → **Load** →
-   اختر الملف `presets/nadir2_PRACTICAL_XAUUSD.set`. اضغط OK.
+   اختر الملف `presets/nadir2_PRODUCTION_XAUUSD.set`. اضغط OK.
 4. انتظر حتى يكتمل تحميل التاريخ وتظهر جميع مناطق Sniper / Zones
    على الشارت (قد يستغرق 10–20 ثانية). تأكد في الـJournal من سطور
    `v6.6.14 PRODUCTION BUILD` وكل self-test: PASS.

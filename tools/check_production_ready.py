@@ -41,6 +41,9 @@ CHECKS = [
     ("instance-identity", [sys.executable, "tools/test_instance_identity.py"]),
     ("input-fingerprint-parser", [sys.executable, "tools/test_input_fingerprint_parser.py"]),
     ("input-fingerprint-manifest", [sys.executable, "tools/generate_input_fingerprint.py", "--check"]),
+    # A .set is an input surface an operator loads with one click: it must never
+    # drift from the source (the 2026-11-06 practical preset was truncated).
+    ("set-presets", [sys.executable, "tools/generate_set_presets.py", "--check"]),
     ("autotrader-contract", [sys.executable, "tools/test_autotrader_contract.py"]),
     ("execution-safety", [sys.executable, "tools/test_execution_safety.py"]),
     ("diag-bridge", [sys.executable, "tools/test_diag_bridge.py"]),
@@ -57,6 +60,7 @@ CHECKS = [
     ("dashboard-clarity", [sys.executable, "tools/test_dashboard_clarity.py"]),
     ("incident-compact", [sys.executable, "tools/test_incident_compact.py"]),
     ("orderblock-lifecycle", [sys.executable, "tools/test_orderblock_lifecycle.py"]),
+    ("causal-chain-regressions", [sys.executable, "tools/test_causal_chain_regressions.py"]),
     ("zre-signal-role", [sys.executable, "tools/test_zre_signal_role.py"]),
     ("unified-decision-contract", [sys.executable, "tools/test_unified_decision_contract.py"]),
     ("unified-decision-runtime", [sys.executable, "tools/test_unified_decision_runtime.py"]),

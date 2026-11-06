@@ -284,8 +284,16 @@ require(fixed_refused(10000.0, 1.0, 2400.0, 2380.0, 0.01, 1.0, 1.0) is True,
 require(fixed_refused(10000.0, 1.0, 2400.0, 2398.0, 0.01, 1.0, 0.4) is False,
         "reference: a fixed 0.4 lot with a $2 stop risks 0.8% -> allowed")
 
-require("loss>eq*InpMaxRiskPercent/100.0) return 0.0;" in code,
+# 2026-11-06: the guard now measures the STOP that is about to be sent against
+# its own cap (InpFixedLotsMaxRiskPercent) instead of the per-trade risk input,
+# which is meaningless in FIXED mode. It must still refuse, and must say why.
+require("loss>eq*guard_pct/100.0)" in code,
         "the fixed-lot path really refuses a size above the ceiling")
+require('Note("FIXED_LOT_TOO_BIG"' in ea,
+        "and it names the refusal, so a silent no-trade is not mistaken for a bug")
+require("double guard_pct=InpFixedLotsMaxRiskPercent;" in code and
+        "if(guard_pct>0.0 && loss>eq*guard_pct/100.0)" in code,
+        "the cap is an input, and 0 still disables it deliberately")
 
 # ------------------------------------------------------------- no martingale
 require(not re.search(r"MathPow\(\s*2", code), "no lot doubling (martingale) in the companion")

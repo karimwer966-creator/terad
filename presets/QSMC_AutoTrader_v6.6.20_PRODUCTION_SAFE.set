@@ -27,6 +27,7 @@ InpDemoOnly=true
 InpRealAccountConfirm=
 InpResetBreakersAtInit=false
 
+InpPinTimeframeMinutes=0
 ; ---- core -------------------------------------------------------------
 InpMagic=20261027
 InpIndicatorName=nadir2
@@ -55,7 +56,9 @@ InpMoveSLToTP1AtTP2=true
 
 ; ---- circuit breakers -------------------------------------------------
 InpMaxDailyLossPercent=0.50
-InpMaxAccountDrawdownPct=3.00
+IInpMaxDailyLossMoney=0.00
+InpFixedLotsMaxRiskPercent=2.00
+npMaxAccountDrawdownPct=3.00
 InpStopAfterConsecLoss=2
 InpMaxOpenPositions=1
 InpMaxTradesPerDay=3
