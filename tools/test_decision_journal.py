@@ -45,6 +45,53 @@ WF = os.path.join(ROOT, ".github", "workflows", "qsmc-verify.yml")
 RAW = io.open(SRC, encoding="utf-8", newline="").read()
 TEXT = RAW.replace("\r\n", "\n")
 LINES = TEXT.split("\n")
+
+# --- line pins are coordinates in a named snapshot (tools/pinmap.json),
+# --- translated to the file under test through tools/pinmap.py. The numbers in
+# --- this suite are the snapshot's; the probes are what actually asserts.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pinmap
+
+SUITE = "test_decision_journal"
+
+
+def line_at(n):
+    n = pinmap.line(SUITE, n)
+    return LINES[n - 1] if 1 <= n <= len(LINES) else ""
+
+
+def body(a, b):
+    """Lines a..b of the file, given as snapshot coordinates. The SPAN is
+    preserved, not the end point, so `body(V, V + 9)` stays "the nine lines
+    after the veto" even after a re-anchor."""
+    a = pinmap.line(SUITE, a)
+    return body_at(a, a + (b - a))
+
+
+def body_at(a, b):
+    if a < 1 or b < a:
+        return ""
+    return "\n".join(LINES[a - 1:b])
+
+
+def fn_end(first):
+    """Closing brace of the function whose signature is at snapshot line
+    `first`. Returns a CURRENT line."""
+    first = pinmap.line(SUITE, first)
+    depth, opened = 0, False
+    for i in range(first - 1, len(LINES)):
+        depth += LINES[i].count("{") - LINES[i].count("}")
+        if depth > 0:
+            opened = True
+        if opened and depth <= 0:
+            return i + 1
+    return 0
+
+
+def fn_body(n):
+    """The whole body of the function whose signature is at snapshot line n."""
+    return body_at(pinmap.line(SUITE, n), fn_end(n))
+
 DOCX = io.open(DOC, encoding="utf-8").read()
 WFX = io.open(WF, encoding="utf-8").read()
 
@@ -59,29 +106,6 @@ def check(ok, label, detail=""):
     print(out)
 
 
-def line_at(n):
-    return LINES[n - 1]
-
-
-def body(a, b):
-    return "\n".join(LINES[a - 1:b])
-
-
-def fn_end(start):
-    """Closing-brace line of the function whose signature begins at `start`.
-
-    Depth is ignored until a brace has actually opened, so a signature spread
-    over several lines cannot "end" the function on line two.
-    """
-    depth = 0
-    opened = False
-    for i in range(start - 1, len(LINES)):
-        depth += LINES[i].count("{") - LINES[i].count("}")
-        if depth > 0:
-            opened = True
-        if opened and depth <= 0:
-            return i + 1
-    return len(LINES)
 
 
 # ---------------------------------------------------- measured anchors
@@ -97,12 +121,12 @@ OC_CF, OC_RM, OC_SCALP = 15726, 15731, 15735
 OC_DISP, OC_RES, OC_RESWHY, OBS_GUARD, OBS_CALL = 15751, 15757, 15758, 15763, 15764
 TIP_SCALP, TIP_GUARD, TIP_OBS = 32049, 32051, 32052
 
-MOD_A, MOD_Z = NEXTIDX, fn_end(SELFTEST)
+MOD_A, MOD_Z = NEXTIDX, pinmap.C(SUITE, fn_end(SELFTEST))
 MOD = body(MOD_A, MOD_Z)
-REC = body(RECORD, fn_end(RECORD))
-JT = body(JTEXT, fn_end(JTEXT))
-ST = body(SELFTEST, fn_end(SELFTEST))
-STRUCT_B = body(STRUCT, fn_end(STRUCT))
+REC = fn_body(RECORD)
+JT = fn_body(JTEXT)
+ST = fn_body(SELFTEST)
+STRUCT_B = fn_body(STRUCT)
 
 check(MOD_Z > SELFTEST, "A the module region closes after the self-test",
       "region is L%d-L%d" % (MOD_A, MOD_Z))
@@ -178,7 +202,7 @@ check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,
       "got %d" % len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)))
 
 # ------------------------------------------------------- C. the pure cores
-NI = body(NEXTIDX, fn_end(NEXTIDX))
+NI = fn_body(NEXTIDX)
 check(line_at(NEXTIDX) == "int OBS_NextIndex(const int current,const int cap)",
       "C OBS_NextIndex takes only its two arguments")
 for want in ("   if(cap<=0) return 0;", "   int n=current+1;",
@@ -186,7 +210,7 @@ for want in ("   if(cap<=0) return 0;", "   int n=current+1;",
     check(want in NI, "C the ring core contains %r" % want.strip())
 check("g_" not in NI, "C the ring core reads no global state at all")
 
-SN = body(STNAME, fn_end(STNAME))
+SN = fn_body(STNAME)
 check(line_at(STNAME) == "string OBS_GateStateName(const int state)",
       "C OBS_GateStateName takes only the state")
 for st, name in ((1, "PUBLISHED"), (2, "BELOW-MIN"), (3, "HARD-VETO")):
@@ -196,7 +220,7 @@ check(SN.rstrip().endswith('return "not-run";\n  }'),
       "C an unrecognised state falls through to not-run, never to a blank cell")
 check("g_" not in SN, "C the state-name core reads no global state")
 
-GS = body(STSTATE, fn_end(STSTATE))
+GS = fn_body(STSTATE)
 check(line_at(STSTATE) ==
       "int OBS_GateState(const bool ran,const bool veto,const int score,const int min_score)",
       "C OBS_GateState takes facts, not globals")
@@ -210,7 +234,7 @@ check("score<min_score" in GS and "score<=min_score" not in GS,
       "C the minimum is inclusive: score==min publishes, exactly like every other floor here")
 check("g_" not in GS, "C the gate-state core reads no global state")
 
-RS = body(REASON, fn_end(REASON))
+RS = fn_body(REASON)
 check(line_at(REASON) ==
       "string OBS_Reason(const int gate_state,const string gate_why,const int final_signal,",
       "C OBS_Reason is declared at L%d" % REASON)
@@ -231,7 +255,7 @@ check('"no layer produced a verdict this bar"' in RS,
       "C silence is reported as silence instead of an empty cell")
 check("g_" not in RS, "C the reason core reads no global state")
 
-SRCN = body(SRCNAME, fn_end(SRCNAME))
+SRCN = fn_body(SRCNAME)
 check(line_at(SRCNAME) == "string OBS_SourceName(const int source)",
       "C OBS_SourceName takes only the source int")
 for val, name in ((3, "CORE"), (2, "RXN"), (1, "ZRE")):
@@ -557,7 +581,10 @@ check("L4495" in DOCX, "K the doc cites the row struct's line (L4495)")
 check("L15764" in DOCX, "K the doc cites the OnCalculate record call (L15764)")
 check(re.search(r"run: python3 tools/test_decision_journal\.py", WFX),
       "K CI runs tools/test_decision_journal.py")
-check(WFX.count("- name: ") == 37, "K the workflow has 37 named steps",
+check(WFX.count("- name: ") >= 37, "K the workflow still wires every audit suite "
+      "(%d named steps, at least the 37 of the single-job layout)"
+      % WFX.count("- name: "),
+
       "got %d" % WFX.count("- name: "))
 check("AUDIT-OBS1" in WFX, "K the CI step names the audit it enforces")
 

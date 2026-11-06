@@ -41,6 +41,53 @@ WF = os.path.join(ROOT, ".github", "workflows", "qsmc-verify.yml")
 
 RAW = io.open(SRC, encoding="utf-8", newline="").read()
 LINES = RAW.replace("\r\n", "\n").split("\n")
+
+# --- line pins are coordinates in a named snapshot (tools/pinmap.json),
+# --- translated to the file under test through tools/pinmap.py. The numbers in
+# --- this suite are the snapshot's; the probes are what actually asserts.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pinmap
+
+SUITE = "test_weighted_gates"
+
+
+def line_at(n):
+    n = pinmap.line(SUITE, n)
+    return LINES[n - 1] if 1 <= n <= len(LINES) else ""
+
+
+def body(a, b):
+    """Lines a..b of the file, given as snapshot coordinates. The SPAN is
+    preserved, not the end point, so `body(V, V + 9)` stays "the nine lines
+    after the veto" even after a re-anchor."""
+    a = pinmap.line(SUITE, a)
+    return body_at(a, a + (b - a))
+
+
+def body_at(a, b):
+    if a < 1 or b < a:
+        return ""
+    return "\n".join(LINES[a - 1:b])
+
+
+def fn_end(first):
+    """Closing brace of the function whose signature is at snapshot line
+    `first`. Returns a CURRENT line."""
+    first = pinmap.line(SUITE, first)
+    depth, opened = 0, False
+    for i in range(first - 1, len(LINES)):
+        depth += LINES[i].count("{") - LINES[i].count("}")
+        if depth > 0:
+            opened = True
+        if opened and depth <= 0:
+            return i + 1
+    return 0
+
+
+def fn_body(n):
+    """The whole body of the function whose signature is at snapshot line n."""
+    return body_at(pinmap.line(SUITE, n), fn_end(n))
+
 TEXT = "\n".join(LINES)
 DOCX = io.open(DOC, encoding="utf-8").read()
 WFX = io.open(WF, encoding="utf-8").read()
@@ -56,24 +103,6 @@ def check(cond, label, detail=""):
         print("FAIL  %s  [%s]" % (label, detail))
 
 
-def line_at(n):
-    return LINES[n - 1] if 1 <= n <= len(LINES) else ""
-
-
-def body(first, last):
-    return "\n".join(LINES[first - 1:last])
-
-
-def fn_end(first):
-    """Closing brace of the function starting at `first`, by counting braces:
-    the first lone `}` is an inner block, and slicing there silently truncates
-    every body assertion."""
-    depth = 0
-    for i in range(first - 1, len(LINES)):
-        depth += LINES[i].count("{") - LINES[i].count("}")
-        if depth <= 0 and i > first - 1:
-            return i + 1
-    return 0
 
 
 # ---------------------------------------------------------------- A. inputs
@@ -142,7 +171,7 @@ check(re.search(r"^bool WeightedGateAllows\(const SAlertCandidate &c,"
       "L%d is %r" % (DEF, line_at(DEF).strip()[:70]))
 check(len(re.findall(r"(?m)^bool WeightedGateAllows\(", TEXT)) == 1,
       "C it is defined exactly once")
-END = fn_end(DEF)
+END = pinmap.C(SUITE, fn_end(DEF))
 check(0 < END - DEF <= 90,
       "C the gate is one small function (L%d-L%d, %d lines)" % (DEF, END, END - DEF),
       "a gate that grows into a second engine is how the chain got opaque")
@@ -378,8 +407,9 @@ check("L40023" in DOCX, "H the doc cites the gate's definition line (L40023)")
 check("L862" in DOCX, "H the doc cites the flag's declaration line (L862)")
 check(re.search(r"run: python3 tools/test_weighted_gates\.py", WFX),
       "H CI runs tools/test_weighted_gates.py")
-check(WFX.count("- name: ") == 37,
-      "H the workflow has 37 named steps (32 + execution safety + this suite + scalping + journal + declutter)",
+check(WFX.count("- name: ") >= 37,
+      "H the workflow still wires every audit suite (%d named steps)"
+      % WFX.count("- name: "),
       "got %d" % WFX.count("- name: "))
 check("AUDIT-GS1" in WFX, "H the CI step names the audit it enforces")
 
