@@ -65,9 +65,16 @@ for name, (inp, op, floor) in HELPERS.items():
     require(fn is not None, f"{name}() exists")
     body = fn.group(1)
     require("if(InpGateProfile!=QSMC_GATE_PRACTICAL) return " + inp + ";", body) if False else None
-    require(f"if(InpGateProfile!=QSMC_GATE_PRACTICAL) return {inp};" in body,
-            f"{name}() returns {inp} untouched in STRICT (no hidden arithmetic)")
-    require(re.search(r"return\s+" + op + r"\(" + re.escape(inp) + r"\s*,\s*" + re.escape(floor) + r"\)",
+    # 2026-11-06: two of the five helpers read the SANITISED cached value
+    # (g_cfgMinRR1 / g_cfgMaxStopATR) rather than the raw input, because the
+    # cached value is what the gate itself compares against - healing and
+    # validation must not be bypassed by reading the input again. That is the
+    # stronger property, so the probe accepts either source, and still requires
+    # the STRICT branch to return it untouched.
+    src = {"InpMinRR1": "g_cfgMinRR1", "InpMaxStopATR": "g_cfgMaxStopATR"}.get(inp, inp)
+    require(f"if(InpGateProfile!=QSMC_GATE_PRACTICAL) return {src};" in body,
+            f"{name}() returns {src} untouched in STRICT (no hidden arithmetic)")
+    require(re.search(r"return\s+" + op + r"\(" + re.escape(src) + r"\s*,\s*" + re.escape(floor) + r"\)",
                       body) is not None,
             f"{name}() relaxes with {op}({inp}, {floor}) - only in the permissive direction")
     if op == "MathMin":
@@ -138,9 +145,33 @@ for symbol, what in PROTECTED.items():
     require(not (set(holders) & set(HELPERS)),
             f"{what} is never routed through an Eff*() helper (the profile cannot reach it)")
 
-# the companion has no gate of its own: it must not even know the profile input
-require("InpGateProfile" not in ea,
-        "the companion cannot set the profile: it only reads the published value")
+# the companion has no gate of its own: it must not even know the profile input.
+# 2026-11-06: the companion now NAMES the input in an operator message (it tells
+# the user which compiled divergence to watch out for), so the probe looks at
+# executable code only - a mention inside a string literal is not a read.
+def _code_only(src):
+    out, i, n = [], 0, len(src)
+    while i < n:
+        c = src[i]
+        if c == '"' or c == "'":
+            q, i = c, i + 1
+            while i < n and src[i] != q:
+                i += 2 if src[i] == "\\" else 1
+            i += 1
+        elif src.startswith("//", i):
+            while i < n and src[i] != "\n":
+                i += 1
+        elif src.startswith("/*", i):
+            j = src.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+require("InpGateProfile" not in _code_only(ea),
+        "the companion cannot set the profile: it only reads the published value "
+        "(a mention in an operator message is allowed, a read is not)")
 require("QSMC_GATE_PRACTICAL" not in ea,
         "the companion has no copy of the profile switch to drift from")
 
@@ -148,9 +179,13 @@ require("QSMC_GATE_PRACTICAL" not in ea,
 banner = re.search(r"void PrintGateProfileBanner\(\)\s*\{(.*?)\n\}", host, re.S)
 require(banner is not None, "PrintGateProfileBanner() exists")
 text = banner.group(1)
+# 2026-11-06: same source mapping as above - the banner names the value that
+# actually drives the gate, which for two thresholds is the sanitised copy.
 for inp in ("InpMinConfidenceScore", "InpMinReliability", "InpMinRR1",
             "InpMaxStopATR", "InpAnchorSearchBars"):
-    require(inp in text, f"the banner names {inp} as the input behind the change")
+    shown = {"InpMinRR1": "g_cfgMinRR1", "InpMaxStopATR": "g_cfgMaxStopATR"}.get(inp, inp)
+    require(shown in text, f"the banner names {shown} (the value behind {inp}) as the "
+                           f"input behind the change")
 require(text.count('" -> "') >= 5 or text.count(" -> ") >= 5,
         "the banner prints old -> new for each relaxed threshold")
 require("UNCHANGED" in text, "the banner states what the profile does NOT touch")
@@ -171,8 +206,8 @@ require("PRACTICAL (entry thresholds relaxed" in ea,
 # ------------------------------------------- 8. the companion's risk rules stand
 require(re.search(r"input\s+double\s+InpMaxRiskPercent\s*=\s*1\.0*\s*;", ea) is not None,
         "the 1% risk ceiling is unchanged by this work")
-require("if(vmax_cap>1.0) vmax_cap=1.0;" in ea,
-        "the ceiling still cannot be raised by the operator")
+require("if(vmax_cap>HardMaxRiskPercent()) vmax_cap=HardMaxRiskPercent();" in ea,
+        "the ceiling still cannot be raised by the operator (one HARD value)")
 require(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*false", ea) is not None,
         "the companion still ships inert")
 

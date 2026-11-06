@@ -213,7 +213,8 @@ input string InpTradeComment         = "QSMC-AUTO"; // comment stamped on every 
 //--- 2. sizing -------------------------------------------------------
 input ENUM_QSMC_LOT_MODE InpLotMode  = QSMC_LOT_RISK_PERCENT; // how the volume is chosen
 input double InpRiskPercent          = 0.10;   // % of equity risked by the stop, per trade (first-trial conservative: 0.10%)
-input double InpMaxRiskPercent       = 1.00;   // hard ceiling per input (shipping default 1%); the v6.6.16 HARD ceiling in code (0.25%) always wins regardless
+input double InpMaxRiskPercent       = 1.00;   // hard ceiling per input (shipping default 1%); HardMaxRiskPercent() always wins, and both values are printed at attach
+// 2026-11-06 audit (A1): this comment used to state the code ceiling was 0.25%.
 input double InpFixedLots            = 0.00;   // volume used when InpLotMode = QSMC_LOT_FIXED
 input double InpFixedLotsMaxRiskPercent = 2.00; // fixed-lot guard: refuse a fixed volume whose stop would risk more than this % of equity (0 = no guard, not recommended)
 
@@ -323,6 +324,7 @@ int       g_signals=0;
 int       g_sent=0;
 int       g_dry=0;
 int       g_refused=0;
+int       g_expired=0;      // 2026-11-06 audit (D4): aged out, counted apart from "refused"
 string    g_last_note="";
 int       g_note_count=0;
 
@@ -465,6 +467,35 @@ void MarkSeen(const string key,const datetime bar_time,const int dir)
 // Notes are throttled by (key+reason): a signal that is polled every few
 // seconds prints its reason ONCE, not once per poll. InpVerbose adds the
 // repeated polls on purpose, for someone diagnosing a symbol that never fires.
+// 2026-11-06 audit (D1): every refusal is now classified. The old code emitted
+// one flat stream of "[QSMC_AT] skip <key> - <reason>", in which
+//   "stop is 12 pts, under the minimum"   (price may come back -> retry)
+//   "signal has no stop"                  (never tradable -> abandon)
+//   "aged out"                            (too late -> abandon)
+// were indistinguishable. An operator reading that log cannot tell a market
+// condition from a broken indicator from a stale chart - which is exactly the
+// question the log exists to answer.
+enum ENUM_AT_REJECT
+  {
+   REJECT_TRANSIENT=0,   // may become tradable: keep it, retry, do NOT mark seen
+   REJECT_PERMANENT=1,   // never tradable: mark seen, count, stop retrying
+   REJECT_EXPIRED=2      // too late / superseded: mark seen, counted apart
+  };
+
+string RejectClassText(const ENUM_AT_REJECT c)
+  {
+   if(c==REJECT_PERMANENT) return "PERMANENT";
+   if(c==REJECT_EXPIRED)   return "EXPIRED";
+   return "TRANSIENT";
+  }
+
+void Note(const string key,const string why);
+
+void NoteClass(const string key,const string why,const ENUM_AT_REJECT cls)
+  {
+   Note(key,"["+RejectClassText(cls)+"] "+why);
+  }
+
 void Note(const string key,const string why)
   {
    string tag=key+"|"+why;
@@ -641,18 +672,82 @@ double HardMaxRiskPercent(){ return 5.00; }   // per-trade: 5.00% absolute max
 double HardMaxDailyPercent(){ return 10.00; } // per-day: 10.00% absolute max
 double HardMaxDDPercent(){ return 20.00; }    // account DD: 20.00% absolute max
 
+// 2026-11-06 audit (A3): ONE resolver per limit. Every print site, every guard
+// and every sizing call goes through these. Before this, the attach line, the
+// heartbeat and the enforcement code each recomputed "the effective cap" with
+// their own expression; they disagreed (A1/A4), and the operator had no way to
+// tell which number was real. A displayed limit is now literally the same
+// function call as the enforced one.
+//
+// 0 means OFF, never "the HARD value". Substituting a ceiling for an explicit
+// zero turns a disabled guard into the loosest possible guard (C1).
+double EffectiveRiskPercent()
+  {
+   if(InpRiskPercent<=0.0) return 0.0;
+   double ceil_in=InpMaxRiskPercent;
+   if(ceil_in<=0.0 || ceil_in>HardMaxRiskPercent()) ceil_in=HardMaxRiskPercent();
+   return MathMin(InpRiskPercent,ceil_in);
+  }
+double EffectiveDailyPercent()
+  {
+   if(InpMaxDailyLossPercent<=0.0) return 0.0;      // 0 = OFF
+   return MathMin(InpMaxDailyLossPercent,HardMaxDailyPercent());
+  }
+double EffectiveDDPct()
+  {
+   if(InpMaxAccountDrawdownPct<=0.0) return 0.0;    // 0 = OFF
+   return MathMin(InpMaxAccountDrawdownPct,HardMaxDDPercent());
+  }
+
+// 2026-11-06 audit (B2): the loss a position would take at its own stop.
+//
+// The old arithmetic was (distance/tick_size)*tick_value*volume. That is only
+// correct when SYMBOL_TRADE_TICK_VALUE is quoted per PRICE tick and the contract
+// multiplier is 1.0 - assumptions that hold on many symbols and are simply false
+// on others, and the guard that depends on this number is the one that decides
+// whether a fixed lot is allowed to exist.
+//
+// OrderCalcProfit() answers the question the guard is actually asking ("what
+// does this position lose if the stop is hit?") using the terminal's own
+// contract specification. When it cannot answer - no tick data, no contract
+// spec, market closed - it returns false, and THAT case must fail closed. A loss
+// that cannot be computed is not a loss of zero.
+bool EstimateLossAtSL(const string sym,const bool buy,const double volume,
+                      const double entry,const double sl,double &loss_out)
+  {
+   loss_out=0.0;
+   if(volume<=0.0 || entry<=0.0 || sl<=0.0) return false;
+   if(MathAbs(entry-sl)<=0.0) return false;
+   double pnl=0.0;
+   // Profit of the position at the STOP price. For a BUY the stop is below the
+   // entry, so the profit is negative; a SELL is the mirror. The sign is taken
+   // from the result rather than assumed, so a broker whose specification
+   // disagrees still produces a loss the guard can read.
+   if(!OrderCalcProfit(buy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL,sym,volume,entry,sl,pnl))
+      return false;
+   if(!MathIsValidNumber(pnl)) return false;
+   loss_out=-pnl;
+   if(loss_out<0.0) loss_out=0.0;
+   return true;
+  }
+
 double CalcLots(const string sym,const double entry,const double sl,const bool buy)
   {
    // v6.6.16: effective per-trade risk = MIN(input, HARD_CEILING). The clamp
-   // is at sizing time because MQL5 'input' doubles are read-only. The
-   // historical 1.0% shipping ceiling is preserved for the contract test; a
-   // stricter HARD ceiling of 0.25% always wins on top of that (safety hotfix
-   // for the case where the operator forgets to load the trial preset).
+   // is at sizing time because MQL5 'input' doubles are read-only.
+   // 2026-11-06 audit (A2): there is ONE ceiling - HardMaxRiskPercent() - and
+   // it is the same value OnInit validates against and every banner prints.
+   // The old paragraph here described two further ceilings that no longer
+   // exist; a comment describing clamps the code does not apply is how the
+   // operator ended up unable to predict a size.
+   // 2026-11-06 audit (A2): the historical 1.0% shipping ceiling used to be
+   // applied here as a second, undocumented clamp on top of
+   // HardMaxRiskPercent(). It made a deliberate 2% production plan impossible on
+   // every account, and nothing in the logs said so beyond a generic
+   // [HARD CLAMP] line. There is now exactly one ceiling.
    double vmax_cap=InpMaxRiskPercent;
-   if(vmax_cap<=0.0) vmax_cap=0.10;
-   if(vmax_cap>1.0) vmax_cap=1.0;            // historical shipping ceiling
-   double hardR=HardMaxRiskPercent();
-   if(vmax_cap>hardR) vmax_cap=hardR;        // v6.6.16 HARD ceiling
+   if(vmax_cap<=0.0) vmax_cap=HardMaxRiskPercent();
+   if(vmax_cap>HardMaxRiskPercent()) vmax_cap=HardMaxRiskPercent();
    if(InpRiskPercent>0.0 && InpRiskPercent<vmax_cap) vmax_cap=InpRiskPercent;
 
    if(InpLotMode==QSMC_LOT_FIXED)
@@ -662,20 +757,70 @@ double CalcLots(const string sym,const double entry,const double sl,const bool b
       double step=SymbolInfoDouble(sym,SYMBOL_VOLUME_STEP);
       double tick_size=SymbolInfoDouble(sym,SYMBOL_TRADE_TICK_SIZE);
       double tick_value=SymbolInfoDouble(sym,SYMBOL_TRADE_TICK_VALUE);
-      if(step<=0.0 || tick_size<=0.0 || tick_value<=0.0) return fixed_v;
-      double loss=(MathAbs(entry-sl)/tick_size)*tick_value*fixed_v;
+      // 2026-11-06 audit (B1): this used to be
+      //     if(step<=0.0 || tick_size<=0.0 || tick_value<=0.0) return fixed_v;
+      // - it returned a TRADABLE volume precisely when the information needed
+      // to price its risk was missing. That was the one place in this file where
+      // "I cannot measure it" was answered with "go ahead". Missing metadata is
+      // now a refusal, not a free pass.
+      if(step<=0.0 || tick_size<=0.0 || tick_value<=0.0)
+        {
+         Print("[QSMC_AT FIXED_LOT_REPORT] REQUESTED=",DoubleToString(InpFixedLots,2),
+               " NORMALIZED=",DoubleToString(fixed_v,2),
+               " | REFUSED: no tick metadata on ",sym,
+               " (step=",DoubleToString(step,8)," tick_size=",DoubleToString(tick_size,8),
+               " tick_value=",DoubleToString(tick_value,8),")",
+               " - a volume whose loss cannot be computed is never sent");
+         return 0.0;
+        }
       double eq=AccountInfoDouble(ACCOUNT_EQUITY);
       if(eq<=0.0) return 0.0;
-      // The guard must measure the stop that is about to be sent, not the
-      // per-trade risk input (which is irrelevant in FIXED mode). 0 = off.
+      double loss=0.0;
+      // 2026-11-06 audit (B2): measured with OrderCalcProfit() at the stop that
+      // is actually about to be sent, not with a tick arithmetic identity.
+      bool measured=EstimateLossAtSL(sym,buy,fixed_v,entry,sl,loss);
+      if(!measured)
+        {
+         Print("[QSMC_AT FIXED_LOT_REPORT] REQUESTED=",DoubleToString(InpFixedLots,2),
+               " NORMALIZED=",DoubleToString(fixed_v,2),
+               " | REFUSED: OrderCalcProfit() could not price the stop ",
+               DoubleToString(sl,_Digits)," from ",DoubleToString(entry,_Digits),
+               " on ",sym," (currency ",AccountInfoString(ACCOUNT_CURRENCY),
+               ") - unmeasurable risk is not zero risk");
+         return 0.0;
+        }
+      // 2026-11-06 audit (B3): FIXED mode was guarded by
+      // InpFixedLotsMaxRiskPercent (default 2.00) while RISK% mode was guarded by
+      // HardMaxRiskPercent() (5.00). "The hard ceiling" therefore meant two
+      // different numbers depending on the lot mode. The effective ceiling is now
+      // min(operator guard, HARD ceiling) for BOTH modes, and 0 disables only the
+      // operator's own, never the HARD one.
       double guard_pct=InpFixedLotsMaxRiskPercent;
-      if(guard_pct>0.0 && loss>eq*guard_pct/100.0)
+      if(guard_pct<=0.0 || guard_pct>HardMaxRiskPercent()) guard_pct=HardMaxRiskPercent();
+      double cap_money=eq*guard_pct/100.0;
+      double eff_pct=(eq>0.0 ? loss/eq*100.0 : 0.0);
+      if(loss>cap_money)
         {
          Note("FIXED_LOT_TOO_BIG","volume "+DoubleToString(fixed_v,2)+" would risk "+
-              DoubleToString(loss,2)+" ("+DoubleToString(loss/eq*100.0,2)+"% of equity) > "+
-              DoubleToString(guard_pct,2)+"% cap");
-         return 0.0;                                      // the fixed lot is too big: refuse
+              DoubleToString(loss,2)+" ("+DoubleToString(eff_pct,2)+"% of "+DoubleToString(eq,2)+
+              " equity) > "+DoubleToString(guard_pct,2)+"% cap");
+         Print("[QSMC_AT FIXED_LOT_REPORT] REQUESTED=",DoubleToString(InpFixedLots,2),
+               " NORMALIZED=",DoubleToString(fixed_v,2),
+               " EST_SL_LOSS=",DoubleToString(loss,2)," ",AccountInfoString(ACCOUNT_CURRENCY),
+               " EQUITY=",DoubleToString(eq,2),
+               " EFFECTIVE_RISK_PCT=",DoubleToString(eff_pct,2),
+               " CAP_PCT=",DoubleToString(guard_pct,2),
+               " | REFUSED: the stop is too wide for this volume");
+         return 0.0;                                      // too big: refuse
         }
+      // Accepted: the same five fields, so a refusal and an acceptance are
+      // comparable in the log instead of one of them being silent.
+      Print("[QSMC_AT FIXED_LOT_REPORT] REQUESTED=",DoubleToString(InpFixedLots,2),
+            " NORMALIZED=",DoubleToString(fixed_v,2),
+            " EST_SL_LOSS=",DoubleToString(loss,2)," ",AccountInfoString(ACCOUNT_CURRENCY),
+            " EQUITY=",DoubleToString(eq,2),
+            " EFFECTIVE_RISK_PCT=",DoubleToString(eff_pct,2),
+            " CAP_PCT=",DoubleToString(guard_pct,2)," | ACCEPTED");
       return fixed_v;
      }
 
@@ -823,15 +968,26 @@ double DayStopMoney()
    return (hard>0.0 ? MathMin(InpMaxDailyLossMoney,hard) : InpMaxDailyLossMoney);
   }
 
+// 2026-11-06 audit (C2): the guard had no name for its own state. A disabled
+// percent stop was silently replaced by the 10% HARD ceiling (C1), so "off"
+// printed as "10.00%" - the loosest possible value, presented as if it were a
+// deliberate cap. These three states are now the only ones that exist, the trip
+// line prints which one fired, and the heartbeat prints the same word.
+string DayStopState()
+  {
+   if(DayStopMoney()>0.0) return "MONEY";
+   if(InpMaxDailyLossPercent<=0.0) return "DISABLED";
+   return "PERCENT";
+  }
+
 // The equity at which the guard trips, or 0.0 when every stop is disabled.
 double DayFloorEquity(const double base)
   {
    if(base<=0.0) return 0.0;
    double money=DayStopMoney();
    if(money>0.0) return base-money;
-   double pct=InpMaxDailyLossPercent;
-   if(pct<=0.0) return 0.0;
-   if(pct>HardMaxDailyPercent()) pct=HardMaxDailyPercent();
+   double pct=EffectiveDailyPercent();
+   if(pct<=0.0) return 0.0;                    // DISABLED: no floor, nothing trips
    return base*(1.0-pct/100.0);
   }
 
@@ -843,9 +999,9 @@ string DayStopDescription(const double base)
       return ("money stop "+DoubleToString(money,2)+" "+cur+
               (InpMaxDailyLossMoney>money ? " [input "+DoubleToString(InpMaxDailyLossMoney,2)
                                             +" capped by HARD "+DoubleToString(HardMaxDailyPercent(),2)+"%]" : ""));
-   double pct=InpMaxDailyLossPercent;
-   if(pct<=0.0) return "no daily stop (inputs are 0)";
-   if(pct>HardMaxDailyPercent()) pct=HardMaxDailyPercent();
+   double pct=EffectiveDailyPercent();
+   if(pct<=0.0)
+      return "no daily stop (inputs are 0) - STATE=DISABLED, nothing can trip this guard";
    return ("percent stop "+DoubleToString(pct,2)+"% of "+DoubleToString(base,2)+
            " = "+DoubleToString(base*pct/100.0,2)+" "+cur);
   }
@@ -855,9 +1011,11 @@ void DayGuardUpdate()
    int day=(int)(TimeCurrent()/86400);
    if(day!=g_day_index)
       DayGuardLoad(day);
-   // v6.6.16 (safety hotfix): effective daily cap = MIN(input, HARD ceiling).
-   double daily_cap=InpMaxDailyLossPercent;
-   if(daily_cap<=0.0 || daily_cap>HardMaxDailyPercent()) daily_cap=HardMaxDailyPercent();
+   // 2026-11-06 audit (C1): this used to map a 0 input to the HARD ceiling, so
+   // "off" became "the loosest allowed value" - and the trip line then printed
+   // that ceiling as LIMIT_PERCENT_CEILING. A disabled guard now stays disabled
+   // and says so: the floor is 0.0 and nothing can trip it.
+   double daily_cap=EffectiveDailyPercent();
    double floor_eq=DayFloorEquity(g_day_start_equity);
    if(floor_eq>0.0 && g_day_start_equity>0.0)
      {
@@ -879,7 +1037,11 @@ void DayGuardUpdate()
                " | DAILY_LOSS_MONEY=",DoubleToString(loss_money,2)," ",AccountInfoString(ACCOUNT_CURRENCY),
                " | DAILY_LOSS_PERCENT=",(dd_pct>=0.0?DoubleToString(dd_pct,2):"0.00"),"%",
                " | STOP=",DayStopDescription(g_day_start_equity),
-               " | LIMIT_PERCENT_CEILING=",DoubleToString(daily_cap,2),"%",
+               " | DAY_STOP_STATE=",DayStopState(),
+               " | LIMIT_PERCENT_CEILING=",(daily_cap>0.0
+                                              ? DoubleToString(daily_cap,2)+"%"
+                                              : string("n/a (percent stop OFF)")),
+               " | LIMIT_MONEY=",DoubleToString(DayStopMoney(),2),
                " | (persisted; reload/TF change does not reset; use InpResetBreakersAtInit to clear after review)");
         }
      }
@@ -943,9 +1105,10 @@ int CountConsecutiveLosses()
 void SessionGuardUpdate()
   {
    // account drawdown vs session-start baseline (equity-captured, v6.6.16).
-   // v6.6.16 (safety hotfix): effective DD cap = MIN(input, HARD ceiling).
-   double dd_cap=InpMaxAccountDrawdownPct;
-   if(dd_cap<=0.0 || dd_cap>HardMaxDDPercent()) dd_cap=HardMaxDDPercent();
+   // 2026-11-06 audit (A3/C1): same defect class as the daily guard - a 0 input
+   // (documented "off") used to become the HARD 20% ceiling. Disabled now means
+   // disabled, and the heartbeat says DISABLED instead of printing a cap.
+   double dd_cap=EffectiveDDPct();
    if(dd_cap>0.0 && g_session_start_equity>0.0 && !g_drawdown_blocked)
      {
       double eq=AccountInfoDouble(ACCOUNT_EQUITY);
@@ -1149,7 +1312,7 @@ void HandleSignal(SQsigSignal &s)
 
    if(point<=0.0 || price<=0.0)
      {
-      Note(key,"no price yet");
+      NoteClass(key,"no price yet",REJECT_TRANSIENT);
       return;
      }
 
@@ -1161,7 +1324,7 @@ void HandleSignal(SQsigSignal &s)
       double ladder_tp=PlanTP(s.shift,price,buy);
       if(ladder_tp<=0.0)
         {
-         Note(key,"pip ladder produced no target (check InpTP1/2/3Pips and InpPipPoints)");
+         NoteClass(key,"pip ladder produced no target (check InpTP1/2/3Pips and InpPipPoints)",REJECT_PERMANENT);
          MarkSeen(key,s.bar_time,s.dir);
          g_refused++;
          return;
@@ -1172,28 +1335,28 @@ void HandleSignal(SQsigSignal &s)
    // --- permanent refusals: geometry the signal itself gets wrong ----
    if(s.sl<=0.0 || !MathIsValidNumber(s.sl))
      {
-      Note(key,"signal has no stop");
+      NoteClass(key,"signal has no stop",REJECT_PERMANENT);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
      }
    if(s.tp<=0.0 || !MathIsValidNumber(s.tp))
      {
-      Note(key,"signal has no target");
+      NoteClass(key,"signal has no target",REJECT_PERMANENT);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
      }
    if(buy && (s.sl>=s.entry || s.tp<=s.entry))
      {
-      Note(key,"BUY geometry is not (sl<entry<tp)");
+      NoteClass(key,"BUY geometry is not (sl<entry<tp)",REJECT_PERMANENT);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
      }
    if(!buy && (s.sl<=s.entry || s.tp>=s.entry))
      {
-      Note(key,"SELL geometry is not (tp<entry<sl)");
+      NoteClass(key,"SELL geometry is not (tp<entry<sl)",REJECT_PERMANENT);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
@@ -1203,12 +1366,12 @@ void HandleSignal(SQsigSignal &s)
    double dist_pts=(dist/point);
    if(dist_pts<(double)InpMinStopPoints)
      {
-      Note(key,"stop is "+DoubleToString(dist_pts,0)+" pts, under the minimum");
+      NoteClass(key,"stop is "+DoubleToString(dist_pts,0)+" pts, under the minimum",REJECT_TRANSIENT);
       return;
      }
    if(dist_pts>(double)InpMaxStopPoints)
      {
-      Note(key,"stop is "+DoubleToString(dist_pts,0)+" pts, over the maximum");
+      NoteClass(key,"stop is "+DoubleToString(dist_pts,0)+" pts, over the maximum",REJECT_PERMANENT);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
@@ -1216,14 +1379,14 @@ void HandleSignal(SQsigSignal &s)
    // The stop must still be on the protected side of the CURRENT price.
    if(buy && s.sl>=price)
      {
-      Note(key,"price already at/below the BUY stop");
+      NoteClass(key,"price already at/below the BUY stop",REJECT_PERMANENT);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
      }
    if(!buy && s.sl<=price)
      {
-      Note(key,"price already at/above the SELL stop");
+      NoteClass(key,"price already at/above the SELL stop",REJECT_PERMANENT);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
@@ -1231,14 +1394,14 @@ void HandleSignal(SQsigSignal &s)
    // ... and the target must not already be reached (no chasing).
    if(buy && price>=s.tp)
      {
-      Note(key,"BUY target already reached - not chasing");
+      NoteClass(key,"BUY target already reached - not chasing",REJECT_PERMANENT);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
      }
    if(!buy && price<=s.tp)
      {
-      Note(key,"SELL target already reached - not chasing");
+      NoteClass(key,"SELL target already reached - not chasing",REJECT_PERMANENT);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
@@ -1256,9 +1419,9 @@ void HandleSignal(SQsigSignal &s)
       double rr_at_fill=(risk_at_fill>0.0 ? reward_at_fill/risk_at_fill : 0.0);
       if(rr_at_fill<InpMinRRAtFill)
         {
-         Note(key,"reward:risk at the CURRENT price is "+DoubleToString(rr_at_fill,2)+
+         NoteClass(key,"reward:risk at the CURRENT price is "+DoubleToString(rr_at_fill,2)+
               " < InpMinRRAtFill="+DoubleToString(InpMinRRAtFill,2)+
-              " - the plan was priced at "+DoubleToString(s.entry,_Digits)+", not here");
+              " - the plan was priced at "+DoubleToString(s.entry,_Digits)+", not here",REJECT_TRANSIENT);
          return;
         }
      }
@@ -1266,15 +1429,16 @@ void HandleSignal(SQsigSignal &s)
    // --- transient refusals: retried until the signal ages out --------
    if(!SpreadOK(sym))
      {
-      Note(key,"spread above "+IntegerToString(InpMaxSpreadPoints)+" pts");
-      return;
-     }
-   if(g_day_blocked)
-     {
-      Note(key,"daily loss guard is active");
+      NoteClass(key,"spread above "+IntegerToString(InpMaxSpreadPoints)+" pts",REJECT_TRANSIENT);
       return;
      }
    // --- professional discipline: session, day cap, cooldown ----------
+   // 2026-11-06 audit (D2): the daily-breaker test that used to sit ABOVE this
+   // line said "the same signal may be tradable later" (transient, no MarkSeen)
+   // while the identical test below says "EA restart required" (latched). Two
+   // equal conditions with two different meanings, and the first one made the
+   // second unreachable. It is now tested once, in the latched group, where the
+   // breaker's real semantics live.
    // All three are TRANSIENT (no MarkSeen): the same signal may be tradable
    // once the window opens, but refusing it must not burn it.
    string dis="";
@@ -1284,12 +1448,12 @@ void HandleSignal(SQsigSignal &s)
    // the EA (review + conscious decision to continue).
    if(g_day_blocked)
      {
-      Note(key,"DAILY-LOSS breaker tripped - EA restart required to resume");
+      NoteClass(key,"DAILY-LOSS breaker tripped - EA restart required to resume",REJECT_PERMANENT);
       return;
      }
    if(g_drawdown_blocked)
      {
-      Note(key,"ACCOUNT-DRAWDOWN breaker tripped - EA restart required to resume");
+      NoteClass(key,"ACCOUNT-DRAWDOWN breaker tripped - EA restart required to resume",REJECT_PERMANENT);
       return;
      }
    if(g_loss_streak_blocked)
@@ -1399,7 +1563,7 @@ void HandleSignal(SQsigSignal &s)
 
    if(!InpEnableTrading)
      {
-      Note(key,"INERT (InpEnableTrading=false)");
+      NoteClass(key,"INERT (InpEnableTrading=false)",REJECT_TRANSIENT);
       MarkSeen(key,s.bar_time,s.dir);
       return;
      }
@@ -1511,7 +1675,22 @@ void ProcessSignals()
       datetime bt=iTime(_Symbol,_Period,shift);
       if(bt<=0) continue;
       if(bt<g_start_bar) continue;              // existed before attach
-      if(shift>max_age) continue;               // aged out
+      // 2026-11-06 audit (D3): a signal that exists but is too old used to be
+      // skipped in silence by the same `continue` as "nothing there". It is now
+      // counted and named, so "signals: 0" cannot hide "3 signals came too late".
+      if(shift>max_age)
+        {
+         string xkey=SignalKey(bt,dir);
+         if(!SeenBefore(xkey,bt,dir))
+           {
+            NoteClass(xkey,"signal bar "+TimeToString(bt,TIME_DATE|TIME_MINUTES)+
+                      " is "+IntegerToString(shift)+" bars old > InpMaxSignalAgeBars="+
+                      IntegerToString(max_age),REJECT_EXPIRED);
+            MarkSeen(xkey,bt,dir);
+            g_expired++;
+           }
+         continue;
+        }
       string key=SignalKey(bt,dir);
       if(SeenBefore(key,bt,dir)) continue;
 
@@ -1533,6 +1712,46 @@ void ProcessSignals()
 //| _CONF / _TIME once per closed bar. Reading them changes nothing;  |
 //| a missing variable is reported as "no record", never guessed.     |
 //+------------------------------------------------------------------+
+// 2026-11-06 audit (E1/E3): "verify the exact iCustom instance and indicator
+// build" was not answerable from the log. The EA said it reads the indicator's
+// compiled defaults, but never which instance, which timeframe, or whether the
+// handle it holds answers on the slots it was written against. A stale nadir2.ex5
+// left in the Data Folder keeps answering CopyBuffer() happily, from its own,
+// older buffer map - so the ABI actually being read has to be stated.
+string IndicatorIdentityLine()
+  {
+   if(g_handle==INVALID_HANDLE)
+      return "INDICATOR_ABI=UNREAD | handle INVALID";
+   int bars_calc=BarsCalculated(g_handle);
+   // Probe every slot the ABI contract asserts, one element deep. A build whose
+   // buffer map moved does not answer all six, and that difference is the whole
+   // point of the line.
+   int slots[6];
+   slots[0]=QSMC_BUF_CORE_DIR;   slots[1]=QSMC_BUF_CORE_ENTRY;
+   slots[2]=QSMC_BUF_CORE_SL;    slots[3]=QSMC_BUF_CORE_TP1;
+   slots[4]=QSMC_BUF_CORE_TP2;   slots[5]=QSMC_BUF_CORE_TP3;
+   double probe[];
+   ArrayResize(probe,1);
+   string got="";
+   int present=0;
+   for(int i=0;i<6;i++)
+     {
+      int n=CopyBuffer(g_handle,slots[i],0,1,probe);
+      got+=IntegerToString(n);
+      if(n==1) present++;
+     }
+   int vcode_n=CopyBuffer(g_handle,QSMC_BUF_CORE_VCODE,0,1,probe);
+   string abi=(present==6 ? "7..12 PRESENT" : "7..12 INCOMPLETE");
+   return "INDICATOR_ABI="+abi+
+          " (probe 7/8/9/10/11/12="+got+", VCODE="+IntegerToString(vcode_n)+")"+
+          " | INDICATOR_TIMEFRAME="+EnumToString((ENUM_TIMEFRAMES)_Period)+
+          " | INDICATOR_SYMBOL="+_Symbol+
+          " | INDICATOR_BUILD="+(bars_calc>0
+                                   ? "CALCULATING("+IntegerToString(bars_calc)+" bars)"
+                                   : "NOT CALCULATING")+
+          " | INDICATOR_INPUTS=COMPILED DEFAULTS (no input list passed; a chart .set cannot reach this instance)";
+  }
+
 string DiagVarName(const string leaf)
   {
    string prefix=QSMC_DefaultDiagPrefix();
@@ -2111,20 +2330,27 @@ void DiagnosticHeartbeat()
    // 2026-11-06: it also shows the stop in MONEY, because the arming value may be
    // a money stop rather than a percentage, and "how much am I allowed to lose
    // today?" must be answerable from one line.
-   double _effDaily=(InpMaxDailyLossPercent>0.0
-                     ? MathMin(InpMaxDailyLossPercent,HardMaxDailyPercent())
-                     : HardMaxDailyPercent());
+   // 2026-11-06 audit (A3/C2): the heartbeat used to re-derive the cap with its
+   // own expression AND fall back to the HARD 10% when the input was 0 (off).
+   // It now asks the same resolver the guard asks, and prints the state word.
+   double _effDaily=EffectiveDailyPercent();
    if(g_day_start_equity>0.0)
      {
       double _used=(g_day_start_equity-_curEq)/g_day_start_equity*100.0;
       if(_used<0.0) _used=0.0;   // equity above the baseline is not "used loss"
-      _guard+=" daily_dd="+DoubleToString(_used,2)+"%/"+DoubleToString(_effDaily,2)+"%";
+      _guard+=" daily_dd="+DoubleToString(_used,2)+"%/"+
+              (DayStopState()=="MONEY" ? string("money") :
+               (DayStopState()=="DISABLED" ? string("DISABLED")
+                                           : DoubleToString(_effDaily,2)+"%"));
       _guard+=" loss_money="+DoubleToString(g_day_start_equity-_curEq,2)+"/"+
                DoubleToString(DayStopMoney()>0.0?DayStopMoney():
                               (g_day_start_equity*_effDaily/100.0),2)+" "+
                AccountInfoString(ACCOUNT_CURRENCY);
       _guard+=" floor="+DoubleToString(DayFloorEquity(g_day_start_equity),2);
      }
+   // DAY_STOP_STATE= is the field an operator greps for: it names the stop that is
+   // in force (MONEY / PERCENT / DISABLED) in the same word the trip line uses.
+   _guard+=" DAY_STOP_STATE="+DayStopState();
    if(g_day_blocked) _guard+=" DAY_BLOCKED";
    if(g_drawdown_blocked) _guard+=" SESSION_DRAWDOWN_BLOCKED";
    if(g_loss_streak_blocked) _guard+=" CONSEC_LOSS_BLOCKED(cnt="+IntegerToString(g_consec_losses)+")";
@@ -2133,6 +2359,7 @@ void DiagnosticHeartbeat()
          " sent "+IntegerToString(g_sent)+
          " dry "+IntegerToString(g_dry)+
          " refused "+IntegerToString(g_refused)+
+         " expired "+IntegerToString(g_expired)+
          " open "+IntegerToString(OpenCount(_Symbol))+
          _guard+
          DisciplineSuffix();
@@ -2144,6 +2371,9 @@ void DiagnosticHeartbeat()
    // gate that refused the candidate (see the DIAG_TABLE block above).
    line+=IndicatorVerdictSuffix();
    Print(line);
+   // 2026-11-06 audit (E1): repeat the identity on the heartbeat. A handle can
+   // outlive the .ex5 it was created from; this is the line that notices.
+   Print("[QSMC_AT] heartbeat identity: ",IndicatorIdentityLine());
   }
 
 //+------------------------------------------------------------------+
@@ -2371,10 +2601,15 @@ int OnInit()
       Print("[QSMC_AT] InpIndicatorName is empty");
       return INIT_PARAMETERS_INCORRECT;
      }
+   // 2026-11-06 audit (A1): this used to reject InpMaxRiskPercent > 1.0 while
+   // HardMaxRiskPercent() was 5.00 and the attach line printed 5.00 - three
+   // numbers for one ceiling. Validation now asks the same function the
+   // enforcement asks, so "allowed" and "clamped" cannot disagree.
    if(InpRiskPercent<0.0 || InpRiskPercent>InpMaxRiskPercent ||
-      InpMaxRiskPercent<=0.0 || InpMaxRiskPercent>1.0)
+      InpMaxRiskPercent<=0.0 || InpMaxRiskPercent>HardMaxRiskPercent())
      {
-      Print("[QSMC_AT] risk inputs out of range: 0 <= InpRiskPercent <= InpMaxRiskPercent <= 1.0");
+      Print("[QSMC_AT] risk inputs out of range: 0 <= InpRiskPercent <= InpMaxRiskPercent <= ",
+            DoubleToString(HardMaxRiskPercent(),2),"% (HARD ceiling)");
       return INIT_PARAMETERS_INCORRECT;
      }
    if(InpMaxSignalAgeBars<1 || InpMaxOpenPositions<1 || InpPollSeconds<1)
@@ -2647,6 +2882,9 @@ int OnInit()
       return INIT_FAILED;
      }
    Print("[QSMC_AT INSTANCE] authority=private iCustom DEFAULT inputs; visible Inputs NOT inherited. Default input hash and diagnostics: [QSMC_INSTANCE], ABI v2, no legacy fallback.");
+   // 2026-11-06 audit (E1/E3): state the instance, the ABI slots it answers on,
+   // its timeframe and whether it is actually calculating - measured, not assumed.
+   Print("[QSMC_AT] ",IndicatorIdentityLine());
    PurgeLadderGlobals();
    g_start_bar=iTime(_Symbol,_Period,0);
    if(g_start_bar<=0) g_start_bar=(datetime)TimeCurrent();
@@ -2739,9 +2977,12 @@ int OnInit()
    //      real AND (InpDemoOnly=true OR InpRealAccountConfirm does not match
    //      the login) -> INIT_FAILED with a clear log (no orders possible).
    //   2. On demo or properly-confirmed real, per-trade risk is HARD-capped
-   //      at HardMaxRiskPercent() = 0.25% at sizing time; daily loss HARD
-   //      at 1.00%; DD HARD at 3.00% (the shipping clamp backstop; the
-   //      v6.6.16 trial preset uses 0.10/0.50/3.00).
+   //      at HardMaxRiskPercent() at sizing time; daily loss at
+   //      HardMaxDailyPercent(); account DD at HardMaxDDPercent(). The numbers
+   //      are NOT restated here: they are returned by those three functions and
+   //      printed at attach. (2026-11-06 audit A1: this comment said 0.25% /
+   //      1.00% / 3.00% while the code enforced 5.00% / 10.00% / 20.00%, an
+   //      eleven-month-old contradiction between the policy text and the code.)
    //   3. Any clamp engagement prints a [QSMC_AT HARD CLAMP] line so the
    //      operator knows the input value was not honored.
    // =====================================================================
@@ -2780,17 +3021,19 @@ int OnInit()
    if(init_fail) return INIT_FAILED;
 
    // Effective (post-clamp) ceilings shown in all startup prints and the
-   // heartbeat — this is what the EA will ENFORCE, not what the input says.
-   double eff_risk=MathMin(InpRiskPercent,MathMin(InpMaxRiskPercent,HardMaxRiskPercent()));
-   double eff_daily=(InpMaxDailyLossPercent>0.0 ? MathMin(InpMaxDailyLossPercent,HardMaxDailyPercent()) : HardMaxDailyPercent());
-   double eff_dd=(InpMaxAccountDrawdownPct>0.0 ? MathMin(InpMaxAccountDrawdownPct,HardMaxDDPercent()) : HardMaxDDPercent());
+   // heartbeat. 2026-11-06 audit (A3): these are the SAME functions the guards
+   // and the sizing path call, so a printed cap is a fact about enforcement
+   // rather than a second opinion about it.
+   double eff_risk=EffectiveRiskPercent();
+   double eff_daily=EffectiveDailyPercent();
+   double eff_dd=EffectiveDDPct();
 
    Print("[QSMC_AT] QSMC v6.620 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",(InpLotMode==QSMC_LOT_FIXED
                     ? "FIXED "+DoubleToString(InpFixedLots,2)+" lots"
-                    : DoubleToString(MathMin(InpRiskPercent,InpMaxRiskPercent),2)+"%"),
+                    : DoubleToString(eff_risk,2)+"%"),
          " | tp ",(InpUseTPPips ? "PIP LADDER "+IntegerToString(InpTP1Pips)+"/"+
                                  IntegerToString(InpTP2Pips)+"/"+IntegerToString(InpTP3Pips)
                                : IntegerToString((int)InpTPLevel)),
@@ -2880,7 +3123,11 @@ int OnInit()
    // after HARD clamps, not raw inputs.
    Print("[QSMC_AT] envelope: risk<= ",DoubleToString(eff_risk,2),
          "% of equity | max ",IntegerToString(InpMaxOpenPositions)," position(s)",
-         " | daily loss stop ",DoubleToString(eff_daily),"% (HARD<=",DoubleToString(HardMaxDailyPercent(),2),"%; persisted)",
+         " | daily loss stop ",(DayStopState()=="MONEY"
+                                  ? DoubleToString(DayStopMoney(),2)+" "+AccountInfoString(ACCOUNT_CURRENCY)
+                                  : (DayStopState()=="DISABLED" ? string("DISABLED (0 = off)")
+                                                                : DoubleToString(eff_daily,2)+"%")),
+         " (",DayStopState(),", HARD<=",DoubleToString(HardMaxDailyPercent(),2),"%; persisted)"
          " | spread<= ",IntegerToString(InpMaxSpreadPoints)," pts",
          " | slippage<= ",IntegerToString(InpDeviationPoints)," pts",
          " | RR at fill>= ",DoubleToString(InpMinRRAtFill,2),
@@ -2937,8 +3184,14 @@ int OnInit()
          " | break-even at ",(InpBreakEvenAtR>0.0 ? DoubleToString(InpBreakEvenAtR,2)+"R" : "off"));
    Print("[QSMC_AT] trial guards (effective after HARD clamps): ",
          " risk/trade ",DoubleToString(eff_risk,2),"% (HARD<=",DoubleToString(HardMaxRiskPercent(),2),"%)",
-         " | daily cap ",DoubleToString(eff_daily),"% (HARD<=",DoubleToString(HardMaxDailyPercent(),2),"%)",
-         " | account DD ",DoubleToString(eff_dd),"% (HARD<=",DoubleToString(HardMaxDDPercent(),2),"%)",
+         " | daily cap ",(DayStopState()=="MONEY"
+                            ? "money "+DoubleToString(DayStopMoney(),2)+" "+AccountInfoString(ACCOUNT_CURRENCY)
+                            : (DayStopState()=="DISABLED" ? string("DISABLED (0 = off)")
+                                                          : DoubleToString(eff_daily,2)+"%")),
+         " (HARD<=",DoubleToString(HardMaxDailyPercent(),2),"% | state ",DayStopState(),")",
+         " | account DD ",(eff_dd>0.0 ? DoubleToString(eff_dd,2)+"%"
+                                      : string("DISABLED (0 = off)")),
+         " (HARD<=",DoubleToString(HardMaxDDPercent(),2),"%)",
          " | consec-loss breaker ",(InpStopAfterConsecLoss>0?IntegerToString(InpStopAfterConsecLoss):string("off")),
          " | spread<=",(InpMaxSpreadFracOfStop>0.0?DoubleToString(InpMaxSpreadFracOfStop*100.0,0)+"% of SL":"off"),
          " | data fresh<",(InpMaxDataAgeSeconds>0?IntegerToString(InpMaxDataAgeSeconds)+"s":"off"),
@@ -2961,7 +3214,8 @@ void OnDeinit(const int reason)
      }
    Print("[QSMC_AT] stopped (reason ",IntegerToString(reason),") | signals ",
          IntegerToString(g_signals)," sent ",IntegerToString(g_sent),
-         " dry ",IntegerToString(g_dry)," refused ",IntegerToString(g_refused));
+         " dry ",IntegerToString(g_dry)," refused ",IntegerToString(g_refused),
+         " expired ",IntegerToString(g_expired));
   }
 
 void OnTick()

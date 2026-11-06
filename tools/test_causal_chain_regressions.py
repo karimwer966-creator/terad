@@ -235,8 +235,13 @@ check("[QSMC_AT] ARMED PLAN" in EA, "B7 attach prints an ARMED PLAN block")
 check('"mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED "' in EA_CODE or
       'InpLotMode==QSMC_LOT_FIXED\n                    ? "FIXED "' in EA.replace("\r\n","\n"),
       "B7 the main banner names the FIXED volume instead of a % risk")
+# 2026-11-06 audit (B2/B3): the guard still measures the STOP and not the
+# irrelevant risk input, but the comparison is now against a money cap derived
+# from min(operator cap, HARD ceiling) after OrderCalcProfit() at the real SL,
+# and it fails closed when that loss cannot be measured.
 check("double guard_pct=InpFixedLotsMaxRiskPercent;" in EA_CODE and
-      "if(guard_pct>0.0 && loss>eq*guard_pct/100.0)" in EA_CODE,
+      "if(loss>cap_money)" in EA_CODE and "OrderCalcProfit(" in EA_CODE and
+      "if(!measured)" in EA_CODE,
       "B7 the fixed-lot guard measures the STOP, not the irrelevant risk input")
 check("if(InpLotMode==QSMC_LOT_FIXED && InpFixedLots<=0.0)" in EA_CODE,
       "B7 FIXED mode with no volume is refused at init instead of refusing every signal")

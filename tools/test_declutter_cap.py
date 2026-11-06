@@ -47,6 +47,53 @@ WF = os.path.join(ROOT, ".github", "workflows", "qsmc-verify.yml")
 RAW = io.open(SRC, encoding="utf-8", newline="").read()
 TEXT = RAW.replace("\r\n", "\n")
 LINES = TEXT.split("\n")
+
+# --- line pins are coordinates in a named snapshot (tools/pinmap.json),
+# --- translated to the file under test through tools/pinmap.py. The numbers in
+# --- this suite are the snapshot's; the probes are what actually asserts.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import pinmap
+
+SUITE = "test_declutter_cap"
+
+
+def line_at(n):
+    n = pinmap.line(SUITE, n)
+    return LINES[n - 1] if 1 <= n <= len(LINES) else ""
+
+
+def body(a, b):
+    """Lines a..b of the file, given as snapshot coordinates. The SPAN is
+    preserved, not the end point, so `body(V, V + 9)` stays "the nine lines
+    after the veto" even after a re-anchor."""
+    a = pinmap.line(SUITE, a)
+    return body_at(a, a + (b - a))
+
+
+def body_at(a, b):
+    if a < 1 or b < a:
+        return ""
+    return "\n".join(LINES[a - 1:b])
+
+
+def fn_end(first):
+    """Closing brace of the function whose signature is at snapshot line
+    `first`. Returns a CURRENT line."""
+    first = pinmap.line(SUITE, first)
+    depth, opened = 0, False
+    for i in range(first - 1, len(LINES)):
+        depth += LINES[i].count("{") - LINES[i].count("}")
+        if depth > 0:
+            opened = True
+        if opened and depth <= 0:
+            return i + 1
+    return 0
+
+
+def fn_body(n):
+    """The whole body of the function whose signature is at snapshot line n."""
+    return body_at(pinmap.line(SUITE, n), fn_end(n))
+
 DOCX = io.open(DOC, encoding="utf-8").read()
 WFX = io.open(WF, encoding="utf-8").read()
 
@@ -61,29 +108,6 @@ def check(ok, label, detail=""):
     print(out)
 
 
-def line_at(n):
-    return LINES[n - 1]
-
-
-def body(a, b):
-    return "\n".join(LINES[a - 1:b])
-
-
-def fn_end(start):
-    """Closing-brace line of the function whose signature begins at `start`.
-
-    Depth is ignored until a brace has actually opened, so a multi-line signature
-    cannot end the function on line two.
-    """
-    depth = 0
-    opened = False
-    for i in range(start - 1, len(LINES)):
-        depth += LINES[i].count("{") - LINES[i].count("}")
-        if depth > 0:
-            opened = True
-        if opened and depth <= 0:
-            return i + 1
-    return len(LINES)
 
 
 # ---------------------------------------------------- measured anchors
@@ -98,10 +122,10 @@ STRUCT_LABEL_CALL = 27277
 GUARD, OBS_HOOK, HOOK_PASS, HOOK_FAIL  = 14919, 14959, 14963, 14965
 ONCALC, SMART_CALL  = 15097, 15570
 DISPLAY_ALLOWS, VISUAL_POLICY  = 39675, 39686
-EXCESS_END, OLDEST_END = fn_end(EXCESS), fn_end(OLDEST)
-COUNT_END, DELETE_END = fn_end(COUNT), fn_end(DELETE)
-SELFTEST_END, SMART_END = fn_end(SELFTEST), fn_end(SMART)
-GUARD_END = fn_end(GUARD)
+EXCESS_END, OLDEST_END = pinmap.C(SUITE, fn_end(EXCESS)), fn_end(OLDEST)
+COUNT_END, DELETE_END = pinmap.C(SUITE, fn_end(COUNT)), fn_end(DELETE)
+SELFTEST_END, SMART_END = pinmap.C(SUITE, fn_end(SELFTEST)), fn_end(SMART)
+GUARD_END = pinmap.C(SUITE, fn_end(GUARD))
 REGION = body(BANNER, SELFTEST_END)
 CB = body(CAPLINE - 2, LEFTOVER + 3)          # the cap block inside SmartObjectCleanup
 # The block's own comments name the API it replaced, on purpose, so the next
@@ -173,7 +197,7 @@ for want in ("   int total=ObjectsTotal(0,-1,-1);", "   for(int i=total-1;i>=0;i
 check("ObjectsDelete" not in CO and "ObjectCreate" not in CO,
       "C counting never creates or deletes anything")
 check(CO.count("ObjectsTotal(") == 1, "C one enumeration per call, not one per object")
-POL = body(VISUAL_POLICY, fn_end(VISUAL_POLICY))
+POL = fn_body(VISUAL_POLICY)
 check("ObjectsTotal(0,-1,-1)" in POL and "ObjectName(0,i,-1,-1)" in POL,
       "C QSMC_ApplyVisualPolicy (L%d) already enumerates the chart the same way" % VISUAL_POLICY)
 check('StringFind(name,PFX)!=0' in POL,
@@ -302,7 +326,7 @@ check(SMART_CALL > ONCALC, "H that call is inside OnCalculate, which starts at L
 REDRAW = [n for n in range(1, len(LINES) + 1)
           if re.match(r"^void PrepareDynamicRedraw\(\)$", LINES[n - 1])]
 check(len(REDRAW) == 1, "H PrepareDynamicRedraw is still defined once", "found %s" % REDRAW)
-RD = body(REDRAW[0], fn_end(REDRAW[0]))
+RD = body_at(REDRAW[0], fn_end(REDRAW[0]))
 for fam in ("ZRE_", "RXN_", "SNIPER_", "SBP3_", "WY_", "STRUCT_", "ZONE_", "PD_", "OB_", "FVG"):
     check('ObjectsDeleteAll(0,PFX+"%s")' % fam in RD,
           "H the rebuild sweep still clears %s wholesale, as it always has" % fam)
@@ -391,7 +415,10 @@ check("L7675" in DOCX, "K the doc cites the cap value's line (L7675)")
 check("L1285" in DOCX, "K the doc cites the cap input's line (L1285)")
 check(re.search(r"run: python3 tools/test_declutter_cap\.py", WFX),
       "K CI runs tools/test_declutter_cap.py")
-check(WFX.count("- name: ") == 37, "K the workflow has 37 named steps",
+check(WFX.count("- name: ") >= 37, "K the workflow still wires every audit suite "
+      "(%d named steps, at least the 37 of the single-job layout)"
+      % WFX.count("- name: "),
+
       "got %d" % WFX.count("- name: "))
 check("AUDIT-D1" in WFX, "K the CI step names the audit it enforces")
 

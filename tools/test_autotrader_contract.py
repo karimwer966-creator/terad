@@ -99,8 +99,19 @@ require(inp_bool("InpDemoOnly") == "true",
 
 require(re.search(r"input\s+double\s+InpMaxRiskPercent\s*=\s*1\.0*\s*;", ea) is not None,
         "hard risk ceiling: InpMaxRiskPercent defaults to 1% of equity per trade")
-require("if(vmax_cap>1.0) vmax_cap=1.0;" in code,
-        "the ceiling cannot be raised above 1% by the operator")
+# 2026-11-06 audit (A1/A2): this used to pin a SECOND, undocumented 1.0% clamp
+# inside CalcLots while HardMaxRiskPercent() was 5.00 and OnInit rejected
+# anything above 1.0 - three different ceilings for one limit, and the operator
+# could only discover it from a generic log line. The property worth pinning is
+# not "a 1.0 literal exists" but "the operator cannot raise the ceiling past the
+# HARD value, and exactly one place decides it".
+require("if(vmax_cap>HardMaxRiskPercent()) vmax_cap=HardMaxRiskPercent();" in code,
+        "the sizing ceiling is the HARD ceiling, not a second hard-coded literal")
+require("if(vmax_cap>1.0) vmax_cap=1.0;" not in code,
+        "the undocumented 1.0% clamp is gone: allowed and clamped cannot disagree")
+require("InpMaxRiskPercent>HardMaxRiskPercent()" in code,
+        "OnInit validates the operator's ceiling against the same HARD value the "
+        "sizing path enforces")
 require("double pct=MathMin(InpRiskPercent,vmax_cap);" in code,
         "the requested risk is clamped to the ceiling before sizing")
 require("AccountInfoDouble(ACCOUNT_EQUITY)*pct/100.0" in code,
@@ -139,7 +150,9 @@ must = {
     "target already reached (no chase)": 'not chasing',
     "broker stops level": 'broker stops level rejects',
     "spread filter": 'spread above',
-    "daily loss guard": 'daily loss guard',
+    # 2026-11-06 audit (D5): the refusal now says it is a LATCH and names the
+    # only way out, instead of the vaguer "daily loss guard" phrasing.
+    "daily loss guard": 'DAILY-LOSS breaker tripped - EA restart required to resume',
     "open-position cap": 'position(s) open',
     "signal age": 'aged out',
 }
@@ -191,8 +204,12 @@ require(not arity_problems,
 
 require("if(bt<g_start_bar) continue;" in code,
         "signals that existed before the EA was attached are never traded")
-require("if(shift>max_age) continue;" in code,
-        "a signal older than InpMaxSignalAgeBars is ignored instead of traded late")
+# 2026-11-06 audit (D3): the age check is a block now, so an aged-out signal is
+# classified EXPIRED and counted rather than vanishing. The property is
+# unchanged: a late signal is never traded.
+require("if(shift>max_age)" in code and "REJECT_EXPIRED" in code,
+        "a signal older than InpMaxSignalAgeBars is classified EXPIRED and never "
+        "traded late")
 require("PositionGetInteger(POSITION_MAGIC)!=InpMagic" in code,
         "only positions carrying this EA's magic number are counted or managed")
 require("GlobalVariableCheck(GlobName(bar_time,dir))" in code,
@@ -287,13 +304,22 @@ require(fixed_refused(10000.0, 1.0, 2400.0, 2398.0, 0.01, 1.0, 0.4) is False,
 # 2026-11-06: the guard now measures the STOP that is about to be sent against
 # its own cap (InpFixedLotsMaxRiskPercent) instead of the per-trade risk input,
 # which is meaningless in FIXED mode. It must still refuse, and must say why.
-require("loss>eq*guard_pct/100.0)" in code,
+# 2026-11-06 audit (B1-B4): the comparison is against a money cap derived from
+# min(operator cap, HARD ceiling) for BOTH lot modes, and the loss itself is
+# measured with OrderCalcProfit() instead of a tick-value identity.
+require("if(loss>cap_money)" in code,
         "the fixed-lot path really refuses a size above the ceiling")
 require('Note("FIXED_LOT_TOO_BIG"' in ea,
         "and it names the refusal, so a silent no-trade is not mistaken for a bug")
-require("double guard_pct=InpFixedLotsMaxRiskPercent;" in code and
-        "if(guard_pct>0.0 && loss>eq*guard_pct/100.0)" in code,
-        "the cap is an input, and 0 still disables it deliberately")
+require("double guard_pct=InpFixedLotsMaxRiskPercent;" in code,
+        "the cap is an input")
+require("if(guard_pct<=0.0 || guard_pct>HardMaxRiskPercent()) guard_pct=HardMaxRiskPercent();" in code,
+        "0 or an over-limit value falls back to the ONE HARD ceiling: a fixed-lot "
+        "guard of 0 must never mean 'no ceiling at all'")
+require("!OrderCalcProfit(" in code and "if(!measured)" in code,
+        "an unmeasurable loss fails closed instead of being sent")
+require("if(step<=0.0 || tick_size<=0.0 || tick_value<=0.0) return fixed_v;" not in code,
+        "missing tick metadata never returns a tradable fixed lot (defect B1)")
 
 # ------------------------------------------------------------- no martingale
 require(not re.search(r"MathPow\(\s*2", code), "no lot doubling (martingale) in the companion")
