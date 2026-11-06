@@ -96,6 +96,17 @@ jobs:
 
       - name: Diagnostic bridge (the indicator's verdict -> the companion's heartbeat)
         run: python3 tools/test_diag_bridge.py 2>&1 | tee out/test_diag_bridge.log
+      # AUDIT-AT1. The contract above proves the companion refuses the right
+      # things; it could not see that the EA sometimes TOLD the operator a
+      # different limit than it enforced: a 1.0% clamp inside CalcLots that
+      # contradicted both OnInit and HardMaxRiskPercent(), a disabled daily stop
+      # printed as a 10% cap, a FIXED lot size returned as tradable when the tick
+      # metadata to price it was missing, and 17 refusal sites collapsed into one
+      # flat `skip` that retried permanent failures and hid aged-out signals.
+      # Section G is structural on purpose: these are source assertions, and a
+      # source assertion on a file that does not parse is worth nothing.
+      - name: Risk/limit reconciliation (displayed == enforced, FIXED fails closed, refusals classified)
+        run: python3 tools/test_at_risk_audit.py 2>&1 | tee out/test_at_risk_audit.log
 
       - name: EdgeBook persistence contract
         run: python3 tools/test_edgebook_contract.py 2>&1 | tee out/test_edgebook.log
