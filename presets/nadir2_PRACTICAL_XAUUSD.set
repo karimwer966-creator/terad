@@ -15,7 +15,7 @@ InpRSIPeriod=1
 "======S
 InpSwingFractalN=3
 InpMaxStructureShown=6
-InpDisplacementATR=0
+InpDisplacementATR=0.9
 "======O
 InpMaxStrongOB=3
 InpOBTransparency=8
@@ -328,10 +328,10 @@ InpMaxZonesPerSide=5
 InpDeclutterMode=true
 "======v
 InpUseIncrementalDetection=false
-InpMaxStructuresKeep=3
-InpMaxLiquidityKeep=4
-InpMaxFVGKeep=2
-InpMaxZonesKeep=2
+InpMaxStructuresKeep=30
+InpMaxLiquidityKeep=40
+InpMaxFVGKeep=25
+InpMaxZonesKeep=20
 InpRetestTimeoutBars=4
 InpRetestMaxDistanceATR=4
 InpSmartObjectManagement=false
@@ -396,7 +396,7 @@ InpMaxStopATR=6.0
 InpMinRR1=1.20
 InpBlacklistExpiryBars=2
 "======v
-InpMaxCausalEventsKeep=1
+InpMaxCausalEventsKeep=160
 InpAnchorSearchBars=120
 InpCausalDisplacementBodyATR=0
 InpRequireCausalFVGBody=false

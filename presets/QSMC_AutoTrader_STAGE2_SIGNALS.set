@@ -9,6 +9,7 @@ InpEnableTrading=false
 InpDryRun=true
 InpDemoOnly=false
 InpRealAccountConfirm=
+InpPinTimeframeMinutes=0
 InpMagic=20261027
 InpIndicatorName="nadir2"
 InpTradeComment="QSMC-AUTO"

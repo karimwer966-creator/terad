@@ -11,6 +11,7 @@ InpEnableTrading=false
 InpDryRun=true
 InpDemoOnly=true
 InpRealAccountConfirm="
+InpPinTimeframeMinutes=0
 InpMagic=2
 InpIndicatorName="
 InpTradeComment="

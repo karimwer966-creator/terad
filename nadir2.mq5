@@ -5359,7 +5359,8 @@ bool ResolveCoreCausalPath(const int closed,SResolvedCorePath &path)
 
 bool ValidateDisplacementLeg(const int sweep_bar,const int structure_bar,const bool bullish,
                              const double break_price,const double &o[],const double &h[],
-                             const double &l[],const double &c[],int &impulse_bar);
+                             const double &l[],const double &c[],int &impulse_bar,
+                             const bool record_diag=true);
 bool ValidateCausalOB(const int ob_index,const int sweep_bar,const int displacement_bar,
                       const int structure_bar,const bool bullish,const double &o[],const double &c[]);
 bool ValidateCausalFVGAsOf(const int fvg_index,const int sweep_bar,const int structure_bar,
@@ -16819,18 +16820,41 @@ bool IsCausallyConnected(const int ancestor,const int descendant)
 // so the required absolute body size varies with volatility at the time of
 // the impulse, not with the structure-break ATR. The net move threshold
 // (InpDisplacementATR=0.90) uses ATR at the structure bar.
+// AUDIT-LEG2: a leg rejection always reaches the gate-audit funnel; only the
+// single-value snapshot (the [GateLeg] line) is restricted to graph-authoritative
+// evaluations, so the OB scanner can never misreport the signal path's blocker.
+void LegNoteFail(const string key,const bool record_diag)
+{
+   if(record_diag) g_gate_audit.leg_fail_key=key;
+   GateAuditReject(key);
+}
+
 bool ValidateDisplacementLeg(const int sweep_bar,const int structure_bar,const bool bullish,
                              const double break_price,const double &o[],const double &h[],
-                             const double &l[],const double &c[],int &impulse_bar)
+                             const double &l[],const double &c[],int &impulse_bar,
+                             const bool record_diag)
 {
    impulse_bar=-1;
    int total=ArraySize(c);
-   // v6.6.16 (LEG_GEOMETRY audit): always populate the diagnostic snapshot so
-   // the GateAudit printer / panel can show the numbers regardless of pass/fail.
+   // v6.6.16 (LEG_GEOMETRY audit): populate the diagnostic snapshot so the
+   // GateAudit printer / panel can show the numbers regardless of pass/fail.
    // Snapshot is overwritten on every call so it always reflects the most
    // recently evaluated candidate (i.e. the one that produced the final blocker).
-   double atr=(structure_bar<ArraySize(g_atr_buf) ? g_atr_buf[structure_bar] : g_atr);
-   double sweep_extreme=(bullish ? l[sweep_bar] : h[sweep_bar]);
+   //
+   // AUDIT-LEG1 (snapshot authority): only the CAUSAL-GRAPH call site passes
+   // record_diag=true. DetectOrderBlocks() evaluates the leg on EVERY structure
+   // break, most of which never become a signal, and it ran AFTER the graph pass
+   // (incremental: graph is built at the end of the same tick; full pass: graph
+   // precedes it) - so its rejected candidates used to overwrite the snapshot and
+   // the [GateLeg] line reported a fabricated `sweep_bar 0` / `bars_apart 50584`
+   // for a candidate the signal path never considered. The OB scanner's own
+   // rejection counters still record its leg failures (GateAuditReject is
+   // unconditional); only the single-value snapshot is now graph-authoritative.
+   double atr=(structure_bar<ArraySize(g_atr_buf) && structure_bar>=0 ? g_atr_buf[structure_bar] : g_atr);
+   // AUDIT-LEG2: sweep_bar<0 means "no aligned swept pool" - there is no bar to read.
+   // The old unconditional index read returned l[0]/h[0] (bar 0 of history) and
+   // reported it as the sweep extreme.
+   double sweep_extreme=(sweep_bar>=0 && sweep_bar<ArraySize(l) ? (bullish ? l[sweep_bar] : h[sweep_bar]) : 0.0);
    double net=(sweep_bar>=0 && structure_bar>sweep_bar && atr>0.0
                ? (bullish ? c[structure_bar]-l[sweep_bar] : h[sweep_bar]-c[structure_bar])
                : 0.0);
@@ -16847,6 +16871,8 @@ bool ValidateDisplacementLeg(const int sweep_bar,const int structure_bar,const b
          if(ratio>best_ratio){best_ratio=ratio;best_k=k;}
       }
    }
+   if(record_diag)
+   {
    g_gate_audit.leg_side=(bullish?"BUY":"SELL");
    g_gate_audit.leg_sweep_bar=sweep_bar;
    g_gate_audit.leg_struct_bar=structure_bar;
@@ -16862,6 +16888,7 @@ bool ValidateDisplacementLeg(const int sweep_bar,const int structure_bar,const b
    g_gate_audit.leg_min_bars_apart=2;
    g_gate_audit.leg_max_bars_apart=InpSweepToStructureMaxBars;
    g_gate_audit.leg_fail_key="";
+   }
    // (best_k is diagnostic-only; impulse_binding for passing setups is done below)
 
    // Institutional chronology is strict: Sweep < Displacement < Structure.
@@ -16869,27 +16896,23 @@ bool ValidateDisplacementLeg(const int sweep_bar,const int structure_bar,const b
    // sweep and structure endpoints.
    if(sweep_bar<0 || structure_bar<=sweep_bar+1 || structure_bar>=total)
    {
-      g_gate_audit.leg_fail_key="leg: sweep and break are not >= 2 bars apart";
-      GateAuditReject(g_gate_audit.leg_fail_key);
+      LegNoteFail("leg: sweep and break are not >= 2 bars apart",record_diag);
       return false;
    }
-   if(atr<=0.0){g_gate_audit.leg_fail_key="leg: ATR unavailable"; GateAuditReject(g_gate_audit.leg_fail_key); return false;}
+   if(atr<=0.0){LegNoteFail("leg: ATR unavailable",record_diag); return false;}
    if(bullish && c[structure_bar]<=break_price)
    {
-      g_gate_audit.leg_fail_key="leg: break candle did not close beyond the level";
-      GateAuditReject(g_gate_audit.leg_fail_key);
+      LegNoteFail("leg: break candle did not close beyond the level",record_diag);
       return false;
    }
    if(!bullish && c[structure_bar]>=break_price)
    {
-      g_gate_audit.leg_fail_key="leg: break candle did not close beyond the level";
-      GateAuditReject(g_gate_audit.leg_fail_key);
+      LegNoteFail("leg: break candle did not close beyond the level",record_diag);
       return false;
    }
    if(net<atr*InpDisplacementATR)
    {
-      g_gate_audit.leg_fail_key="leg: net sweep->break move < InpDisplacementATR";
-      GateAuditReject(g_gate_audit.leg_fail_key);
+      LegNoteFail("leg: net sweep->break move < InpDisplacementATR",record_diag);
       return false;
    }
 
@@ -16915,11 +16938,10 @@ bool ValidateDisplacementLeg(const int sweep_bar,const int structure_bar,const b
    }
    if(!(impulse_bar>sweep_bar && impulse_bar<structure_bar))
    {
-      g_gate_audit.leg_fail_key="leg: no separate impulse candle >= g_cfgCausalDispBodyATR";
-      GateAuditReject(g_gate_audit.leg_fail_key);
+      LegNoteFail("leg: no separate impulse candle >= g_cfgCausalDispBodyATR",record_diag);
       return false;
    }
-   g_gate_audit.leg_fail_key="ok";
+   if(record_diag) g_gate_audit.leg_fail_key="ok";
    return true;
 }
 
@@ -17097,7 +17119,7 @@ void BuildCausalEventGraph(const int total,const double &o[],const double &h[],c
 
          int candidate_impulse=-1;
          if(!ValidateDisplacementLeg(g_causal_events[e].event_bar,st.bar,st.bullish,
-                                     st.price,o,h,l,c,candidate_impulse)) continue;
+                                     st.price,o,h,l,c,candidate_impulse,true)) continue;
          // The sweep must have been confirmed before the displacement candle
          // occurred, not merely before the later structure became available.
          if(g_causal_events[e].availability_time>t[candidate_impulse]) continue;
@@ -17148,6 +17170,13 @@ void BuildCausalEventGraph(const int total,const double &o[],const double &h[],c
                               st.bar,st.bullish,o,c)) continue;
 
          g_order_blocks[oi].source_displacement_event_id=did;
+         // AUDIT-OB2 (binding): this field is compared against
+         // g_causal_events[st].event_time by ValidateCausalGraphInvariants (CE_ORDER_BLOCK
+         // branch) but was only ever zero-initialised in DetectOrderBlocks, so EVERY
+         // OB event failed the invariant with "OB exact displacement/structure binding
+         // mismatch", which made CreateSetupBranchTransactional() roll back every setup
+         // -> Total Signals Generated: 0. The FVG path below already publishes it.
+         g_order_blocks[oi].source_structure_time=t[st.bar];
          g_order_blocks[oi].source_structure_event_id=sid;
          SOrderBlock ob=g_order_blocks[oi];
          string oid="CE_ORDER_BLOCK_"+ob.id;
@@ -23767,9 +23796,15 @@ void DetectOrderBlocks(const int total,const double &o[],const double &h[],const
       int liq=FindAlignedLiquiditySweep(st.bullish,st.bar,InpSweepToStructureMaxBars,sweep_price);
       int sweep_bar=(liq>=0 ? g_liquidity[liq].origin_bar : -1);
 
+      // AUDIT-LEG2: `MathMax(0,sweep_bar)` turned "no aligned sweep" (-1) into bar 0
+      // of history, so the leg was evaluated against a 50k-bar-wide "leg" and the
+      // diagnostic reported sweep_bar 0 / bars_apart=closed. There is no causal
+      // anchor without a swept pool, so this structure break cannot own an OB.
+      if(sweep_bar<0) continue;
+
       int impulse_bar=-1;
-      bool leg_ok=ValidateDisplacementLeg(MathMax(0,sweep_bar),st.bar,st.bullish,
-                                          st.price,o,h,l,c,impulse_bar);
+      bool leg_ok=ValidateDisplacementLeg(sweep_bar,st.bar,st.bullish,
+                                          st.price,o,h,l,c,impulse_bar,false);
       if(!leg_ok)
       {
          // OB requires a displacement leg; an opposite-candle without a

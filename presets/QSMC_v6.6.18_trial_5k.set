@@ -45,6 +45,7 @@ InpDemoOnly=true                   ; refuses any real-money account
 InpRealAccountConfirm=             ; must equal account login to allow real money
 InpResetBreakersAtInit=false       ; set true ONLY to clear a tripped breaker after review
 
+InpPinTimeframeMinutes=0
 ; ---- core -------------------------------------------------------------------
 InpMagic=20261027
 InpIndicatorName=nadir2            ; NO surrounding quotes (v6.6.18 handshake path expects literal)

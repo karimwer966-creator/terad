@@ -1064,6 +1064,8 @@ def line_of_host(text, pos):
 UNITS = [
     ("nadir2.mq5 (indicator)",            "nadir2.mq5"),
     ("QSMC_ArbiterTest.mq5 (self-test)",  "MQL5/Scripts/QSMC_ArbiterTest.mq5"),
+    # Operator tool for the persisted breaker state (2026-11-06 incident).
+    ("QSMC_ResetGuards.mq5 (operator)",   "MQL5/Scripts/QSMC_ResetGuards.mq5"),
     ("KLJ_DataFeeder.mq5 (companion)",    "MQL5/Experts/KLJ_DataFeeder.mq5"),
     # Since v6.6.3 QSMC_Scanners.mqh has a host (QSMC_ScannerProbe.mq5). The
     # synthetic unit stays anyway: if that host is ever removed, the module must

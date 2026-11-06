@@ -257,6 +257,7 @@ input double InpMaxDailyLossPercent  = 0.50;   // stop for the day after this eq
 input double InpMaxAccountDrawdownPct= 3.00;   // halt all new entries when equity drops this % from the EA's session-start equity (0 = off)
 input int    InpStopAfterConsecLoss  = 2;      // halt new entries after this many losing closes in a row (0 = off)
 input bool   InpResetBreakersAtInit  = false;  // SAFETY RESET: when true at EA attach, clears persisted day/session breaker state for this (login, magic, symbol) and re-captures a fresh baseline. Logs RESET_REASON. MEANT FOR OPERATOR USE AFTER REVIEW — does NOT auto-clear on TF change or mid-session reload.
+input int    InpPinTimeframeMinutes  = 0;      // TIMEFRAME PIN: 0 = off. Otherwise a bar length in MINUTES (1/5/15/30/60/240...): the EA refuses to run on any other chart timeframe and asks to be re-attached. It never switches the chart itself.
 input int    InpMaxDataAgeSeconds    = 30;     // refuse entries when the last tick is older than this (stale feed / disconnect); 0 = off
 input int    InpMaxSignalAgeBars     = 2;      // ignore a signal older than this many closed bars
 input int    InpMinStopPoints        = 20;     // refuse a stop closer than this
@@ -2211,6 +2212,62 @@ void PurgeStaleSignalGlobals()
 //+------------------------------------------------------------------+
 //| Init / deinit                                                    |
 //+------------------------------------------------------------------+
+//| TIMEFRAME PIN (operator request, 2026-11-06 incident).            |
+//|                                                                   |
+//| The companion reads the indicator on _Symbol/_Period, so a chart  |
+//| timeframe change is a DIFFERENT data stream: MT5 re-runs OnInit,  |
+//| which restores the persisted day block, re-derives the signal age |
+//| on new bars, and prints a fresh [PMI] shutdown line. The          |
+//| 2026-11-06 journal shows M1->M5->M15->H1->H4 cycling, i.e. eight  |
+//| OnInit runs, and every one of them re-restored DAY_BLOCKED.       |
+//|                                                                   |
+//| This is a DETECTOR, not a switcher: the EA never calls             |
+//| ChartSetSymbolPeriod(). If the chart is not on the pinned          |
+//| timeframe the EA refuses to trade and says so, which is the safe   |
+//| direction. 0 = off (previous behaviour).                           |
+//|                                                                 |
+//| The companion reads the indicator on _Symbol/_Period, so a chart |
+//| timeframe change is a different data stream: MT5 re-runs OnInit,  |
+//| which restores the persisted day block, re-derives the signal     |
+//| age on new bars, and prints a fresh [PMI] shutdown line. The     |
+//| 2026-11-06 journal shows M1->M5->M15->H1->H4 cycling, i.e. eight  |
+//| OnInit runs, and every one of them re-restored DAY_BLOCKED.      |
+//|                                                                  |
+//| This is a DETECTOR, not a switcher: the EA never calls            |
+//| ChartSetSymbolPeriod(). If the chart is not on the pinned         |
+//| timeframe the EA refuses to trade and says so, which is the       |
+//| safe direction. 0 = off (previous behaviour).                     |
+//+------------------------------------------------------------------+
+bool PinnedTimeframeMatches()
+  {
+   if(InpPinTimeframeMinutes<=0) return true;
+   return (PeriodSeconds(_Period)==(long)InpPinTimeframeMinutes*60);
+  }
+
+string TimeframePinLabel(const int minutes)
+  {
+   switch(minutes)
+     {
+      case 1:    return "M1";
+      case 5:    return "M5";
+      case 15:   return "M15";
+      case 30:   return "M30";
+      case 60:   return "H1";
+      case 240:  return "H4";
+      case 1440: return "D1";
+     }
+   return IntegerToString(minutes)+" minutes";
+  }
+
+string TimeframePinRefusal()
+  {
+   return ("[QSMC_AT] TIMEFRAME PIN REFUSED: pinned to "+TimeframePinLabel(InpPinTimeframeMinutes)+
+           " but this chart is "+EnumToString((ENUM_TIMEFRAMES)_Period)+
+           ". No signal is read and no order can be sent, because a timeframe change "+
+           "re-runs OnInit and restores the persisted day block. Re-attach on the pinned "+
+           "timeframe, or set InpPinTimeframeMinutes=0 to disable the pin.");
+  }
+
 int OnInit()
   {
    if(InpMagic<=0)
@@ -2232,6 +2289,18 @@ int OnInit()
    if(InpMaxSignalAgeBars<1 || InpMaxOpenPositions<1 || InpPollSeconds<1)
      {
       Print("[QSMC_AT] InpMaxSignalAgeBars, InpMaxOpenPositions and InpPollSeconds must be >= 1");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpPinTimeframeMinutes<0)
+     {
+      Print("[QSMC_AT] InpPinTimeframeMinutes must be >= 0 (0 = off)");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   // The pin is enforced BEFORE any indicator handle is requested, so a chart on
+   // the wrong timeframe cannot even create a second data stream.
+   if(!PinnedTimeframeMatches())
+     {
+      Print(TimeframePinRefusal());
       return INIT_PARAMETERS_INCORRECT;
      }
    if(InpMinStopPoints<0 || InpMaxStopPoints<=InpMinStopPoints)
@@ -2702,6 +2771,10 @@ void OnDeinit(const int reason)
 
 void OnTick()
   {
+   // TIMEFRAME PIN: a chart timeframe change re-runs OnInit,, but a pin edited at
+   // runtime (or a profile that changes the period) must not leave the EA
+   // trading a stream it was not reviewed for. One cheap integer compare.
+   if(!PinnedTimeframeMatches()) return;
    DayGuardUpdate();
    SessionGuardUpdate();
    ProcessSignals();
@@ -2711,6 +2784,7 @@ void OnTick()
 
 void OnTimer()
   {
+   if(!PinnedTimeframeMatches()) return;
    // The timer keeps the EA responsive on a quiet symbol where no tick arrives
    // for minutes; it reads the same closed-bar buffers, so it adds no new signal.
    DayGuardUpdate();

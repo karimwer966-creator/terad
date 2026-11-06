@@ -27,6 +27,7 @@ InpDemoOnly=true
 InpRealAccountConfirm=
 InpResetBreakersAtInit=false
 
+InpPinTimeframeMinutes=0
 ; ---- core -------------------------------------------------------------
 InpMagic=20261027
 InpIndicatorName=nadir2
