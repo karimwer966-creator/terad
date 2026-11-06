@@ -250,6 +250,40 @@ check(re.search(r"MathPow\(\s*2", CODE) is None and re.search(r"lots\s*\*\s*2", 
 check("PositionModify(ticket,new_sl,tp)" in CODE and "buy && sl>=entry" in CODE,
       "F3 a stop already at or beyond break-even is left alone")
 
+# ------------------------------- F4. no comment may state a ceiling the code does not
+# The Phase 5 theme, applied to prose. Every one of these numbers was, at some
+# point in this file's history, a real clamp described in a comment long after
+# the clamp was removed or raised. The operator's only way to predict a position
+# size is to believe the comments; a stale one is a defect of the same severity
+# as a stale clamp, because it produces the same wrong plan.
+_risk   = re.search(r"double\s+HardMaxRiskPercent\(\)\s*\{\s*return\s+([0-9.]+)", CODE)
+_daily  = re.search(r"double\s+HardMaxDailyPercent\(\)\s*\{\s*return\s+([0-9.]+)", CODE)
+_dd     = re.search(r"double\s+HardMaxDDPercent\(\)\s*\{\s*return\s+([0-9.]+)", CODE)
+check(_risk and _daily and _dd, "F4 the three HARD ceilings are readable literals")
+_HARD = {"risk": _risk.group(1) if _risk else "", "daily": _daily.group(1) if _daily else "",
+         "dd": _dd.group(1) if _dd else ""}
+check(_HARD["risk"] == "5.00" and _HARD["daily"] == "10.00" and _HARD["dd"] == "20.00",
+      "F4 the HARD ceilings are 5.00 / 10.00 / 20.00 as documented")
+
+# The exact stale sentences that contradicted them. Each is asserted ABSENT.
+for stale, why in [
+    ("the v6.6.16 HARD ceiling in code (0.25%) always wins",
+     "the input comment no longer claims a 0.25% code ceiling"),
+    ("at HardMaxRiskPercent() = 0.25% at sizing time",
+     "the init policy block no longer restates a 0.25% sizing cap"),
+    ("daily loss HARD\r\n   //      at 1.00%; DD HARD at 3.00%",
+     "the init policy block no longer restates a 1%/3% daily and DD cap"),
+    ("a 0.25% hotfix) that no longer exist",
+     "CalcLots does not describe a removed 0.25% hotfix as if it were live"),
+]:
+    check(stale not in RAW, "F4 " + why + "  [the old text must be absent]")
+check("0.25%" not in CODE, "F4 no executable value is 0.25%")
+# Positive form: the policy block must point AT the functions, not restate them.
+check("HardMaxDailyPercent(); account DD at HardMaxDDPercent()" in RAW or
+      "HardMaxDailyPercent()" in RAW,
+      "F4 the init policy block names the ceiling functions instead of copying "
+      "their values, so it cannot drift again")
+
 # ==================================== G. structural integrity (NOT a compiler)
 # Strip string literals and character literals the way the MQL5 lexer would,
 # then walk braces. An edit that unbalances the file would fail to compile in

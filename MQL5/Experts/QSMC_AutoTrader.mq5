@@ -213,7 +213,8 @@ input string InpTradeComment         = "QSMC-AUTO"; // comment stamped on every 
 //--- 2. sizing -------------------------------------------------------
 input ENUM_QSMC_LOT_MODE InpLotMode  = QSMC_LOT_RISK_PERCENT; // how the volume is chosen
 input double InpRiskPercent          = 0.10;   // % of equity risked by the stop, per trade (first-trial conservative: 0.10%)
-input double InpMaxRiskPercent       = 1.00;   // hard ceiling per input (shipping default 1%); the v6.6.16 HARD ceiling in code (0.25%) always wins regardless
+input double InpMaxRiskPercent       = 1.00;   // hard ceiling per input (shipping default 1%); HardMaxRiskPercent() always wins, and both values are printed at attach
+// 2026-11-06 audit (A1): this comment used to state the code ceiling was 0.25%.
 input double InpFixedLots            = 0.00;   // volume used when InpLotMode = QSMC_LOT_FIXED
 input double InpFixedLotsMaxRiskPercent = 2.00; // fixed-lot guard: refuse a fixed volume whose stop would risk more than this % of equity (0 = no guard, not recommended)
 
@@ -733,10 +734,12 @@ bool EstimateLossAtSL(const string sym,const bool buy,const double volume,
 double CalcLots(const string sym,const double entry,const double sl,const bool buy)
   {
    // v6.6.16: effective per-trade risk = MIN(input, HARD_CEILING). The clamp
-   // is at sizing time because MQL5 'input' doubles are read-only. The
-   // historical 1.0% shipping ceiling is preserved for the contract test; a
-   // stricter HARD ceiling of 0.25% always wins on top of that (safety hotfix
-   // for the case where the operator forgets to load the trial preset).
+   // is at sizing time because MQL5 'input' doubles are read-only.
+   // 2026-11-06 audit (A2): there is ONE ceiling - HardMaxRiskPercent() - and
+   // it is the same value OnInit validates against and every banner prints.
+   // The old paragraph here described two further ceilings that no longer
+   // exist; a comment describing clamps the code does not apply is how the
+   // operator ended up unable to predict a size.
    // 2026-11-06 audit (A2): the historical 1.0% shipping ceiling used to be
    // applied here as a second, undocumented clamp on top of
    // HardMaxRiskPercent(). It made a deliberate 2% production plan impossible on
@@ -2974,9 +2977,12 @@ int OnInit()
    //      real AND (InpDemoOnly=true OR InpRealAccountConfirm does not match
    //      the login) -> INIT_FAILED with a clear log (no orders possible).
    //   2. On demo or properly-confirmed real, per-trade risk is HARD-capped
-   //      at HardMaxRiskPercent() = 0.25% at sizing time; daily loss HARD
-   //      at 1.00%; DD HARD at 3.00% (the shipping clamp backstop; the
-   //      v6.6.16 trial preset uses 0.10/0.50/3.00).
+   //      at HardMaxRiskPercent() at sizing time; daily loss at
+   //      HardMaxDailyPercent(); account DD at HardMaxDDPercent(). The numbers
+   //      are NOT restated here: they are returned by those three functions and
+   //      printed at attach. (2026-11-06 audit A1: this comment said 0.25% /
+   //      1.00% / 3.00% while the code enforced 5.00% / 10.00% / 20.00%, an
+   //      eleven-month-old contradiction between the policy text and the code.)
    //   3. Any clamp engagement prints a [QSMC_AT HARD CLAMP] line so the
    //      operator knows the input value was not honored.
    // =====================================================================
