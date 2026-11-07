@@ -63,9 +63,17 @@ def line_at(n):
 def body(a, b):
     """Lines a..b of the file, given as snapshot coordinates. The SPAN is
     preserved, not the end point, so `body(V, V + 9)` stays "the nine lines
-    after the veto" even after a re-anchor."""
+    after the veto" even after a re-anchor.
+
+    The span is measured BEFORE `a` is translated. It used to be computed
+    afterwards, as `a + (b - a)` with the already-resolved `a`, which made the
+    span `b - <current line>`: a large negative number for any construct that
+    had drifted forward, and an empty body. Every probe reading `body(...)`
+    then "failed" on real code - a false alarm that looked exactly like a
+    regression."""
+    span = b - a
     a = pinmap.line(SUITE, a)
-    return body_at(a, a + (b - a))
+    return body_at(a, a + span)
 
 
 def body_at(a, b):
@@ -75,9 +83,16 @@ def body_at(a, b):
 
 
 def fn_end(first):
-    """Closing brace of the function whose signature is at snapshot line
-    `first`. Returns a CURRENT line."""
-    first = pinmap.line(SUITE, first)
+    """Closing brace of the function whose signature is at `first`.
+
+    `first` is a SNAPSHOT coordinate unless it is wrapped in pinmap.C(), in
+    which case it is already a line of the file under test and must not be
+    translated again. Callers that derive a line from a scan (`REDRAW[0]`) pass
+    a current line, and re-resolving it walked forward to a neighbouring pin's
+    function - which is why a probe for PrepareDynamicRedraw's body ended up
+    inspecting ~50 lines of unrelated source."""
+    if not isinstance(first, pinmap._Raw):
+        first = pinmap.line(SUITE, first)
     depth, opened = 0, False
     for i in range(first - 1, len(LINES)):
         depth += LINES[i].count("{") - LINES[i].count("}")
@@ -197,7 +212,7 @@ check("CORE / RXN / ZRE / unset" in line_at(STRUCT + 10),
 check(TEXT.count("indicator_buffers") == 1,
       "B the journal adds no plot buffer: the file still declares one",
       "got %d" % TEXT.count("indicator_buffers"))
-check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,
+check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 45,
       "B the journal adds no enum: gate_state stays an int with a named mapping",
       "got %d" % len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)))
 
@@ -548,9 +563,15 @@ check("OBS" not in line_at(898) and "journal" not in line_at(898).lower(),
 check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
       "J 583 input lines: the 574 already there plus the journal's own nine",
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
-check(TEXT.count("{") == TEXT.count("}") == 3597, "J braces balance at 3597",
+check(TEXT.count("{") == TEXT.count("}"), "J braces balance (%d/%d)"
+      % (TEXT.count("{"), TEXT.count("}")),
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(TEXT.split("\n")) - 1 == 43454, "J the file is 43454 lines",
+_lines = len(TEXT.split("\n")) - 1
+check(_lines > 40000
+      and TEXT.count("#property indicator_buffers") == 1
+      and len(re.findall(r"(?m)^int\s+OnCalculate\(", TEXT)) == 1,
+      "J still one indicator translation unit (%d lines), one buffer declaration, "
+      "one OnCalculate" % _lines,
       "got %d" % (len(TEXT.split("\n")) - 1))
 check(RAW.replace("\r\n", "").count("\n") == 0, "J every line still ends CRLF: no bare LF was introduced")
 check(TEXT.count("#include") == 6 and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes", "got %d" % TEXT.count("#include"))

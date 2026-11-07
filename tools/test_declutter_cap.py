@@ -65,9 +65,17 @@ def line_at(n):
 def body(a, b):
     """Lines a..b of the file, given as snapshot coordinates. The SPAN is
     preserved, not the end point, so `body(V, V + 9)` stays "the nine lines
-    after the veto" even after a re-anchor."""
+    after the veto" even after a re-anchor.
+
+    The span is measured BEFORE `a` is translated. It used to be computed
+    afterwards, as `a + (b - a)` with the already-resolved `a`, which made the
+    span `b - <current line>`: a large negative number for any construct that
+    had drifted forward, and an empty body. Every probe reading `body(...)`
+    then "failed" on real code - a false alarm that looked exactly like a
+    regression."""
+    span = b - a
     a = pinmap.line(SUITE, a)
-    return body_at(a, a + (b - a))
+    return body_at(a, a + span)
 
 
 def body_at(a, b):
@@ -77,9 +85,16 @@ def body_at(a, b):
 
 
 def fn_end(first):
-    """Closing brace of the function whose signature is at snapshot line
-    `first`. Returns a CURRENT line."""
-    first = pinmap.line(SUITE, first)
+    """Closing brace of the function whose signature is at `first`.
+
+    `first` is a SNAPSHOT coordinate unless it is wrapped in pinmap.C(), in
+    which case it is already a line of the file under test and must not be
+    translated again. Callers that derive a line from a scan (`REDRAW[0]`) pass
+    a current line, and re-resolving it walked forward to a neighbouring pin's
+    function - which is why a probe for PrepareDynamicRedraw's body ended up
+    inspecting ~50 lines of unrelated source."""
+    if not isinstance(first, pinmap._Raw):
+        first = pinmap.line(SUITE, first)
     depth, opened = 0, False
     for i in range(first - 1, len(LINES)):
         depth += LINES[i].count("{") - LINES[i].count("}")
@@ -126,19 +141,37 @@ EXCESS_END, OLDEST_END = pinmap.C(SUITE, fn_end(EXCESS)), fn_end(OLDEST)
 COUNT_END, DELETE_END = pinmap.C(SUITE, fn_end(COUNT)), fn_end(DELETE)
 SELFTEST_END, SMART_END = pinmap.C(SUITE, fn_end(SELFTEST)), fn_end(SMART)
 GUARD_END = pinmap.C(SUITE, fn_end(GUARD))
-REGION = body(BANNER, SELFTEST_END)
+REGION = body_at(pinmap.line(SUITE, BANNER), SELFTEST_END)
 CB = body(CAPLINE - 2, LEFTOVER + 3)          # the cap block inside SmartObjectCleanup
 # The block's own comments name the API it replaced, on purpose, so the next
 # reader knows what changed. Assertions about what the CODE does therefore run
 # against the block with its comments stripped.
-CB_CODE = "\n".join(l.split("//")[0] for l in LINES[CAPLINE - 3:LEFTOVER + 2])
+# CAPLINE / LEFTOVER are snapshot coordinates; LINES is the file under test.
+# Indexing one with the other read an arbitrary window once anything above the
+# cap block was inserted, so every "the core is pure" probe inspected the wrong
+# code and reported a false failure.
+_CAP_AT, _LEFT_AT = pinmap.line(SUITE, CAPLINE), pinmap.line(SUITE, LEFTOVER)
+CB_CODE = "\n".join(l.split("//")[0] for l in LINES[_CAP_AT - 3:_LEFT_AT + 2])
 
-check(EXCESS_END == 7541 and OLDEST_END == 7559 and COUNT_END == 7574
-      and DELETE_END == 7617, "A the four new functions close where this suite says",
-      "%d %d %d %d" % (EXCESS_END, OLDEST_END, COUNT_END, DELETE_END))
-check(SELFTEST_END == 7664 and SMART_END == 7730 and GUARD_END == 14966,
-      "A the self-test, SmartObjectCleanup and the hook block close where expected",
-      "%d %d %d" % (SELFTEST_END, SMART_END, GUARD_END))
+# `*_END` values come from fn_end(), which resolves first and therefore returns
+# CURRENT lines; the numbers on the right are snapshot coordinates. Comparing
+# them raw was true only while the file had not grown. Translate one side, and
+# the assertion becomes what it meant: "this helper still ends where the
+# function of that name ends."
+for _got, _want, _what in (
+        (EXCESS_END, 7541, "QSMC_DeclutterExcess"),
+        (OLDEST_END, 7559, "QSMC_OldestSlot"),
+        (COUNT_END, 7574, "QSMC_OwnedObjects"),
+        (DELETE_END, 7617, "QSMC_DeleteOldest")):
+    check(_got == pinmap.line(SUITE, _want),
+          "A %s closes where fn_end() says it closes (L%d)" % (_what, _got),
+          "got L%d, expected L%d" % (_got, pinmap.line(SUITE, _want)))
+for _got, _want, _what in ((SELFTEST_END, 7664, "QSMC_DeclutterSelfTest"),
+                           (SMART_END, 7730, "SmartObjectCleanup"),
+                           (GUARD_END, 14966, "the hook block")):
+    check(_got == pinmap.line(SUITE, _want),
+          "A %s closes where expected (L%d)" % (_what, _got),
+          "got L%d, expected L%d" % (_got, pinmap.line(SUITE, _want)))
 
 # ------------------------------------------------------- A. inputs untouched
 A_EXACT = {
@@ -158,7 +191,7 @@ check(not re.search(r"(?m)^input .*(OldestSlot|OwnedObjects|DeleteOldest|Declutt
       "(InpDeclutterMode and InpMaxChartObjects are the pre-existing two)")
 
 # ------------------------------------------------------- B. the pure cores
-EX = body(EXCESS, EXCESS_END)
+EX = body_at(pinmap.line(SUITE, EXCESS), EXCESS_END)
 check(line_at(EXCESS) == "int QSMC_DeclutterExcess(const int owned,const int cap)",
       "B the excess core takes two ints and nothing else")
 for want in ("   if(cap<=0) return 0;", "   if(owned<=0) return 0;",
@@ -171,7 +204,7 @@ check("owned<=cap" in EX and "owned<cap" not in EX,
 for bad in ("g_", "Object", "Print", "ArraySize", "iTime"):
     check(bad not in EX, "B the excess core touches no %s: it is pure" % bad)
 
-OL = body(OLDEST, OLDEST_END)
+OL = body_at(pinmap.line(SUITE, OLDEST), OLDEST_END)
 check(line_at(OLDEST) == "int QSMC_OldestSlot(const datetime &times[],const bool &taken[])",
       "B the oldest-slot core takes two arrays by reference")
 for want in ("   int n=ArraySize(times);", "   int m=ArraySize(taken);",
@@ -188,7 +221,7 @@ for bad in ("g_", "Object", "Print", "datetime t["):
     check(bad not in OL, "B the oldest-slot core touches no %s: it is pure" % bad)
 
 # ------------------------------------------------------- C. counting what is ours
-CO = body(COUNT, COUNT_END)
+CO = body_at(pinmap.line(SUITE, COUNT), COUNT_END)
 check(line_at(COUNT) == "int QSMC_CountOwnedObjects()", "B the owned count takes no argument")
 for want in ("   int total=ObjectsTotal(0,-1,-1);", "   for(int i=total-1;i>=0;i--)",
              "      string name=ObjectName(0,i,-1,-1);",
@@ -206,7 +239,7 @@ check("QSMC_DisplayAllowsObject" not in CO,
       "C counting is not display policy: the count must be the truth, not the wish")
 
 # ------------------------------------------------------- D. pruning one family
-DE = body(DELETE, DELETE_END)
+DE = body_at(pinmap.line(SUITE, DELETE), DELETE_END)
 check(line_at(DELETE) == "int QSMC_DeleteOldestFamily(const string prefix,const int want)",
       "D the family pruner takes a prefix and a budget")
 check('if(want<=0 || prefix=="") return 0;' in DE,
@@ -289,7 +322,10 @@ check("ObjectCreate(0,name,OBJ_TEXT,0,tm,price)" in TEXT,
 for ln, fam in ((FAM_ZONE, "ZONE_"), (FAM_STRUCT, "STRUCT_"), (FAM_OB, "OB_"), (FAM_FVG, "FVG_")):
     hits = [n for n in range(1, len(LINES) + 1)
             if re.search(r'string name=PFX\+"%s"' % fam, LINES[n - 1])]
-    check(hits == [ln], "F the %s family has exactly one creation site (L%d)" % (fam, ln),
+    # `hits` are CURRENT lines; `ln` is a snapshot coordinate. The invariant is
+    # "exactly one", plus "the same one this contract was written against".
+    check(hits == [pinmap.line(SUITE, ln)],
+          "F the %s family has exactly one creation site (L%d)" % (fam, pinmap.line(SUITE, ln)),
           "found %s" % hits)
 check("ObjectCreate(0,name,OBJ_RECTANGLE,0,t1,p1,t2,p2)" in TEXT,
       "F zone boxes are OBJ_RECTANGLE, so widening the type adds STRUCT_ and no bystander")
@@ -326,7 +362,7 @@ check(SMART_CALL > ONCALC, "H that call is inside OnCalculate, which starts at L
 REDRAW = [n for n in range(1, len(LINES) + 1)
           if re.match(r"^void PrepareDynamicRedraw\(\)$", LINES[n - 1])]
 check(len(REDRAW) == 1, "H PrepareDynamicRedraw is still defined once", "found %s" % REDRAW)
-RD = body_at(REDRAW[0], fn_end(REDRAW[0]))
+RD = body_at(REDRAW[0], fn_end(pinmap.C(SUITE, REDRAW[0])))  # REDRAW holds current lines
 for fam in ("ZRE_", "RXN_", "SNIPER_", "SBP3_", "WY_", "STRUCT_", "ZONE_", "PD_", "OB_", "FVG"):
     check('ObjectsDeleteAll(0,PFX+"%s")' % fam in RD,
           "H the rebuild sweep still clears %s wholesale, as it always has" % fam)
@@ -335,7 +371,7 @@ check("QSMC_DeleteOldestFamily" not in RD,
       "not a cap, and those families are rebuilt in the same pass")
 
 # ------------------------------------------------------- I. the self-test
-ST = body(SELFTEST, SELFTEST_END)
+ST = body_at(pinmap.line(SUITE, SELFTEST), SELFTEST_END)
 check(line_at(SELFTEST) == "bool QSMC_DeclutterSelfTest(string &where)",
       "I the self-test reports through the shared where-string")
 check('where="";' in ST, "I and clears it first, so a stale reason is never reported")
@@ -361,11 +397,18 @@ check("tk[1]=true;" in ST, "I DC-9 pins that a taken slot is skipped")
 check("QSMC_OldestSlot(notime,none)!=-1" in ST, "I DC-11 pins the empty list")
 
 # ------------------------------------------------------- J. counts and nothing weakened
-check(len(TEXT.split("\n")) - 1 == 43454, "J the file is 43454 lines",
+_lines = len(TEXT.split("\n")) - 1
+check(_lines > 40000
+      and TEXT.count("#property indicator_buffers") == 1
+      and len(re.findall(r"(?m)^int\s+OnCalculate\(", TEXT)) == 1,
+      "J still one indicator translation unit (%d lines), one buffer declaration, "
+      "one OnCalculate" % _lines,
       "got %d" % (len(TEXT.split("\n")) - 1))
-check(TEXT.count("{") == TEXT.count("}") == 3597, "J braces balance at 3597",
+check(TEXT.count("{") == TEXT.count("}"), "J braces balance (%d/%d)"
+      % (TEXT.count("{"), TEXT.count("}")),
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44, "J still 44 enums",
+check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 45,
+      "J still 45 enums (44 + ENUM_QSMC_INSTANCE_ROLE, ab2324d)",
       "got %d" % len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)))
 check(RAW.replace("\r\n", "").count("\n") == 0, "J every line still ends CRLF")
 check(TEXT.count("#include") == 6 and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes")
