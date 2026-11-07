@@ -1410,6 +1410,43 @@ double SpreadCapPoints()
    return (InpMaxSpreadATRFrac*atr)/point;
   }
 
+// Why the spread cap is what it is, in the operator's units.
+//
+// The auto cap is a FRACTION OF THE SYMBOL'S OWN RANGE, which is the property
+// that makes it portable - and also the reason it can tighten on a low
+// timeframe: measured on a 1.0-pip EURUSD spread, 0.25 x ATR passes from M5 up
+// and refuses on M1, where the spread is half an ATR. The refusal is correct
+// (a cost worth half the bar is not an edge) but it used to be SILENT: SpreadOK
+// returned false and nothing said which of the two caps refused, or that the
+// fix was a higher timeframe or a larger multiple.
+string SpreadCapReason()
+  {
+   double cap=SpreadCapPoints();
+   double point=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
+   double atr=AtrValue();
+   if(cap<=0.0)
+      return ("spread cap UNRESOLVED: no ATR("+IntegerToString(InpATRPeriod)+") on "+
+              _Symbol+" "+EnumToString((ENUM_TIMEFRAMES)_Period)+
+              " yet - the EA refuses rather than guess a distance");
+   double spread_pts=(point>0.0
+                      ? (SymbolInfoDouble(_Symbol,SYMBOL_ASK)-SymbolInfoDouble(_Symbol,SYMBOL_BID))/point
+                      : 0.0);
+   string why="spread "+DoubleToString(spread_pts,1)+" pts > cap "+DoubleToString(cap,1)+" pts";
+   if(InpMaxSpreadPoints>0)
+      return (why+" (InpMaxSpreadPoints="+IntegerToString(InpMaxSpreadPoints)+")");
+   why=why+" (auto: "+DoubleToString(InpMaxSpreadATRFrac,2)+" x ATR "+
+       DoubleToString(atr,_Digits)+")";
+   // Name the remedy, and only when one is actually available.
+   if(spread_pts>0.0 && atr>0.0)
+     {
+      double needed_frac=(InpMaxSpreadATRFrac*spread_pts)/MathMax(cap,1e-12);
+      why=why+" - the spread is "+DoubleToString(100.0*(spread_pts/(atr/point)),0)+
+          "% of one ATR; either raise InpMaxSpreadATRFrac to ~"+
+          DoubleToString(needed_frac,2)+" or use a higher timeframe";
+     }
+   return why;
+  }
+
 // The TP this EA will put on the ticket: the ATR ladder's last rung when the
 // ladder is on, the indicator's own target otherwise. Kept in ONE place so the
 // geometry checks, the send, and the journal line can never disagree about the
@@ -1575,6 +1612,10 @@ void HandleSignal(SQsigSignal &s)
    // --- transient refusals: retried until the signal ages out --------
    if(!SpreadOK(sym))
      {
+      // 2026-11-07: this refusal used to be one silent `return`. On a low
+      // timeframe the ATR-derived cap is legitimately tighter than a real FX
+      // spread, so "EURUSD refused everything on M1" looked exactly like a bug.
+      NoteClass(key,SpreadCapReason(),REJECT_TRANSIENT);
       // 2026-11-07: with the cap derived from ATR, InpMaxSpreadPoints is 0 and
       // the old text said "spread above 0 pts" - a message that tells the
       // operator nothing and hides the number that actually refused them.

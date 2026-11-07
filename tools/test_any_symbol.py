@@ -342,6 +342,73 @@ for helper in ("AtrRefresh", "AtrValue", "StopBoundsPoints", "SpreadCapPoints",
 check("g_atr_handle" in RAW and "INVALID_HANDLE" in RAW,
       "G6 the ATR handle has an INVALID_HANDLE sentinel like every other handle")
 
+# ==================================== H. FX: the same rule, and a legible refusal
+# FX is where the ATR cap is TIGHTEST rather than loosest, because an FX spread
+# is a large fraction of a low-timeframe ATR:
+#
+#   EURUSD, 1.0-pip spread, 0.25 x ATR   M1 ATR 2.0 pips -> cap 0.50  REFUSE
+#                                        M5 ATR 4.5 pips -> cap 1.12  PASS
+#                                        M15 ATR 12  pips -> cap 3.00  PASS
+#
+# The refusal is economically right (a cost worth half the bar is not an edge)
+# and it must stay: silently loosening the cap for FX would buy a trade at a
+# price the account cannot afford. What must NOT stay is the silence.
+reason = fn_body("SpreadCapReason")
+check(reason != "", "H1 the spread refusal has a reason helper, not a bare return")
+check("InpMaxSpreadPoints>0" in reason,
+      "H1 it distinguishes an explicit point cap from the derived one, so the "
+      "operator is never told to tune a number that is not in force")
+check("InpMaxSpreadATRFrac" in reason,
+      "H1 it names the multiple that produced the cap")
+check("% of one ATR" in reason,
+      "H1 it states the spread as a percentage of ATR - the quantity that "
+      "explains WHY FX on M1 refuses and FX on M15 does not")
+check("higher timeframe" in reason,
+      "H1 and names the one remedy that does not change the risk rule")
+check("UNRESOLVED" in reason,
+      "H1 an unreadable ATR says so instead of reporting a zero cap")
+
+hs2 = fn_body("HandleSignal")
+check("SpreadCapReason()" in hs2,
+      "H1 the refusal is actually reported at the gate  [a helper nobody calls "
+      "is still a silent refusal]")
+check(re.search(r"if\(!SpreadOK\(sym\)\)\s*\{\s*NoteClass", hs2.replace("\n", " "))
+      is not None or "NoteClass(key,SpreadCapReason()" in hs2,
+      "H1 and it is classified TRANSIENT: a wider spread on the next bar may "
+      "pass, so the setup is retried rather than burned")
+
+# The pip convention must remain correct for every FX quote style.
+pipfn = fn_body("PipPointsFor")
+check(pipfn != "", "H2 the pip convention is unchanged for gold and FX")
+check("digits==3 || digits==5" in pipfn,
+      "H2 FX quote styles are 3- or 5-digit")
+# 4-digit FX: point == pip, which is what the digits!=3/5 branch already returns.
+check("return 1.0" in pipfn,
+      "H2 and a 4-digit FX quote gets 1 point per pip, which is correct there: "
+      "on a 4-digit quote one point IS one pip")
+check("0.10/point" in pipfn.replace(" ", ""),
+      "H2 the gold convention (1 pip = 0.10 of price) is untouched")
+
+# No FX-vs-metal branch may exist in the risk/limit path: the ATR makes the
+# instrument irrelevant, and an instrument branch is how a gold-shaped constant
+# comes back under a new name.
+limit_fns = " ".join([fn_body("StopBoundsPoints"), fn_body("SpreadCapPoints"),
+                      fn_body("PlanTP"), fn_body("AtrRefresh")])
+for word in ("XAU", "GOLD", "XAG", "BTC", "is_metal", "is_crypto"):
+    check(word not in limit_fns,
+          "H2 no %s branch in the limit path: the limits follow ATR, not the "
+          "instrument" % word)
+
+# ======================================= H3. the FX preset surface
+# A preset that says "0.25 x ATR" is portable; one that says "60 points" is not.
+if PRESET.is_file():
+    body = PRESET.read_text(encoding="utf-8", errors="replace")
+    check("InpMaxSpreadATRFrac=" in body,
+          "H3 the demo preset expresses the spread bound as an ATR fraction")
+    check(re.search(r"(?m)^InpMaxSpreadPoints=(?:0)\r?$", body) is not None,
+          "H3 and leaves the point cap at 0 = derived, so the same file can be "
+          "loaded on an FX chart")
+
 # ---------------------------------------------------------------- report
 fails = [r for r in RESULTS if not r[0]]
 print("")
