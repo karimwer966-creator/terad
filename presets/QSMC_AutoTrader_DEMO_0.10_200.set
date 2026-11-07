@@ -48,6 +48,10 @@ InpTPLevel=QSMC_TP_LEVEL2
 InpBreakEvenAtR=1.00
 ; InpUseTPPips: false: use the indicator's levels, not a fixed pip ladder
 InpUseTPPips=false
+InpUseTPATR=false
+InpTP1ATR=1.0
+InpTP2ATR=2.0
+InpTP3ATR=3.0
 InpPipPoints=0
 InpTP1Pips=100
 InpTP2Pips=200
@@ -58,8 +62,10 @@ InpTP2ClosePercent=40.0
 InpMoveSLToBEAtTP1=false
 ; InpMoveSLToTP1AtTP2: off: same reason
 InpMoveSLToTP1AtTP2=false
-; InpMaxSpreadPoints: gold spreads are wide; 60 points is still under a normal tick
-InpMaxSpreadPoints=60
+; InpMaxSpreadPoints: 0 = derive the cap from this symbol's ATR; a fixed point count means a different thing on every instrument
+InpMaxSpreadPoints=0
+; InpMaxSpreadATRFrac: refuse when the spread alone exceeds a quarter of one ATR
+InpMaxSpreadATRFrac=0.25
 InpMaxSpreadFracOfStop=0.1
 ; InpDeviationPoints: slippage allowance for a market fill
 InpDeviationPoints=30
@@ -80,8 +86,16 @@ InpPinTimeframeMinutes=15
 InpMaxDataAgeSeconds=30
 ; InpMaxSignalAgeBars: a 2-bar-old signal is stale on M15
 InpMaxSignalAgeBars=2
-InpMinStopPoints=20
-InpMaxStopPoints=5000
+; InpMinStopPoints: 0 = derive the stop floor from ATR (InpMinStopATR x ATR) instead of a gold-shaped point count
+InpMinStopPoints=0
+; InpMaxStopPoints: 0 = derive the stop ceiling from ATR (InpMaxStopATR x ATR)
+InpMaxStopPoints=0
+; InpMinStopATR: a stop closer than 5% of an ATR is noise, not a setup
+InpMinStopATR=0.05
+; InpMaxStopATR: and wider than 6 ATR is not a setup either
+InpMaxStopATR=6.00
+; InpATRPeriod: the single volatility reference every distance limit is derived from
+InpATRPeriod=14
 InpCloseOnOpposite=false
 ; InpMinRRAtFill: re-check RR at the price actually paid, not the planned zone edge
 InpMinRRAtFill=1.20
