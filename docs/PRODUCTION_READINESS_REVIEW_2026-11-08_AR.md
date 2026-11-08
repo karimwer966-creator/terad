@@ -28,6 +28,11 @@ python3 tools/wfa_demo.py --out out/wfa/demo            # NO-GO متوقّع (ب
 for t in tools/test_*.py; do python3 "$t"; done         # 8 ملفات حمراء (انظر §5)
 ```
 
+**حالة CI على هذا الفرع (2026-11-08):** أربع وظائف خضراء — `curated offline production gate`،
+`static + dialect + self-test parity`، `monitor-tests`، و`audit suites (report only)`. الأخيرة
+تظهر **خضراء** لأن كل خطوة فيها `continue-on-error: true`، بينما 8 خطوات داخلها حمراء فعليًا —
+وهذا بالضبط جوهر النتيجة §5.P1: لون الوظيفة لا يساوي حالة العقود.
+
 ## 2. مصفوفة الأدلة — ماذا تُثبت كل بوابة وماذا لا تُثبت
 
 | البوابة | النتيجة | تُثبت | لا تُثبت |
