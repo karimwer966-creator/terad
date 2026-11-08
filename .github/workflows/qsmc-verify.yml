@@ -175,6 +175,16 @@ jobs:
       - name: release gate
         run: python3 tools/check_release_gate.py 2>&1 | tee out/release_gate.log
 
+      # Over-optimisation defence (WFA-HARNESS / WFA-STATS). These two tools
+      # decide whether a study is allowed to go forward, and both are pure
+      # arithmetic plus file emission: no terminal, no history, no network. A
+      # silent bug in them is worse than no gate at all, because it would print
+      # GO with a straight face - so the arithmetic is pinned against
+      # hand-computed values, and the emitted OOS .set is asserted to contain no
+      # optimisation range (the single most expensive mistake in the workflow).
+      - name: Walk-forward harness and robustness statistics
+        run: python3 tools/test_wfa_robustness.py 2>&1 | tee out/wfa_robustness.log
+
       - name: No stale copy of a header may be committed
         run: |
           dup=$(git ls-files 'MQL5/**' | while read -r f; do basename "$f"; done | sort | uniq -d)
