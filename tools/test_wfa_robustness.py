@@ -38,6 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
+import wfa_demo as D
 import wfa_harness as H
 import wfa_stats as S
 
@@ -604,6 +605,31 @@ try:
           "a missing parameter file exits 2")
 finally:
     shutil.rmtree(tmp4, ignore_errors=True)
+
+# ---------------------------------------------------------------------------
+# 16. The synthetic demo: reproducible, honest about being fake, still NO-GO
+# ---------------------------------------------------------------------------
+demo_dir = tempfile.mkdtemp(prefix="wfa_demo_")
+try:
+    rc = D.main(["--out", demo_dir, "--iterations", "150", "--benchmarks", "20",
+                 "--quiet"])
+    report_path = os.path.join(demo_dir, "report.md")
+    first = io.open(report_path, encoding="utf-8").read() if os.path.exists(report_path) else ""
+    check(rc == 0 and report_path and first, "the demo runs end to end")
+    check(first.startswith("# Walk-forward robustness report — SYNTHETIC STUDY"),
+          "the demo's report announces itself as synthetic on line 1")
+    check("## Verdict: **NO-GO**" in first,
+          "the demo produces the expected NO-GO (a clean GO would mean the gates moved)")
+    check("| score (net_profit) | 900000.00 |" in first and "chosen == peak row: **False**" in first,
+          "the demo's deliberate spike is reported as the peak and refused as the choice")
+    check("InpAtrMult=2.0" in first and "InpRsiPeriod=16.0" in first,
+          "the demo's plateau centre is the interior maximum, not the corner spike")
+    check(len(D.make_trades(7)) == 420, "the demo's trade generator is sized as documented")
+    D.main(["--out", demo_dir, "--iterations", "150", "--benchmarks", "20", "--quiet"])
+    second = io.open(report_path, encoding="utf-8").read()
+    check(first == second, "two runs with the same seed produce a byte-identical report")
+finally:
+    shutil.rmtree(demo_dir, ignore_errors=True)
 
 if FAILS:
     print("%d of %d robustness test(s) failed" % (len(FAILS), COUNT[0]))

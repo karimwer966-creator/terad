@@ -2,7 +2,8 @@
 
 **Scope:** `QSMC_AutoTrader` + `nadir2` · **Shipped build:** v6.6.20 · **Written:** 2026-11-08
 **Tooling added with this document:** `tools/wfa_harness.py`, `tools/wfa_stats.py`,
-`tools/test_wfa_robustness.py` · **Examples:** `docs/wfa/params.example.json`, `docs/wfa/study.example.json`
+`tools/wfa_demo.py`, `tools/test_wfa_robustness.py` · **Examples:** `docs/wfa/params.example.json`,
+`docs/wfa/study.example.json` · **العربية:** `docs/QSMC_ROBUSTNESS_PLAYBOOK_AR.md`
 
 This is the discipline that sits *between* "the EA compiles" and "the EA trades money". It is
 deliberately boring: windows fixed before the first run, parameters frozen before the first
@@ -367,37 +368,61 @@ close the first group; pretending otherwise is how a green table becomes a red a
 
 ---
 
-## Part F — Worked example (synthetic — not a QSMC result)
+## Part F — Run the pipeline yourself, on data that is openly fake
 
-To make the report format concrete, here is one line of a study built from **synthetic** data (a
-70/30 win/loss generator, a bowl-shaped grid with one deliberate spike, 25 random-entry
-benchmarks):
-
-```
-Verdict: NO-GO
-| gate                        | measured        | threshold | verdict |
-| walk-forward efficiency     | 0.28            | >= 0.50   | FAIL    |
-| deflated Sharpe (30 trials) | 0.019           | >= 0.95   | FAIL    |
-| random-entry benchmark      | p = 0.033       | <= 0.050  | PASS    |
-| Monte Carlo drawdown p95    | 13.4%           | <= 30%    | PASS    |
-| drop best 5% of trades      | p05 = +5200     | > 0       | PASS    |
-| cost stress (+12/trade)     | +1135           | > 0       | PASS    |
+```bash
+python3 tools/wfa_demo.py --out out/wfa/demo
 ```
 
-Four passes and two failures, and the two failures are the interesting part: a 0.28 WFE is exactly
-the "the edge does not survive the roll-forward" case, and a DSR of 0.019 says the Sharpe is
-indistinguishable from the best of thirty zero-skill tries *given the grid's own dispersion*.
-Everything the gates approved, they approved on their own terms — the verdict is still NO-GO, and
-a tool that had reported GO here would have been worse than no tool. **These numbers come from
-generated data and describe nothing about XAUUSD, EURUSD or any QSMC build.**
+One command builds a complete synthetic study — 420 OOS trades, a 3-parameter grid shaped as a
+bowl with one deliberate corner spike, six decaying walk-forward windows, 60 random-entry
+benchmarks and the manifest that wires them together — then judges it and writes
+`out/wfa/demo/report.md`. Default output:
 
----
+```
+gate                               measured               verdict
+sample size                        420 trades             PASS
+trades per free parameter          420 trades / 3 params  PASS
+free parameters                    3                      PASS
+profit factor in range             1.64                   PASS
+walk-forward efficiency            0.28                   FAIL
+profitable OOS windows             5/6 (83%)              PASS
+parameter stability (worst axis)   0.00 relative spread   PASS
+Monte Carlo drawdown p95           9.2%                   PASS
+drop 5-10% of trades               p05 = 9300.00          PASS
+deflated Sharpe ratio (150 trials) 0.0                    FAIL
+random-entry benchmark             p = 0.016 (60 runs)    PASS
+cost stress (extra 12.00/trade)    5440.0                 PASS
+
+verdict: NO-GO (2 gate(s) failed)
+```
+
+Read what the demo actually demonstrates, because each line is a mechanism and not a result:
+
+| Observation | Mechanism it exercises |
+|---|---|
+| `peak row 900000.00`, `chosen 2000.00`, `peak 12.17σ from the grid mean` | the chooser refuses a 450× outlier and lands on the interior maximum |
+| `walk-forward efficiency 0.28` | the synthetic edge decays across windows; the roll-forward says so |
+| `deflated Sharpe 0.0 (150 trials)` | the spike also inflates trial dispersion — one lucky cell poisons the correction as well as the choice |
+| `random-entry p = 0.016` | the entries do beat random entries with the same exits, on this data |
+| two runs, same seed, byte-identical report | the pipeline is deterministic; a verdict can be reproduced |
+
+`NO-GO` is the expected verdict, and `tools/test_wfa_robustness.py` asserts it: **a clean GO out of
+this demo would mean a gate moved.** The demo also proves the report is legible *before* a real
+multi-window MT5 sweep exists to be judged.
+
+> Every number above is generated inside `tools/wfa_demo.py`. None of it describes XAUUSD, EURUSD,
+> or any QSMC build, and none of it should be quoted as a backtest result — the same sentence is
+> printed at the top of the generated report, on purpose.
 
 ## Part G — Maintaining this document
 
 * The gates are defaults in code (`DEFAULT_GATES`), and the tests in
   `tools/test_wfa_robustness.py` pin the arithmetic behind them. If you change a default, change
   the test that describes it in the same commit.
+* `tools/wfa_demo.py` is the end-to-end smoke test of the *pipeline*, and its expected verdict
+  (`NO-GO`, two failures) is asserted. Do not "fix" that by making the demo's synthetic edge
+  stronger — fix the gate only if the gate is wrong.
 * The workflow is three commands (`plan`, `configs`, `report`) and one judgement (`plateau` →
   `apply`). If a step needs a human decision, it is named as such; if it does not, it is a file.
 * MT5's own export schema is not versioned by MetaQuotes. The ingester accepts three shapes and
