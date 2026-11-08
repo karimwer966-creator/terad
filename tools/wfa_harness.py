@@ -596,6 +596,28 @@ def render_configs_md(m: dict) -> str:
     L.append("5. Run the `_oos` inis. They contain one parameter set and no optimiser.")
     L.append("6. Judge with `python3 tools/wfa_stats.py report --manifest study.json`.")
     L.append("")
+    L.append("## State isolation between passes (read this before you run)")
+    L.append("")
+    L.append("QSMC_AutoTrader persists state in terminal GlobalVariables: the day and")
+    L.append("session breakers (cleared by `InpResetBreakersAtInit=true`, and logged when")
+    L.append("it fires) and ONE duplicate-suppression key per signalled bar")
+    L.append("(`QSMC_AT_<magic>_<symbol>_<bartime>_<B|S>`), which nothing in this")
+    L.append("repository clears. If those keys survive from one pass to the next, a bar")
+    L.append("already 'seen' in an earlier pass is silently suppressed in a later one.")
+    L.append("Adjacent windows overlap inside their IS ranges by construction, so this is")
+    L.append("not a theoretical symmetry.")
+    L.append("")
+    L.append("Falsify it once, before trusting a multi-window study:")
+    L.append("")
+    L.append("1. run `w02_opt` alone in a fresh terminal profile; record the trade count;")
+    L.append("2. run `w01_oos` and then `w02_opt` in the same profile; record it again.")
+    L.append("")
+    L.append("Identical numbers mean this terminal build isolates tester runs and the")
+    L.append("plan is safe as configured. Different numbers mean every pass must run in")
+    L.append("its own data folder (a portable terminal copy per pass), or the EA needs")
+    L.append("a tester guard that ignores persisted seen-keys. Do NOT 'fix' it with")
+    L.append("`InpResetBreakersAtInit=true`: that clears the breakers, not the keys.")
+    L.append("")
     L.append("## What is deliberately NOT here")
     L.append("")
     L.append("- No forward-test window (`ForwardMode=1`): MT5's forward mode")
@@ -1023,6 +1045,11 @@ def cmd_configs(args):
           % (len(manifest["files"]), len(plan["windows"]), manifest["grid_size"],
              args.out))
     print("next: run run_all.ps1 with MetaTrader closed, then ingest the reports")
+    if "autotrader" in str(args.expert).lower():
+        print("NOTE  this EA writes per-bar duplicate-suppression keys to terminal "
+              "GlobalVariables;\n      read 'State isolation between passes' in %s "
+              "before trusting a\n      multi-window study."
+              % os.path.join(args.out, "CONFIGS.md"))
     return 0
 
 

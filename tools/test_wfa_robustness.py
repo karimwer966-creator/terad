@@ -523,6 +523,11 @@ try:
     check(ps1.count("/config:") == 2 * len(plan["windows"]),
           "the runner invokes every pass exactly once")
     check("Terminal" in ps1 and "terminal64" in ps1, "the runner knows its terminal")
+    configs_md = io.open(os.path.join(tmp2, "CONFIGS.md"), encoding="utf-8").read()
+    check("State isolation between passes" in configs_md,
+          "CONFIGS.md warns that the EA's per-bar seen-keys can leak between passes")
+    check("InpResetBreakersAtInit=true" in configs_md,
+          "the isolation note names the input that does NOT fix it, and says why")
 
     sel = {"w01": {"InpRsiPeriod": 18, "InpAtrMult": 2.5}, "w10": {"InpRsiPeriod": 14}}
     written = H.apply_selection(plan, params, sel, tmp2)

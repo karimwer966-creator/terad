@@ -188,6 +188,15 @@ Close MetaTrader, then run `out/wfa/cfg/run_all.ps1` (Windows) — sequential by
 runs fight over the same terminal, history cache and CPU, and a half-run window is
 indistinguishable from a failed one.
 
+**Read `State isolation between passes` in the generated `CONFIGS.md` before you trust the
+sweep.** This EA persists one duplicate-suppression key per signalled bar
+(`QSMC_AT_<magic>_<symbol>_<bartime>_<B|S>`) in terminal globals, and nothing in the repository
+clears them — not `InpResetBreakersAtInit`, not `QSMC_ResetGuards.mq5`. If those keys survive from
+one pass to the next, a bar already seen in an earlier pass is silently suppressed in a later one,
+and the IS ranges of adjacent windows overlap by construction. The file contains the two-run
+experiment that settles it for your terminal build; `docs/PRODUCTION_READINESS_REVIEW_2026-11-08_AR.md`
+records the finding.
+
 ### B4. Ingest the exports
 
 ```bash

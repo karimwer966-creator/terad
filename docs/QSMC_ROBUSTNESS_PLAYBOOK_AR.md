@@ -85,6 +85,14 @@ python3 tools/wfa_stats.py report --manifest docs/wfa/study.example.json \
   --out out/wfa/report.md
 ```
 
+**قبل أن تثق بأي مسح متعدد النوافذ:** اقرأ قسم `State isolation between passes` في
+`CONFIGS.md` المولَّد. الـEA يحفظ مفتاحًا عالميًا لكل شمعة مُشعِرة لمنع تكرار الصفقة
+(`QSMC_AT_<magic>_<symbol>_<bartime>_<B|S>`)، ولا شيء في المستودع يمسحه — لا
+`InpResetBreakersAtInit` ولا `QSMC_ResetGuards.mq5`. إن بقيت هذه المفاتيح بين التمريرات فإن
+شمعة «رُئيت» في تمريرة سابقة تُكتَم في تمريرة لاحقة، ونوافذ IS متداخلة بالتصميم. الملف يحتوي
+تجربة من تشغيلين تحسم الأمر لنسخة تيرمنالك، والتفصيل في
+`docs/PRODUCTION_READINESS_REVIEW_2026-11-08_AR.md`.
+
 **قواعد مضمّنة في الأدوات، لا في انتباهك:**
 
 * خطوة `plan` **ترفض** (لا تُحذّر) خطوة OOS متقاطعة، وholdout سالبًا، ونطاقًا أقصر من نافذة IS.
