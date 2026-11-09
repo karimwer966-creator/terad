@@ -1,0 +1,57 @@
+; =====================================================================
+; QSMC v6.6.20 — production chart preset (DISPLAY ONLY)
+;
+; This preset changes only what is drawn on the visual chart. It does
+; not list any entry gate, confidence, risk, buffer or execution input.
+; The EA's private iCustom reader still uses the indicator DEFAULTS, so
+; loading this on the chart cannot change what the EA trades.
+;
+; Load: chart -> Indicator List -> nadir2 -> Properties -> Inputs -> Load.
+; =====================================================================
+
+InpDisplayMode=0
+InpUltraCleanMode=true
+InpShowAIDashboard=true
+InpDashboardMaxRows=5
+InpDashboardCollapsible=true
+InpDashboardFullWidth=false
+
+; --- performance / object discipline --------------------------------
+InpShowPerfMeter=false
+InpSmartObjectManagement=true
+InpRedrawTradeBoxOnNewBarOnly=true
+InpMaxChartObjects=250
+InpResolveLabelCollisions=true
+InpLabelMinGapPx=18
+
+; --- entry marks and levels ------------------------------------------
+InpShowEntries=true
+InpShowSLTP=true
+InpShowEntryPreviewMarks=false
+InpShowTacticalEntries=false
+InpShowZREEntryMarks=false
+InpShowEarlyBreakPreview=false
+InpShowEarlyBreakTrigger=false
+InpShowEntryPreview=false
+InpShowMTFExecutionEntry=false
+InpShowBattleAnnotations=false
+InpShowTradeBox=false
+InpDrawTradeLevels=false
+
+; --- family caps ------------------------------------------------------
+InpMaxStructureShown=3
+InpMaxStrongOB=2
+InpMaxZonesShown=2
+InpMaxBreakersShown=1
+InpMaxFVGShown=1
+InpMaxLiquidityShown=2
+InpMaxConfluentSRLevels=3
+InpMaxZonesPerSide=2
+
+; --- context lines that are noise on a production chart ---------------
+InpShowOTE=false
+InpShowSessionHL=false
+InpShowPivots=false
+InpShowCamarilla=false
+InpShowPremiumDiscount=false
+InpShowKillZones=false

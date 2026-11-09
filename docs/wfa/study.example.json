@@ -1,0 +1,87 @@
+{
+  "_note": [
+    "TEMPLATE for tools/wfa_stats.py report. Copy it into your own output folder",
+    "and fix every relative path (paths resolve against THIS file's directory).",
+    "It exits 2 until the files it names exist - that is the tool refusing to",
+    "invent measurements, which is the correct behaviour.",
+    "",
+    "selection      : what plateau chose (or paste the whole plateau JSON output;",
+    "                 the loader accepts {'chosen': {'params': {...}}} too).",
+    "trials         : EVERY variant tried across the whole development, not just",
+    "                 this grid. Undercounting it is the easiest way to fake a pass.",
+    "trial_sharpe_sd: the DISPERSION of trial Sharpes. Without it the hurdle is 0",
+    "                 and nothing is deflated, so the DSR gate FAILS by design.",
+    "                 Prefer listing the grid's own Sharpe values instead.",
+    "windows        : fill is_net_profit / oos_net_profit from each OOS report, and",
+    "                 params from selection_applied.json. Keep params identical to",
+    "                 what the .set file actually contained.",
+    "benchmarks     : a directory of random-entry runs with the SAME exits, sizing",
+    "                 and trade count, 200+ of them. Do not use different exits.",
+    "cost_stress    : extra cost per trade in account currency (1.5-2x your average).",
+    "holdout_trades : optional, and it may be used exactly once."
+  ],
+  "label": "XAUUSD H1 2018-2025 / InpBreakEvenAtR, InpMinRRAtFill, InpMaxSignalAgeBars, InpMaxSpreadPoints",
+  "start_equity": 10000.0,
+  "compounding": false,
+
+  "trades": "oos_trades.csv",
+  "selection": {
+    "InpBreakEvenAtR": 1.0,
+    "InpMinRRAtFill": 1.25,
+    "InpMaxSignalAgeBars": 2,
+    "InpMaxSpreadPoints": 30
+  },
+
+  "plateau": {
+    "runs": "tidy/w01_opt.tidy.csv",
+    "params": ["InpBreakEvenAtR", "InpMinRRAtFill", "InpMaxSignalAgeBars", "InpMaxSpreadPoints"],
+    "score": "net_profit",
+    "min_trades": 100,
+    "k": 4,
+    "heatmap": ["InpBreakEvenAtR", "InpMinRRAtFill"],
+    "agg": "min"
+  },
+
+  "windows": [
+    {
+      "name": "w01", "is_start": "2018-01-01", "is_end": "2020-01-01",
+      "oos_start": "2020-01-01", "oos_end": "2020-07-01",
+      "is_net_profit": null, "oos_net_profit": null,
+      "params": {"InpBreakEvenAtR": 1.0, "InpMinRRAtFill": 1.25,
+                 "InpMaxSignalAgeBars": 2, "InpMaxSpreadPoints": 30}
+    },
+    {
+      "name": "w02", "is_start": "2018-07-01", "is_end": "2020-07-01",
+      "oos_start": "2020-07-01", "oos_end": "2021-01-01",
+      "is_net_profit": null, "oos_net_profit": null,
+      "params": {"InpBreakEvenAtR": 1.0, "InpMinRRAtFill": 1.25,
+                 "InpMaxSignalAgeBars": 2, "InpMaxSpreadPoints": 30}
+    },
+    {
+      "name": "w03", "is_start": "2019-01-01", "is_end": "2021-01-01",
+      "oos_start": "2021-01-01", "oos_end": "2021-07-01",
+      "is_net_profit": null, "oos_net_profit": null,
+      "params": {"InpBreakEvenAtR": 1.0, "InpMinRRAtFill": 1.25,
+                 "InpMaxSignalAgeBars": 2, "InpMaxSpreadPoints": 30}
+    }
+  ],
+
+  "trials": 560,
+  "trial_sharpe_sd": null,
+
+  "mc": {"iterations": 5000, "seed": 20261108, "bootstrap": true, "drop_frac": 0.05},
+  "benchmarks": ["bench/r001.csv", "bench/r002.csv", "bench/r003.csv"],
+  "benchmark_metric": "net_profit",
+  "cost_stress": {"extra_cost_per_trade": 3.50},
+
+  "gates": {
+    "min_trades": 100,
+    "min_trades_per_param": 30,
+    "max_params": 6,
+    "wfe_min": 0.5,
+    "profitable_oos_min": 0.6,
+    "mc_dd_p95_max": 0.3,
+    "benchmark_p_max": 0.05,
+    "dsr_min": 0.95
+  }
+}
