@@ -1,0 +1,26 @@
+name: QATS structural verification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  structural:
+    name: verify QuantumAutonomousTradingSystem (offline, NOT a compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Structural verification of the EA source
+        run: python3 tools/verify_quantum_ea.py
+      - name: Manual gate still required
+        run: |
+          echo "This job is NOT a MetaEditor compile and NOT an MT5 demo test."
+          echo "F7 in MetaEditor remains the build gate; a DEMO chart attachment"
+          echo "remains the execution gate. See docs/PRODUCTION_AUDIT_2026-11-09_QUANTUM_EA.md"
