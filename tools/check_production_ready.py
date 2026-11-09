@@ -56,6 +56,7 @@ CHECKS = [
     # The over-optimisation defence. Offline arithmetic + MT5 config emission;
     # both decide whether a study may proceed, so both are in the curated gate.
     ("wfa-robustness", [sys.executable, "tools/test_wfa_robustness.py"]),
+    ("why-no-trades", [sys.executable, "tools/test_why_no_trades.py"]),
     ("structure-events", [sys.executable, "tools/test_structure.py"]),
     ("zone-scoring", [sys.executable, "tools/test_zone_scoring.py"]),
     ("edgebook", [sys.executable, "tools/test_edgebook_contract.py"]),

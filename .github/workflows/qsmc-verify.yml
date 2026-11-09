@@ -185,6 +185,14 @@ jobs:
       - name: Walk-forward harness and robustness statistics
         run: python3 tools/test_wfa_robustness.py 2>&1 | tee out/wfa_robustness.log
 
+      # The most common support question is "the EA is attached and it opens no
+      # trades". tools/why_no_trades.py answers it from the Experts tab, and a
+      # wrong answer there can tell an operator to reset a drawdown breaker. So
+      # the classification is pinned against real-shaped journal lines plus the
+      # 2026-11-09 session fixture.
+      - name: Why-no-trades classification
+        run: python3 tools/test_why_no_trades.py 2>&1 | tee out/why_no_trades.log
+
       - name: No stale copy of a header may be committed
         run: |
           dup=$(git ls-files 'MQL5/**' | while read -r f; do basename "$f"; done | sort | uniq -d)
