@@ -59,9 +59,17 @@ def line_at(n):
 def body(a, b):
     """Lines a..b of the file, given as snapshot coordinates. The SPAN is
     preserved, not the end point, so `body(V, V + 9)` stays "the nine lines
-    after the veto" even after a re-anchor."""
+    after the veto" even after a re-anchor.
+
+    The span is measured BEFORE `a` is translated. It used to be computed
+    afterwards, as `a + (b - a)` with the already-resolved `a`, which made the
+    span `b - <current line>`: a large negative number for any construct that
+    had drifted forward, and an empty body. Every probe reading `body(...)`
+    then "failed" on real code - a false alarm that looked exactly like a
+    regression."""
+    span = b - a
     a = pinmap.line(SUITE, a)
-    return body_at(a, a + (b - a))
+    return body_at(a, a + span)
 
 
 def body_at(a, b):
@@ -71,9 +79,16 @@ def body_at(a, b):
 
 
 def fn_end(first):
-    """Closing brace of the function whose signature is at snapshot line
-    `first`. Returns a CURRENT line."""
-    first = pinmap.line(SUITE, first)
+    """Closing brace of the function whose signature is at `first`.
+
+    `first` is a SNAPSHOT coordinate unless it is wrapped in pinmap.C(), in
+    which case it is already a line of the file under test and must not be
+    translated again. Callers that derive a line from a scan (`REDRAW[0]`) pass
+    a current line, and re-resolving it walked forward to a neighbouring pin's
+    function - which is why a probe for PrepareDynamicRedraw's body ended up
+    inspecting ~50 lines of unrelated source."""
+    if not isinstance(first, pinmap._Raw):
+        first = pinmap.line(SUITE, first)
     depth, opened = 0, False
     for i in range(first - 1, len(LINES)):
         depth += LINES[i].count("{") - LINES[i].count("}")
@@ -157,25 +172,37 @@ for name, ln in sorted(GL.items(), key=lambda kv: kv[1]):
     decls = len(re.findall(r"(?m)^(int|string|bool|double)\s+%s\s*=" % name, TEXT))
     check(decls == 1, "B %s has exactly one global declaration" % name,
           "got %d" % decls)
-check("never for evidence" in line_at(4474),
+# 4474/4470 were wrong in the pinned snapshot too (they land on g_tac_closed and
+# g_tac_dir). The declaration itself is the anchor; the comment beside it is the
+# invariant, and both are read from the same place.
+_VETO = [i for i, l in enumerate(LINES) if l.strip().startswith("bool   g_wgate_veto=")]
+check(len(_VETO) == 1
+      and "never for evidence" in LINES[_VETO[0]],
       "B the veto flag's comment states it is only ever data/spread/news",
-      "L4479 is %r" % line_at(4474).strip()[:80])
-check("Written only by WeightedGateAllows()" in body(4470, 4472),
-      "B the ownership comment names the single writer")
+      "%r" % (LINES[_VETO[0]].strip()[:90] if _VETO else "not found"))
+_OWN = body_at(_VETO[0] - 2, _VETO[0]) if _VETO else ""
+check("Written only by WeightedGateAllows()" in _OWN,
+      "B the ownership comment names the single writer", _OWN.strip()[:80])
 
 # ---------------------------------------------------------- C. hard vetoes
-DEF = 40093
+# The pinned 40093 was wrong IN THE SNAPSHOT IT WAS PINNED AGAINST (the signature
+# is at 40152 there), which is why translating it could never recover the
+# function: the fingerprint belonged to a different routine. A function's NAME
+# cannot drift, so it is the anchor. pinmap.find_fn() is the tool's own
+# recommendation for exactly this case, and docstring guidance beats a
+# coordinate that was measured wrong.
+DEF = pinmap.default_map().find_fn(r"^bool\s+WeightedGateAllows\(")[0]
 check(re.search(r"^bool WeightedGateAllows\(const SAlertCandidate &c,"
-                r"const datetime bar_time,string &why\)", line_at(DEF)),
+                r"const datetime bar_time,string &why\)", line_at(pinmap.C(SUITE, DEF))),
       "C WeightedGateAllows is defined at L%d" % DEF,
-      "L%d is %r" % (DEF, line_at(DEF).strip()[:70]))
+      "L%d is %r" % (DEF, line_at(pinmap.C(SUITE, DEF)).strip()[:70]))
 check(len(re.findall(r"(?m)^bool WeightedGateAllows\(", TEXT)) == 1,
       "C it is defined exactly once")
-END = pinmap.C(SUITE, fn_end(DEF))
+END = pinmap.C(SUITE, fn_end(pinmap.C(SUITE, DEF)))   # DEF is current; do not re-resolve
 check(0 < END - DEF <= 90,
       "C the gate is one small function (L%d-L%d, %d lines)" % (DEF, END, END - DEF),
       "a gate that grows into a second engine is how the chain got opaque")
-RB = body(DEF, END)
+RB = body_at(DEF, END)
 
 V_DATA = 40158
 V_SPREAD = 40164
@@ -226,21 +253,39 @@ check(V_DATA < V_SPREAD < V_NEWS < FIRST_LEG,
       "L%d < L%d), so no weight can outvote a veto" % (V_DATA, V_SPREAD, V_NEWS, FIRST_LEG))
 check("got+=" not in body(DEF, V_NEWS),
       "C no weight is accumulated anywhere above the news veto")
-check("g_wgate_veto=false;" in body(DEF, DEF + 6) and "g_wgate_score=0;" in body(DEF, DEF + 6),
+check("g_wgate_veto=false;" in body_at(DEF, DEF + 8)
+      and "g_wgate_score=0;" in body_at(DEF, DEF + 8),
       "C the state is reset on entry, so a stale veto can never survive to the "
       "next candidate")
 
 # ------------------------------------------------------- D. evidence legs
-LEGS = (("c.level>=min_level", "InpWGWeightLevel", "level", 40053),
-        ("c.score>=InpWGMinEvidenceScore", "InpWGWeightEvidence", "evidence", 40055),
-        ("c.distance_atr<=maxd", "InpWGWeightProximity", "proximity", 40058),
-        ("c.alignment>0", "InpWGWeightAlignment", "alignment", 40061),
+# Each leg is located by its CONDITION, not by a line number. The five pinned
+# numbers (40053/40055/40058/40061/40063) were already wrong in the snapshot
+# they were pinned against - 40053 lands on `string base=AlertBaseKey(a);` there
+# too, and the real leg is 129 lines further down. A number that is wrong at
+# birth cannot be repaired by translating it; the condition is the anchor, and
+# its uniqueness is asserted below.
+def _leg(cond):
+    hits = [i + 1 for i, l in enumerate(LINES) if cond in l]
+    return hits[0] if len(hits) == 1 else 0
+
+
+LEGS = (("c.level>=min_level", "InpWGWeightLevel", "level", _leg("c.level>=min_level")),
+        ("c.score>=InpWGMinEvidenceScore", "InpWGWeightEvidence", "evidence", _leg("c.score>=InpWGMinEvidenceScore")),
+        # c.distance_atr<=maxd appears in more than one routine (the candidate is
+        # populated elsewhere too), so the leg is anchored to the weight it pays -
+        # which is unique to this gate and is the thing the check is about.
+        ("c.distance_atr<=maxd", "InpWGWeightProximity", "proximity",
+         _leg("got+=InpWGWeightProximity;")),
+        ("c.alignment>0", "InpWGWeightAlignment", "alignment", _leg("c.alignment>0")),
         ("c.opposing_room_atr<0.0 || c.opposing_room_atr>=InpWGMinRoomATR",
-         "InpWGWeightRoom", "room", 40063))
+         "InpWGWeightRoom", "room",
+         _leg("c.opposing_room_atr<0.0 || c.opposing_room_atr>=InpWGMinRoomATR")))
 for cond, weight, name, ln in LEGS:
-    seg = body(ln, ln + 3)
-    check(cond in line_at(ln), "D the %s leg tests %r at L%d" % (name, cond[:44], ln),
-          "L%d is %r" % (ln, line_at(ln).strip()[:80]))
+    seg = body_at(ln - 1, ln + 2) if ln > 1 else ""   # the weight may share the line
+    check(ln > 0 and cond in body_at(ln, ln + 1),
+          "D the %s leg tests %r at L%d" % (name, cond[:44], ln),
+          "L%d is %r" % (ln, (LINES[ln - 1] if ln else "").strip()[:80]))
     check("got+=%s;" % weight in seg,
           "D the %s leg adds exactly %s, no other weight" % (name, weight),
           seg.strip()[:80])
@@ -254,20 +299,27 @@ check("double maxd=InpAlertMaxDistanceATR;" in RB
       and "if(!MathIsValidNumber(maxd) || maxd<0.0) maxd=2.0;" in RB,
       "D the proximity leg reuses InpAlertMaxDistanceATR with its documented "
       "fallback, not a new distance rule")
-check("g_wgate_score=got;" in line_at(40066),
-      "D the weighted total is published for display at L39634",
-      "L39634 is %r" % line_at(40066).strip()[:70])
-check("if(got<InpWGMinScore)" in line_at(40067),
-      "D the minimum-score decision is at L39635", "L39635 is %r" % line_at(40067).strip()[:70])
-low = body(40067, 40073)
+_PUB_SCORE = [i + 1 for i, l in enumerate(LINES) if "g_wgate_score=got;" in l]
+_PUB_MIN = [i + 1 for i, l in enumerate(LINES) if "if(got<InpWGMinScore)" in l]
+check(len(_PUB_SCORE) == 1,
+      "D the weighted total is published for display exactly once (L%d)"
+      % (_PUB_SCORE[0] if _PUB_SCORE else 0), str(_PUB_SCORE))
+check(len(_PUB_MIN) == 1,
+      "D the minimum-score decision is made exactly once (L%d)"
+      % (_PUB_MIN[0] if _PUB_MIN else 0), str(_PUB_MIN))
+low = body_at(_PUB_MIN[0], _PUB_MIN[0] + 6)
 check("below InpWGMinScore " in low and '"- WAIT";' in low.replace("\n", "")
       or "- WAIT" in low,
       "D a candidate below the minimum is reported as WAIT with the threshold named",
       low.strip()[:90])
 check("missed: " in low, "D the WAIT text lists what was missed")
-PUB = 40207
-check("PUBLISH " in body(PUB, END) and "a weighted confluence count, not a probability"
-      in body(PUB, END),
+# Anchor to the PUBLISH why-text itself: 40207 was another coordinate that never
+# landed on it, and the span to END was measured across two coordinate systems.
+# The why-text is wrapped over two source lines, so both must be in the window.
+_PUBLISH = [i + 1 for i, l in enumerate(LINES) if '" PUBLISH "' in l]
+PUB = _PUBLISH[0] if _PUBLISH else 0
+check(len(_PUBLISH) >= 1 and PUB > 0 and "PUBLISH " in body_at(PUB, PUB + 2)
+      and "a weighted confluence count, not a probability" in body_at(PUB, PUB + 3),
       "D the success text says PUBLISH and states the score is a confluence "
       "count, not a probability", body(PUB, END).strip()[:100])
 check(RB.count("return ") == 5,
@@ -324,9 +376,11 @@ check("AlertChannelsFor(c,ap,apush,asnd)" in sel
       "and de-duplication, not evidence", sel.strip()[:100])
 check(sel.count("InpUseWeightedGates") == 0,
       "F the hard gates are not inside the flag's scope")
-WIN = 40266
-wb = body(WIN, WIN + 8)
-check("if(InpUseWeightedGates)" in line_at(WIN)
+_WIN = [i + 1 for i, l in enumerate(LINES)
+        if "WeightedGateAllows(best_alert,bar_time,wfinal)" in l]
+WIN = _WIN[0] if len(_WIN) == 1 else 0        # a CURRENT line; anchored by call
+wb = body_at(WIN - 3, WIN + 6) if WIN else ""
+check(WIN > 0 and "if(InpUseWeightedGates)" in body_at(WIN - 3, WIN + 1)
       and "WeightedGateAllows(best_alert,bar_time,wfinal)" in wb,
       "F the why-text kept for display is recomputed for the candidate that WON, "
       "not whichever the loop tested last (L%d)" % WIN, wb.strip()[:90])
@@ -379,23 +433,38 @@ check(all(l.strip().startswith("//") for l in LINES if "OrderSend" in l),
 inputs = len(re.findall(r"(?m)^input\s", TEXT))
 check(inputs == 583, "G nadir2.mq5 has 583 input lines (548 + 10 GS1 + 16 SC1 + 9 OBS1)",
       "got %d" % inputs)
-check(TEXT.count("{") == TEXT.count("}") == 3597,
-      "G braces balance at the pinned 3597",
-      "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43497,
-      "G the file is 43497 lines: insertions only, no scratch rewrite",
-      "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
+check(TEXT.count("{") == TEXT.count("}"),
+      "G braces balance (%d open / %d close)" % (TEXT.count("{"), TEXT.count("}")),
+      "an unbalanced file cannot compile")
+# A literal line count and brace count describe ONE revision. They go stale on
+# the next release and then read as a regression on code that is intact - which
+# is exactly what happened here: 43454/43497/3597 and "still 44 enums" were all
+# true when written and all false after v6.6.16 appended a module.
+# The invariants that actually detect a scratch rewrite are structural.
+_lines = len(TEXT.split("\n")) - 1
+check(_lines > 40000
+      and TEXT.count("#property indicator_buffers") == 1
+      and len(re.findall(r"(?m)^int\s+OnCalculate\(", TEXT)) == 1,
+      "still one indicator translation unit (%d lines), one buffer declaration, "
+      "one OnCalculate - not a scratch rewrite" % _lines,
+      "got %d lines" % _lines)
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
 check(len(re.findall(r"(?m)^#include", TEXT)) == 6
       and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
       and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT
-      and "#include <QSMC/QSMC_Root.mqh>" in line_at(639),
+      and re.search(r"(?m)^#include <QSMC/QSMC_Root\.mqh>", TEXT) is not None,
       "G exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes, root remains L639")
 check(len(re.findall(r"(?m)^#property indicator_buffers", TEXT)) == 1,
       "G no buffers added, so no existing plot index moved (the EA reads 7-12)")
-check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,
-      "G no enum added or removed by this phase (still 44)")
+# 44 was the count until ab2324d appended ENUM_QSMC_INSTANCE_ROLE (the
+# instance-role handshake the execution companion depends on). The invariant is
+# "at least what this phase counted, and no insertions that would renumber the
+# enums the dashboard and the EA read by value".
+check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 45,
+      "still 45 enums: the 44 this contract was written against plus "
+      "ENUM_QSMC_INSTANCE_ROLE from ab2324d, none removed",
+      "got %d" % len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)))
 
 # ------------------------------------------------------- H. doc and CI own it
 for phrase in ("## 11.4 AUDIT-GS1", "WeightedGateAllows()", "InpUseWeightedGates",

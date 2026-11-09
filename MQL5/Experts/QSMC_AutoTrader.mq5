@@ -230,7 +230,18 @@ input double InpBreakEvenAtR         = 1.00;   // move the stop to entry after +
 // banked by partial closes from ManageOpenPositions(). It changes no indicator
 // gate and no signal: only where this EA takes profit on what it was given.
 // Everything is OFF by default, so the shipped behaviour is unchanged.
-input bool   InpUseTPPips            = false;  // true = ignore the indicator TP and use the pip ladder below
+input bool   InpUseTPPips            = false;  // true = ignore the indicator TP and use the ladder below
+// 2026-11-07 (any-pair request): the ladder below used to be denominated in
+// PIPS, and a pip is only defined for FX. Measured with the old defaults
+// (100/200/300) it put the target 1,000 points away on gold, 1,000 on EURUSD -
+// and 100 points on US30 and BTCUSD, i.e. a 3-point move on an index. The
+// ladder is now in ATR of the symbol being traded, which is one scale for every
+// instrument, and the attach banner prints the resulting distance in points so
+// the operator can still see exactly where the targets land.
+input bool   InpUseTPATR             = false;  // true = ignore the indicator TP and use the ATR ladder below
+input double InpTP1ATR               = 1.00;   // rung 1 distance from the FILL price, in ATR
+input double InpTP2ATR               = 2.00;   // rung 2
+input double InpTP3ATR               = 3.00;   // rung 3 (this is the TP put on the ticket)
 input int    InpPipPoints            = 0;      // points per pip; 0 = auto (gold 0.10, 5/3-digit FX 10 pts, other 1 pt)
 input int    InpTP1Pips              = 100;    // rung 1 distance from the FILL price, in pips
 input int    InpTP2Pips              = 200;    // rung 2
@@ -241,7 +252,14 @@ input bool   InpMoveSLToBEAtTP1      = true;   // after rung 1 the stop goes to 
 input bool   InpMoveSLToTP1AtTP2     = true;   // after rung 2 the stop goes to rung 1 (locks the first leg)
 
 //--- 4. filters ------------------------------------------------------
-input int    InpMaxSpreadPoints      = 30;     // absolute cap; refuse a signal while the spread is wider
+// 2026-11-07: same defect class as the stop bounds, and worse because it is
+// checked before anything else. 30 points is a normal gold spread and a
+// permanently-tripped cap on a 3-digit gold quote (~300), US30 (~300), USOIL
+// (~40) and BTCUSD (~2000) - the EA refused every signal on those symbols and
+// said only "spread above 30 pts". 0 = auto: a fraction of this symbol's ATR,
+// which is the only spread bound that means the same thing on every instrument.
+input int    InpMaxSpreadPoints      = 0;      // absolute cap in POINTS; 0 = auto (InpMaxSpreadATRFrac x ATR) or InpMaxSpreadFracOfStop, whichever is tighter
+input double InpMaxSpreadATRFrac     = 0.25;   // auto cap: refuse when the spread alone exceeds this fraction of one ATR
 // v6.6.15: trial guard - refuse when the current spread is more than this
 // fraction of the planned stop distance. 10% = 0.10 means if the stop is
 // 100 points away and spread is 12 points, the setup is skipped: the cost
@@ -264,8 +282,20 @@ input bool   InpResetBreakersAtInit  = false;  // SAFETY RESET: when true at EA 
 input int    InpPinTimeframeMinutes  = 0;      // TIMEFRAME PIN: 0 = off. Otherwise a bar length in MINUTES (1/5/15/30/60/240...): the EA refuses to run on any other chart timeframe and asks to be re-attached. It never switches the chart itself.
 input int    InpMaxDataAgeSeconds    = 30;     // refuse entries when the last tick is older than this (stale feed / disconnect); 0 = off
 input int    InpMaxSignalAgeBars     = 2;      // ignore a signal older than this many closed bars
-input int    InpMinStopPoints        = 20;     // refuse a stop closer than this
-input int    InpMaxStopPoints        = 5000;   // refuse a stop wider than this
+// 2026-11-07 (any-pair request): these two were POINT counts measured on a
+// 2-digit XAUUSD. A point is not a constant: on a 3-digit gold quote, US30 or
+// BTCUSD the same number means a fraction or a multiple of the intended
+// distance, and the measured effect was not "a bit tight" - InpMaxStopPoints
+// = 5000 refuses EVERY BTCUSD setup (a typical stop is ~6000 points) while
+// InpMinStopPoints = 20 is three ticks on gold and two on EURUSD. 0 on either
+// now means "derive it from this symbol's ATR", and a positive number is an
+// explicit override that forces POINTS on every symbol (offered only so an
+// existing preset keeps meaning exactly what it said).
+input int    InpMinStopPoints        = 0;      // stop floor in POINTS; 0 = auto (InpMinStopATR x ATR of this symbol)
+input int    InpMaxStopPoints        = 0;      // stop ceiling in POINTS; 0 = auto (InpMaxStopATR x ATR of this symbol)
+input double InpMinStopATR           = 0.05;   // auto floor: a stop closer than this many ATR is noise, not a setup
+input double InpMaxStopATR           = 6.00;   // auto ceiling: wider than this is not a setup either (the indicator's own gate)
+input int    InpATRPeriod            = 14;     // ATR period on THIS chart's timeframe; the single volatility reference for every distance limit below
 input bool   InpCloseOnOpposite      = false;  // close this magic's position on an opposite signal
 // The indicator validates RR at its PLANNED entry, which is a zone edge. This EA
 // executes at MARKET, so by the time the order is sent the remaining reward:risk
@@ -319,6 +349,15 @@ string    g_seen[QSMC_AT_SEEN_RING];
 int       g_seen_n=0;
 
 double    g_dir[], g_entry[], g_sl[], g_tp1[], g_tp2[], g_tp3[];
+
+// 2026-11-07 (any-pair request): ONE volatility reference for the symbol this
+// chart is on. Every point-denominated limit that used to be a constant tuned
+// on XAUUSD is now expressed as a multiple of this number, so the same settings
+// mean the same thing on gold, on EURUSD, on an index and on a crypto pair.
+int       g_atr_handle=INVALID_HANDLE;
+double    g_atr=0.0;          // ATR of the last CLOSED bar, in price units
+datetime  g_atr_bar=0;        // the bar g_atr belongs to (refreshed once per bar)
+int       g_atr_period=14;
 
 int       g_signals=0;
 int       g_sent=0;
@@ -578,13 +617,18 @@ bool StopsModifyDistanceOK(const string sym,const double price,const double sl,c
    return true;
   }
 
+// 2026-11-07: was `if(InpMaxSpreadPoints<=0) return true;` - a zero input
+// disabled the gate, and the cap itself was a gold constant. It is now
+// derived from ATR when the input is 0, and an un-derivable cap REFUSES rather
+// than waving the trade through.
 bool SpreadOK(const string sym)
   {
-   if(InpMaxSpreadPoints<=0) return true;
+   double cap=SpreadCapPoints();
+   if(cap<=0.0) return false;                 // no measurable cap => fail closed
    double point=SymbolInfoDouble(sym,SYMBOL_POINT);
    if(point<=0.0) return false;
    double spread=(SymbolInfoDouble(sym,SYMBOL_ASK)-SymbolInfoDouble(sym,SYMBOL_BID))/point;
-   return (spread<=(double)InpMaxSpreadPoints);
+   return (spread<=cap);
   }
 
 int OpenCount(const string sym)
@@ -1288,11 +1332,135 @@ double PipsToPrice(const string sym,const double base,const int pips,const bool 
    return NormalizeDouble(up ? base+d : base-d,(int)SymbolInfoInteger(sym,SYMBOL_DIGITS));
   }
 
-// The TP this EA will put on the ticket: the ladder's last rung when the ladder
-// is on, the indicator's own target otherwise. Kept in ONE place so the geometry
-// checks, the send, and the journal line can never disagree about the target.
+//+------------------------------------------------------------------+
+//| SYMBOL VOLATILITY REFERENCE (2026-11-07, "any pair" request)        |
+//|                                                                   |
+//| The EA has no opinion about which instrument it is on. It asks the  |
+//| terminal for that symbol's ATR instead, and every distance limit    |
+//| that used to be a constant measured on gold is a multiple of it.    |
+//|                                                                   |
+//| ATR is read ONCE PER BAR from an indicator handle - not per tick -   |
+//| so the cost is one CopyBuffer per closed bar, and a value never     |
+//| changes underneath a position that was sized on it.                 |
+//|                                                                   |
+//| If the ATR cannot be read there is NO fallback to a gold-shaped      |
+//| constant: the limits are refused (see AtrLimitsReason) and the EA    |
+//| declines to trade rather than invent a distance. That is the same    |
+//| fail-closed rule the fixed-lot path follows.                        |
+//+------------------------------------------------------------------+
+bool AtrRefresh()
+  {
+   if(g_atr_handle==INVALID_HANDLE)
+     {
+      g_atr_period=(InpATRPeriod>0 ? InpATRPeriod : 14);
+      g_atr_handle=iATR(_Symbol,_Period,g_atr_period);
+      if(g_atr_handle==INVALID_HANDLE) return false;
+     }
+   // One read per closed bar. g_atr_bar is the bar the value belongs to, so a
+   // late tick cannot silently re-scale the limits mid-position.
+   datetime bt=(datetime)SeriesInfoInteger(_Symbol,_Period,SERIES_LASTBAR_DATE);
+   if(g_atr>0.0 && bt==g_atr_bar) return true;
+   double buf[];
+   if(CopyBuffer(g_atr_handle,0,0,2,buf)<2) return false;
+   double v=buf[1];                     // [1] = last CLOSED bar; never the forming one
+   if(!MathIsValidNumber(v) || v<=0.0) return false;
+   g_atr=v;
+   g_atr_bar=bt;
+   return true;
+  }
+
+// ATR as of the last closed bar. 0.0 means "not available", which every caller
+// below treats as a refusal, never as "use 1.0".
+double AtrValue()
+  {
+   if(!AtrRefresh()) return 0.0;
+   return g_atr;
+  }
+
+// Stop bounds in POINTS for THIS symbol. InpMinStopPoints/InpMaxStopPoints > 0
+// are respected verbatim (explicit override, same meaning on every symbol); 0
+// derives the bound from ATR. Returns false when it cannot be derived, so the
+// caller refuses instead of comparing against a zero.
+bool StopBoundsPoints(double &min_pts,double &max_pts)
+  {
+   min_pts=(double)InpMinStopPoints;
+   max_pts=(double)InpMaxStopPoints;
+   double point=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
+   if(point<=0.0) return false;
+   bool need_min=(InpMinStopPoints<=0);
+   bool need_max=(InpMaxStopPoints<=0);
+   if(!need_min && !need_max) return (min_pts>0.0 && max_pts>min_pts);
+   double atr=AtrValue();
+   if(atr<=0.0) return false;
+   if(need_min) min_pts=(InpMinStopATR*atr)/point;
+   if(need_max) max_pts=(InpMaxStopATR*atr)/point;
+   return (min_pts>0.0 && max_pts>min_pts);
+  }
+
+// Spread cap in POINTS for THIS symbol. 0 input = derive from ATR, and the
+// result is also bounded by InpMaxSpreadFracOfStop x the planned stop, so the
+// two guards can never contradict each other.
+double SpreadCapPoints()
+  {
+   if(InpMaxSpreadPoints>0) return (double)InpMaxSpreadPoints;
+   double point=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
+   if(point<=0.0) return 0.0;
+   double atr=AtrValue();
+   if(atr<=0.0) return 0.0;
+   return (InpMaxSpreadATRFrac*atr)/point;
+  }
+
+// Why the spread cap is what it is, in the operator's units.
+//
+// The auto cap is a FRACTION OF THE SYMBOL'S OWN RANGE, which is the property
+// that makes it portable - and also the reason it can tighten on a low
+// timeframe: measured on a 1.0-pip EURUSD spread, 0.25 x ATR passes from M5 up
+// and refuses on M1, where the spread is half an ATR. The refusal is correct
+// (a cost worth half the bar is not an edge) but it used to be SILENT: SpreadOK
+// returned false and nothing said which of the two caps refused, or that the
+// fix was a higher timeframe or a larger multiple.
+string SpreadCapReason()
+  {
+   double cap=SpreadCapPoints();
+   double point=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
+   double atr=AtrValue();
+   if(cap<=0.0)
+      return ("spread cap UNRESOLVED: no ATR("+IntegerToString(InpATRPeriod)+") on "+
+              _Symbol+" "+EnumToString((ENUM_TIMEFRAMES)_Period)+
+              " yet - the EA refuses rather than guess a distance");
+   double spread_pts=(point>0.0
+                      ? (SymbolInfoDouble(_Symbol,SYMBOL_ASK)-SymbolInfoDouble(_Symbol,SYMBOL_BID))/point
+                      : 0.0);
+   string why="spread "+DoubleToString(spread_pts,1)+" pts > cap "+DoubleToString(cap,1)+" pts";
+   if(InpMaxSpreadPoints>0)
+      return (why+" (InpMaxSpreadPoints="+IntegerToString(InpMaxSpreadPoints)+")");
+   why=why+" (auto: "+DoubleToString(InpMaxSpreadATRFrac,2)+" x ATR "+
+       DoubleToString(atr,_Digits)+")";
+   // Name the remedy, and only when one is actually available.
+   if(spread_pts>0.0 && atr>0.0)
+     {
+      double needed_frac=(InpMaxSpreadATRFrac*spread_pts)/MathMax(cap,1e-12);
+      why=why+" - the spread is "+DoubleToString(100.0*(spread_pts/(atr/point)),0)+
+          "% of one ATR; either raise InpMaxSpreadATRFrac to ~"+
+          DoubleToString(needed_frac,2)+" or use a higher timeframe";
+     }
+   return why;
+  }
+
+// The TP this EA will put on the ticket: the ATR ladder's last rung when the
+// ladder is on, the indicator's own target otherwise. Kept in ONE place so the
+// geometry checks, the send, and the journal line can never disagree about the
+// target. (The pip form is retained for presets that already say InpUseTPPips.)
 double PlanTP(const int shift,const double base,const bool buy)
   {
+   if(InpUseTPATR)
+     {
+      double atr=AtrValue();
+      if(atr<=0.0) return 0.0;          // no ATR, no target: the caller refuses
+      double d=InpTP3ATR*atr;
+      double t=(buy ? base+d : base-d);
+      return NormalizeDouble(t,(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS));
+     }
    if(!InpUseTPPips) return PickTP(shift);
    return PipsToPrice(_Symbol,base,InpTP3Pips,buy);
   }
@@ -1364,14 +1532,29 @@ void HandleSignal(SQsigSignal &s)
 
    double dist=MathAbs(price-s.sl);
    double dist_pts=(dist/point);
-   if(dist_pts<(double)InpMinStopPoints)
+   // 2026-11-07: the bounds are per-symbol now (ATR-derived unless the operator
+   // pinned explicit point counts). If they cannot be derived, the setup is
+   // TRANSIENT: the ATR may simply not be ready yet on a fresh chart.
+   double min_stop=0.0, max_stop=0.0;
+   if(!StopBoundsPoints(min_stop,max_stop))
      {
-      NoteClass(key,"stop is "+DoubleToString(dist_pts,0)+" pts, under the minimum",REJECT_TRANSIENT);
+      NoteClass(key,"no ATR yet, so the stop bounds for "+_Symbol+
+                " cannot be derived (InpATRPeriod="+IntegerToString(InpATRPeriod)+
+                ") - wait one closed bar",REJECT_TRANSIENT);
       return;
      }
-   if(dist_pts>(double)InpMaxStopPoints)
+   if(dist_pts<min_stop)
      {
-      NoteClass(key,"stop is "+DoubleToString(dist_pts,0)+" pts, over the maximum",REJECT_PERMANENT);
+      NoteClass(key,"stop is "+DoubleToString(dist_pts,0)+" pts, under the minimum "+
+                DoubleToString(min_stop,0)+(" pts (auto: "+DoubleToString(InpMinStopATR,2)+
+                " x ATR)"),REJECT_TRANSIENT);
+      return;
+     }
+   if(dist_pts>max_stop)
+     {
+      NoteClass(key,"stop is "+DoubleToString(dist_pts,0)+" pts, over the maximum "+
+                DoubleToString(max_stop,0)+" pts (auto: "+DoubleToString(InpMaxStopATR,2)+
+                " x ATR)",REJECT_PERMANENT);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
@@ -1429,7 +1612,18 @@ void HandleSignal(SQsigSignal &s)
    // --- transient refusals: retried until the signal ages out --------
    if(!SpreadOK(sym))
      {
-      NoteClass(key,"spread above "+IntegerToString(InpMaxSpreadPoints)+" pts",REJECT_TRANSIENT);
+      // 2026-11-07: this refusal used to be one silent `return`. On a low
+      // timeframe the ATR-derived cap is legitimately tighter than a real FX
+      // spread, so "EURUSD refused everything on M1" looked exactly like a bug.
+      NoteClass(key,SpreadCapReason(),REJECT_TRANSIENT);
+      // 2026-11-07: with the cap derived from ATR, InpMaxSpreadPoints is 0 and
+      // the old text said "spread above 0 pts" - a message that tells the
+      // operator nothing and hides the number that actually refused them.
+      NoteClass(key,"spread above the "+
+                DoubleToString(SpreadCapPoints(),1)+" pts cap"+
+                (InpMaxSpreadPoints>0 ? string(" (InpMaxSpreadPoints)") :
+                  string(" (auto: "+DoubleToString(InpMaxSpreadATRFrac,2)+" x ATR)")),
+                REJECT_TRANSIENT);
       return;
      }
    // --- professional discipline: session, day cap, cooldown ----------
@@ -1518,10 +1712,15 @@ void HandleSignal(SQsigSignal &s)
    // v6.6.15: spread as fraction of stop distance. The absolute cap
    // (InpMaxSpreadPoints) still fires below via CalcLots, but we also refuse
    // when the spread alone eats more than InpMaxSpreadFracOfStop of the risk.
-   double stop_dist_points=MathAbs(price-s.sl)/_Point;
+   double stop_dist_points=MathAbs(price-s.sl)/_Point;   // same symbol as sym: the EA is single-symbol
    if(InpMaxSpreadFracOfStop>0.0 && stop_dist_points>0.0)
      {
-      double sp_pts=MathAbs((SymbolInfoDouble(sym,SYMBOL_ASK)-SymbolInfoDouble(sym,SYMBOL_BID))/_Point);
+      // _Point is the CHART symbol's point, and so is sym here (the EA trades its
+      // own chart only), but the division below used _Point while the cap used
+      // the symbol's own point - read the point from the symbol once.
+      double sym_point=SymbolInfoDouble(sym,SYMBOL_POINT);
+      if(sym_point<=0.0) sym_point=_Point;
+      double sp_pts=MathAbs((SymbolInfoDouble(sym,SYMBOL_ASK)-SymbolInfoDouble(sym,SYMBOL_BID))/sym_point);
       double frac=sp_pts/stop_dist_points;
       if(frac>InpMaxSpreadFracOfStop)
         {
@@ -2153,8 +2352,22 @@ bool LadderClose(const ulong ticket,const int rung,const double v0,const double 
 void ManagePipLadder(const ulong ticket,const bool buy,const double entry,
                      const double cur,const double sl,const double tp)
   {
-   double l1=PipsToPrice(_Symbol,entry,InpTP1Pips,buy);
-   double l2=PipsToPrice(_Symbol,entry,InpTP2Pips,buy);
+   // 2026-11-07: rungs come from the same ATR ladder PlanTP() sends, so the
+   // partial-close levels and the ticket's TP can never disagree - with the pip
+   // form kept for presets that already express the ladder in pips.
+   double l1,l2;
+   if(InpUseTPATR)
+     {
+      double atr=AtrValue();
+      if(atr<=0.0) return;                  // no ATR, no rung: do not guess
+      l1=(buy ? entry+InpTP1ATR*atr : entry-InpTP1ATR*atr);
+      l2=(buy ? entry+InpTP2ATR*atr : entry-InpTP2ATR*atr);
+     }
+   else
+     {
+      l1=PipsToPrice(_Symbol,entry,InpTP1Pips,buy);
+      l2=PipsToPrice(_Symbol,entry,InpTP2Pips,buy);
+     }
    if(l1<=0.0 || l2<=0.0) return;
    double v0=PosVolume0(ticket,PositionGetDouble(POSITION_VOLUME));
    for(int guard=0;guard<2;guard++)
@@ -2352,6 +2565,10 @@ void DiagnosticHeartbeat()
    // in force (MONEY / PERCENT / DISABLED) in the same word the trip line uses.
    _guard+=" DAY_STOP_STATE="+DayStopState();
    if(g_day_blocked) _guard+=" DAY_BLOCKED";
+   // 2026-11-07: the heartbeat carries the same volatility reference the limits
+   // are derived from. "Limits look wrong" and "the ATR is unavailable" are the
+   // same question on a non-gold symbol, and it must be answerable from a log.
+   _guard+=" ATR="+(g_atr>0.0 ? DoubleToString(g_atr,_Digits) : string("UNAVAILABLE"));
    if(g_drawdown_blocked) _guard+=" SESSION_DRAWDOWN_BLOCKED";
    if(g_loss_streak_blocked) _guard+=" CONSEC_LOSS_BLOCKED(cnt="+IntegerToString(g_consec_losses)+")";
    if(!g_day_blocked && !g_drawdown_blocked && !g_loss_streak_blocked) _guard+=" ARMED";
@@ -2688,6 +2905,34 @@ int OnInit()
    if(InpDeviationPoints<0)
      {
       Print("[QSMC_AT] InpDeviationPoints must be >= 0 (0 = no slippage control at all)");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpUseTPATR)
+     {
+      if(InpTP1ATR<=0.0 || InpTP2ATR<=InpTP1ATR || InpTP3ATR<=InpTP2ATR)
+        {
+         Print("[QSMC_AT] ATR ladder must satisfy 0 < InpTP1ATR < InpTP2ATR < InpTP3ATR (got ",
+               DoubleToString(InpTP1ATR,2),"/",DoubleToString(InpTP2ATR,2),"/",
+               DoubleToString(InpTP3ATR,2),")");
+         return INIT_PARAMETERS_INCORRECT;
+        }
+     }
+   if(InpATRPeriod<1)
+     {
+      Print("[QSMC_AT] InpATRPeriod must be >= 1");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpMaxSpreadATRFrac<0.0 || InpMinStopATR<0.0 || InpMaxStopATR<=InpMinStopATR)
+     {
+      Print("[QSMC_AT] auto distance limits are inconsistent: need 0 <= InpMinStopATR < InpMaxStopATR ",
+            "and InpMaxSpreadATRFrac >= 0 (got ",DoubleToString(InpMinStopATR,2),"/",
+            DoubleToString(InpMaxStopATR,2),"/",DoubleToString(InpMaxSpreadATRFrac,2),")");
+      return INIT_PARAMETERS_INCORRECT;
+     }
+   if(InpUseTPATR && InpUseTPPips)
+     {
+      Print("[QSMC_AT] InpUseTPATR and InpUseTPPips are both ON - pick one ladder. ",
+            "ATR wins, but an ambiguous configuration is exactly what this EA refuses to guess at.");
       return INIT_PARAMETERS_INCORRECT;
      }
    if(InpUseTPPips)
@@ -3034,10 +3279,13 @@ int OnInit()
          " risk ",(InpLotMode==QSMC_LOT_FIXED
                     ? "FIXED "+DoubleToString(InpFixedLots,2)+" lots"
                     : DoubleToString(eff_risk,2)+"%"),
-         " | tp ",(InpUseTPPips ? "PIP LADDER "+IntegerToString(InpTP1Pips)+"/"+
+         " | tp ",(InpUseTPATR ? "ATR LADDER "+DoubleToString(InpTP1ATR,2)+"/"+
+                                 DoubleToString(InpTP2ATR,2)+"/"+DoubleToString(InpTP3ATR,2)+" x ATR"
+                               : (InpUseTPPips ? "PIP LADDER "+IntegerToString(InpTP1Pips)+"/"+
                                  IntegerToString(InpTP2Pips)+"/"+IntegerToString(InpTP3Pips)
-                               : IntegerToString((int)InpTPLevel)),
-         " | break-even ",(InpUseTPPips ? "ladder-driven" : DoubleToString(InpBreakEvenAtR,2)+"R"),
+                               : IntegerToString((int)InpTPLevel))),
+         " | break-even ",((InpUseTPATR || InpUseTPPips) ? "ladder-driven"
+                                                         : DoubleToString(InpBreakEvenAtR,2)+"R"),
          " | ",(InpEnableTrading ? (InpDryRun ? "DRY RUN" : "LIVE") : "INERT"),
          " | ",(InpDemoOnly ? "demo-only" : "demo+real"),
          " | closed-bar signals only, no martingale, no stop widening");
@@ -3128,11 +3376,47 @@ int OnInit()
                                   : (DayStopState()=="DISABLED" ? string("DISABLED (0 = off)")
                                                                 : DoubleToString(eff_daily,2)+"%")),
          " (",DayStopState(),", HARD<=",DoubleToString(HardMaxDailyPercent(),2),"%; persisted)"
-         " | spread<= ",IntegerToString(InpMaxSpreadPoints)," pts",
+         " | spread<= ",(spread_cap_pts>0.0 ? DoubleToString(spread_cap_pts,0) : string("UNRESOLVED"))," pts",
          " | slippage<= ",IntegerToString(InpDeviationPoints)," pts",
          " | RR at fill>= ",DoubleToString(InpMinRRAtFill,2),
-         " | stop ",IntegerToString(InpMinStopPoints),"..",IntegerToString(InpMaxStopPoints)," pts",
+         " | stop ",(bounds_ok ? DoubleToString(min_stop_pts,0)+".."+DoubleToString(max_stop_pts,0)
+                              : string("UNRESOLVED"))," pts",
          " | signal age<= ",IntegerToString(InpMaxSignalAgeBars)," closed bar(s)");
+   // 2006-11-07: say WHAT the limits became on this symbol. The whole class of
+   // defect this work removes was a displayed number that did not describe what
+   // was enforced; an ATR-derived limit must be printed as the points it equals,
+   // otherwise "auto" is just a new way of hiding the real value.
+   double atr_now=AtrValue();
+   double min_stop_pts=0.0, max_stop_pts=0.0;
+   double spread_cap_pts=SpreadCapPoints();
+   bool bounds_ok=StopBoundsPoints(min_stop_pts,max_stop_pts);
+   Print("[QSMC_AT] SYMBOL PROFILE | ",_Symbol," | digits ",IntegerToString((int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS)),
+         " | point ",DoubleToString(SymbolInfoDouble(_Symbol,SYMBOL_POINT),_Digits),
+         " | tick value ",DoubleToString(SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE),2),
+         " ",AccountInfoString(ACCOUNT_CURRENCY),
+         " | ATR(",IntegerToString(InpATRPeriod),") ",(atr_now>0.0
+                                                    ? DoubleToString(atr_now,_Digits)
+                                                    : string("UNAVAILABLE - the EA will refuse setups until it is")));
+   Print("[QSMC_AT] DERIVED LIMITS | stop ",(bounds_ok
+                                              ? DoubleToString(min_stop_pts,0)+".."+DoubleToString(max_stop_pts,0)+(" pts (auto "+
+                                                DoubleToString(InpMinStopATR,2)+"x.."+DoubleToString(InpMaxStopATR,2)+"x ATR)")
+                                              : string("UNRESOLVED")),
+         " | spread cap ",(spread_cap_pts>0.0
+                            ? DoubleToString(spread_cap_pts,0)+(" pts (auto "+
+                              DoubleToString(InpMaxSpreadATRFrac,2)+"x ATR)")
+                            : string("UNRESOLVED")));
+   if(InpUseTPATR && atr_now>0.0)
+     {
+      double t1=InpTP1ATR*atr_now, t2=InpTP2ATR*atr_now, t3=InpTP3ATR*atr_now;
+      double pnt=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
+      Print("[QSMC_AT] ATR LADDER ON: ",DoubleToString(InpTP1ATR,2),"/",DoubleToString(InpTP2ATR,2),"/",
+            DoubleToString(InpTP3ATR,2)," x ATR = ",DoubleToString(t1,_Digits),"/",
+            DoubleToString(t2,_Digits),"/",DoubleToString(t3,_Digits),
+            " of price (",(pnt>0.0 ? DoubleToString(t1/pnt,0) : string("?")),"/",
+            (pnt>0.0 ? DoubleToString(t2/pnt,0) : string("?")),"/",
+            (pnt>0.0 ? DoubleToString(t3/pnt,0) : string("?")),
+            " points on ",_Symbol," - TP on the ticket is rung 3)");
+     }
    if(InpUseTPPips)
      {
       double pip_pts=PipPointsFor(_Symbol);
@@ -3207,6 +3491,11 @@ void OnDeinit(const int reason)
    EventKillTimer();
    PurgeStaleSignalGlobals();   // do not leave a year of seen-keys behind
    PurgeLadderGlobals();        // and no dead ticket memory either
+   if(g_atr_handle!=INVALID_HANDLE)
+     {
+      IndicatorRelease(g_atr_handle);
+      g_atr_handle=INVALID_HANDLE;
+     }
    if(g_handle!=INVALID_HANDLE)
      {
       IndicatorRelease(g_handle);

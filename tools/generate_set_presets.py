@@ -260,7 +260,13 @@ EA_REASONS = {
     "InpStopAfterConsecLoss": "stop after 2 losing closes in a row",
     "InpMaxOpenPositions": "one position at a time",
     "InpMaxTradesPerDay": "3 entries per server day",
-    "InpMaxSpreadPoints": "gold spreads are wide; 60 points is still under a normal tick",
+    "InpMaxSpreadPoints": "0 = derive the cap from this symbol's ATR; a fixed point count means a different thing on every instrument",
+    "InpMaxSpreadATRFrac": "refuse when the spread alone exceeds a quarter of one ATR",
+    "InpMinStopPoints": "0 = derive the stop floor from ATR (InpMinStopATR x ATR) instead of a gold-shaped point count",
+    "InpMaxStopPoints": "0 = derive the stop ceiling from ATR (InpMaxStopATR x ATR)",
+    "InpMinStopATR": "a stop closer than 5% of an ATR is noise, not a setup",
+    "InpMaxStopATR": "and wider than 6 ATR is not a setup either",
+    "InpATRPeriod": "the single volatility reference every distance limit is derived from",
     "InpDeviationPoints": "slippage allowance for a market fill",
     "InpMinRRAtFill": "re-check RR at the price actually paid, not the planned zone edge",
     "InpMaxSignalAgeBars": "a 2-bar-old signal is stale on M15",
@@ -326,7 +332,19 @@ EA_OVERRIDES = {
     "InpStopAfterConsecLoss": "2",
     "InpMaxOpenPositions": "1",
     "InpMaxTradesPerDay": "3",
-    "InpMaxSpreadPoints": "60",
+    # 2026-11-07 (any-pair request): was "60", a gold-shaped POINT count. On a
+    # 3-digit gold quote, US30, USOIL or BTCUSD that cap is either always
+    # tripped or meaningless. 0 = derive from this symbol's ATR, which is the
+    # only bound that means the same thing on every instrument.
+    "InpMaxSpreadPoints": "0",
+    "InpMaxSpreadATRFrac": "0.25",
+    # The stop window is derived per symbol too, unless the operator pins
+    # explicit point counts.
+    "InpMinStopPoints": "0",
+    "InpMaxStopPoints": "0",
+    "InpMinStopATR": "0.05",
+    "InpMaxStopATR": "6.00",
+    "InpATRPeriod": "14",
     "InpDeviationPoints": "30",
     "InpMinRRAtFill": "1.20",
     "InpMaxSignalAgeBars": "2",

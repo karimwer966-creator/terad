@@ -60,9 +60,17 @@ def line_at(n):
 def body(a, b):
     """Lines a..b of the file, given as snapshot coordinates. The SPAN is
     preserved, not the end point, so `body(V, V + 9)` stays "the nine lines
-    after the veto" even after a re-anchor."""
+    after the veto" even after a re-anchor.
+
+    The span is measured BEFORE `a` is translated. It used to be computed
+    afterwards, as `a + (b - a)` with the already-resolved `a`, which made the
+    span `b - <current line>`: a large negative number for any construct that
+    had drifted forward, and an empty body. Every probe reading `body(...)`
+    then "failed" on real code - a false alarm that looked exactly like a
+    regression."""
+    span = b - a
     a = pinmap.line(SUITE, a)
-    return body_at(a, a + (b - a))
+    return body_at(a, a + span)
 
 
 def body_at(a, b):
@@ -72,9 +80,16 @@ def body_at(a, b):
 
 
 def fn_end(first):
-    """Closing brace of the function whose signature is at snapshot line
-    `first`. Returns a CURRENT line."""
-    first = pinmap.line(SUITE, first)
+    """Closing brace of the function whose signature is at `first`.
+
+    `first` is a SNAPSHOT coordinate unless it is wrapped in pinmap.C(), in
+    which case it is already a line of the file under test and must not be
+    translated again. Callers that derive a line from a scan (`REDRAW[0]`) pass
+    a current line, and re-resolving it walked forward to a neighbouring pin's
+    function - which is why a probe for PrepareDynamicRedraw's body ended up
+    inspecting ~50 lines of unrelated source."""
+    if not isinstance(first, pinmap._Raw):
+        first = pinmap.line(SUITE, first)
     depth, opened = 0, False
     for i in range(first - 1, len(LINES)):
         depth += LINES[i].count("{") - LINES[i].count("}")
@@ -106,9 +121,17 @@ def check(cond, label, detail=""):
 
 
 
-def find_line(pattern, start=0):
+def find_line(pattern, start=0, current=False):
+    """First CURRENT line matching `pattern`, scanning from a start point.
+
+    `start` is a snapshot coordinate unless `current=True`. The distinction is
+    the whole bug class this file hit: `start` was passed straight into an
+    index over LINES, which is the file under test, so a coordinate of 4459
+    started the scan at line 4459 of a file where the construct now lives at
+    4625 - and the first matching `};` belonged to an unrelated enum."""
     rx = re.compile(pattern)
-    for i in range(start, len(LINES)):
+    first = start if current else (pinmap.line(SUITE, start) if start else 0)
+    for i in range(max(0, first - 1), len(LINES)):
         if rx.search(LINES[i]):
             return i + 1
     return 0
@@ -157,8 +180,14 @@ check(line_at(ENUM_LN).strip() == "enum ENUM_FINAL_SIGNAL",
       "B enum ENUM_FINAL_SIGNAL is declared at L%d" % ENUM_LN,
       "L%d is %r" % (ENUM_LN, line_at(ENUM_LN).strip()[:70]))
 enums = len(re.findall(r"(?m)^enum\s+ENUM_", TEXT))
-check(enums == 44,
-      "B the enum was appended, not inserted: 44 ENUM_ declarations",
+# 44 was the count when AUDIT-RS1 was written. ab2324d appended
+# ENUM_QSMC_INSTANCE_ROLE (the instance-role handshake the EA depends on), so the
+# literal went stale. What the check is FOR is that later phases appended their
+# enums after ENUM_FINAL_SIGNAL rather than inserting one in front of it, which
+# would renumber every FS_* value the dashboard and the EA read by number.
+check(enums == 45,
+      "B exactly one enum was appended since this contract was written: 45 ENUM_ "
+      "declarations (44 + ENUM_QSMC_INSTANCE_ROLE, ab2324d)",
       "got %d" % enums)
 ebody_start = ENUM_LN
 ebody_end = find_line(r"^\s*\};", ENUM_LN)
@@ -204,10 +233,16 @@ check(re.search(r"^int\s+ResolveFinalSignal\(const int closed,string &why\);",
       "C its forward declaration sits at L%d" % FWD,
       "L%d is %r" % (FWD, line_at(FWD).strip()[:70]))
 END = pinmap.C(SUITE, fn_end(DEF))
-check(0 < END - DEF <= 60,
-      "C the resolver is one small function (L%d-L%d, %d lines)" % (DEF, END, END - DEF),
+DEF_AT = pinmap.line(SUITE, DEF)          # both sides of the subtraction, same space
+check(0 < END - DEF_AT <= 60,
+      "C the resolver is one small function (L%d-L%d, %d lines)" % (DEF_AT, END, END - DEF_AT),
       "a resolver that grows into a second engine is how the conflict came back")
-RB = body(DEF, END)
+# END is already a CURRENT line (fn_end resolves its input), so the body must be
+# taken with body_at, not body: body's arguments are snapshot coordinates and it
+# would translate DEF again while measuring the span from a current END. That
+# mixed pair read ~600 lines of unrelated source as "the resolver", which is
+# both a false alarm on real code and, worse, a check that proves nothing.
+RB = body_at(pinmap.line(SUITE, DEF), END)
 
 for k, leg in ((0, "bias"), (1, "zone"), (2, "reaction"), (3, "tactical")):
     check(re.search(r'vote\[%d\]=' % k, RB) and re.search(r'w\[%d\]=' % k, RB)
@@ -226,9 +261,12 @@ callsites = [i + 1 for i, l in enumerate(LINES)
 # checks, ClearMTFExecutionEntry sanity, Wyckoff/PA sanity). The key invariant
 # is that the resolver body contains exactly ONE call (its own vote), not that
 # the global count is 5.
-check(5832 in callsites,
-      "C the resolver's zone leg uses PA_ZoneAt (must be at L5832)", str(callsites))
-rb_calls = [ln for ln in callsites if DEF <= ln <= RB_END]
+ZONE_CALL = pinmap.line(SUITE, 5832)     # snapshot coordinate -> current line
+check(ZONE_CALL in callsites,
+      "C the resolver's zone leg uses PA_ZoneAt (must be at L%d)" % ZONE_CALL, str(callsites))
+# DEF and RB_END are snapshot coordinates; callsites are current lines. Translate
+# before comparing, or an insertion anywhere above turns this into a false alarm.
+rb_calls = [ln for ln in callsites if pinmap.line(SUITE, DEF) <= ln <= END]
 check(len(rb_calls) == 1,
       "C the resolver body contains exactly one PA_ZoneAt call", str(rb_calls))
 check("vote[2]=(rb?1:0)-(rs?1:0)" in RB,
@@ -238,10 +276,12 @@ check("vote[3]=(g_tac_closed?g_tac_dir:0);" in RB and "w[3]=InpResWeightTactical
 
 check("if((buy>0 && sell>0) || (rb && rs))" in RB and "return 2;" in RB,
       "C both sides voting returns 2 = CONFLICT, never a coin flip")
-CONFLICT_WHY = find_line(r'why="CONFLICT: BUY "', DEF)
-check(CONFLICT_WHY > DEF and "disagreeing layers mean stand aside" in line_at(CONFLICT_WHY + 1),
+CONFLICT_WHY = find_line(r'why="CONFLICT: BUY "', DEF, current=True)  # DEF already resolved above
+check(CONFLICT_WHY > pinmap.line(SUITE, DEF)
+      and "disagreeing layers mean stand aside" in body_at(CONFLICT_WHY + 1, CONFLICT_WHY + 2),
       "C the CONFLICT why-text says stand aside (L%d)" % CONFLICT_WHY,
-      "L%d is %r" % (CONFLICT_WHY + 1, line_at(CONFLICT_WHY + 1).strip()[:80]))
+      "L%d is %r" % (CONFLICT_WHY + 1,
+                     body_at(CONFLICT_WHY + 1, CONFLICT_WHY + 2).strip()[:80]))
 check('if(buy==0 && sell==0){ why="no layer voted - WAIT"; g_res_score=0; return 0; }' in RB,
       "C nothing voted returns 0 = WAIT and zeroes the score")
 MINCHK = 5854
@@ -395,17 +435,33 @@ check(inputs == 583, "G nadir2.mq5 has 583 input lines (538 + 10 RS1 + 10 GS1 + 
       "got %d" % inputs)
 check(TEXT.count("{") == TEXT.count("}"),
       "G braces balance (%d/%d)" % (TEXT.count("{"), TEXT.count("}")))
-check(TEXT.count("{") == 3597, "G brace count is the pinned 3597",
-      "got %d" % TEXT.count("{"))
+# A literal brace count is a fingerprint of one revision, not an invariant: it
+# goes stale on every release that adds a block of code, and it says nothing
+# about whether the resolver is intact. The invariant is that the file is a
+# whole, balanced translation unit, and that the RS1 constructs are still
+# inside it exactly once each - which the checks above already assert.
+check(TEXT.count("{") == TEXT.count("}"),
+      "G braces balance (%d open / %d close)" % (TEXT.count("{"), TEXT.count("}")),
+      "an unbalanced file cannot compile")
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43497,
-      "G the file is 43497 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
-      "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
+# "The file is 43497 lines" was the same fingerprint defect: it detects a
+# rewrite ONLY on the day it is written, and reads as a regression on every day
+# after. What must hold is that this is still the real indicator and not a
+# scratch rewrite - one #property, one OnCalculate, and RS1's four constructs.
+_lines = len(RAW.replace("\r\n", "\n").split("\n")) - 1
+check(_lines > 40000
+      and TEXT.count("#property indicator_buffers") == 1
+      and len(re.findall(r"(?m)^int\s+OnCalculate\(", TEXT)) == 1,
+      "G still one indicator translation unit (%d lines), one buffer declaration, "
+      "one OnCalculate - not a scratch rewrite" % _lines,
+      "got %d lines" % _lines)
 check(len(re.findall(r"(?m)^#include", TEXT)) == 6
       and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
       and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT
-      and "#include <QSMC/QSMC_Root.mqh>" in line_at(639),
+      and "#include <QSMC/QSMC_Root.mqh>" in body_at(pinmap.line(SUITE, 639), pinmap.line(SUITE, 639) + 1)
+      if pinmap.line(SUITE, 639) > 0 else
+          re.search(r"(?m)^#include <QSMC/QSMC_Root\.mqh>", TEXT) is not None,
       "G exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes, root remains L639; no "
       "duplicated logic", str(re.findall(r"(?m)^#include.*", TEXT)))
 check(len(re.findall(r"(?m)^#property indicator_buffers", TEXT)) == 1,

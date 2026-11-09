@@ -239,25 +239,42 @@ _DEFAULT = None
 
 
 def C(suite, n):
-    """A raw coordinate in the snapshot `suite` is pinned against.
+    """Mark `n` as an ALREADY-CURRENT line, so it is not translated again.
 
-    Use this for a number that is NOT itself a pin: the line returned by
-    `fn_end(...)`, or a probe that scans the file for a construct. Passing such
-    a number to `line()` would have pinmap look for a pin near it and silently
-    return a neighbouring construct's line."""
-    return _Raw(suite, n)
+    Use this for a value that came out of the file under test - the line
+    returned by `fn_end(...)`, or a scan result. Such a number is not a
+    coordinate in any snapshot, and passing it to `line()` would make pinmap
+    look for a pin near it and return a neighbouring construct's line.
+
+    The `suite` argument is kept for call compatibility and for readability at
+    the call site (which suite's helper produced it); it has no effect, because
+    a current line belongs to every suite equally."""
+    return _Raw(n)
 
 
 class _Raw(int):
-    """An int that remembers which snapshot it is a coordinate in."""
+    """An integer that is ALREADY a line of the file under test.
 
-    def __new__(cls, suite, n):
-        self = int.__new__(cls, n)
-        self.suite = suite
-        return self
+    The marker carries no suite on purpose: it used to, and that is what went
+    wrong. `pinmap.C(SUITE, fn_end(DEF))` was written as if `fn_end()` returned
+    a snapshot coordinate, but `fn_end()` resolves its own input first, so the
+    value it returns is a CURRENT line. Wrapping that current line in a
+    coordinate and then passing it to `body()`, which resolves again, translated
+    a translated number: it read `<real end> + <offset of the nearest pin>`.
+
+    That stayed invisible for as long as the file did not grow: the drift for a
+    resolved-by-fingerprint pin was zero, so the double translation was an
+    identity. The first release that inserted anything above these functions
+    turned it into a wrong span - which is why these suites went red while the
+    code they describe was intact.
+
+    So the marker's only job is "do not resolve me again"."""
+
+    def __new__(cls, n):
+        return int.__new__(cls, n)
 
     def resolve(self):
-        return default_map().resolve(self.suite, int(self))
+        return int(self)
 
 
 def default_map():
