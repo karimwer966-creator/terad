@@ -1,0 +1,60 @@
+; =====================================================================
+; QSMC — professional-execution preset (EA: QSMC_AutoTrader)
+;
+; WHY THIS FILE EXISTS
+; The indicator reads the market well: structure, liquidity sweeps,
+; displacement, order blocks, FVGs, premium/discount, targets. What it
+; does NOT do is behave like a professional at the moment of taking the
+; trade: it has no session window, no daily entry cap, no cooldown after
+; a loss, and it either takes the whole target or nothing. Those four
+; habits are not analysis, they are discipline, and they belong in the
+; execution layer — this preset sets them.
+;
+; THE PRESET DOES NOT ARM THE ACCOUNT. InpEnableTrading stays false and
+; InpDryRun stays true. Load it, read the journal lines for a few days,
+; then walk the INERT -> DRY RUN -> demo ladder in
+; docs/QSMC_GO_LIVE_RUNBOOK.md.
+;
+; THE VALUES AND WHY
+;   session 07:00-20:00 server  covers London open through the NY
+;                               afternoon; the hours where the indicator's
+;                               own kill zones live. CHANGE THIS to your
+;                               broker's server offset - open a chart, look
+;                               at the clock in the Market Watch window, and
+;                               compare it with your own time.
+;   max 3 entries / day         a professional takes a few good trades, not
+;                               every setup. Three is generous for a 4H
+;                               model; it stops a chop day from revenge-
+;                               trading a small account to zero.
+;   cooldown 60 min             after a losing close. No re-entry inside the
+;                               hour: the market did not change because you
+;                               were stopped out, but your judgement did.
+;   partial 50% at +1.00R       bank half at the first clean R, move the stop
+;                               to entry (InpBreakEvenAtR=1.00, already the
+;                               default). The rest rides to the indicator's
+;                               target. This converts "right but stopped at
+;                               break-even" from a loss of opportunity into
+;                               a small win.
+;
+; HOW TO LOAD
+;   1. Attach QSMC_AutoTrader to a chart, open its Properties -> Inputs.
+;   2. Press "Load" and pick this file.
+;   3. Press OK. The Experts journal prints one "discipline:" line with all
+;      four values — if that line does not match this file, you loaded a
+;      different preset.
+;
+; Every value below is an EXECUTION setting. None of them changes what the
+; indicator detects; reload the chart afterwards and the analysis is
+; identical.
+; =====================================================================
+
+InpEnableTrading=false
+InpDryRun=true
+
+InpSessionStartHour=7
+InpSessionEndHour=20
+InpMaxTradesPerDay=3
+InpCooldownAfterLossMin=60
+InpPartialCloseAtR=1.0
+InpPartialClosePercent=50.0
+InpBreakEvenAtR=1.00

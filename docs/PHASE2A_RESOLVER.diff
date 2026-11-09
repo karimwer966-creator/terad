@@ -1,0 +1,35 @@
+--- a/nadir2.mq5 (phase 2A baseline)
++++ b/nadir2.mq5
+@@ -5817,7 +5817,7 @@
+ int ResolveFinalSignal(const int closed,string &why)
+   {
+    why="";
+-   if(closed<0 || closed>=ArraySize(g_buf_c)) return 0;
++   g_res_score=0; if(closed<0 || closed>=g_rates_total-1 || closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_t)) return 0;
+    double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+               ?g_atr_buf[closed]:g_atr;
+    int vote[4]; int w[4]; string nm[4];
+@@ -5827,9 +5827,9 @@
+    vote[1]=PA_ZoneAt(g_buf_c[closed],closed,atr,zn,zt,zb,zd)
+            ?(zd>0?1:(zd<0?-1:0)):0;
+    w[1]=InpResWeightZone; nm[1]="zone";
+-   vote[2]=g_rxn_best_buy.valid?1:(g_rxn_best_sell.valid?-1:0);
++   bool rb=(g_rxn_built_time==g_buf_t[closed] && g_rxn_best_buy.valid && g_rxn_best_buy.level>=(int)RXN_LEVEL_REACTION); bool rs=(g_rxn_built_time==g_buf_t[closed] && g_rxn_best_sell.valid && g_rxn_best_sell.level>=(int)RXN_LEVEL_REACTION); vote[2]=(rb?1:0)-(rs?1:0);
+    w[2]=InpResWeightReaction; nm[2]="reaction";
+-   vote[3]=g_tac_dir;
++   vote[3]=(g_tac_closed?g_tac_dir:0);
+    w[3]=InpResWeightTactical; nm[3]="tactical";
+    int buy=0,sell=0; string vb="",vs="";
+    for(int k=0;k<4;k++)
+@@ -5838,9 +5838,9 @@
+       if(vote[k]<0){ sell+=w[k]; if(vs!="") vs+="+"; vs+=nm[k]; }
+      }
+    g_res_score=buy>0?buy:sell;
+-   if(buy>0 && sell>0)
++   if((buy>0 && sell>0) || (rb && rs))
+      {
+-      why="CONFLICT: BUY "+vb+" ("+IntegerToString(buy)+") vs SELL "+vs+" ("+
++      why="CONFLICT: BUY "+vb+(rb && rs?"reaction(two-sided)+":"")+" ("+IntegerToString(buy)+") vs SELL "+(rb && rs?"reaction(two-sided)+":"")+vs+" ("+
+           IntegerToString(sell)+") - disagreeing layers mean stand aside";
+       return 2;
+      }

@@ -1,0 +1,93 @@
+; QSMC v6.6.16 — Conservative first-trial preset for a $5,000 account.
+; Load this in QSMC_AutoTrader (Inputs tab -> Load).
+;
+; Verified envelope against v6.6.16 source (MQL5/Experts/QSMC_AutoTrader.mq5):
+;   - DRY RUN initially (flip InpDryRun=false after verified journal).
+; REAL trading is DISABLED in this preset. Arming requires InpAllowRealTrading=true +
+; InpRealAccountConfirm=<this exact login> + InpRealServerConfirm=<this exact server>,
+; re-verified before every order. See docs/QSMC_UNIFIED_DEMO_REAL_2026-11-09.md
+;   - InpEnableTrading is STILL THE MASTER SWITCH — default false; set to true
+;     ONLY after DRY RUN has shown correct CORE reception and guard behaviour.
+;   - Risk per trade 0.10% (clamped by InpMaxRiskPercent=0.10).
+;   - Daily loss 0.50% (baseline = equity at day roll, reset only via
+;     InpResetBreakersAtInit=true).
+;   - Account DD 3%, consecutive-loss breaker 2, max 1 position, max 3/day.
+;   - Session 10:00-18:00 server, cooldown 60 min after loss.
+;   - Partial 50% at 1.50R, break-even at 1.00R.
+;   - Spread <=60 pts, slippage <=30 pts, RR@fill >=1.20, signal age <=2 bars.
+;   - InpMinRR1 / InpSniperNewsFilter / InpUseWeightedGates are nadir2 (indicator)
+;     inputs — setting them here is harmless (MT5 ignores unknown .set keys on
+;     the EA) but they have been removed from this v6.6.16 file; configure them
+;     on the nadir2 chart instance.
+;
+; NOTE: nadir2 indicator inputs (gate profile, RR, thresholds) are set on the
+; chart-attached nadir2 instance. The EA's iCustom reader uses nadir2's DEFAULT
+; inputs (per the [QSMC_AT INSTANCE] line at attach). For the STRICT trial gate
+; profile, attach nadir2 to the chart with its defaults before loading the EA.
+
+; ---- master safety switches -------------------------------------------------
+InpEnableTrading=false             ; MASTER SWITCH: set to true ONLY after DRY RUN verified
+InpDryRun=true                     ; journal orders, never send
+InpAllowRealTrading=false
+InpRealAccountConfirm=
+InpRealServerConfirm=
+InpResetBreakersAtInit=false       ; set true ONLY to clear a tripped breaker after review
+
+InpPinTimeframeMinutes=0
+; ---- core -------------------------------------------------------------------
+InpMagic=20261027
+InpIndicatorName=nadir2
+InpTradeComment=QSMC-AUTO
+
+; ---- risk (per trade 0.10% ≈ $5 stop-loss on $5k) ---------------------------
+InpLotMode=QSMC_LOT_RISK_PERCENT
+InpRiskPercent=0.10
+InpMaxRiskPercent=0.10             ; hard ceiling
+InpFixedLots=0.00
+
+; ---- target selection & exits -----------------------------------------------
+InpTPLevel=QSMC_TP_LEVEL1          ; use TP1 from the indicator (≈1.5R)
+InpBreakEvenAtR=1.00               ; move SL to entry at +1R
+InpPartialCloseAtR=1.50            ; bank 50% at +1.5R
+InpPartialClosePercent=50.0
+InpUseTPPips=false                 ; use indicator TP (no pip ladder)
+InpPipPoints=0
+InpTP1Pips=100
+InpTP2Pips=200
+InpTP3Pips=300
+InpTP1ClosePercent=40.0
+InpTP2ClosePercent=40.0
+InpMoveSLToBEAtTP1=true
+InpMoveSLToTP1AtTP2=true
+
+; ---- trial circuit breakers -------------------------------------------------
+InpMaxDailyLossPercent=0.50        ; ≈ $25/day halt (baseline = equity at day roll)
+IInpMaxDailyLossMoney=0.00
+InpFixedLotsMaxRiskPercent=2.00
+npMaxAccountDrawdownPct=3.00      ; ≈ $150 total halt, manual reset required
+InpStopAfterConsecLoss=2           ; halt after 2 losing closes
+InpMaxOpenPositions=1              ; one position at a time
+InpMaxTradesPerDay=3               ; hard daily entry cap
+
+; ---- filters ----------------------------------------------------------------
+InpMaxSpreadPoints=60              ; absolute cap on XAUUSD (~0.60 USD)
+InpMaxSpreadFracOfStop=0.10        ; spread must not exceed 10% of stop
+InpDeviationPoints=30              ; max slippage on market orders
+InpMaxDataAgeSeconds=30            ; refuse on stale feed/disconnect
+InpMinRRAtFill=1.20                ; refuse if residual RR at fill < 1.2
+InpMinStopPoints=20
+InpMaxStopPoints=5000
+InpOrderRetryMax=3
+InpMaxSignalAgeBars=2
+InpCloseOnOpposite=false
+
+; ---- session: 10:00-18:00 server (London/NY window) ------------------------
+InpSessionStartHour=10
+InpSessionEndHour=18
+InpCooldownAfterLossMin=60         ; one hour cooldown after any losing close
+
+; ---- execution / diagnostics ------------------------------------------------
+InpPollSeconds=2
+InpVerbose=true                    ; log every refused signal for the journal
+InpHeartbeatSeconds=300
+InpHeartbeatLookback=200

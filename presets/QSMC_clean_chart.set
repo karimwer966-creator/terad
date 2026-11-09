@@ -1,0 +1,63 @@
+; =====================================================================
+; QSMC — clean-chart preset (DISPLAY ONLY)
+;
+; What this does: keeps ONE small card, the confirmed entry arrows and the
+; two nearest S/R levels, and switches off the research layers that cover
+; the candles (scenario labels, preview marks, battle annotations, trade
+; box, OTE zones, session/pivot lines).
+;
+; What this does NOT do: it does not touch a single entry gate, threshold,
+; buffer or risk number. All gate inputs stay at their defaults, because
+; they are not listed here at all. The preset cannot change a decision.
+;
+; How to load in MetaTrader 5:
+;   1. Right-click the chart -> "Indicator List" -> nadir2 -> "Properties".
+;   2. Press "Load" at the bottom of the Inputs tab and pick this file.
+;   3. OK. The chart redraws on the next closed bar (or on the next tick).
+;
+; To go back to everything: press "Reset" in the same dialog.
+; =====================================================================
+
+InpDisplayMode=0
+InpUltraCleanMode=true
+InpShowAIDashboard=true
+InpDashboardMaxRows=5
+InpDashboardCollapsible=true
+InpDashboardFullWidth=false
+
+; --- what is drawn on the price axis -------------------------------
+InpShowEntries=true
+InpShowSLTP=true
+InpShowEntryPreviewMarks=false
+InpShowTacticalEntries=false
+InpShowZREEntryMarks=false
+InpShowEarlyBreakPreview=false
+InpShowEarlyBreakTrigger=false
+InpShowEntryPreview=false
+InpShowMTFExecutionEntry=false
+InpShowBattleAnnotations=false
+InpShowTradeBox=false
+InpDrawTradeLevels=false
+
+; --- how many of each family may exist at once ---------------------
+InpMaxStructureShown=3
+InpMaxStrongOB=2
+InpMaxZonesShown=2
+InpMaxBreakersShown=1
+InpMaxFVGShown=1
+InpMaxLiquidityShown=2
+InpMaxConfluentSRLevels=3
+InpMaxZonesPerSide=2
+InpMaxChartObjects=250
+
+; --- context lines that are noise on a 4H chart ---------------------
+InpShowOTE=false
+InpShowSessionHL=false
+InpShowPivots=false
+InpShowCamarilla=false
+InpShowPremiumDiscount=false
+InpShowKillZones=false
+
+; --- label spacing: more air between texts --------------------------
+InpResolveLabelCollisions=true
+InpLabelMinGapPx=18

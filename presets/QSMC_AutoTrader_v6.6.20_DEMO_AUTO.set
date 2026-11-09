@@ -1,0 +1,109 @@
+; =====================================================================
+; QSMC v6.6.20 — DEMO AUTO preset (EA: QSMC_AutoTrader)
+;
+; THIS FILE IS OPTIONAL. It is a printout of the EA's COMPILED DEFAULTS.
+; Attaching QSMC_AutoTrader with no .set and no Inputs editing gives exactly
+; this configuration: the EA arms itself on a DEMO account, InpPinTimeframeMinutes
+; pins it to M15, and every number below is the value the journal prints in the
+; "EFFECTIVE DEFAULTS vs PRESET" table at attach (0 differences = identical).
+;
+; Load it only to RESTORE these values after editing Inputs by hand.
+;
+; What it does on a demo account:
+;   risk 0.10% per trade at the stop (OrderCalcProfit, not tick arithmetic)
+;   daily loss stop 0.50% of day-start equity, account DD halt 3.00% from the
+;   equity HIGH-WATER MARK, 2 consecutive losses, max 3 entries/server day,
+;   60 min cooldown after a loss, session 10:00-18:00 server
+;   break-even +1.00R, partial 50% at +1.50R, spread <= 60 pts,
+;   slippage <= 30 pts, RR@fill >= 1.20, stop 20..5000 pts, signal age <= 2 bars,
+;   tick age < 30 s, one position
+;
+; What it does NOT do:
+; REAL trading. This preset (like the compiled defaults) never arms a real
+; account. Arming requires InpAllowRealTrading=true + InpRealAccountConfirm=
+; <this exact login> + InpRealServerConfirm=<this exact server>, all three
+; re-verified before every order. See docs/QSMC_UNIFIED_DEMO_REAL_2026-11-09.md
+; The HARD ceilings are 0.50% / 2.00% / 8.00% and no input can exceed them.
+;
+; Every breaker below is still live: daily, account drawdown, consecutive
+; losses, stale data, spread, mandatory stop-loss. "Armed" is not "unsupervised".
+; =====================================================================
+
+
+; ---- master safety switches --------------------------------------------
+InpEnableTrading=true
+InpDryRun=false
+InpAllowRealTrading=false
+InpRealAccountConfirm=
+InpRealServerConfirm=
+; REAL profile (only used when a REAL account is detected AND fully authorized;
+; independently configurable, more conservative, HARD-bounded):
+InpRealMaxRiskPercent=0.25
+InpRealMaxDailyLossPercent=1.00
+InpRealMaxAccountDrawdownPct=5.00
+InpRealMaxAggregateRiskPercent=0.50
+InpRealMaxOpenPositions=1
+InpRealMaxTradesPerDay=2
+; DEMO profile aggregate-risk bound (0 disables; HARD max 2.00%):
+InpMaxAggregateRiskPercent=1.00
+InpResetBreakersAtInit=false
+
+; ---- core --------------------------------------------------------------
+InpMagic=20261027
+InpPinIndicatorDefaults=true
+InpIndicatorName=nadir2
+InpTradeComment=QSMC-AUTO
+
+; ---- risk --------------------------------------------------------------
+InpLotMode=QSMC_LOT_RISK_PERCENT
+InpRiskPercent=0.10
+InpMaxRiskPercent=0.10
+InpFixedLots=0.00
+InpFixedLotsMaxRiskPercent=1.00
+
+; ---- targets / exits ---------------------------------------------------
+InpTPLevel=QSMC_TP_LEVEL1
+InpBreakEvenAtR=1.00
+InpUseTPPips=false
+InpPipPoints=0
+InpTP1Pips=100
+InpTP2Pips=200
+InpTP3Pips=300
+InpTP1ClosePercent=40.00
+InpTP2ClosePercent=40.00
+InpMoveSLToBEAtTP1=true
+InpMoveSLToTP1AtTP2=true
+InpPartialCloseAtR=1.50
+InpPartialClosePercent=50.00
+
+; ---- circuit breakers --------------------------------------------------
+InpMaxDailyLossPercent=0.50
+InpMaxDailyLossMoney=0.00
+InpMaxAccountDrawdownPct=3.00
+InpStopAfterConsecLoss=2
+
+; ---- filters -----------------------------------------------------------
+InpMaxSpreadPoints=60
+InpMaxSpreadFracOfStop=0.10
+InpDeviationPoints=30
+InpMaxOpenPositions=1
+InpMaxDataAgeSeconds=30
+InpMaxSignalAgeBars=2
+InpMinStopPoints=20
+InpMaxStopPoints=5000
+InpCloseOnOpposite=false
+InpMinRRAtFill=1.20
+InpOrderRetryMax=3
+
+; ---- session / discipline ----------------------------------------------
+InpPinTimeframeMinutes=15
+InpSessionStartHour=10
+InpSessionEndHour=18
+InpMaxTradesPerDay=3
+InpCooldownAfterLossMin=60
+
+; ---- execution / diagnostics -------------------------------------------
+InpPollSeconds=2
+InpVerbose=false
+InpHeartbeatSeconds=300
+InpHeartbeatLookback=200

@@ -1,0 +1,86 @@
+; =====================================================================
+; QSMC — FIXED 0.05 LOT + 100/200/300 PIP LADDER (EA: QSMC_AutoTrader)
+;
+; WHAT THIS PRESET DOES
+;   * every signal takes the SAME volume: 0.05 lots (InpLotMode=FIXED)
+;   * the indicator's own TP is replaced by three fixed rungs measured
+;     from the FILL price: 100, 200 and 300 pips
+;   * rung 1 closes 40% of the ORIGINAL volume and puts the stop at the
+;     entry; rung 2 closes another 40% and moves the stop to rung 1;
+;     the last 20% runs to rung 3, which is the TP on the ticket
+;   * stops are still the indicator's stops. A signal whose stop is
+;     wider than the 1% risk ceiling can pay for at 0.05 lots is
+;     REFUSED - that is the safety, not a bug
+;
+; WHAT IT DOES NOT DO
+;   * it does NOT arm the account. InpEnableTrading stays false and
+;     InpDryRun stays true. Walk the ladder in
+;     docs/QSMC_GO_LIVE_RUNBOOK.md: INERT -> DRY RUN -> demo -> live.
+;   * it changes nothing in the indicator. The signal chain is the
+;     indicator's; only the exit geometry is this EA's.
+;
+; THE MONEY, STATED PLAINLY (XAUUSD, 1 pip = 0.10 = 10 points)
+;   0.05 lots = 5 oz => $5 per $1.00 of price.
+;   REALISED, if all three rungs are reached:
+;     rung 1  0.02 lot x $10.00 = $20.00
+;     rung 2  0.02 lot x $20.00 = $40.00
+;     rung 3  0.01 lot x $30.00 = $30.00
+;     total                      $90.00   (before spread/commission)
+;   If only rung 1 is reached and the stop is at break-even afterwards:
+;     +$20.00 banked, remainder closed at 0.00.
+;   A stop of $9.00 at 0.05 lots risks $45.00. On a $4,587 account the
+;   1% ceiling is $45.87, so the stop may be at most ~$9.17 away.
+;   Wider stops -> the signal is skipped, by design. If you see many
+;   "volume resolves to 0" lines, lower InpFixedLots to 0.02 or move
+;   to a larger demo balance; do NOT raise InpMaxRiskPercent above 1.0
+;   (the code refuses it anyway).
+;
+; IF THE JOURNAL PRINTS A PIp SIZE YOU DID NOT EXPECT
+;   The pip is a broker convention. Gold is treated as 0.10 of price
+;   whatever the digits. To use broker points instead (1 point = 1
+;   "pip"), set InpPipPoints=1. To use $1.00 per rung on gold with a
+;   2-digit quote, set InpPipPoints=100.
+;
+; HOW TO LOAD
+;   1. Attach QSMC_AutoTrader to the XAUUSD chart (the SAME symbol and
+;      timeframe you want to trade), Properties -> Inputs.
+;   2. Press "Load", pick this file, OK.
+;   3. Read the two "[QSMC_AT] pip ladder ON" / "ladder money at" lines
+;      in the Experts tab. They restate every number above for YOUR
+;      broker. If they do not match, stop and fix the inputs.
+; =====================================================================
+
+InpEnableTrading=false
+InpDryRun=true
+InpAllowRealTrading=false
+
+; --- sizing: the request, literally -------------------------------
+InpLotMode=1
+InpFixedLots=0.05
+InpMaxRiskPercent=1.0
+
+; --- exits: the 100/200/300 ladder --------------------------------
+InpUseTPPips=true
+InpPipPoints=0
+InpTP1Pips=100
+InpTP2Pips=200
+InpTP3Pips=300
+InpTP1ClosePercent=40.0
+InpTP2ClosePercent=40.0
+InpMoveSLToBEAtTP1=true
+InpMoveSLToTP1AtTP2=true
+
+; --- one exit manager: the R-based partial is off while the ladder is on
+InpPartialCloseAtR=0.0
+InpBreakEvenAtR=1.00
+
+; --- guard rails --------------------------------------------------
+InpMaxOpenPositions=1
+InpMaxTradesPerDay=3
+InpCooldownAfterLossMin=60
+InpMaxDailyLossPercent=3.0
+InpMaxSignalAgeBars=2
+InpMaxSpreadPoints=40
+InpDeviationPoints=30
+InpMinRRAtFill=1.0
+InpMaxStopPoints=5000
