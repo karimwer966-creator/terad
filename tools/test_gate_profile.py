@@ -204,12 +204,16 @@ require("PRACTICAL (entry thresholds relaxed" in ea,
         "the heartbeat names a relaxed profile instead of leaving it implicit")
 
 # ------------------------------------------- 8. the companion's risk rules stand
-require(re.search(r"input\s+double\s+InpMaxRiskPercent\s*=\s*1\.0*\s*;", ea) is not None,
-        "the 1% risk ceiling is unchanged by this work")
+# 2026-11-09: the compiled risk default moved 1.00 -> 0.10 with the demo-auto
+# delivery (preset value). The ceiling is still a single HARD constant the
+# operator cannot raise, so the invariant this section defends is unchanged.
+require(re.search(r"input\s+double\s+InpMaxRiskPercent\s*=\s*0\.10\s*;", ea) is not None,
+        "the risk default is the 0.10% preset value")
 require("if(vmax_cap>HardMaxRiskPercent()) vmax_cap=HardMaxRiskPercent();" in ea,
         "the ceiling still cannot be raised by the operator (one HARD value)")
-require(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*false", ea) is not None,
-        "the companion still ships inert")
+require(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*true", ea) is not None and
+        re.search(r"input\s+bool\s+InpDemoOnly\s*=\s*true", ea) is not None,
+        "the companion ships armed on demo (2026-11-09), and demo-only")
 
 print("-" * 74)
 print("Gate-profile contracts passed: default STRICT, five numeric thresholds only,")

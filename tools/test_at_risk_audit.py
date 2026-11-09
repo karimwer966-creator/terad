@@ -131,9 +131,12 @@ check("FIXED_LOT_REPORT" in calc and "REFUSED: OrderCalcProfit()" in calc,
 # B3: the HARD ceiling applies to FIXED as well.
 fixed_branch = calc[calc.index("if(InpLotMode==QSMC_LOT_FIXED)"):]
 fixed_branch = fixed_branch[:fixed_branch.index("double pct=MathMin")]
-check("HardMaxRiskPercent()" in fixed_branch,
-      "B3 the HARD per-trade ceiling is enforced in FIXED mode as well")
-check("if(guard_pct<=0.0 || guard_pct>HardMaxRiskPercent()) guard_pct=HardMaxRiskPercent();" in fixed_branch,
+check("EffFixedLotRiskPct()" in fixed_branch and "HardMaxRiskPercent()" in fn_body("EffFixedLotRiskPct"),
+      "B3 the HARD per-trade ceiling is enforced in FIXED mode as well (via the one resolver)")
+# 2026-11-09 (F2): the clamp moved into EffFixedLotRiskPct(), which the guard AND
+# the banner call. Pinning the old inline clamp would pin the duplication.
+check("double guard_pct=EffFixedLotRiskPct();" in fixed_branch and
+      "double cap_pct=EffFixedLotRiskPct();" in RAW,
       "B3 a fixed-lot guard of 0 no longer means 'no ceiling at all'")
 
 # B4: the five required fields.
@@ -237,10 +240,18 @@ check("a chart .set cannot reach this instance" in ident,
       "E3 the identity line states that a chart .set cannot reach this instance")
 
 # =================================================== F. prohibitions (unchanged)
-check(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*false", RAW) is not None,
-      "F1 ships INERT")
-check(re.search(r"input\s+bool\s+InpDryRun\s*=\s*true", RAW) is not None,
-      "F1 ships DRY RUN")
+# 2026-11-09: the shipping default is now ARMED ON DEMO (the production preset
+# became the compiled defaults). The prohibition these two checks encoded - "a
+# fresh attach cannot lose real money" - is enforced by the blockers below it:
+# demo-only, an empty InpRealAccountConfirm, and an unconditional real-account
+# refusal in OnInit. Asserting the old literals would assert a default that no
+# longer exists.
+check(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*true", RAW) is not None,
+      "F1 ships ARMED for demo")
+check(re.search(r"input\s+bool\s+InpDryRun\s*=\s*false", RAW) is not None,
+      "F1 sends orders instead of printing them")
+check("if(is_real)" in CODE and "INIT REFUSED: this is a REAL account" in RAW,
+      "F1b a real account is refused in OnInit before the first tick")
 check(re.search(r"input\s+bool\s+InpDemoOnly\s*=\s*true", RAW) is not None,
       "F1 ships demo-only")
 check("for(int shift=count-1;shift>=1;shift--)" in CODE,
@@ -262,8 +273,8 @@ _dd     = re.search(r"double\s+HardMaxDDPercent\(\)\s*\{\s*return\s+([0-9.]+)", 
 check(_risk and _daily and _dd, "F4 the three HARD ceilings are readable literals")
 _HARD = {"risk": _risk.group(1) if _risk else "", "daily": _daily.group(1) if _daily else "",
          "dd": _dd.group(1) if _dd else ""}
-check(_HARD["risk"] == "5.00" and _HARD["daily"] == "10.00" and _HARD["dd"] == "20.00",
-      "F4 the HARD ceilings are 5.00 / 10.00 / 20.00 as documented")
+check(_HARD["risk"] == "0.50" and _HARD["daily"] == "2.00" and _HARD["dd"] == "8.00",
+      "F4 the HARD ceilings are 0.50 / 2.00 / 8.00 (tightened 2026-11-09)")
 
 # The exact stale sentences that contradicted them. Each is asserted ABSENT.
 for stale, why in [

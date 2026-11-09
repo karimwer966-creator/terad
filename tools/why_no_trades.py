@@ -12,7 +12,7 @@ merely quiet.
 
 Two independent questions have to be answered, in this order:
 
-  1. COULD it trade?   The EA ships inert and carries three breakers. An account
+  1. COULD it trade?   The EA ships armed for demo and carries three breakers. An account
      that is down 2.6% can be perfectly healthy code that is refusing by design.
      Resetting those breakers to "get some trades" is the worst possible reading
      of "it does not open trades".
@@ -201,14 +201,17 @@ def diagnose(lines) -> dict:
                 "The EA is INERT: InpEnableTrading=false",
                 on_line,
                 "Shipping default. It will classify signals and send nothing.",
-                "Only set InpEnableTrading=true after the dry-run stage in "
-                "docs/QSMC_GO_LIVE_RUNBOOK.md. Never as a first step.")
+                "The compiled default is true (armed on demo). If you are seeing "
+                "INERT, someone turned it off - check the attach line's PRESET CHECK "
+                "row for InpEnableTrading before assuming a fault.")
         elif "DRY RUN" in on_line:
             add("dry-run", "WARNING",
                 "The EA is in DRY RUN: orders are printed, never sent",
                 on_line,
-                "This is the intended state for Stage 1. 'DRY RUN' lines in the "
-                "journal are the trade plan it would have executed.",
+                "The compiled default is false (orders are sent). A DRY RUN here "
+                "means an input or a .set put it back: 'DRY RUN' lines in the journal "
+                "are the trade plan it would have executed. Rehearsals no longer "
+                "consume InpMaxTradesPerDay.",
                 "If you expected real demo orders, set InpDryRun=false — after "
                 "reading the DRY RUN lines and confirming SL/TP/RR are sane.")
 

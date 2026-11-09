@@ -6,6 +6,14 @@
 ;   InpDryRun=true          -> orders are journaled only
 ;   InpDemoOnly=true        -> real-money accounts are refused
 ;
+; 2026-11-09: this file is now the "same configuration, but inert" document.
+; The compiled defaults of QSMC_AutoTrader.mq5 are the ARMED demo configuration
+; (see QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set). Loading this preset changes ONE
+; thing - it puts the EA back into INERT + DRY RUN - and nothing else. Two keys
+; that MT5 silently ignored are also fixed here ("IInpMaxDailyLossMoney" and
+; "npMaxAccountDrawdownPct"), so the 3.00% account-DD halt really is applied when
+; this preset is loaded.
+;
 ; Use it for the first production install and the demo/paper observation
 ; window. Moving to live money is a separate, manual decision described in
 ; docs/QSMC_GO_LIVE_RUNBOOK.md; it is not a preset flip.
@@ -27,7 +35,8 @@ InpDemoOnly=true
 InpRealAccountConfirm=
 InpResetBreakersAtInit=false
 
-InpPinTimeframeMinutes=0
+InpPinTimeframeMinutes=15
+InpPinIndicatorDefaults=true
 ; ---- core -------------------------------------------------------------
 InpMagic=20261027
 InpIndicatorName=nadir2
@@ -56,9 +65,9 @@ InpMoveSLToTP1AtTP2=true
 
 ; ---- circuit breakers -------------------------------------------------
 InpMaxDailyLossPercent=0.50
-IInpMaxDailyLossMoney=0.00
-InpFixedLotsMaxRiskPercent=2.00
-npMaxAccountDrawdownPct=3.00
+InpMaxDailyLossMoney=0.00
+InpFixedLotsMaxRiskPercent=1.00
+InpMaxAccountDrawdownPct=3.00
 InpStopAfterConsecLoss=2
 InpMaxOpenPositions=1
 InpMaxTradesPerDay=3

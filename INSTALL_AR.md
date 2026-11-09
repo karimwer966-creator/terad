@@ -61,15 +61,24 @@ MQL5/Experts/KLJ_DataFeeder.mq5             (اختياري، يصل معطلً�
 
 ## 4. تشغيل EA بأمان
 
-الـ EA يصل بهذه الافتراضات:
+الـ EA يصل الآن (2026-11-09) **مُسلَّحًا على حساب demo** بلا أي `.set`:
 
 ```text
-InpEnableTrading=false
-InpDryRun=true
+InpEnableTrading=true
+InpDryRun=false
 InpDemoOnly=true
+InpRealAccountConfirm=      (فارغ)
+InpPinTimeframeMinutes=15   (شارت M15 فقط)
 ```
 
-أي أنه **لا يرسل أوامر** عند التحميل.
+أي أنه **يرسل أوامر حقيقية على demo** من أول إرفاق. الحساب الحقيقي يُرفض في
+`OnInit` (`INIT_FAILED`) ولا يمكن تسليحه إلا بـ `InpDemoOnly=false` **وكتابة رقم
+الحساب** في `InpRealAccountConfirm`. القواطع كلها تعمل كما هي: خسارة يومية
+0.50%، سحب حساب 3.00% من أعلى حقوق ملكية، خسارتان متتاليتان، 3 دخولات/يوم.
+
+إن أردت سلّم المشاهدة القديم (خامل ثم DRY RUN) فحمّل
+`presets/QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set`: يعطي نفس الإعداد مع
+`InpEnableTrading=false` و`InpDryRun=true`.
 
 1. حمّل:
    - `presets/QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set`
@@ -128,7 +137,7 @@ presets/QSMC_v6.6.20_latency_diagnosis.set
 - handshake صحيح.
 - لا يوجد تسريب كائنات/مقابض عند الإزالة.
 - قواطعDaily/DD/consecutive تعمل كما هو موثق.
-- لا توجد أوامر حقيقية بينما `InpEnableTrading=false` أو `InpDryRun=true`.
+- لا أوامر على حساب حقيقي أبدًا: الـEA يرفض الحساب الحقيقي في `OnInit` ما لم تكتب رقمه في `InpRealAccountConfirm`.
 
 الحقيقي يتطلب قرارًا يدويًا عبر `docs/QSMC_GO_LIVE_RUNBOOK.md`، وليس مجرد تحميل preset.
 

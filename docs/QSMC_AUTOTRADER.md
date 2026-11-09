@@ -15,10 +15,15 @@
 يمرّر أي إعداد يتجاوزها (`iCustom` بلا مدخلات = إعدادات المؤشر الافتراضية).
 هو **مُنفّذ** لما نشره المؤشر، وليس مصدر إشارة ثانياً.
 
-**الأمان الافتراضي:** يصل **معطّلاً** (`InpEnableTrading=false`)، وأول تشغيل
-يكون **تجربة على الورق** (`InpDryRun=true`)، ويرفض الحساب الحقيقي
-(`InpDemoOnly=true`). سقف المخاطرة 1% من رأس المال لكل صفقة، والبرنامج يرفض
-أي صفقة بلا وقف، أو بوقف في الجهة الخاطئة، أو بوقف أوسع من الحد.
+**الأمان الافتراضي (تغيّر في 2026-11-09):** يصل الـEA **مُسلَّحًا على حساب
+demo** بلا أي ملف `.set`: `InpEnableTrading=true` و`InpDryRun=false`، مع
+`InpDemoOnly=true` و`InpRealAccountConfirm` فارغ — أي أن **الحساب الحقيقي
+يُرفض في `OnInit` قبل أول تيك** (`INIT_FAILED`)، ولا يمكن تسليحه إلا بقرار
+بشري مزدوج: `InpDemoOnly=false` + كتابة رقم الحساب في `InpRealAccountConfirm`.
+المخاطرة 0.10% لكل صفقة (المرجع: الوقف)، والسقوف الصلبة 0.50% / 2.00% / 8.00%.
+ملف `presets/QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set` أصبح يعني «نفس
+الإعداد لكن خامل + DRY RUN» لمن يريد سلّم المشاهدة القديم.
+التفصيل الكامل: `docs/DEMO_AUTO_DEFAULTS_2026-11-09.md`.
 
 **ما لا يفعله:** لا مضاعفة عقود (martingale)، ولا تعزيز للخسارة، ولا توسيع
 للوقف، ولا مطاردة لسعر تحرّك. وليس ضماناً للربح: الحجم والفلاتر إدارة مخاطر،
@@ -47,7 +52,7 @@ Everything about that exception is checked as well:
 | Check | What it proves |
 | --- | --- |
 | G4 | the layer (18 headers + indicator + probe) and the data feeder still contain no trade API |
-| G8 | the companion ships inert, dry-run and demo-only, its risk ceiling is 1% and the sizing code actually clamps to it, and there is no lot doubling anywhere |
+| G8 | the companion ships **armed on demo** (`InpEnableTrading=true`, `InpDryRun=false`, `InpDemoOnly=true`, empty `InpRealAccountConfirm`) and refuses a real account in `OnInit`; its HARD ceilings are 0.50% / 2.00% / 8.00% and the sizing code clamps to them; there is no lot doubling anywhere |
 | contract test | it reads only the CORE buffers (7–12), never shift 0, never a preview or ZRE buffer; a signal with no stop or with wrong-side geometry is refused |
 
 ---

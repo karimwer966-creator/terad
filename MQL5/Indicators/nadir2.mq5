@@ -15475,6 +15475,9 @@ AlertDispatcherClear();
       }
    }
 
+   // 2026-11-09 (section 3): the role must be known BEFORE the first publish, or
+   // the mismatch test compares this instance's hash against the other role's.
+   QA_SetInstanceRole((int)g_instance_role);
    // v6.6.16 (audit B): structured instance identity line (always printed, for
    // both roles, exactly once per init). This is what tells the operator which
    // role each running instance owns and proves there are no anonymous ones.
@@ -15485,7 +15488,8 @@ AlertDispatcherClear();
          " | SYMBOL=",_Symbol,
          " | TIMEFRAME=",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | INIT_TIMESTAMP=",TimeToString(g_instance_init_time,TIME_DATE|TIME_SECONDS),
-         " | silent=",(QSMC_IsReaderSilent()?"YES":"no"));
+         " | silent=",(QSMC_IsReaderSilent()?"YES":"no"),
+         " | input_hash_scope=SAME-ROLE-ONLY (a tuned VISUAL panel is not a mismatch for this reader)");
    return INIT_SUCCEEDED;
 }
 void OnDeinit(const int reason)

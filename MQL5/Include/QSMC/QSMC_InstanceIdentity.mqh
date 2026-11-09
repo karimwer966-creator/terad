@@ -28,6 +28,27 @@ string QSMC_DefaultDiagPrefix()
 // Host-only adaptation (the EA includes only the common diagnostic reader).
 #ifdef QSMC_HOST_IDENTITY
 void QA_InputHashes(uint &actual,uint &defaults); // generated complete manifest
+
+// 2026-11-09 (section 3): the instance-mismatch test is ROLE-AWARE.
+//
+// QSMC_InstanceBase() is scoped by (server, login, symbol, timeframe) - NOT by
+// role - and every instance published the same key "H"+input_hash. So the
+// VISUAL instance on the chart and the EA_READER instance created by the EA's
+// iCustom call compared their input hashes with each other. They are not
+// supposed to match when the chart has a .set loaded: the EA passes no input
+// list at all (compiled defaults by design) while the panel may be tuned. The
+// reader then saw "INSTANCE MISMATCH", QA_CoreDisplayRefresh() returned before
+// publishing, the panel read "INSTANCE MISMATCH - WAIT" and the EA's heartbeat
+// read "CORE signals ...: 0". One operator-facing symptom, two unrelated causes.
+//
+// The role is NOT part of the input hash (the generated manifest covers the 576
+// inputs only), so the fix is not "hash the role": it is to compare like with
+// like. Each role publishes and scans its own namespace H<role>_<hash>; the
+// legacy H<hash> key is still written so an older reader sees the shape it
+// always did.
+int g_qa_instance_role=-1;
+void QA_SetInstanceRole(const int role) { g_qa_instance_role=role; }
+string QA_RoleTag() { return (g_qa_instance_role>=0 ? IntegerToString(g_qa_instance_role)+"_" : ""); }
 string QA_InstanceDiagPrefix()
 {
    uint actual=0,defaults=0; QA_InputHashes(actual,defaults);
@@ -39,6 +60,8 @@ void QA_InstancePublish()
    static datetime last=0;
    datetime now=TimeCurrent(); if(now<=0 || now==last) return; last=now;
    string base=QSMC_InstanceBase();
+   GlobalVariableSet(base+"H"+QA_RoleTag()+IntegerToString((long)actual),(double)now);
+   // Legacy name (no role tag): kept so a reader built before 2026-11-09 still sees it.
    GlobalVariableSet(base+"H"+IntegerToString((long)actual),(double)now);
    if(actual==defaults)
    {
@@ -58,7 +81,9 @@ void QA_InstancePublish()
 bool QA_InstanceMismatch()
 {
    uint actual=0,defaults=0; QA_InputHashes(actual,defaults);
-   string prefix=QSMC_InstanceBase()+"H",own=prefix+IntegerToString((long)actual);
+   // Role-scoped: a VISUAL panel with a chart .set is not a mismatch for the
+   // EA_READER instance that runs on compiled defaults (see the note above).
+   string prefix=QSMC_InstanceBase()+"H"+QA_RoleTag(),own=prefix+IntegerToString((long)actual);
    datetime now=TimeCurrent();
    for(int i=GlobalVariablesTotal()-1;i>=0;i--)
    {
@@ -72,8 +97,11 @@ bool QA_InstanceMismatch()
 string QA_InstanceDescription()
 {
    uint actual=0,defaults=0; QA_InputHashes(actual,defaults);
-   return (QA_InstanceMismatch()?"INSTANCE MISMATCH | ":"")+string("input hash ")+IntegerToString((long)actual)+
-          " | EA DEFAULT hash "+IntegerToString((long)defaults)+" (private iCustom, no inheritance)";
+   return (QA_InstanceMismatch()?"INSTANCE MISMATCH | ":"")+string("role ")+
+          (g_qa_instance_role>=0 ? IntegerToString(g_qa_instance_role) : string("?"))+
+          string(" input hash ")+IntegerToString((long)actual)+
+          " | EA DEFAULT hash "+IntegerToString((long)defaults)+
+          " | compared only against the SAME role (a tuned VISUAL panel is expected, not a fault)";
 }
 #endif
 #endif

@@ -521,7 +521,15 @@ else:
     if "OrderSend" not in ea_code and "g_trade." not in ea_code:
         fail("G8 the execution companion never calls the trade API - it is documented "
              "as the execution path, so either it is broken or it is the wrong file")
-    required_defaults = {"InpEnableTrading": "false", "InpDryRun": "true",
+    # 2026-11-09 (demo-first delivery): the shipping default is ARMED ON DEMO.
+    # The three properties that made "inert + dry run" safe are replaced by three
+    # that are checked just as hard, because the risk of the new default is a real
+    # account, not a demo one:
+    #   1. InpDemoOnly=true            - a real account is refused outright;
+    #   2. InpRealAccountConfirm=""    - arming real money needs the login typed in;
+    #   3. OnInit refuses a real account BEFORE the first tick (not merely when
+    #      the EA happens to be armed), which is what the is_real block below pins.
+    required_defaults = {"InpEnableTrading": "true", "InpDryRun": "false",
                          "InpDemoOnly": "true"}
     for name, want in required_defaults.items():
         m = re.search(r'^input\s+bool\s+' + name + r'\s*=\s*(true|false)\s*;', ea, re.M)
@@ -529,11 +537,21 @@ else:
             fail("G8 %s is not declared as an input bool - a safety switch that "
                  "cannot be found cannot be trusted" % name)
         elif m.group(1) != want:
-            fail("G8 %s defaults to %s, but %s is the shipping default: a trading EA "
-                 "must arrive inert, dry-run and demo-only" % (name, m.group(1), want))
-    if not re.search(r'InpMaxRiskPercent\s*=\s*1\.0*\s*;', ea):
-        fail("G8 InpMaxRiskPercent default is not 1.0 - the documented hard ceiling "
-             "is 1% of equity per trade")
+            fail("G8 %s defaults to %s, but %s is the shipping default (armed on demo, "
+                 "refused on real)" % (name, m.group(1), want))
+    if not re.search(r'if\(is_real\)\s*\{', ea_code):
+        fail("G8 the real-account refusal is not unconditional. The compiled defaults "
+             "arm the EA, so OnInit must refuse a real account before the first tick - "
+             "a guard that only fires 'when already armed' is a guard that arrives late")
+    if not re.search(r'InpMaxRiskPercent\s*=\s*0\.10?\s*;', ea):
+        fail("G8 InpMaxRiskPercent default is not 0.10 - the shipping preset and the "
+             "documented hard ceiling must be the same number")
+    hard = re.findall(r'double HardMax(?:RiskPercent|DailyPercent|DDPercent)\(\)\{\s*return\s*([\d.]+);',
+                      ea)
+    if [float(v) for v in hard] != [0.50, 2.00, 8.00]:
+        fail("G8 the HARD ceilings are %s, expected 0.50 / 2.00 / 8.00 - the ceiling is "
+             "the last line of defence and it is not allowed to drift upward silently"
+             % (hard,))
     if "MathMin(InpRiskPercent,vmax_cap)" not in ea_code:
         fail("G8 the sizing path does not clamp the requested risk to InpMaxRiskPercent")
     # 2026-11-06 audit (A1/A2): the old assertion demanded a 1.0% literal inside
@@ -554,8 +572,10 @@ else:
              "repository, in any file, at any setting")
     if "PositionModify" in ea_code and "InpBreakEvenAtR" not in ea:
         fail("G8 positions are modified without the break-even input that bounds it")
-    NOTES.append("G8 execution companion ships INERT + DRY RUN + demo-only, risk bounded "
-                 "by the one HARD ceiling, no martingale")
+    NOTES.append("G8 execution companion ships ARMED ON DEMO (InpEnableTrading=true, "
+                 "InpDryRun=false, InpDemoOnly=true), refuses a real account at init "
+                 "without InpRealAccountConfirm, risk bounded by the one HARD ceiling "
+                 "(0.50/2.00/8.00), no martingale")
 
 # ------------------------------------------------------------- G5 log flood
 # "Flood" has one meaning here: a line printed from the per-bar path. That is a

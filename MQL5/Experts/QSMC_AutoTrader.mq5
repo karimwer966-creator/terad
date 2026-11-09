@@ -201,8 +201,8 @@ enum ENUM_QSMC_TP_SOURCE
   };
 
 //--- 1. switches -----------------------------------------------------
-input bool   InpEnableTrading        = false;  // MASTER SWITCH: false = this EA never sends an order
-input bool   InpDryRun               = true;   // true = log the order it would send, send nothing
+input bool   InpEnableTrading        = true;   // MASTER SWITCH: false = this EA never sends an order. SHIPPING DEFAULT IS ARMED (2026-11-09); a real account still cannot start without InpRealAccountConfirm, so 'armed' means 'armed on demo'.
+input bool   InpDryRun               = false;  // true = log the order it would send, send nothing. SHIPPING DEFAULT IS LIVE-ON-DEMO (2026-11-09); DRY RUN no longer consumes the entry budget.
 input bool   InpDemoOnly             = true;   // refuse a real-money account entirely
 input string InpRealAccountConfirm   = "";     // real account: type the account NUMBER here to allow it
 input long   InpMagic                = 20261027; // magic number; this EA only manages its own positions
@@ -213,10 +213,10 @@ input string InpTradeComment         = "QSMC-AUTO"; // comment stamped on every 
 //--- 2. sizing -------------------------------------------------------
 input ENUM_QSMC_LOT_MODE InpLotMode  = QSMC_LOT_RISK_PERCENT; // how the volume is chosen
 input double InpRiskPercent          = 0.10;   // % of equity risked by the stop, per trade (first-trial conservative: 0.10%)
-input double InpMaxRiskPercent       = 1.00;   // hard ceiling per input (shipping default 1%); HardMaxRiskPercent() always wins, and both values are printed at attach
+input double InpMaxRiskPercent       = 0.10;   // hard ceiling per input (matches the production preset); HardMaxRiskPercent() always wins, and both values are printed at attach
 // 2026-11-06 audit (A1): this comment used to state the code ceiling was 0.25%.
 input double InpFixedLots            = 0.00;   // volume used when InpLotMode = QSMC_LOT_FIXED
-input double InpFixedLotsMaxRiskPercent = 2.00; // fixed-lot guard: refuse a fixed volume whose stop would risk more than this % of equity (0 = no guard, not recommended)
+input double InpFixedLotsMaxRiskPercent = 1.00; // fixed-lot guard: refuse a fixed volume whose stop would risk more than this % of equity (0 = use the HARD ceiling). One number, printed and enforced by EffFixedLotRiskPct().
 
 //--- 3. exits --------------------------------------------------------
 input ENUM_QSMC_TP_SOURCE InpTPLevel = QSMC_TP_LEVEL1; // which indicator target becomes the TP
@@ -241,7 +241,7 @@ input bool   InpMoveSLToBEAtTP1      = true;   // after rung 1 the stop goes to 
 input bool   InpMoveSLToTP1AtTP2     = true;   // after rung 2 the stop goes to rung 1 (locks the first leg)
 
 //--- 4. filters ------------------------------------------------------
-input int    InpMaxSpreadPoints      = 30;     // absolute cap; refuse a signal while the spread is wider
+input int    InpMaxSpreadPoints      = 60;     // absolute cap; refuse a signal while the spread is wider (preset value)
 // v6.6.15: trial guard - refuse when the current spread is more than this
 // fraction of the planned stop distance. 10% = 0.10 means if the stop is
 // 100 points away and spread is 12 points, the setup is skipped: the cost
@@ -251,17 +251,17 @@ input double InpMaxSpreadFracOfStop  = 0.10;   // max spread as fraction of stop
 // which is under one pip on a 5-digit FX pair and well under a normal gold
 // spread: the server answered "requote" and the operator had no input to widen
 // it. 0 = fill at any price (NOT recommended; the broker decides the fill).
-input int    InpDeviationPoints      = 20;     // max slippage accepted on a market order, in points
+input int    InpDeviationPoints      = 30;     // max slippage accepted on a market order, in points (preset value)
 input int    InpMaxOpenPositions     = 1;      // positions of this magic and symbol
 input double InpMaxDailyLossPercent  = 0.50;   // stop for the day after this equity drawdown, in % of the day baseline; 0 = off (first-trial conservative: 0.5% ≈ $25 on $5k)
 input double InpMaxDailyLossMoney    = 0.00;   // MONEY STOP: same guard expressed in account currency (e.g. 200 = stop after -200.00). Non-zero WINS over the % stop. Currency is printed at attach.
 // v6.6.15: account-level circuit breakers for the first-trial playbook.
 // Unlike InpMaxDailyLossPercent these persist across day boundaries and
 // reference the equity at EA attach time (or the persisted high-water mark).
-input double InpMaxAccountDrawdownPct= 3.00;   // halt all new entries when equity drops this % from the EA's session-start equity (0 = off)
+input double InpMaxAccountDrawdownPct= 3.00;   // halt all new entries when equity drops this % from the equity HIGH-WATER MARK (0 = off)
 input int    InpStopAfterConsecLoss  = 2;      // halt new entries after this many losing closes in a row (0 = off)
 input bool   InpResetBreakersAtInit  = false;  // SAFETY RESET: when true at EA attach, clears persisted day/session breaker state for this (login, magic, symbol) and re-captures a fresh baseline. Logs RESET_REASON. MEANT FOR OPERATOR USE AFTER REVIEW — does NOT auto-clear on TF change or mid-session reload.
-input int    InpPinTimeframeMinutes  = 0;      // TIMEFRAME PIN: 0 = off. Otherwise a bar length in MINUTES (1/5/15/30/60/240...): the EA refuses to run on any other chart timeframe and asks to be re-attached. It never switches the chart itself.
+input int    InpPinTimeframeMinutes  = 15;     // TIMEFRAME PIN: 0 = off. 15 = this EA only runs on an M15 chart (the QSMC profile timeframe) and refuses any other. It never switches the chart itself.
 input int    InpMaxDataAgeSeconds    = 30;     // refuse entries when the last tick is older than this (stale feed / disconnect); 0 = off
 input int    InpMaxSignalAgeBars     = 2;      // ignore a signal older than this many closed bars
 input int    InpMinStopPoints        = 20;     // refuse a stop closer than this
@@ -272,7 +272,7 @@ input bool   InpCloseOnOpposite      = false;  // close this magic's position on
 // can be a fraction of what the gate approved. InpMinRRAtFill re-checks RR at the
 // price actually on the ticket; 0 disables the check (and restores the old
 // behaviour, where a plan could be chased down to almost nothing).
-input double InpMinRRAtFill          = 1.00;   // refuse when reward:risk at the CURRENT price is below this; 0 = off
+input double InpMinRRAtFill          = 1.20;   // refuse when reward:risk at the CURRENT price is below this; 0 = off (preset value)
 input int    InpOrderRetryMax        = 3;      // transient order failures tolerated per signal before it is abandoned
 
 //--- 5. professional trade management ---------------------------------
@@ -286,11 +286,11 @@ input int    InpOrderRetryMax        = 3;      // transient order failures toler
 //   * bank half at +1R instead of hoping for the full target.
 // Every one of them is OFF by default (0), so behaviour is unchanged unless an
 // operator asks for it - presets/QSMC_pro_execution.set turns them on.
-input int    InpSessionStartHour     = 0;      // server hour to start trading (0 + End 0 = no session filter)
-input int    InpSessionEndHour       = 0;      // server hour to stop  (wrap over midnight is allowed, e.g. 22 -> 6)
+input int    InpSessionStartHour     = 10;     // server hour to start trading (Start == End = no session filter)
+input int    InpSessionEndHour       = 18;     // server hour to stop  (wrap over midnight is allowed, e.g. 22 -> 6)
 input int    InpMaxTradesPerDay      = 3;      // entries per server day, persisted (0 = no cap; 3 = conservative cap for first trial, well above the 2-loss breaker)
-input int    InpCooldownAfterLossMin = 0;      // minutes to stand down after a losing close (0 = off)
-input double InpPartialCloseAtR      = 0.0;    // close InpPartialClosePercent at this R (0 = off)
+input int    InpCooldownAfterLossMin = 60;     // minutes to stand down after a losing close (0 = off) (preset value)
+input double InpPartialCloseAtR      = 1.50;   // close InpPartialClosePercent at this R (0 = off) (preset value)
 input double InpPartialClosePercent  = 50.0;   // percent of the volume banked at InpPartialCloseAtR
 
 //--- 6. runtime ------------------------------------------------------
@@ -310,9 +310,11 @@ int       g_day_index=-1;
 double    g_day_start_equity=0.0;  // v6.6.16: EQUITY captured at server-day roll (includes any open floating P&L, commissions, swaps, closed P&L at day start). Name kept for minimal diff; the value IS equity.
 bool      g_day_blocked=false;
 // v6.6.15 trial guards - persisted across ticks, survive day roll
-double    g_session_start_equity=0.0; // equity at EA attach (account drawdown reference)
+double    g_session_start_equity=0.0; // equity at EA attach (INFORMATIONAL since F4: the DD breaker measures from the high-water mark)
+double    g_equity_hwm=0.0;            // F4 (2026-11-09): highest equity since the last reviewed reset - the real account-DD reference
+datetime  g_hwm_flush=0;               // last terminal write of the HWM (throttled: a new high can happen every tick)
 int       g_consec_losses=0;          // losing closes in a row (reset by any winner or manual reset on next session)
-bool      g_loss_streak_blocked=false;// set true once g_consec_losses hits the breaker - requires EA restart to clear
+bool      g_loss_streak_blocked=false;// set true once g_consec_losses hits the breaker - cleared only by a reviewed reset (InpResetBreakersAtInit), never by a restart
 bool      g_drawdown_blocked=false;   // set true when account drawdown trips
 
 string    g_seen[QSMC_AT_SEEN_RING];
@@ -668,9 +670,14 @@ string TradeEnvBlock(const bool buy)
 // bound of what this EA is willing to do on any account size, wide enough to
 // express a deliberate plan, and still far below "hot". The percentage that is
 // actually used is always echoed at attach and on every heartbeat.
-double HardMaxRiskPercent(){ return 5.00; }   // per-trade: 5.00% absolute max
-double HardMaxDailyPercent(){ return 10.00; } // per-day: 10.00% absolute max
-double HardMaxDDPercent(){ return 20.00; }    // account DD: 20.00% absolute max
+// 2026-11-09 (F8): the ceilings were 5.00% / 10.00% / 20.00% - wide enough to
+// express a plan, and also wide enough to end an account in one bad afternoon.
+// They are now 0.50% / 2.00% / 8.00%: still above every documented preset
+// (0.10% / 0.50% / 3.00%), so the clamp never fights a deliberate plan, and no
+// single fat-fingered input can turn this EA into a 5%-per-trade system.
+double HardMaxRiskPercent(){ return 0.50; }   // per-trade: 0.50% absolute max
+double HardMaxDailyPercent(){ return 2.00; }  // per-day: 2.00% absolute max
+double HardMaxDDPercent(){ return 8.00; }     // account DD: 8.00% absolute max
 
 // 2026-11-06 audit (A3): ONE resolver per limit. Every print site, every guard
 // and every sizing call goes through these. Before this, the attach line, the
@@ -697,6 +704,21 @@ double EffectiveDDPct()
   {
    if(InpMaxAccountDrawdownPct<=0.0) return 0.0;    // 0 = OFF
    return MathMin(InpMaxAccountDrawdownPct,HardMaxDDPercent());
+  }
+
+// 2026-11-09 (F2): ONE ceiling for FIXED-lot mode.
+//
+// Before this there were three answers to "what can a fixed lot risk?": the
+// input comment said 1%, the guard used InpFixedLotsMaxRiskPercent (2.00), and
+// the ladder banner recomputed MathMin(InpMaxRiskPercent,1.0) - a fourth number
+// that appeared in no guard at all. The operator read the banner, believed it,
+// and the enforcement used something else. The guard, the banner and the attach
+// table now all call this function.
+double EffFixedLotRiskPct()
+  {
+   double g=InpFixedLotsMaxRiskPercent;
+   if(g<=0.0 || g>HardMaxRiskPercent()) g=HardMaxRiskPercent();
+   return g;
   }
 
 // 2026-11-06 audit (B2): the loss a position would take at its own stop.
@@ -795,8 +817,9 @@ double CalcLots(const string sym,const double entry,const double sl,const bool b
       // different numbers depending on the lot mode. The effective ceiling is now
       // min(operator guard, HARD ceiling) for BOTH modes, and 0 disables only the
       // operator's own, never the HARD one.
-      double guard_pct=InpFixedLotsMaxRiskPercent;
-      if(guard_pct<=0.0 || guard_pct>HardMaxRiskPercent()) guard_pct=HardMaxRiskPercent();
+      // 2026-11-09 (F2): the operator's guard and the HARD ceiling are resolved
+      // in ONE place (EffFixedLotRiskPct), the same call the ladder banner makes.
+      double guard_pct=EffFixedLotRiskPct();
       double cap_money=eq*guard_pct/100.0;
       double eff_pct=(eq>0.0 ? loss/eq*100.0 : 0.0);
       if(loss>cap_money)
@@ -826,15 +849,50 @@ double CalcLots(const string sym,const double entry,const double sl,const bool b
 
    double pct=MathMin(InpRiskPercent,vmax_cap);
    if(pct<=0.0) return 0.0;
-   double risk_money=AccountInfoDouble(ACCOUNT_EQUITY)*pct/100.0;
+   double eq_sizing=AccountInfoDouble(ACCOUNT_EQUITY);
+   double risk_money=eq_sizing*pct/100.0;
    double dist=MathAbs(entry-sl);
-   double tick_size=SymbolInfoDouble(sym,SYMBOL_TRADE_TICK_SIZE);
-   double tick_value=SymbolInfoDouble(sym,SYMBOL_TRADE_TICK_VALUE);
-   if(dist<=0.0 || tick_size<=0.0 || tick_value<=0.0 || risk_money<=0.0) return 0.0;
+   if(dist<=0.0 || risk_money<=0.0) return 0.0;
 
-   double loss_per_lot=(dist/tick_size)*tick_value;
+   // 2026-11-09 (F3): size from the SAME number the journal prints.
+   //
+   // The old size came from (dist/tick_size)*tick_value per lot - correct only
+   // when the tick value is quoted per price tick and the contract multiplier is
+   // 1.0. HandleSignal printed the risk with the same identity, so a wrong
+   // identity looked consistent in the log and wrong in the account. The fix is
+   // the function that already existed for FIXED mode: OrderCalcProfit() answers
+   // "what does this position lose at that stop" with the broker's own contract
+   // specification. If it cannot answer, no order is sent - an unmeasurable risk
+   // is not a small risk.
+   double loss_per_lot=0.0;
+   if(!EstimateLossAtSL(sym,buy,1.0,entry,sl,loss_per_lot))
+     {
+      Print("[QSMC_AT SIZING] REFUSED: OrderCalcProfit() cannot price a stop at ",
+            DoubleToString(sl,_Digits)," from ",DoubleToString(entry,_Digits),
+            " on ",sym," (equity ",DoubleToString(eq_sizing,2),", target ",
+            DoubleToString(risk_money,2)," ",AccountInfoString(ACCOUNT_CURRENCY),
+            ") - unmeasurable risk is never sent");
+      return 0.0;
+     }
    if(loss_per_lot<=0.0) return 0.0;
    double lots=NormalizeLots(sym,risk_money/loss_per_lot);
+   if(lots<=0.0) return 0.0;
+
+   // Rounding to the broker step is not enough: the measured loss at the rounded
+   // volume can sit a hair above the target. Step the volume DOWN until the
+   // measured loss fits, so the enforced risk is <= the requested risk - never
+   // more. If the smallest tradable volume is already too big, lots becomes 0
+   // and the trade is refused: that is the honest answer for an account that
+   // cannot afford this stop at this size.
+   double step_v=SymbolInfoDouble(sym,SYMBOL_VOLUME_STEP);
+   if(step_v<=0.0) step_v=0.01;
+   double measured=0.0;
+   for(int fit_i=0;fit_i<64 && lots>0.0;fit_i++)
+     {
+      if(!EstimateLossAtSL(sym,buy,lots,entry,sl,measured)) return 0.0;
+      if(measured<=risk_money*1.0000001) break;
+      lots=NormalizeLots(sym,lots-step_v);
+     }
    if(lots<=0.0) return 0.0;
 
    // Free-margin guard: halve the volume until it fits, never the stop.
@@ -869,8 +927,13 @@ string DayGuardKey(const string leaf)
    // baseline, letting a loss on one symbol trip the guard on the other.
    // Timeframe intentionally omitted: the daily cap is per (account,magic,symbol)
    // regardless of which chart the EA is observing from.
+   // 2026-11-09 (F5): the symbol goes through KeySafe(). GlobalVariableSet()
+   // rejects names with characters outside [A-Za-z0-9_], and a rejected name
+   // fails SILENTLY - so on a symbol like "XAUUSD.m" or "US500-CFD" the day
+   // baseline would never persist and every reload would re-base today's loss
+   // to the current, already-drawn-down equity. GlobName() already did this.
    return ("QSMC_AT_DAY_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
-           "_"+IntegerToString(InpMagic)+"_"+_Symbol+"_"+leaf);
+           "_"+IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_"+leaf);
   }
 
 // Forward declarations: DayGuardLoad() (the restore path) reports the floor, and
@@ -915,6 +978,7 @@ void DayGuardLoad(const int day)
       GlobalVariableSet(DayGuardKey("EQ"),g_day_start_equity);
       GlobalVariableSet(kblk,0.0);
       GlobalVariableSet(ktr,0.0);   // new day, new entry budget
+      GlobalVariableSet(DayGuardKey("DRYTRADES"),0.0);   // F7: rehearsals are per day as well
       // v6.6.16: literal leaf call for the static contract (TRADES reset on a new server day).
       GlobalVariableSet(DayGuardKey("TRADES"),0.0);
       GlobalVariablesFlush();
@@ -1057,8 +1121,9 @@ void DayGuardUpdate()
 string SessionGuardKey(const string leaf)
   {
    // v6.6.16 (audit A): same symbol scoping as DayGuardKey for the same reason.
+   // 2026-11-09 (F5): same KeySafe() rationale as DayGuardKey.
    return ("QSMC_AT_SESS_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
-           "_"+IntegerToString(InpMagic)+"_"+_Symbol+"_"+leaf);
+           "_"+IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_"+leaf);
   }
 
 void SessionGuardPersist()
@@ -1067,20 +1132,56 @@ void SessionGuardPersist()
    GlobalVariableSet(SessionGuardKey("_DDB"),g_drawdown_blocked?1.0:0.0);
    GlobalVariableSet(SessionGuardKey("_LSB"),g_loss_streak_blocked?1.0:0.0);
    GlobalVariableSet(SessionGuardKey("_CL"),(double)g_consec_losses);
+   if(g_equity_hwm>0.0) GlobalVariableSet(SessionGuardKey("_HWM"),g_equity_hwm);
+   GlobalVariablesFlush();
+  }
+
+// 2026-11-09 (F1): the reset stamp.
+//
+// The consecutive-loss count is recomputed from deal history on every tick,
+// which is exactly what keeps a mid-streak reload honest. The one thing history
+// cannot know is that a human cleared the streak ON PURPOSE - so
+// InpResetBreakersAtInit cleared the flag and the next tick recomputed the same
+// streak from the same deals. The reset lasted milliseconds and the operator
+// saw "CONSEC_LOSS_BLOCKED" again with no explanation.
+//
+// The reset now writes a timestamp (GV leaf RST) and the walk stops at it:
+// "count the losses since the last reviewed reset" is the definition the
+// breaker always claimed to have.
+string ResetStampKey()
+  {
+   return ("QSMC_AT_RST_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
+           "_"+IntegerToString(InpMagic)+"_"+KeySafe(_Symbol));
+  }
+
+datetime ResetStamp()
+  {
+   string k=ResetStampKey();
+   if(!GlobalVariableCheck(k)) return 0;
+   return (datetime)(long)GlobalVariableGet(k);
+  }
+
+void StampReset()
+  {
+   GlobalVariableSet(ResetStampKey(),(double)(long)TimeCurrent());
    GlobalVariablesFlush();
   }
 
 int CountConsecutiveLosses()
   {
    // Walk deal history backwards (most recent first) for our magic; count
-   // consecutive DEAL_ENTRY_OUT with net<0 until we hit a winner or run out.
-   // Looks back up to 48 hours to avoid startup cost.
-   if(!HistorySelect(TimeCurrent()-172800,TimeCurrent())) return 0;
+   // consecutive DEAL_ENTRY_OUT with net<0 until we hit a winner, the reviewed
+   // reset, or the 48-hour startup window.
+   datetime rst=ResetStamp();
+   datetime from=TimeCurrent()-172800;
+   if(rst>0 && rst>from) from=rst;
+   if(!HistorySelect(from,TimeCurrent())) return 0;
    int streak=0;
    for(int i=HistoryDealsTotal()-1;i>=0;i--)
      {
       ulong t=HistoryDealGetTicket(i);
       if(t==0) continue;
+      if(rst>0 && (datetime)HistoryDealGetInteger(t,DEAL_TIME)<=rst) break;  // F1: before the reviewed reset
       if((long)HistoryDealGetInteger(t,DEAL_MAGIC)!=InpMagic) continue;
       if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(t,DEAL_ENTRY)!=DEAL_ENTRY_OUT) continue;
       // skip partial closes that still left the position open - only count
@@ -1108,18 +1209,42 @@ void SessionGuardUpdate()
    // 2026-11-06 audit (A3/C1): same defect class as the daily guard - a 0 input
    // (documented "off") used to become the HARD 20% ceiling. Disabled now means
    // disabled, and the heartbeat says DISABLED instead of printing a cap.
+   // 2026-11-09 (F4): the drawdown breaker measures from the HIGH-WATER MARK,
+   // not from the equity captured at the first attach.
+   //
+   // A frozen baseline has two holes. (a) If the EA is attached while the
+   // account is already down (the usual case: the operator attaches after a bad
+   // morning), the "3% account drawdown" limit starts 3% below where it really
+   // is, and the account can lose 6% from its peak before the breaker speaks.
+   // (b) After a good run the baseline never rises, so a profit that is given
+   // back counts as drawdown from the old, lower number - the breaker fires late
+   // and the operator cannot see why. The reference is now the highest equity
+   // seen since the last reviewed reset, persisted (throttled) as GV leaf _HWM.
+   double eq_hwm=AccountInfoDouble(ACCOUNT_EQUITY);
+   if(eq_hwm>0.0 && eq_hwm>g_equity_hwm)
+     {
+      g_equity_hwm=eq_hwm;
+      if(TimeCurrent()-g_hwm_flush>=30)
+        {
+         GlobalVariableSet(SessionGuardKey("_HWM"),g_equity_hwm);
+         g_hwm_flush=TimeCurrent();
+        }
+     }
    double dd_cap=EffectiveDDPct();
-   if(dd_cap>0.0 && g_session_start_equity>0.0 && !g_drawdown_blocked)
+   double dd_ref=(g_equity_hwm>0.0 ? g_equity_hwm : g_session_start_equity);
+   if(dd_cap>0.0 && dd_ref>0.0 && !g_drawdown_blocked)
      {
       double eq=AccountInfoDouble(ACCOUNT_EQUITY);
       double bal=AccountInfoDouble(ACCOUNT_BALANCE);
-      double floor_eq=g_session_start_equity*(1.0-dd_cap/100.0);
-      double dd_pct=(g_session_start_equity>0.0 ? (g_session_start_equity-eq)/g_session_start_equity*100.0 : 0.0);
+      double floor_eq=dd_ref*(1.0-dd_cap/100.0);
+      double dd_pct=(dd_ref>0.0 ? (dd_ref-eq)/dd_ref*100.0 : 0.0);
       if(eq<=floor_eq)
         {
          g_drawdown_blocked=true;
          Print("[QSMC_AT GUARD] BREAKER_STATE=TRIPPED | BREAKER_REASON=ACCOUNT_DRAWDOWN",
-               " | SESSION_BASELINE=",DoubleToString(g_session_start_equity,2),
+               " | HWM_BASELINE=",DoubleToString(dd_ref,2),
+               " | HWM_SOURCE=",(g_equity_hwm>0.0 ? "equity high-water mark" : "session baseline (legacy)"),
+               " | ATTACH_EQUITY=",DoubleToString(g_session_start_equity,2),
                " | FLOOR=",DoubleToString(floor_eq,2),
                " | CURRENT_BALANCE=",DoubleToString(bal,2),
                " | CURRENT_EQUITY=",DoubleToString(eq,2),
@@ -1185,6 +1310,26 @@ void CountOneTrade()
   {
    int n=TradesToday()+1;
    GlobalVariableSet(DayGuardKey("TRADES"),(double)n);
+   GlobalVariablesFlush();
+  }
+
+// 2026-11-09 (F7): a DRY RUN is a rehearsal of the PLAN, not an entry.
+//
+// It used to call CountOneTrade(), so a dry-run morning burned InpMaxTradesPerDay
+// and the first real signal of the afternoon was refused with "already 3
+// entries today" - a budget spent on orders that were never sent. Dry entries
+// are now counted separately (still persisted, still printed), so the operator
+// can rehearse the cap without consuming it.
+int DryTradesToday()
+  {
+   string k=DayGuardKey("DRYTRADES");
+   if(!GlobalVariableCheck(k)) return 0;
+   return (int)GlobalVariableGet(k);
+  }
+
+void CountOneDryTrade()
+  {
+   GlobalVariableSet(DayGuardKey("DRYTRADES"),(double)(DryTradesToday()+1));
    GlobalVariablesFlush();
   }
 
@@ -1435,7 +1580,7 @@ void HandleSignal(SQsigSignal &s)
    // --- professional discipline: session, day cap, cooldown ----------
    // 2026-11-06 audit (D2): the daily-breaker test that used to sit ABOVE this
    // line said "the same signal may be tradable later" (transient, no MarkSeen)
-   // while the identical test below says "EA restart required" (latched). Two
+   // while the identical test below said the EA must be restarted (latched). Two
    // equal conditions with two different meanings, and the first one made the
    // second unreachable. It is now tested once, in the latched group, where the
    // breaker's real semantics live.
@@ -1448,18 +1593,23 @@ void HandleSignal(SQsigSignal &s)
    // the EA (review + conscious decision to continue).
    if(g_day_blocked)
      {
-      NoteClass(key,"DAILY-LOSS breaker tripped - EA restart required to resume",REJECT_PERMANENT);
+      // 2026-11-09 (F6): the retired wording told the operator to restart the EA.
+      // False for the day guard in BOTH directions: a restart does not clear it
+      // (it is persisted), and none is needed (it clears at the next server day).
+      NoteClass(key,"DAILY-LOSS breaker tripped for this server day - it clears by itself at the next server day roll; a restart does NOT clear it",REJECT_PERMANENT);
       return;
      }
    if(g_drawdown_blocked)
      {
-      NoteClass(key,"ACCOUNT-DRAWDOWN breaker tripped - EA restart required to resume",REJECT_PERMANENT);
+      // 2026-11-09 (F6): a restart never cleared this either - it is persisted.
+      NoteClass(key,"ACCOUNT-DRAWDOWN breaker tripped - needs a human reset after review (InpResetBreakersAtInit=true once); a restart does NOT clear it",REJECT_PERMANENT);
       return;
      }
    if(g_loss_streak_blocked)
      {
       Note(key,"CONSECUTIVE-LOSS breaker tripped after "+
-           IntegerToString(InpStopAfterConsecLoss)+" losses - EA restart required to resume");
+           IntegerToString(InpStopAfterConsecLoss)+" losses - needs a human reset after review "+
+           "(InpResetBreakersAtInit=true once); a restart does NOT clear it");
       return;
      }
 
@@ -1553,11 +1703,19 @@ void HandleSignal(SQsigSignal &s)
       return;
      }
 
+   // 2026-11-09 (F3): the number printed as "risk" is the number the terminal
+   // will charge at that stop, measured at the exact volume about to be sent.
+   // If it cannot be measured the signal is refused - printing a risk that was
+   // never verified is how a journal starts lying about an account.
    double risk_money=0.0;
-   double tick_size=SymbolInfoDouble(sym,SYMBOL_TRADE_TICK_SIZE);
-   double tick_value=SymbolInfoDouble(sym,SYMBOL_TRADE_TICK_VALUE);
-   if(tick_size>0.0 && tick_value>0.0)
-      risk_money=(dist/tick_size)*tick_value*lots;
+   if(!EstimateLossAtSL(sym,buy,lots,price,s.sl,risk_money))
+     {
+      Note(key,"cannot price the stop at "+DoubleToString(s.sl,_Digits)+
+           " from "+DoubleToString(price,_Digits)+
+           " (OrderCalcProfit failed) - refusing to send an unmeasured risk");
+      g_refused++;
+      return;
+     }
 
    g_signals++;
 
@@ -1574,9 +1732,12 @@ void HandleSignal(SQsigSignal &s)
             " tp ",DoubleToString(s.tp,_Digits)," risk ",DoubleToString(risk_money,2),
             " | signal bar ",TimeToString(s.bar_time,TIME_DATE|TIME_MINUTES));
       MarkSeen(key,s.bar_time,s.dir);
-      // DRY RUN counts too: the daily cap must be rehearsable, otherwise the
-      // operator meets it for the first time with real money.
-      CountOneTrade();
+      // 2026-11-09 (F7): rehearse the cap, do not spend it. A dry run used to
+      // call CountOneTrade(), so three rehearsed plans exhausted InpMaxTradesPerDay
+      // and the first REAL signal of the day was refused with "already 3 entries
+      // today". Dry entries have their own persisted counter and are printed next
+      // to the live one.
+      CountOneDryTrade();
       g_dry++;
       return;
      }
@@ -1937,7 +2098,10 @@ string DisciplineSuffix()
       out+=" | session open ("+IntegerToString(InpSessionStartHour)+":00-"+
            IntegerToString(InpSessionEndHour)+":00 server)";
    if(InpMaxTradesPerDay>0)
-      out+=" | entries today "+IntegerToString(TradesToday())+"/"+IntegerToString(InpMaxTradesPerDay);
+      out+=" | entries today "+IntegerToString(TradesToday())+"/"+IntegerToString(InpMaxTradesPerDay)+
+           (InpDryRun ? " (dry rehearsals do not count)" : "");
+   if(InpDryRun)
+      out+=" | dry rehearsals today "+IntegerToString(DryTradesToday());
    if(CooldownActive(why))
       out+=" | COOLDOWN: "+why;
    if(InpPartialCloseAtR>0.0)
@@ -2348,6 +2512,16 @@ void DiagnosticHeartbeat()
                AccountInfoString(ACCOUNT_CURRENCY);
       _guard+=" floor="+DoubleToString(DayFloorEquity(g_day_start_equity),2);
      }
+   // 2026-11-09 (F4): the account-drawdown breaker measures from the equity
+   // high-water mark. Both the reference and the percentage belong on the line,
+   // because "2.60% down" only means something next to what it is measured from.
+   if(g_equity_hwm>0.0 && EffectiveDDPct()>0.0)
+     {
+      double _dd_hwm=(g_equity_hwm-_curEq)/g_equity_hwm*100.0;
+      if(_dd_hwm<0.0) _dd_hwm=0.0;
+      _guard+=" dd_hwm="+DoubleToString(_dd_hwm,2)+"%/"+DoubleToString(EffectiveDDPct(),2)+"%"+
+              " hwm="+DoubleToString(g_equity_hwm,2);
+     }
    // DAY_STOP_STATE= is the field an operator greps for: it names the stop that is
    // in force (MONEY / PERCENT / DISABLED) in the same word the trip line uses.
    _guard+=" DAY_STOP_STATE="+DayStopState();
@@ -2587,6 +2761,93 @@ string TimeframePinRefusal()
            ". No signal is read and no order can be sent, because a timeframe change "+
            "re-runs OnInit and restores the persisted day block. Re-attach on the pinned "+
            "timeframe, or set InpPinTimeframeMinutes=0 to disable the pin.");
+  }
+
+//+------------------------------------------------------------------+
+//| 2026-11-09 (§1): "EFFECTIVE DEFAULTS vs PRESET" table.            |
+//|                                                                   |
+//| The compiled defaults are now the production preset, so an attach |
+//| with no .set loaded must be indistinguishable from one with the   |
+//| .set loaded - and the operator must be able to SEE that without   |
+//| trusting a comment. This prints every input whose current value   |
+//| differs from presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set.       |
+//|                                                                   |
+//| Zero rows means the compiled defaults ARE the preset. A row is    |
+//| not an error: it is a deliberate change, printed once so it can   |
+//| not be forgotten between sessions.                                |
+//|                                                                   |
+//| Reference note: the old PRODUCTION_SAFE.set carried two malformed |
+//| keys ("npMaxAccountDrawdownPct" and "IInpMaxDailyLossMoney"), so  |
+//| MT5 silently ignored them and a loaded preset never applied the   |
+//| 3.00% account-DD halt. The corrected file is the reference here.  |
+//+------------------------------------------------------------------+
+void PresetDelta(string &out[],const string name,const string preset,const string now)
+  {
+   if(preset==now) return;
+   int n=ArraySize(out);
+   ArrayResize(out,n+1);
+   out[n]="   "+name+" | preset="+preset+" | now="+now;
+  }
+
+void PrintEffectiveVsPreset()
+  {
+   string rows[];
+   PresetDelta(rows,"InpEnableTrading","true",(InpEnableTrading? "true":"false"));
+   PresetDelta(rows,"InpDryRun","false",(InpDryRun? "true":"false"));
+   PresetDelta(rows,"InpDemoOnly","true",(InpDemoOnly? "true":"false"));
+   PresetDelta(rows,"InpRealAccountConfirm","",InpRealAccountConfirm);
+   PresetDelta(rows,"InpMagic","20261027",IntegerToString(InpMagic));
+   PresetDelta(rows,"InpPinIndicatorDefaults","true",(InpPinIndicatorDefaults? "true":"false"));
+   PresetDelta(rows,"InpIndicatorName","nadir2",InpIndicatorName);
+   PresetDelta(rows,"InpTradeComment","QSMC-AUTO",InpTradeComment);
+   PresetDelta(rows,"InpLotMode","QSMC_LOT_RISK_PERCENT",EnumToString(InpLotMode));
+   PresetDelta(rows,"InpRiskPercent","0.10",DoubleToString(InpRiskPercent,2));
+   PresetDelta(rows,"InpMaxRiskPercent","0.10",DoubleToString(InpMaxRiskPercent,2));
+   PresetDelta(rows,"InpFixedLots","0.00",DoubleToString(InpFixedLots,2));
+   PresetDelta(rows,"InpFixedLotsMaxRiskPercent","1.00",DoubleToString(InpFixedLotsMaxRiskPercent,2));
+   PresetDelta(rows,"InpTPLevel","QSMC_TP_LEVEL1",EnumToString(InpTPLevel));
+   PresetDelta(rows,"InpBreakEvenAtR","1.00",DoubleToString(InpBreakEvenAtR,2));
+   PresetDelta(rows,"InpUseTPPips","false",(InpUseTPPips? "true":"false"));
+   PresetDelta(rows,"InpPipPoints","0",IntegerToString(InpPipPoints));
+   PresetDelta(rows,"InpTP1Pips","100",IntegerToString(InpTP1Pips));
+   PresetDelta(rows,"InpTP2Pips","200",IntegerToString(InpTP2Pips));
+   PresetDelta(rows,"InpTP3Pips","300",IntegerToString(InpTP3Pips));
+   PresetDelta(rows,"InpTP1ClosePercent","40.00",DoubleToString(InpTP1ClosePercent,2));
+   PresetDelta(rows,"InpTP2ClosePercent","40.00",DoubleToString(InpTP2ClosePercent,2));
+   PresetDelta(rows,"InpMoveSLToBEAtTP1","true",(InpMoveSLToBEAtTP1? "true":"false"));
+   PresetDelta(rows,"InpMoveSLToTP1AtTP2","true",(InpMoveSLToTP1AtTP2? "true":"false"));
+   PresetDelta(rows,"InpMaxSpreadPoints","60",IntegerToString(InpMaxSpreadPoints));
+   PresetDelta(rows,"InpMaxSpreadFracOfStop","0.10",DoubleToString(InpMaxSpreadFracOfStop,2));
+   PresetDelta(rows,"InpDeviationPoints","30",IntegerToString(InpDeviationPoints));
+   PresetDelta(rows,"InpMaxOpenPositions","1",IntegerToString(InpMaxOpenPositions));
+   PresetDelta(rows,"InpMaxDailyLossPercent","0.50",DoubleToString(InpMaxDailyLossPercent,2));
+   PresetDelta(rows,"InpMaxDailyLossMoney","0.00",DoubleToString(InpMaxDailyLossMoney,2));
+   PresetDelta(rows,"InpMaxAccountDrawdownPct","3.00",DoubleToString(InpMaxAccountDrawdownPct,2));
+   PresetDelta(rows,"InpStopAfterConsecLoss","2",IntegerToString(InpStopAfterConsecLoss));
+   PresetDelta(rows,"InpResetBreakersAtInit","false",(InpResetBreakersAtInit? "true":"false"));
+   PresetDelta(rows,"InpPinTimeframeMinutes","15",IntegerToString(InpPinTimeframeMinutes));
+   PresetDelta(rows,"InpMaxDataAgeSeconds","30",IntegerToString(InpMaxDataAgeSeconds));
+   PresetDelta(rows,"InpMaxSignalAgeBars","2",IntegerToString(InpMaxSignalAgeBars));
+   PresetDelta(rows,"InpMinStopPoints","20",IntegerToString(InpMinStopPoints));
+   PresetDelta(rows,"InpMaxStopPoints","5000",IntegerToString(InpMaxStopPoints));
+   PresetDelta(rows,"InpCloseOnOpposite","false",(InpCloseOnOpposite? "true":"false"));
+   PresetDelta(rows,"InpMinRRAtFill","1.20",DoubleToString(InpMinRRAtFill,2));
+   PresetDelta(rows,"InpOrderRetryMax","3",IntegerToString(InpOrderRetryMax));
+   PresetDelta(rows,"InpSessionStartHour","10",IntegerToString(InpSessionStartHour));
+   PresetDelta(rows,"InpSessionEndHour","18",IntegerToString(InpSessionEndHour));
+   PresetDelta(rows,"InpMaxTradesPerDay","3",IntegerToString(InpMaxTradesPerDay));
+   PresetDelta(rows,"InpCooldownAfterLossMin","60",IntegerToString(InpCooldownAfterLossMin));
+   PresetDelta(rows,"InpPartialCloseAtR","1.50",DoubleToString(InpPartialCloseAtR,2));
+   PresetDelta(rows,"InpPartialClosePercent","50.00",DoubleToString(InpPartialClosePercent,2));
+   PresetDelta(rows,"InpPollSeconds","2",IntegerToString(InpPollSeconds));
+   PresetDelta(rows,"InpVerbose","false",(InpVerbose? "true":"false"));
+   PresetDelta(rows,"InpHeartbeatSeconds","300",IntegerToString(InpHeartbeatSeconds));
+   PresetDelta(rows,"InpHeartbeatLookback","200",IntegerToString(InpHeartbeatLookback));
+   int n=ArraySize(rows);
+   Print("[QSMC_AT PRESET CHECK] compiled defaults vs presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set: ",
+         (n==0 ? "IDENTICAL (no .set file is required to trade this configuration)"
+               : IntegerToString(n)+" difference(s)"));
+   for(int i=0;i<n;i++) Print("[QSMC_AT PRESET CHECK]",rows[i]);
   }
 
 int OnInit()
@@ -2924,12 +3185,17 @@ int OnInit()
       if(GlobalVariableCheck(sk_dayeq)){GlobalVariableDel(sk_dayeq);wiped=true;}
       if(GlobalVariableCheck(sk_dayblk)){GlobalVariableDel(sk_dayblk);wiped=true;}
       if(GlobalVariableCheck(sk_daytr)){GlobalVariableDel(sk_daytr);wiped=true;}
+      // F4: the HWM is part of the reviewed reset - a stale high-water mark would
+      // re-arm the breaker at the old, higher level right after the operator cleared it.
+      if(GlobalVariableCheck(SessionGuardKey("_HWM"))){GlobalVariableDel(SessionGuardKey("_HWM"));wiped=true;}
       // re-capture fresh baselines from CURRENT EQUITY (post-reset) so open
       // floating P&L is counted against the DD cap.
       g_session_start_equity=AccountInfoDouble(ACCOUNT_EQUITY);
+      g_equity_hwm=g_session_start_equity;          // F4: the reviewed reset re-bases the DD reference
       g_loss_streak_blocked=false;
       g_drawdown_blocked=false;
       g_consec_losses=0;
+      StampReset();                                  // F1: the streak is counted from HERE, not from history
       Print("[QSMC_AT RESET] RESET_REASON=InpResetBreakersAtInit=true | scope (login,magic,symbol)=(",
             IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)),",",
             IntegerToString(InpMagic),",",_Symbol,") | existing keys wiped=",wiped,
@@ -2959,6 +3225,17 @@ int OnInit()
       GlobalVariableSet(sk_cl,0.0);
       GlobalVariablesFlush();
      }
+   // 2026-11-09 (F4): restore the equity high-water mark before the guards run
+   // for the first time. Take the highest of the persisted value, the legacy
+   // session baseline and the current equity, so neither an upgrade nor a
+   // later attach can LOWER the drawdown reference.
+   {
+    string sk_hwm=SessionGuardKey("_HWM");
+    double hwm_stored=(GlobalVariableCheck(sk_hwm) ? GlobalVariableGet(sk_hwm) : 0.0);
+    g_equity_hwm=MathMax(hwm_stored,MathMax(g_session_start_equity,AccountInfoDouble(ACCOUNT_EQUITY)));
+    GlobalVariableSet(sk_hwm,g_equity_hwm);
+    GlobalVariablesFlush();
+   }
    DayGuardUpdate();
    SessionGuardUpdate();
 
@@ -2986,18 +3263,32 @@ int OnInit()
    //   3. Any clamp engagement prints a [QSMC_AT HARD CLAMP] line so the
    //      operator knows the input value was not honored.
    // =====================================================================
+   // 2026-11-09 (§2): DEMO-FIRST defaults, and the guard that makes them safe.
+   //
+   // The compiled defaults now ARM the EA (InpEnableTrading=true,
+   // InpDryRun=false) so a demo account trades from the first attach with no
+   // .set and no Inputs editing. That is only acceptable because the previous
+   // test was too narrow: it fired only when the EA was ALREADY armed, so a
+   // default-armed EA could attach itself to a real chart and run until the
+   // first order. A real account must now refuse to initialise at all unless
+   // the operator has done both deliberate things - turned InpDemoOnly off AND
+   // typed THIS account number into InpRealAccountConfirm.
+   //
+   // This is STRICTER than the old rule, never weaker: previously an inert EA
+   // was allowed to sit on a real chart; now it will not start there at all.
    bool is_real=(AccountInfoInteger(ACCOUNT_TRADE_MODE)!=ACCOUNT_TRADE_MODE_DEMO);
    bool init_fail=false;
-   if(is_real && InpEnableTrading && !InpDryRun)
+   if(is_real)
      {
       if(InpDemoOnly)
         {
-         Print("[QSMC_AT] INIT REFUSED: real account ",
+         Print("[QSMC_AT] INIT REFUSED: this is a REAL account (",
                IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),
-               " with InpDemoOnly=true and InpDryRun=false. Set InpDryRun=true ",
-               "for a dry run, or set InpDemoOnly=false AND InpRealAccountConfirm=",
+               ") and InpDemoOnly=true - the shipping default. The compiled",
+               " defaults arm the EA for DEMO trading; real money needs BOTH",
+               " InpDemoOnly=false AND InpRealAccountConfirm=",
                IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),
-               " to deliberately arm real money (NOT RECOMMENDED for first trial).");
+               " typed in by a human. Nothing was sent and nothing will be.");
          init_fail=true;
         }
       else if(InpRealAccountConfirm!=IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)))
@@ -3160,7 +3451,10 @@ int OnInit()
       if(tick_size>0.0 && tick_value>0.0 && lots_now>0.0)
         {
          double per_price=(1.0/tick_size)*tick_value*lots_now;
-         double cap_pct=MathMin(InpMaxRiskPercent,1.0);
+         // 2026-11-09 (F2): this banner used min(InpMaxRiskPercent,1.0) - a
+         // number no guard used. It now asks the same function the FIXED-lot
+         // guard asks, so the sentence the operator reads is the check that runs.
+         double cap_pct=EffFixedLotRiskPct();
          double cap_money=AccountInfoDouble(ACCOUNT_EQUITY)*cap_pct/100.0;
          Print("[QSMC_AT] ladder money at ",DoubleToString(lots_now,2)," lots: ",
                DoubleToString(per_price,2)," per 1.00 of price -> TP1 $",
@@ -3171,7 +3465,9 @@ int OnInit()
                ", so the stop may be at most ",
                DoubleToString(cap_money/MathMax(per_price,0.0000001),_Digits),
                " of price away. A wider signal stop is REFUSED by design - lower the lot, ",
-               "raise the account, or accept the refusal; never raise InpMaxRiskPercent above 1.");
+               "raise the account, or accept the refusal; the cap comes from InpFixedLotsMaxRiskPercent ",
+               "and is bounded by the HARD ceiling ",DoubleToString(HardMaxRiskPercent(),2),"%, ",
+               "which no input can exceed.");
         }
      }
    Print("[QSMC_AT] discipline: ",
@@ -3197,6 +3493,8 @@ int OnInit()
          " | data fresh<",(InpMaxDataAgeSeconds>0?IntegerToString(InpMaxDataAgeSeconds)+"s":"off"),
          " | max positions ",IntegerToString(InpMaxOpenPositions));
    PurgeStaleSignalGlobals();
+   // §1: prove the compiled defaults are the preset (0 rows = identical).
+   PrintEffectiveVsPreset();
 
    EventSetTimer(InpPollSeconds);
    return INIT_SUCCEEDED;
