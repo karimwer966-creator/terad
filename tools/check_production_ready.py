@@ -53,6 +53,9 @@ CHECKS = [
     ("arbiter-parity", [sys.executable, "tools/test_arbiter.py"]),
     ("scanner-arithmetic", [sys.executable, "tools/test_scanners.py"]),
     ("quant-stats", [sys.executable, "tools/test_quant_stats.py"]),
+    # The over-optimisation defence. Offline arithmetic + MT5 config emission;
+    # both decide whether a study may proceed, so both are in the curated gate.
+    ("wfa-robustness", [sys.executable, "tools/test_wfa_robustness.py"]),
     ("structure-events", [sys.executable, "tools/test_structure.py"]),
     ("zone-scoring", [sys.executable, "tools/test_zone_scoring.py"]),
     ("edgebook", [sys.executable, "tools/test_edgebook_contract.py"]),
