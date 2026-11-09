@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+import native_toolchain as NT
+
 ROOT = Path(__file__).resolve().parents[1]
 text = (ROOT / 'nadir2.mq5').read_text()
 start = text.index('int ResolveFinalSignal(const int closed,string &why)\n')
@@ -76,11 +78,16 @@ int main(){
  std::cout<<"PASS resolver runtime: regressions + "<<n<<" exhaustive vote combinations\n";
 }
 '''
-with tempfile.TemporaryDirectory(prefix='qsmc-resolver-') as d:
-    src = Path(d) / 'resolver.cpp'
-    binary = Path(d) / 'resolver'
-    src.write_text(prelude + body + tests)
-    subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
-                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                    str(src), '-o', str(binary)], check=True)
-    subprocess.run([str(binary)], check=True)
+cxx = NT.compiler(sanitizers=True)
+if cxx is None:
+    NT.skip('native subset: resolver votes over exhaustive combinations', sanitizers=True)
+else:
+    with tempfile.TemporaryDirectory(prefix='qsmc-resolver-') as d:
+        src = Path(d) / 'resolver.cpp'
+        binary = Path(d) / 'resolver'
+        src.write_text(prelude + body + tests)
+        subprocess.run([cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                        '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                        str(src), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+raise SystemExit(NT.exit_code([]))

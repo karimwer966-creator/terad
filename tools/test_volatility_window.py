@@ -1,6 +1,7 @@
 """Execute actual percentile method with synthetic chronological ATR samples."""
 from pathlib import Path
 import subprocess,tempfile
+import native_toolchain as NT
 root=Path(__file__).resolve().parents[1]
 s=(root/'MQL5/Include/QSMC/QSMC_Scanners.mqh').read_text()
 a=s.index('   double            Percentile(');b=s.index('\npublic:',a)
@@ -28,7 +29,12 @@ b.v[250]=std::nan("");assert(Percentile(b,300,100,5)==-1);
 assert(Percentile(b,300,100,EMPTY_VALUE)==-1);
 std::cout<<"PASS full-window causal percentiles: rising/falling/constant/short/invalid\n";}
 '''
-with tempfile.TemporaryDirectory() as d:
- p=Path(d)/'test.cpp';exe=Path(d)/'test';p.write_text(pre+method+tests)
- subprocess.run(['g++','-std=c++17',str(p),'-o',str(exe)],check=True)
- subprocess.run([str(exe)],check=True)
+cxx=NT.compiler()
+if cxx is None:
+ NT.skip('native subset: causal percentile method')
+else:
+ with tempfile.TemporaryDirectory() as d:
+  p=Path(d)/'test.cpp';exe=Path(d)/'test';p.write_text(pre+method+tests)
+  subprocess.run([cxx,'-std=c++17',str(p),'-o',str(exe)],check=True)
+  subprocess.run([str(exe)],check=True)
+raise SystemExit(NT.exit_code([]))

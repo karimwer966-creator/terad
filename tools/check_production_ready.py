@@ -77,8 +77,65 @@ CHECKS = [
     ("phase7-riskmodel", [sys.executable, "tools/test_phase7_riskmodel.py"]),
     ("scenario-geometry", [sys.executable, "tools/check_scenario_geometry.py"]),
     ("host-patch-idempotent", [sys.executable, "tools/apply_qsmc_arb_patch.py", "--check"]),
+    ("native-toolchain", [sys.executable, "tools/test_native_toolchain.py"]),
     ("release-gate", [sys.executable, "tools/check_release_gate.py"]),
 ]
+
+
+SKIP_RC = 77
+
+
+def classify(name, rc, text):
+    """PASS / FAIL / SKIP from an exit code, with the release gate's own rule.
+
+    77 is the autotools convention for "skipped: prerequisite unavailable". It
+    is deliberately not PASS: several suites here compile and run the real MQL5
+    method bodies with a host g++, and a Windows desktop without one cannot
+    verify them. Reporting that as PASS would be a lie; reporting it as FAIL
+    (which is what happened before) turns a healthy tree into a false NO-GO.
+    """
+    if rc == SKIP_RC:
+        return "SKIP"
+    ok = (rc == 0)
+    if name == "release-gate":
+        ok = ok and "GO (with" in text and "NO-GO" not in text
+    return "PASS" if ok else "FAIL"
+
+
+def skip_reason(text):
+    for line in text.splitlines():
+        if line.startswith("SKIP"):
+            return line[4:].strip()
+    return "skipped (no reason printed)"
+
+
+def verdict(results, require_native=False):
+    """(exit code, report lines) from [(name, status, rc, seconds, log)]."""
+    failed = [r for r in results if r[1] == "FAIL"]
+    skipped = [r for r in results if r[1] == "SKIP"]
+    if require_native and skipped:
+        failed = failed + skipped
+    out = ["-" * 76]
+    if failed:
+        names = ", ".join(r[0] for r in failed)
+        out.append("OFFLINE NO-GO: %d/%d checks failed (%s)."
+                   % (len(failed), len(results), names))
+        if require_native and skipped:
+            out.append("--require-native was given and %d check(s) could not run "
+                       "here: that is a NO-GO by request, not a defect." % len(skipped))
+        return 1, out
+    if skipped:
+        out.append("OFFLINE GO (PARTIAL): %d/%d verified, %d SKIPPED - no usable "
+                   "C++ toolchain on this host." % (len(results) - len(skipped),
+                                                    len(results), len(skipped)))
+        out.append("  skipped: %s" % ", ".join(r[0] for r in skipped))
+        out.append("  Those checks did NOT run here. A GO on this host does not cover")
+        out.append("  them: install MSYS2/MinGW-w64 (g++ with AddressSanitizer) or read")
+        out.append("  the Linux CI result, and re-run with --require-native to make a")
+        out.append("  missing toolchain fatal instead of visible.")
+        return 0, out
+    out.append("OFFLINE GO: %d/%d curated checks passed." % (len(results), len(results)))
+    return 0, out
 
 
 def tail(text, n=4):
@@ -89,6 +146,9 @@ def tail(text, n=4):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--timeout", type=int, default=180)
+    ap.add_argument("--require-native", action="store_true",
+                    help="treat skipped (no C++ toolchain) checks as failures; "
+                         "use this in CI so a missing compiler cannot pass quietly")
     args = ap.parse_args()
     os.makedirs(OUT, exist_ok=True)
     os.chdir(ROOT)
@@ -111,31 +171,38 @@ def main():
             rc = 124
         with open(log, "w", encoding="utf-8") as f:
             f.write(text)
-        ok = (rc == 0)
-        if name == "release-gate":
-            ok = ok and "GO (with" in text and "NO-GO" not in text
-        results.append((name, ok, rc, time.time() - t0, log))
-        print("%-28s %s  rc=%s  %.1fs" % (name, "PASS" if ok else "FAIL", rc, time.time() - t0))
-        if not ok:
+        status = classify(name, rc, text)
+        results.append((name, status, rc, time.time() - t0, log))
+        print("%-28s %s  rc=%s  %.1fs" % (name, status, rc, time.time() - t0))
+        if status == "FAIL":
             print(tail(text))
-    failed = [r for r in results if not r[1]]
+        elif status == "SKIP":
+            print("                             " + skip_reason(text)[:100])
+    failed = [r for r in results if r[1] == "FAIL"]
+    skipped = [r for r in results if r[1] == "SKIP"]
     summary = os.path.join(OUT, "SUMMARY.txt")
     with open(summary, "w", encoding="utf-8") as f:
         f.write("QSMC v6.6.20 curated offline production-readiness summary\n")
-        f.write("checks=%d failed=%d\n" % (len(results), len(failed)))
-        for name, ok, rc, dt, log in results:
-            f.write("%s rc=%s %.1fs %s\n" % ("PASS" if ok else "FAIL", rc, dt, name))
+        f.write("checks=%d passed=%d failed=%d skipped=%d\n"
+                % (len(results), len(results) - len(failed) - len(skipped),
+                   len(failed), len(skipped)))
+        for name, status, rc, dt, log in results:
+            f.write("%s rc=%s %.1fs %s\n" % (status, rc, dt, name))
+        if skipped:
+            f.write("\nSkipped checks were NOT verified on this host "
+                    "(no usable C++17 compiler / AddressSanitizer).\n")
         f.write("\nManual gates still required: MetaEditor F7 (0 errors), banner v6.6.20,\n")
         f.write("EA handshake OK, demo/paper observation, and the go-live runbook before real money.\n")
-    print("-" * 76)
-    if failed:
-        print("OFFLINE NO-GO: %d/%d checks failed. See %s" % (len(failed), len(results), OUT))
-        return 1
-    print("OFFLINE GO: %d/%d curated checks passed." % (len(results), len(results)))
+    code, lines = verdict(results, require_native=args.require_native)
+    for line in lines:
+        print(line)
     print("Summary: %s" % summary)
-    print("Still manual: F7 in MetaEditor, v6.6.20 banner, EA iCustom handshake, demo/paper run.")
-    print("Real money only after docs/QSMC_GO_LIVE_RUNBOOK.md; the EA ships inert + dry-run + demo-only.")
-    return 0
+    if code == 0:
+        print("Still manual: F7 in MetaEditor, v6.6.20 banner, EA iCustom handshake, demo/paper run.")
+        print("Real money only after docs/QSMC_GO_LIVE_RUNBOOK.md; the EA ships inert + dry-run + demo-only.")
+    else:
+        print("See %s for per-check logs." % OUT)
+    return code
 
 
 if __name__ == "__main__":

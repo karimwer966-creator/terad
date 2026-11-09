@@ -6,6 +6,8 @@ import pathlib
 import subprocess
 import tempfile
 
+import native_toolchain as NT
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 HEADER = ROOT / 'MQL5/Include/QSMC/QSMC_LiquidityValue.mqh'
 PRELUDE = r'''
@@ -110,11 +112,16 @@ int main(){
  std::cout<<"PASS: actual header state-machine runtime scenarios (stubbed MT5 I/O)\n";
 }
 '''
-with tempfile.TemporaryDirectory(prefix='qsmc-lv-') as d:
-    source = pathlib.Path(d) / 'runtime.cpp'
-    binary = pathlib.Path(d) / 'runtime'
-    source.write_text(PRELUDE + '\n#include "' + str(HEADER) + '"\n' + TESTS)
-    subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
-                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                    str(source), '-o', str(binary)], check=True)
-    subprocess.run([str(binary)], check=True)
+cxx = NT.compiler(sanitizers=True)
+if cxx is None:
+    NT.skip('native subset: liquidity/value runtime state machine', sanitizers=True)
+else:
+    with tempfile.TemporaryDirectory(prefix='qsmc-lv-') as d:
+        source = pathlib.Path(d) / 'runtime.cpp'
+        binary = pathlib.Path(d) / 'runtime'
+        source.write_text(PRELUDE + '\n#include "' + str(HEADER) + '"\n' + TESTS)
+        subprocess.run([cxx, '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                        '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                        str(source), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+raise SystemExit(NT.exit_code([]))

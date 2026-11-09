@@ -16,6 +16,8 @@ import subprocess
 import sys
 import tempfile
 
+import native_toolchain as NT
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "nadir2.mq5")
 RAW = open(SRC, encoding="utf-8", newline="").read()
@@ -149,15 +151,19 @@ with tempfile.TemporaryDirectory() as td:
     cpp = os.path.join(td, "subset.cpp")
     exe = os.path.join(td, "subset")
     open(cpp, "w", encoding="utf-8").write(harness)
-    try:
-        subprocess.check_call(["g++", "-std=c++17", "-O0", "-Wall", "-Wextra", cpp, "-o", exe],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        subprocess.check_call([exe], stdout=subprocess.DEVNULL)
-        check(True, "native subset: unchanged properties/moves write nothing; reader/slice gate and uint wrap")
-    except Exception as exc:
-        check(False, "native subset failed: %s" % exc)
+    cxx = NT.compiler()
+    if cxx is None:
+        NT.skip("native subset: unchanged properties/moves write nothing")
+    else:
+        try:
+            subprocess.check_call([cxx, "-std=c++17", "-O0", "-Wall", "-Wextra", cpp, "-o", exe],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            subprocess.check_call([exe], stdout=subprocess.DEVNULL)
+            check(True, "native subset: unchanged properties/moves write nothing; reader/slice gate and uint wrap")
+        except Exception as exc:
+            check(False, "native subset failed: %s" % exc)
 
 print("=" * 74)
 print("tick-performance checks: failures=%d" % len(FAILS))
 print("This is NOT a MetaEditor compile, backtest, CPU benchmark, or broker-latency proof.")
-sys.exit(1 if FAILS else 0)
+sys.exit(NT.exit_code(FAILS))
