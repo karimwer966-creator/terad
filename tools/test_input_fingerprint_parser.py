@@ -2,6 +2,8 @@
 from pathlib import Path
 import importlib.util
 import subprocess
+import sys
+import native_toolchain as NT
 r=Path(__file__).resolve().parents[1]
 h=(r/'MQL5/Include/QSMC/QSMC_InputFingerprint.mqh').read_text()
 ends={'InpAsianEnd':'18','InpLondonEnd':'16','InpNewYorkEnd':'16',
@@ -29,7 +31,7 @@ for invalid in ('input int InpA;', 'input int InpA=1,broken;', 'input int InpA=1
     try:m.parse_inputs(invalid)
     except ValueError:pass
     else:raise AssertionError('silently accepted malformed declaration: '+invalid)
-subprocess.run(['python',str(r/'tools/generate_input_fingerprint.py'),'--check'],check=True)
+subprocess.run([sys.executable,str(r/'tools/generate_input_fingerprint.py'),'--check'],check=True)
 print('PASS comma declarations, all eight End inputs, literals, nesting, comments and fail-closed parsing')
 
 # Compile the actual generated function in its C++-compatible subset.
@@ -60,10 +62,15 @@ cpp+=h+'\nint main(int argc,char **argv){\n'
 for name in ends:
     cpp+=f'if(argc>1 && string(argv[1])=="{name}") ++{name};\n'
 cpp+='uint a=0,d=0; QA_InputHashes(a,d); assert((a==d)==(argc==1)); return 0;}\n'
-with tempfile.TemporaryDirectory() as tmp:
-    source=Path(tmp)/'fingerprint.cpp';binary=Path(tmp)/'fingerprint'
-    source.write_text(cpp)
-    subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Werror',str(source),'-o',str(binary)],check=True)
-    subprocess.run([str(binary)],check=True)
-    for name in ends:subprocess.run([str(binary),name],check=True)
-print('PASS native generated-function defaults equality and independent sensitivity to all eight End inputs (not MT5 proof)')
+cxx=NT.compiler()
+if cxx is None:
+    NT.skip('native subset: generated input fingerprint')
+else:
+    with tempfile.TemporaryDirectory() as tmp:
+        source=Path(tmp)/'fingerprint.cpp';binary=Path(tmp)/'fingerprint'
+        source.write_text(cpp)
+        subprocess.run([cxx,'-std=c++17','-Wall','-Wextra','-Werror',str(source),'-o',str(binary)],check=True)
+        subprocess.run([str(binary)],check=True)
+        for name in ends:subprocess.run([str(binary),name],check=True)
+    print('PASS native generated-function defaults equality and independent sensitivity to all eight End inputs (not MT5 proof)')
+raise SystemExit(NT.exit_code([]))

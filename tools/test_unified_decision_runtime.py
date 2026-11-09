@@ -3,6 +3,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+import native_toolchain as NT
+
 ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / 'MQL5/Include/QSMC/QSMC_UnifiedDecision.mqh').read_text()
 # MQL dynamic arrays are represented by vector; preserve all decision logic.
@@ -100,10 +102,15 @@ int main(){
  std::cout<<"PASS actual unified header: authority, merges, cooldown, saturation and legacy mode\n";
 }
 '''
-with tempfile.TemporaryDirectory(prefix='qsmc-unified-') as d:
-    src=Path(d)/'unified.cpp';binary=Path(d)/'unified'
-    src.write_text(prelude+source+tests)
-    subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Werror',
-                    '-Wno-misleading-indentation','-fsanitize=address,undefined',
-                    '-fno-omit-frame-pointer',str(src),'-o',str(binary)],check=True)
-    subprocess.run([str(binary)],check=True)
+cxx=NT.compiler(sanitizers=True)
+if cxx is None:
+    NT.skip('native subset: unified decision authority/merges/cooldown', sanitizers=True)
+else:
+    with tempfile.TemporaryDirectory(prefix='qsmc-unified-') as d:
+        src=Path(d)/'unified.cpp';binary=Path(d)/'unified'
+        src.write_text(prelude+source+tests)
+        subprocess.run([cxx,'-std=c++17','-Wall','-Wextra','-Werror',
+                        '-Wno-misleading-indentation','-fsanitize=address,undefined',
+                        '-fno-omit-frame-pointer',str(src),'-o',str(binary)],check=True)
+        subprocess.run([str(binary)],check=True)
+raise SystemExit(NT.exit_code([]))

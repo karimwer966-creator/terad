@@ -153,11 +153,22 @@ python3 tools/check_production_ready.py
 python3 tools/check_release_gate.py
 ```
 
-النتيجة المتوقعة:
+النتيجة المتوقعة على Linux أو CI (حيث `g++` موجود):
 
 ```text
-OFFLINE GO: 41/41 curated checks passed.
+OFFLINE GO: 46/46 curated checks passed.
 GO (with 0 warning(s)) - mechanical invariants hold.
 ```
+
+### على Windows بدون مترجم C++
+
+سبع فحوص لا تكتفي بقراءة المصدر: تُترجم مقاطع C++ حقيقية من دوال المؤشر (بعد استبدال واجهة MT5) وتُشغّلها، وتحتاج `g++`. إن لم يكن مثبتًا على الجهاز:
+
+- تُطبع `SKIP` وتخرج الفحوص بالرمز `77` — لا `PASS` ولا `FAIL`؛
+- يصبح الحكم `OFFLINE GO (PARTIAL): 39/46 verified, 7 SKIPPED` مع أسماء الفحوص المتخطاة؛
+- هذه الفحوص **لم تُتحقق على جهازك**، والحكم لا يغطيها؛ اقرأ نتيجة CI على Linux، أو ثبّت MSYS2/MinGW-w64 (مع AddressSanitizer) وأعد التشغيل؛
+- `--require-native` يحوّل التخطي إلى `NO-GO` صريح، وهو ما يستخدمه CI حتى لا يمر مشغّل بلا مترجم بصمت.
+
+`QSMC_NO_NATIVE=1` يفرض مسار التخطي لاختبار السلوك فقط؛ لا يحوّل أي فحص فاشل إلى ناجح.
 
 هذه النتيجة لا تعني أن MetaEditor ترجم الملف، ولا أن الاستراتيجية مربحة.

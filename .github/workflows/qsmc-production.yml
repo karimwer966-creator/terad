@@ -31,10 +31,14 @@ jobs:
         with:
           python-version: "3.11"
 
+      # --require-native: the runner has g++ with AddressSanitizer, so the seven
+      # native-subset suites must actually RUN here. On an operator's Windows box
+      # those suites skip (exit 77) and the verdict says PARTIAL; in CI a skip is
+      # a failure, because CI exists to verify what the desktop cannot.
       - name: Curated production readiness (OFFLINE GO / NO-GO)
         run: |
           mkdir -p out
-          python3 tools/check_production_ready.py --timeout 240 2>&1 | tee out/production_ready.log
+          python3 tools/check_production_ready.py --timeout 240 --require-native 2>&1 | tee out/production_ready.log
 
       - name: Manual gate still required
         run: |

@@ -11,6 +11,8 @@ import re
 import subprocess
 import tempfile
 
+import native_toolchain as NT
+
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / "nadir2.mq5"
 TEXT = HOST.read_text(encoding="utf-8")
@@ -29,12 +31,18 @@ def code_only(s):
     return re.sub(r"/\*.*?\*/", "", s, flags=re.S)
 
 
+CXX = NT.compiler(sanitizers=True)
+
+
 def compile_run(source, label):
+    if CXX is None:
+        NT.skip("native subset: " + label, sanitizers=True)
+        return
     with tempfile.TemporaryDirectory() as d:
         cpp = Path(d) / "subset.cpp"
         exe = Path(d) / "subset"
         cpp.write_text(source, encoding="utf-8")
-        subprocess.run(["g++", "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
+        subprocess.run([CXX, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
                         str(cpp), "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
     print("PASS  native subset: " + label)
@@ -201,4 +209,4 @@ int main(){
 print("=" * 74)
 print(f"runtime-diagnostics checks: failures={len(FAILURES)}")
 print("This is a source/native-subset contract, not an MT5 runtime or latency measurement.")
-raise SystemExit(1 if FAILURES else 0)
+raise SystemExit(NT.exit_code(FAILURES))
