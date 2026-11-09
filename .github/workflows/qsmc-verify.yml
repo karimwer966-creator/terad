@@ -106,6 +106,9 @@ jobs:
 
       - name: Diagnostic bridge (the indicator's verdict -> the companion's heartbeat)
         run: python3 tools/test_diag_bridge.py 2>&1 | tee out/test_diag_bridge.log
+
+      - name: CORE signal diagnostics source contracts (not MT5 runtime tests)
+        run: python3 tools/test_core_signal_diagnostics.py 2>&1 | tee out/test_core_signal_diagnostics.log
       # AUDIT-AT1. The contract above proves the companion refuses the right
       # things; it could not see that the EA sometimes TOLD the operator a
       # different limit than it enforced: a 1.0% clamp inside CalcLots that

@@ -288,22 +288,17 @@ def diagnose(lines) -> dict:
     if health:
         starving = sorted(t for t, r in health.items() if r == "ROLE_EA_READER")
         visual = sorted(t for t in visual_lines if health.get(t) != "ROLE_EA_READER")
-        detail = ("terminal_error 4806 means the requested history was not found "
-                  "on the server. While an EA-reader feed is missing, the MTF "
-                  "Sniper pillar (25%% of the confluence weight) cannot vote, so "
-                  "the gate chain cannot complete and no signal reaches the EA - "
-                  "regardless of its inputs. %d EA-reader feed(s) down, %d "
-                  "visual-only feed(s) down." % (len(starving), len(visual)))
-        if not starving:
-            detail += (" Only panel feeds are down here: the chart looks poorer "
-                       "than it is, but this is NOT why there is no trade.")
+        detail = ("One or more MTF Sniper data copies were not ready at the logged "
+                  "time. This alone does not establish a CORE rejection or its cause. "
+                  "%d EA-reader feed(s) reported, %d visual-only feed(s) reported."
+                  % (len(starving), len(visual)))
         title = "MTF data missing: " + (", ".join(starving[:4]) or ", ".join(visual[:4]))
         extra = max(len(starving), len(visual)) - 4
         if extra > 0:
             title += " (+%d more)" % extra
         ev = snippet(next(l for l in lines if "not ready (copied" in l),
                      None, width=200)
-        add("mtf-history", "CAUSE", title, ev, detail,
+        add("mtf-history", "WARNING", title, ev, detail,
             "Open the missing timeframes on this symbol (W1, D1, H4, H1, M30, "
             "M5) and scroll/Home until their history downloads; raise "
             "Tools -> Options -> Charts -> 'Max bars in chart'; confirm the "
@@ -312,19 +307,22 @@ def diagnose(lines) -> dict:
             "Do NOT touch a gate before this is resolved.")
 
     if zero:
-        detail = ("The indicator published no CORE setup in the last %s closed "
-                  "bars. The EA is healthy and has nothing to execute — this is "
-                  "the transport saying so." % (look if look else "200"))
+        detail = ("The heartbeat reports zero in the current indicator export "
+                  "buffer over a window labelled %s closed bars; this does not "
+                  "prove a historical replay or establish why no signal was "
+                  "published. Older heartbeat versions scanned one fewer closed "
+                  "bar than stated." % (look if look else "unknown"))
         if verdict and verdict not in ("CORE_PUBLISHED",):
-            detail += (" Last blocker reported by the indicator: %s." % verdict)
-        add("no-signal", "CAUSE",
+            detail += (" Indicator diagnostic reported %s; it may reflect the "
+                       "session's most frequent rejection, not this bar's first failure." % verdict)
+        add("no-signal", "WARNING",
             "Zero CORE signals%s" % ((" — indicator verdict %s" % verdict)
                                      if verdict else ""),
             snippet(zero, r"CORE signals[^|]*"), detail,
-            "Read the chart panel's NEEDS row (it names the same blocker), or "
-            "set InpGateAuditLogEveryBars>0 in nadir2 for the literal reason. "
-            "Remember: a .set loaded on the chart does NOT change what the EA "
-            "sees — the EA reads the indicator's COMPILED defaults.")
+            "Capture the EA reader's identity, DataHealth and GateAudit lines; "
+            "do not infer the first failure from a session histogram or change "
+            "thresholds without evidence. A chart preset does not configure "
+            "the EA's separate iCustom instance.")
 
     # ---- 4. profile divergence --------------------------------------------
     prof, m_prof = first_line(lines, r"GATE PROFILE: (\w+) \| .* confidence (\d+) \| "

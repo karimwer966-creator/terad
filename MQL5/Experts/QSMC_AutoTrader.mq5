@@ -404,6 +404,11 @@ int       g_note_count=0;
 datetime  g_last_heartbeat=0;
 bool      g_heartbeat_first=true;
 bool      g_last_copy_ok=false;
+long      g_signal_copy_failures=0; // failed six-buffer copy attempts, not failed bars
+long      g_invalid_buffer_signals=0; // invalid direction/price observations deduplicated per bar in this session
+// Separate from trade deduplication: direction 0 must never collide with SELL.
+datetime  g_invalid_dir_seen[QSMC_AT_SEEN_RING];
+int       g_invalid_dir_seen_n=0;
 
 // Transient order-failure bookkeeping: which signal was refused by the SERVER
 // (not by a gate), and how many times. A permanent retcode never retries; a
@@ -1688,12 +1693,12 @@ bool CopySignalBuffers(const int count)
    ArraySetAsSeries(g_tp1,true);
    ArraySetAsSeries(g_tp2,true);
    ArraySetAsSeries(g_tp3,true);
-   if(CopyBuffer(g_handle,QSMC_BUF_CORE_DIR,0,count,g_dir)<count) return false;
-   if(CopyBuffer(g_handle,QSMC_BUF_CORE_ENTRY,0,count,g_entry)<count) return false;
-   if(CopyBuffer(g_handle,QSMC_BUF_CORE_SL,0,count,g_sl)<count) return false;
-   if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP1,0,count,g_tp1)<count) return false;
-   if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP2,0,count,g_tp2)<count) return false;
-   if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP3,0,count,g_tp3)<count) return false;
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_DIR,0,count,g_dir)<count) { g_signal_copy_failures++; return false; }
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_ENTRY,0,count,g_entry)<count) { g_signal_copy_failures++; return false; }
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_SL,0,count,g_sl)<count) { g_signal_copy_failures++; return false; }
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP1,0,count,g_tp1)<count) { g_signal_copy_failures++; return false; }
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP2,0,count,g_tp2)<count) { g_signal_copy_failures++; return false; }
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP3,0,count,g_tp3)<count) { g_signal_copy_failures++; return false; }
    g_last_copy_ok=true;
    return true;
   }
@@ -2393,10 +2398,29 @@ void ProcessSignals()
    for(int shift=count-1;shift>=1;shift--)
      {
       if(g_dir[shift]==0.0) continue;
-      int dir=(g_dir[shift]>0.0 ? 1 : -1);
       datetime bt=iTime(_Symbol,_Period,shift);
       if(bt<=0) continue;
       if(bt<g_start_bar) continue;              // existed before attach
+      // EMPTY_VALUE is a finite sentinel in MQL5, so MathIsValidNumber alone
+      // does not reject it. Only the ABI's exact +1/-1 can identify a signal.
+      if(!MathIsValidNumber(g_dir[shift]) || (g_dir[shift]!=1.0 && g_dir[shift]!=-1.0))
+        {
+         bool already_noted=false;
+         for(int j=0;j<g_invalid_dir_seen_n && j<QSMC_AT_SEEN_RING;j++)
+            if(g_invalid_dir_seen[j]==bt) { already_noted=true; break; }
+         if(!already_noted)
+           {
+            g_invalid_dir_seen[g_invalid_dir_seen_n%QSMC_AT_SEEN_RING]=bt;
+            g_invalid_dir_seen_n++;
+            if(g_invalid_dir_seen_n>=2*QSMC_AT_SEEN_RING) g_invalid_dir_seen_n-=QSMC_AT_SEEN_RING;
+            NoteClass("INVALID_DIR|"+IntegerToString((long)bt),
+                      "invalid CORE direction buffer (expected +1 or -1)",REJECT_PERMANENT);
+            g_invalid_buffer_signals++;
+            g_refused++;
+           }
+         continue;
+        }
+      int dir=(g_dir[shift]>0.0 ? 1 : -1);
       // 2026-11-06 audit (D3): a signal that exists but is too old used to be
       // skipped in silence by the same `continue` as "nothing there". It is now
       // counted and named, so "signals: 0" cannot hide "3 signals came too late".
@@ -2425,6 +2449,7 @@ void ProcessSignals()
       if(!MathIsValidNumber(d0) || !MathIsValidNumber(e0) || !MathIsValidNumber(s0) ||
          e0>=1e30 || s0>=1e30)
         {
+         g_invalid_buffer_signals++;
          NoteClass(key,"buffer contents are not finite prices (dir/entry/sl) - refusing this bar",
                    REJECT_PERMANENT);
          MarkSeen(key,bt,dir);
@@ -2436,6 +2461,7 @@ void ProcessSignals()
          double t0=PickTP(shift);
          if(!MathIsValidNumber(t0) || t0>=1e30)
            {
+            g_invalid_buffer_signals++;
             NoteClass(key,"the selected target buffer is not a finite price - refusing this bar",
                       REJECT_PERMANENT);
             MarkSeen(key,bt,dir);
@@ -3026,44 +3052,58 @@ void DiagnosticHeartbeat()
      }
 
    int bars_avail=Bars(_Symbol,_Period);
-   int look=MathMax(2,InpHeartbeatLookback);
-   if(look>bars_avail) look=bars_avail;
+   int look=MathMax(2,InpHeartbeatLookback); // number of CLOSED bars
+   if(look>bars_avail-1) look=bars_avail-1;
+   if(look<1 || calc<look+1)
+     {
+      Print("[QSMC_AT] heartbeat: ",mode," | indicator history not ready (Bars=",
+            bars_avail,", BarsCalculated=",calc,", requested closed bars=",look,
+            ") - no zero-signal conclusion"+IndicatorVerdictSuffix());
+      return;
+     }
    double hb_dir[];
    ArraySetAsSeries(hb_dir,true);
-   int got=CopyBuffer(g_handle,QSMC_BUF_CORE_DIR,0,look,hb_dir);
-   if(got<look)
+   int got=CopyBuffer(g_handle,QSMC_BUF_CORE_DIR,0,look+1,hb_dir);
+   if(got<look+1)
      {
       Print("[QSMC_AT] heartbeat: ",mode," | indicator history not ready (",
-            IntegerToString(got),"/",IntegerToString(look)," bars) - nothing to evaluate yet"+
+            IntegerToString(got),"/",IntegerToString(look+1)," bars) - no zero-signal conclusion"+
             IndicatorVerdictSuffix());
       return;
      }
 
-   int found=0;
+   int found=0, invalid=0;
    int last_shift=-1;
    double last_dir=0.0;
-   for(int i=1;i<look;i++)
+   for(int i=1;i<=look;i++)
      {
-      if(hb_dir[i]!=0.0)
+      double d=hb_dir[i];
+      if(!MathIsValidNumber(d) || (d!=0.0 && d!=1.0 && d!=-1.0))
+        { invalid++; continue; }
+      if(d!=0.0)
         {
          found++;
          if(last_shift<0)
            {
             last_shift=i;
-            last_dir=hb_dir[i];
+            last_dir=d;
            }
         }
+     }
+   if(invalid>0)
+     {
+      Print("[QSMC_AT] heartbeat: ",mode," | CORE direction buffer invalid at ",invalid,
+            " of ",look," closed bars (EMPTY_VALUE or non-ABI value); valid signals=",found,
+            " - no complete zero-signal conclusion"+IndicatorVerdictSuffix());
+      return;
      }
 
    string line="[QSMC_AT] heartbeat: "+mode+" | CORE signals in last "+
                IntegerToString(look)+" closed bars: "+IntegerToString(found);
    if(found==0)
      {
-      // The transport is healthy; the strategy's own gate chain produced nothing.
-      // Saying this out loud is the whole point: silence used to look identical
-      // to a broken EA. The indicator-side blocker is named by its panel NEEDS
-      // row or by switching InpGateAuditLogEveryBars on inside the indicator.
-      line+=" -> the indicator published NO CORE setup, so this EA has nothing to execute (read the chart panel NEEDS row, or set InpGateAuditLogEveryBars>0 in nadir2)";
+      // Export journal starts at attachment; zero-filled older bars are not replay proof.
+      line+=" -> none in the current indicator export buffer; history before this instance was attached is not proven (see GateAudit and DataHealth for this iCustom instance)";
      }
    else
      {
@@ -3125,6 +3165,8 @@ void DiagnosticHeartbeat()
          " dry "+IntegerToString(g_dry)+
          " refused "+IntegerToString(g_refused)+
          " expired "+IntegerToString(g_expired)+
+         " invalid_buffer_signals "+IntegerToString(g_invalid_buffer_signals)+
+         " signal_copy_failures "+IntegerToString(g_signal_copy_failures)+
          " unconfirmed "+IntegerToString(g_unconfirmed)+
          " unprotected "+IntegerToString(g_unprotected)+
          " open "+IntegerToString(OpenCount(_Symbol))+
