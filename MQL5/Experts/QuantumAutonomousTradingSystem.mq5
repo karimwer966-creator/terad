@@ -47,7 +47,7 @@
 //|  v1.00 - consolidated production build (2026-11-09).             |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / Quantum"
-#property version   "1.00"
+#property version   "1.10"
 #property description "Autonomous SMC trading EA. DEMO-only execution enforced. Standalone: no external dependencies."
 #property description "Trades the chart symbol with dynamic equity-risk sizing and full protection guards."
 
@@ -58,7 +58,7 @@
 #define QATS_HARD_CAP_RISK_PCT   2.0    // absolute per-trade risk ceiling, % of equity
 #define QATS_HARD_CAP_DAILY_PCT  5.0    // absolute daily-loss ceiling, % of baseline
 #define QATS_HARD_CAP_DD_PCT     15.0   // absolute drawdown ceiling, % from high-water mark
-#define QATS_VERSION            "1.00"
+#define QATS_VERSION            "1.10"
 
 //--- 1. switches -------------------------------------------------------
 input bool     InpEnableTrading        = true;    // MASTER SWITCH: false = never sends an order
@@ -455,7 +455,9 @@ double SessionVWAP(const string symbol)
    datetime dayStart = now - (datetime)(dt.hour * 3600 + dt.min * 60 + dt.sec);
    double pv = 0.0, vv = 0.0;
    int bars = iBars(symbol, PERIOD_M5);
-   for(int i = bars - 1; i >= 0; i--)
+   // iterate from the NEWEST closed bar backwards; stop at the day boundary.
+   // (bars-1 is the oldest bar - looping from it would scan all history.)
+   for(int i = 1; i < bars; i++)
    {
       datetime t = iTime(symbol, PERIOD_M5, i);
       if(t < dayStart) break;
@@ -639,9 +641,8 @@ int BuildLiquidityPools(const string symbol, const SSwing &highs[], const SSwing
 // a sweep = a closed bar trading THROUGH a pool and closing back INSIDE it
 bool DetectSweep(const string symbol, const ENUM_TIMEFRAMES tf, const bool wantBull,
                  const SSwing &highs[], const SSwing &lows[], const SLiquidityPool &pools[],
-                 double &levelOut, int &barOut)
+                 int &barOut)
 {
-   levelOut = 0.0;
    barOut = -1;
    for(int s = 1; s <= 4; s++)
    {
@@ -656,7 +657,7 @@ bool DetectSweep(const string symbol, const ENUM_TIMEFRAMES tf, const bool wantB
             if(lows[j].shift <= s) continue;
             if(lo < lows[j].price && cl > lows[j].price)
             {
-               levelOut = lows[j].price; barOut = s; return true;
+               barOut = s; return true;
             }
          }
          // swept a liquidity pool below (PDL / PWL / EQL)
@@ -665,7 +666,7 @@ bool DetectSweep(const string symbol, const ENUM_TIMEFRAMES tf, const bool wantB
             if(pools[j].kind == "PDL" || pools[j].kind == "PWL" || pools[j].kind == "EQL")
                if(lo < pools[j].price && cl > pools[j].price)
                {
-                  levelOut = pools[j].price; barOut = s; return true;
+                  barOut = s; return true;
                }
          }
       }
@@ -676,7 +677,7 @@ bool DetectSweep(const string symbol, const ENUM_TIMEFRAMES tf, const bool wantB
             if(highs[j].shift <= s) continue;
             if(hi > highs[j].price && cl < highs[j].price)
             {
-               levelOut = highs[j].price; barOut = s; return true;
+               barOut = s; return true;
             }
          }
          for(int j = 0; j < ArraySize(pools); j++)
@@ -684,7 +685,7 @@ bool DetectSweep(const string symbol, const ENUM_TIMEFRAMES tf, const bool wantB
             if(pools[j].kind == "PDH" || pools[j].kind == "PWH" || pools[j].kind == "EQH")
                if(hi > pools[j].price && cl < pools[j].price)
                {
-                  levelOut = pools[j].price; barOut = s; return true;
+                  barOut = s; return true;
                }
          }
       }
@@ -878,10 +879,9 @@ SAnalysis AnalyzeMarket()
    BuildLiquidityPools(_Symbol, highs, lows, r.atrH1, pools);
 
    // sweep on either side (closed bars only); bull and bear tracked separately
-   double sweepLevelBull = 0.0, sweepLevelBear = 0.0;
    int sweepBarBull = -1, sweepBarBear = -1;
-   bool sweepBull = DetectSweep(_Symbol, PERIOD_H1, true,  highs, lows, pools, sweepLevelBull, sweepBarBull);
-   bool sweepBear = DetectSweep(_Symbol, PERIOD_H1, false, highs, lows, pools, sweepLevelBear, sweepBarBear);
+   bool sweepBull = DetectSweep(_Symbol, PERIOD_H1, true,  highs, lows, pools, sweepBarBull);
+   bool sweepBear = DetectSweep(_Symbol, PERIOD_H1, false, highs, lows, pools, sweepBarBear);
 
    // pick the setup direction: the side with an active sweep wins;
    // with no sweep, fall back to the dominant structure/bias alignment
@@ -932,6 +932,8 @@ SAnalysis AnalyzeMarket()
       else if(a.hasOB || a.hasFVG)        score += 5;
       if((dir > 0 && a.dealPos < 0.5) || (dir < 0 && a.dealPos > 0.5)) score += 5;
       if(r.volM5Avg > 0.0 && r.volM5Last > 1.2 * r.volM5Avg)           score += 5;
+      double pxNow = iClose(_Symbol, PERIOD_M5, 1);
+      if((dir > 0 && pxNow > r.vwap) || (dir < 0 && pxNow < r.vwap))    score += 5;
       if(a.confirmM15)                    score += 5;
       if(a.triggerM5)                     score += 5;
       if(score > 100) score = 100;
@@ -945,7 +947,7 @@ SAnalysis AnalyzeMarket()
 
    // reason line for the journal
    a.reason = StringFormat(
-      "D1=%+d H4=%+d H1=%+d sweep=%s disp=%s OB=%s FVG=%s zoneTouch=%s P/D=%.2f M15=%s M5=%s",
+      "D1=%+d H4=%+d H1=%+d sweep=%s disp=%s OB=%s FVG=%s zoneTouch=%s P/D=%.2f VWAP=%.5f M15=%s M5=%s",
       a.d1Bias, a.h4Bias, a.h1Struct,
       (a.sweepKind == "" ? "none" : a.sweepKind),
       (a.displaced ? "yes" : "no"),
@@ -953,6 +955,7 @@ SAnalysis AnalyzeMarket()
       (a.hasFVG ? "yes" : "no"),
       (a.zoneTouched ? "yes" : "no"),
       a.dealPos,
+      r.vwap,
       (a.confirmM15 ? "yes" : "no"),
       (a.triggerM5 ? "yes" : "no"));
    return a;
@@ -984,7 +987,6 @@ bool BuildTradePlan(const SAnalysis &in, SAnalysis &out)
       // below the lowest low of the last 3 M5 bars and below the sweep low region
       double ll;
       if(LowestLow(_Symbol, PERIOD_M5, 1, 3, ll)) structStop = entry - ll;
-      // below opposite OB origin if we have one (structure context)
    }
    else
    {
@@ -1228,7 +1230,14 @@ bool VerifyPositionOpened(const int dir, ulong &ticketOut)
       if(PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
       if((int)PositionGetInteger(POSITION_TYPE) != (dir > 0 ? POSITION_TYPE_BUY : POSITION_TYPE_SELL)) continue;
       datetime ctime = (datetime)PositionGetInteger(POSITION_TIME);
-      if(TimeTradeServer() - ctime <= 120) { ticketOut = ticket; return true; }
+      if(TimeTradeServer() - ctime <= 120)
+      {
+         ticketOut = ticket;
+         PrintFormat("[QATS][VERIFY] server-side SL=%.5f TP=%.5f | openPrice=%.5f volume=%.2f",
+                     PositionGetDouble(POSITION_SL), PositionGetDouble(POSITION_TP),
+                     PositionGetDouble(POSITION_PRICE_OPEN), PositionGetDouble(POSITION_VOLUME));
+         return true;
+      }
    }
    return false;
 }
@@ -1422,7 +1431,7 @@ void ManagePositions()
 
 bool IsStopValid(const double newSL, const double price)
 {
-   double minDist = (double)MathMax(g_spec.stopsLevel, 1) * g_spec.point;
+   double minDist = (double)MathMax(MathMax(g_spec.stopsLevel, g_spec.freezeLevel), 1) * g_spec.point;
    return MathAbs(price - newSL) >= minDist;
 }
 
@@ -1434,10 +1443,14 @@ bool PartialClose(const ulong ticket, const double volume, const int dir)
    req.symbol    = _Symbol;
    req.volume    = volume;
    req.type      = (dir > 0) ? ORDER_TYPE_SELL : ORDER_TYPE_BUY;
-   req.position  = ticket;
    req.magic     = InpMagic;
    req.comment   = InpTradeComment + "-PC";
    req.deviation = (ulong)InpDeviationPoints;
+   // hedging accounts: target the specific position ticket.
+   // netting/exchange accounts: the opposite deal reduces the net position
+   // automatically; MqlTradeRequest.position is not used there.
+   if(AccountInfoInteger(ACCOUNT_MARGIN_MODE) == ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
+      req.position = ticket;
    long filling  = (long)SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
    if((filling & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK) req.type_filling = ORDER_FILLING_FOK;
    else if((filling & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC) req.type_filling = ORDER_FILLING_IOC;
@@ -1507,8 +1520,9 @@ void UpdateDailyGuards()
       }
    }
 
-   // account drawdown from equity high-water mark
+   // account drawdown from equity high-water mark (baseline PERSISTED at first sight)
    string hwmKey = GVKey("hwm");
+   if(!GlobalVariableCheck(hwmKey)) GVSet(hwmKey, equity);
    double hwm = GVGet(hwmKey, equity);
    if(equity > hwm) { hwm = equity; GVSet(hwmKey, hwm); }
    g_equityHWM = hwm;
@@ -1539,11 +1553,12 @@ void ProcessClosedDeals()
       if(HistoryDealGetInteger(ticket, DEAL_MAGIC) != InpMagic) continue;
       long entry = HistoryDealGetInteger(ticket, DEAL_ENTRY);
       if(entry != DEAL_ENTRY_OUT && entry != DEAL_ENTRY_OUT_BY) continue;
-      double pnl = HistoryDealGetDouble(ticket, DEAL_PROFIT)
-                 + HistoryDealGetDouble(ticket, DEAL_SWAP)
-                 + HistoryDealGetDouble(ticket, DEAL_COMMISSION);
+      double dealProfit = HistoryDealGetDouble(ticket, DEAL_PROFIT);
+      long posId = HistoryDealGetInteger(ticket, DEAL_POSITION_ID);
+      if(posId > 0) GVDel(GVKey("pc_" + IntegerToString(posId)));  // position closed: drop partial-bank marker
       if(ticket > maxSeen) maxSeen = ticket;
-      if(pnl < 0.0)
+      // DEAL_PROFIT==0 (breakeven / commission-only) is NEUTRAL: never counts as a loss
+      if(dealProfit < 0.0)
       {
          consec += 1.0;
          if(InpStopAfterConsecLoss > 0 && consec >= (double)InpStopAfterConsecLoss)
@@ -1555,7 +1570,7 @@ void ProcessClosedDeals()
             consec = 0.0;
          }
       }
-      else if(pnl > 0.0)
+      else if(dealProfit > 0.0)
       {
          consec = 0.0;
       }
@@ -1681,6 +1696,7 @@ int OnInit()
       g_hM15Fast == INVALID_HANDLE || g_hATRH1 == INVALID_HANDLE || g_hATRM5 == INVALID_HANDLE)
    {
       PrintFormat("[QATS][FATAL] Failed to create indicator handles, error=%d", GetLastError());
+      ReleaseHandles();
       return INIT_FAILED;
    }
 
@@ -1699,7 +1715,7 @@ int OnInit()
    return INIT_SUCCEEDED;
 }
 
-void OnDeinit(const int reason)
+void ReleaseHandles()
 {
    if(g_hD1Fast != INVALID_HANDLE) IndicatorRelease(g_hD1Fast);
    if(g_hD1Slow != INVALID_HANDLE) IndicatorRelease(g_hD1Slow);
@@ -1710,6 +1726,13 @@ void OnDeinit(const int reason)
    if(g_hM15Fast != INVALID_HANDLE) IndicatorRelease(g_hM15Fast);
    if(g_hATRH1  != INVALID_HANDLE) IndicatorRelease(g_hATRH1);
    if(g_hATRM5  != INVALID_HANDLE) IndicatorRelease(g_hATRM5);
+   g_hD1Fast = g_hD1Slow = g_hH4Fast = g_hH4Slow = g_hH1Fast = g_hH1Slow = INVALID_HANDLE;
+   g_hM15Fast = g_hATRH1 = g_hATRM5 = INVALID_HANDLE;
+}
+
+void OnDeinit(const int reason)
+{
+   ReleaseHandles();
    Comment("");
    PrintFormat("[QATS] deinit (reason=%d) - handles released, guards persisted", reason);
 }
