@@ -19,6 +19,8 @@ jobs:
           python-version: '3.11'
       - name: Structural verification of the EA source
         run: python3 tools/verify_quantum_ea.py
+      - name: MetaEditor error regression checks (not a compile)
+        run: python3 tools/test_quantum_compile_regressions.py
       - name: Manual gate still required
         run: |
           echo "This job is NOT a MetaEditor compile and NOT an MT5 demo test."

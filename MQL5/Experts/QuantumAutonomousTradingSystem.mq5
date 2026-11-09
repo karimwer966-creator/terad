@@ -115,7 +115,7 @@ input int      InpHeartbeatSeconds     = 300;     // diagnostic journal line eve
 input bool     InpVerbose              = true;    // print every skipped signal and why
 
 //--- order / result codes we treat as transient -------------------------
-static bool IsTransientRetcode(const uint rc)
+bool IsTransientRetcode(const uint rc)
 {
    switch(rc)
    {
@@ -131,7 +131,7 @@ static bool IsTransientRetcode(const uint rc)
    }
 }
 
-static bool IsSuccessRetcode(const uint rc)
+bool IsSuccessRetcode(const uint rc)
 {
    return (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL);
 }
@@ -209,7 +209,7 @@ struct SSymbolSpec
    double volMin;
    double volMax;
    double volStep;
-   long   volLimit;
+   double volLimit;
    int    stopsLevel;    // points
    int    freezeLevel;   // points
    long   tradeMode;
@@ -316,7 +316,7 @@ bool LoadSymbolSpec(SSymbolSpec &spec)
    spec.volMin       = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    spec.volMax       = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
    spec.volStep      = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   spec.volLimit     = (long)SymbolInfoInteger(_Symbol, SYMBOL_VOLUME_LIMIT);
+   spec.volLimit     = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_LIMIT);
    spec.stopsLevel   = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
    spec.freezeLevel  = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL);
    spec.tradeMode    = (long)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_MODE);
@@ -342,7 +342,7 @@ void PrintSymbolSpec()
    Print("[QATS]==================== SYMBOL SPECIFICATION ====================");
    PrintFormat("[QATS] Symbol=%s digits=%d point=%.10f tickSize=%.10f tickValue=%.5f contractSize=%.2f",
                g_spec.name, g_spec.digits, g_spec.point, g_spec.tickSize, g_spec.tickValue, g_spec.contractSize);
-   PrintFormat("[QATS] Volume: min=%.2f max=%.2f step=%.2f limit=%I64d",
+   PrintFormat("[QATS] Volume: min=%.2f max=%.2f step=%.2f limit=%.8f",
                g_spec.volMin, g_spec.volMax, g_spec.volStep, g_spec.volLimit);
    PrintFormat("[QATS] Stops level=%d pts | Freeze level=%d pts | TradeMode=%I64d (FULL=4) | Filling=%I64d | ExecMode=%I64d",
                g_spec.stopsLevel, g_spec.freezeLevel, g_spec.tradeMode, g_spec.fillingMode, g_spec.tradeExec);
@@ -1104,8 +1104,8 @@ bool CalcPositionVolume(const double slDist, const bool isBuy, double &volumeOut
    vol = MathFloor(vol / g_spec.volStep) * g_spec.volStep;
    // never exceed broker bounds
    if(vol > g_spec.volMax)   vol = MathFloor(g_spec.volMax / g_spec.volStep) * g_spec.volStep;
-   if(g_spec.volLimit > 0 && vol > (double)g_spec.volLimit)
-      vol = MathFloor((double)g_spec.volLimit / g_spec.volStep) * g_spec.volStep;
+   if(g_spec.volLimit > 0 && vol > g_spec.volLimit)
+      vol = MathFloor(g_spec.volLimit / g_spec.volStep) * g_spec.volStep;
 
    // margin check with shrink loop: reduce to what free margin can carry
    double price = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
