@@ -229,7 +229,7 @@ input string InpTradeComment         = "QSMC-AUTO"; // comment stamped on every 
 //   1. detected mode is REAL
 //   2. InpAllowRealTrading == true        (explicit arming, one input)
 //   3. InpRealAccountConfirm == ACCOUNT_LOGIN   (exact login, this account only)
-//   4. InpRealServerConfirm  == ACCOUNT_TRADE_SERVER   (exact broker server)
+//   4. InpRealServerConfirm  == ACCOUNT_SERVER   (exact broker server)
 //   5. terminal / EA / symbol trading permissions are all enabled
 //   6. all risk and execution safety gates pass
 //   7. no emergency lockout is active (daily loss, drawdown, consecutive
@@ -390,7 +390,7 @@ int       g_unprotected=0;
 // re-attach (re-init) - an account that changes is never silently re-armed.
 long      g_acct_mode=-1;          // ENUM_ACCOUNT_TRADE_MODE as detected at init
 ulong     g_acct_login=0;          // ACCOUNT_LOGIN at init
-string    g_acct_server="";        // ACCOUNT_TRADE_SERVER at init
+string    g_acct_server="";        // ACCOUNT_SERVER at init
 int       g_exec_mode=0;           // 0 = BLOCKED, 1 = EXECUTION_DEMO, 2 = EXECUTION_REAL
 bool      g_acct_changed=false;    // identity drifted from the snapshot: new entries blocked until re-init
 bool      g_emergency_lockout=false; // sticky: set by the emergency path and identity drift; operator must re-attach
@@ -703,7 +703,7 @@ bool AccountModeKnown(long &mode)
   {
    mode = -1;
    long login = (long)AccountInfoInteger(ACCOUNT_LOGIN);
-   string server = AccountInfoString(ACCOUNT_TRADE_SERVER);
+   string server = AccountInfoString(ACCOUNT_SERVER);
    if(login <= 0 || StringLen(server) == 0)
       return false;                 // cannot identify the account at all
    long m = (long)AccountInfoInteger(ACCOUNT_TRADE_MODE);
@@ -790,7 +790,7 @@ bool IdentityMatchesSnapshot()
    if(g_acct_login == 0) return true;   // before the first init snapshot: nothing to drift from
    long mode = -1;
    long login = (long)AccountInfoInteger(ACCOUNT_LOGIN);
-   string server = AccountInfoString(ACCOUNT_TRADE_SERVER);
+   string server = AccountInfoString(ACCOUNT_SERVER);
    if(!AccountModeKnown(mode))
      {
       if(!g_acct_changed)
@@ -839,7 +839,7 @@ bool RealAuthorized(string &why)
    if(InpRealAccountConfirm != login_s)
      { why = "InpRealAccountConfirm does not match this account login (" + login_s + ")"; return false; }
    // 4. exact server confirmation
-   string server = AccountInfoString(ACCOUNT_TRADE_SERVER);
+   string server = AccountInfoString(ACCOUNT_SERVER);
    if(StringLen(InpRealServerConfirm) == 0)
      { why = "InpRealServerConfirm is empty (the EXACT broker server name is required)"; return false; }
    if(InpRealServerConfirm != server)
@@ -2151,7 +2151,11 @@ void HandleSignal(SQsigSignal &s)
    uint rc=(uint)g_trade.ResultRetcode();
    string rc_text=g_trade.ResultRetcodeDescription();
    ulong deal_ticket=g_trade.ResultDeal();
-   ulong pos_ticket=g_trade.ResultPosition();
+   // CTrade has no ResultPosition(): the server returns the ORDER ticket.
+   // For a market fill the position identifier equals the opening order
+   // ticket, so ResultOrder() is the position-ticket candidate; the
+   // resolve loop below falls back to our own scan if it does not select.
+   ulong pos_ticket=g_trade.ResultOrder();
    double filled_vol=g_trade.ResultVolume();
 
    bool filled_full=(rc==TRADE_RETCODE_DONE);
@@ -2170,7 +2174,11 @@ void HandleSignal(SQsigSignal &s)
       ulong pt=pos_ticket;
       if(pt==0) pt=FindOurPosition(sym,(buy ? 1 : -1));
       if(pt==0) continue;
-      if(!PositionSelectByTicket(pt)) continue;
+      if(!PositionSelectByTicket(pt))
+        {
+         pt=FindOurPosition(sym,(buy ? 1 : -1));
+         if(pt==0 || !PositionSelectByTicket(pt)) continue;
+        }
       if(PositionGetString(POSITION_SYMBOL)!=sym) continue;
       if((long)PositionGetInteger(POSITION_MAGIC)!=InpMagic) continue;
       long ptype=(long)PositionGetInteger(POSITION_TYPE);
@@ -3872,7 +3880,7 @@ int OnInit()
      {
       Print("[QSMC_AT] INIT REFUSED: the account mode cannot be verified ",
             "(login=",IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),
-            " server='",AccountInfoString(ACCOUNT_TRADE_SERVER),
+            " server='",AccountInfoString(ACCOUNT_SERVER),
             "' trade_mode=",IntegerToString((long)AccountInfoInteger(ACCOUNT_TRADE_MODE)),
             "). Trading stays disabled: an account this EA cannot identify is not authorized to receive orders.");
       init_fail = true;
@@ -3881,7 +3889,7 @@ int OnInit()
      {
       Print("[QSMC_AT] INIT REFUSED: this is a CONTEST account (",
             IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)),
-            "@",AccountInfoString(ACCOUNT_TRADE_SERVER),
+            "@",AccountInfoString(ACCOUNT_SERVER),
             "). A contest account is not a demo and not your money - this EA does not trade contests.");
       init_fail = true;
      }
@@ -3892,7 +3900,7 @@ int OnInit()
       // wrong condition keeps the account out of the market.
       g_acct_mode = acct_mode;
       g_acct_login = (ulong)AccountInfoInteger(ACCOUNT_LOGIN);
-      g_acct_server = AccountInfoString(ACCOUNT_TRADE_SERVER);
+      g_acct_server = AccountInfoString(ACCOUNT_SERVER);
       string why = "";
       if(!RealAuthorized(why))
         {
@@ -3924,7 +3932,7 @@ int OnInit()
       g_exec_mode = 1;
       g_acct_mode = acct_mode;
       g_acct_login = (ulong)AccountInfoInteger(ACCOUNT_LOGIN);
-      g_acct_server = AccountInfoString(ACCOUNT_TRADE_SERVER);
+      g_acct_server = AccountInfoString(ACCOUNT_SERVER);
      }
    string acct_mode_text = (g_exec_mode == 2 ? "EXECUTION_REAL (authorized)" : "EXECUTION_DEMO");
    if(InpMaxRiskPercent>HardMaxRiskPercent())

@@ -533,7 +533,7 @@ check("bool filled_full=(rc==TRADE_RETCODE_DONE);" in code and
       "bool accepted_placed=(rc==TRADE_RETCODE_PLACED);" in code,
       "D10 the retcode is classified into fill classes, not a bool")
 check("ulong deal_ticket=g_trade.ResultDeal();" in code and
-      "ulong pos_ticket=g_trade.ResultPosition();" in code and
+      "ulong pos_ticket=g_trade.ResultOrder();" in code and
       "double filled_vol=g_trade.ResultVolume();" in code,
       "D10 the fill (deal/position ticket, volume) is read from the trade result")
 # the confirmed branch is the ONLY place g_sent is incremented
@@ -549,6 +549,9 @@ check("PositionSelectByTicket(pt)" in resolve_block and
       "D10 the position is re-read from the account and must match magic/symbol/side")
 check("FindOurPosition(sym,(buy ? 1 : -1))" in resolve_block,
       "D10 if the server names no position ticket, our own scan finds it (magic+symbol+side)")
+check("pt=FindOurPosition(sym,(buy ? 1 : -1));" in resolve_block and
+      "if(pt==0 || !PositionSelectByTicket(pt)) continue;" in resolve_block,
+      "D10 if the server order ticket does not select a position, the scan is the fallback (CTrade has no ResultPosition)")
 check("for(int attempt=0; attempt<3 && !pos_ok; attempt++)" in resolve_block and
       "Sleep(50)" in resolve_block,
       "D10 a short bounded retry absorbs the fill/position race - never unbounded")
