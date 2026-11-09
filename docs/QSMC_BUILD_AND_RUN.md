@@ -141,7 +141,7 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 ├─ Indicators\QSMC_ScannerProbe.mq5      <- PART C Phase 7 scanner host (v6.6.3)
 ├─ Scripts\QSMC_ArbiterTest.mq5         <- deterministic self-test harness
 ├─ Experts\KLJ_DataFeeder.mq5           <- optional CSV data feeder (PART C)
-└─ Experts\QSMC_AutoTrader.mq5          <- v6.6.20 execution companion (opt-in, inert)
+└─ Experts\QSMC_AutoTrader.mq5          <- v6.6.20 execution companion (armed on demo, real account refused)
 ```
 
 The two `Experts` files are separate programs, and only one of them can trade:
@@ -156,9 +156,12 @@ command to run after re-downloading a raw host file.
 
 `tools/test_autotrader_contract.py` pins the other half of that boundary: the
 execution companion reads only the CORE buffers 7-12, never the forming bar,
-never a preview or ZRE buffer, ships inert / dry-run / demo-only with a 1% risk
-ceiling, and its sizing arithmetic is reproduced independently (floored volume,
-no-trade below the broker minimum, wider stop => smaller size). The operator guide
+never a preview or ZRE buffer, ships **armed on demo** (and refuses a real
+account in `Init` without `InpRealAccountConfirm`), sizes from `OrderCalcProfit()`
+with HARD ceilings of 0.50% / 2.00% / 8.00%, and its rounding is reproduced
+independently (floored volume, no-trade below the broker minimum, wider stop =>
+smaller size). `tools/test_defaults_match_preset.py` proves the compiled defaults
+and `presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set` are the same object. The operator guide
 is `docs/QSMC_AUTOTRADER.md`.
 
 `tools/check_release_gate.py` is the **deployment** gate — a different question

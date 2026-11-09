@@ -5,7 +5,8 @@ install**; this one says **when it is allowed to run next to money, what to watc
 in the first 24 hours, and how to back out in under a minute**.
 
 > **Companion runbook (EX1):** `docs/QSMC_GO_LIVE_RUNBOOK.md` is the step-by-step
-> version for the execution companion: the INERT → DRY RUN → demo → real ladder,
+> version for the execution companion: the demo-armed defaults (2026-11-09) and the
+> INERT → DRY RUN → demo → real ladder that is still available as a preset,
 > the operational envelope printed at attach, the persisted daily-loss block, the
 > kill switches in order of speed, incident triage, and the one rule that costs the
 > most when it is ignored (the EA reads a PRIVATE indicator instance that runs the
@@ -60,7 +61,7 @@ compile. The release gate checks:
 | G5 | no `Print`/`Alert` on the per-bar path without an `InpArbVerboseLog` guard |
 | G5b | the feeder's `InpUrl1/2/3` and `InpApiKey` default to empty — it ships inert |
 | G6 | no `TODO` / `FIXME` / "not implemented" left in the shipped path |
-| G8 | the execution companion ships `InpEnableTrading=false`, `InpDryRun=true`, `InpDemoOnly=true`, clamps risk to 1% of equity, has no lot doubling, and its only position modify is the break-even move |
+| G8 | the execution companion ships `InpEnableTrading=true`, `InpDryRun=false`, `InpDemoOnly=true`, an empty `InpRealAccountConfirm`, refuses a real account in `OnInit`, clamps risk to the 0.50% / 2.00% / 8.00% HARD ceilings, has no lot doubling, and its only position modify is the break-even move |
 | G7 | CI actually runs this script (a gate nobody runs is a suggestion) |
 
 Run the other four too — the gate does not duplicate them:

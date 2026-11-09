@@ -149,8 +149,11 @@ if preset.is_file():
 EA = (ROOT / "MQL5" / "Experts" / "QSMC_AutoTrader.mq5").read_text(
     encoding="utf-8", errors="replace")
 EA_CODE = re.sub(r"//[^\n]*", "", EA.replace("\r\n", "\n"))
-check("input int    InpPinTimeframeMinutes  = 0;" in EA,
-      "B5 the pin is an input and is OFF by default (no silent behaviour change)")
+# 2026-11-09: the shipping default became the QSMC profile timeframe (M15), so the
+# pin is ON. It is still an input, still refuses a foreign chart instead of
+# switching it, and the refusal path is unchanged - which is what B5 was about.
+check("input int    InpPinTimeframeMinutes  = 15;" in EA,
+      "B5 the pin is an input, ON at the QSMC profile timeframe (M15)")
 check("return (PeriodSeconds(_Period)==(long)InpPinTimeframeMinutes*60);" in EA_CODE,
       "B5 the pin compares the chart bar length in seconds with the requested one")
 check("ChartSetSymbolPeriod" not in EA_CODE and "ChartSetSymbolPeriod" not in CODE,
@@ -173,14 +176,18 @@ for hook in ("void OnTick()", "void OnTimer()"):
 # i.e. above current equity: the guard trips on the first tick of every attach
 # and restores DAY_BLOCKED on every re-attach. The baseline is PERSISTED, so a
 # reload cannot fix it. Two supported remedies must therefore exist and agree.
+# 2026-11-09 (F5): the symbol goes through KeySafe() - GlobalVariableSet() rejects
+# names with characters outside [A-Za-z0-9_] and fails SILENTLY, so on "XAUUSD.m"
+# the baseline never persisted at all. The scope is unchanged: (login, magic,
+# symbol, leaf) with a sanitised symbol.
 check('return ("QSMC_AT_DAY_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+'
-      '\n           "_"+IntegerToString(InpMagic)+"_"+_Symbol+"_"+leaf);' in
+      '\n           "_"+IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_"+leaf);' in
       EA.replace("\r\n", "\n"),
-      "B6 control: the day key is (login, magic, symbol, leaf)")
+      "B6 control: the day key is (login, magic, symbol, leaf), symbol KeySafe")
 check('return ("QSMC_AT_SESS_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+'
-      '\n           "_"+IntegerToString(InpMagic)+"_"+_Symbol+"_"+leaf);' in
+      '\n           "_"+IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_"+leaf);' in
       EA.replace("\r\n", "\n"),
-      "B6 control: the session key is (login, magic, symbol, leaf)")
+      "B6 control: the session key is (login, magic, symbol, leaf), symbol KeySafe")
 reset = ROOT / "MQL5" / "Scripts" / "QSMC_ResetGuards.mq5"
 check(reset.is_file(), "B6 an operator reset tool ships (no input flip on a live chart)")
 if reset.is_file():
@@ -210,9 +217,13 @@ if reset.is_file():
 # Three things had to be true, and none of them was: the hard clamps made a 2%
 # day stop impossible on ANY account, the fixed-lot guard measured the wrong
 # percentage, and the day guard could only express a percentage.
-check("double HardMaxRiskPercent(){ return 5.00; }" in EA_CODE and
-      "double HardMaxDailyPercent(){ return 10.00; }" in EA_CODE,
-      "B7 the HARD ceilings are account-agnostic (5% risk / 10% day), not 0.25/1.00")
+# 2026-11-09 (F8): tightened from 5/10/20 to 0.50/2.00/8.00. They stay
+# account-agnostic in the sense B7 cared about (they do not scale with balance),
+# and still sit above every documented preset (0.10 / 0.50 / 3.00).
+check("double HardMaxRiskPercent(){ return 0.50; }" in EA_CODE and
+      "double HardMaxDailyPercent(){ return 2.00; }" in EA_CODE and
+      "double HardMaxDDPercent(){ return 8.00; }" in EA_CODE,
+      "B7 the HARD ceilings are 0.50% risk / 2.00% day / 8.00% DD, above every preset")
 check("input double InpMaxDailyLossMoney    = 0.00;" in EA,
       "B7 the day stop can be expressed in MONEY (0 = off, so nothing changes by default)")
 check("double money=DayStopMoney();" in EA_CODE and
@@ -239,7 +250,7 @@ check('"mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED "' in EA_CODE or
 # irrelevant risk input, but the comparison is now against a money cap derived
 # from min(operator cap, HARD ceiling) after OrderCalcProfit() at the real SL,
 # and it fails closed when that loss cannot be measured.
-check("double guard_pct=InpFixedLotsMaxRiskPercent;" in EA_CODE and
+check("double guard_pct=EffFixedLotRiskPct();" in EA_CODE and
       "if(loss>cap_money)" in EA_CODE and "OrderCalcProfit(" in EA_CODE and
       "if(!measured)" in EA_CODE,
       "B7 the fixed-lot guard measures the STOP, not the irrelevant risk input")

@@ -78,6 +78,7 @@ CHECKS = [
     ("scenario-geometry", [sys.executable, "tools/check_scenario_geometry.py"]),
     ("host-patch-idempotent", [sys.executable, "tools/apply_qsmc_arb_patch.py", "--check"]),
     ("native-toolchain", [sys.executable, "tools/test_native_toolchain.py"]),
+    ("defaults-match-preset", [sys.executable, "tools/test_defaults_match_preset.py"]),
     ("release-gate", [sys.executable, "tools/check_release_gate.py"]),
 ]
 
@@ -199,7 +200,8 @@ def main():
     print("Summary: %s" % summary)
     if code == 0:
         print("Still manual: F7 in MetaEditor, v6.6.20 banner, EA iCustom handshake, demo/paper run.")
-        print("Real money only after docs/QSMC_GO_LIVE_RUNBOOK.md; the EA ships inert + dry-run + demo-only.")
+        print("Real money only after docs/QSMC_GO_LIVE_RUNBOOK.md; the EA ships ARMED ON DEMO "
+              "(InpDemoOnly=true, no InpRealAccountConfirm) and refuses a real account at init.")
     else:
         print("See %s for per-check logs." % OUT)
     return code

@@ -90,15 +90,35 @@ def inp_bool(name):
     return m.group(1) if m else None
 
 
-require(inp_bool("InpEnableTrading") == "false",
-        "ships INERT: InpEnableTrading=false (no order can be sent until a human says so)")
-require(inp_bool("InpDryRun") == "true",
-        "first switch-on is still a DRY RUN: InpDryRun=true")
+# 2026-11-09 (demo-first delivery): the compiled defaults are now the production
+# preset, armed, for a DEMO account. These three lines replaced "ships INERT /
+# DRY RUN" - the invariant they protect is the same one (a fresh attach cannot
+# lose real money), and it now lives in the real-account refusal below.
+require(inp_bool("InpEnableTrading") == "true",
+        "ships ARMED for demo: InpEnableTrading=true (no .set, no Inputs editing)")
+require(inp_bool("InpDryRun") == "false",
+        "orders are actually sent: InpDryRun=false")
 require(inp_bool("InpDemoOnly") == "true",
         "refuses a real-money account by default: InpDemoOnly=true")
+require(re.search(r'input\s+string\s+InpRealAccountConfirm\s*=\s*""', ea) is not None,
+        "real money needs the login typed in: InpRealAccountConfirm is empty")
 
-require(re.search(r"input\s+double\s+InpMaxRiskPercent\s*=\s*1\.0*\s*;", ea) is not None,
-        "hard risk ceiling: InpMaxRiskPercent defaults to 1% of equity per trade")
+# The guard that makes the new default safe: a real account must fail BEFORE the
+# first tick, not only when the EA happens to be armed. The old test fired only
+# for `is_real && InpEnableTrading && !InpDryRun` - with a default-armed EA that
+# is the same thing, but the guard would be silent for any future inert build.
+require("if(is_real)" in code and
+        "INIT REFUSED: this is a REAL account" in ea,
+        "OnInit refuses a real account unconditionally (INIT_FAILED, no orders)")
+require("InpRealAccountConfirm!=IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN))" in code,
+        "the refusal names the account number the operator must type")
+
+require(re.search(r"input\s+double\s+InpMaxRiskPercent\s*=\s*0\.10\s*;", ea) is not None,
+        "hard risk ceiling: InpMaxRiskPercent defaults to 0.10% of equity per trade")
+require(re.search(r"double\s+HardMaxRiskPercent\(\)\{\s*return\s*0\.5", ea) is not None and
+        re.search(r"double\s+HardMaxDailyPercent\(\)\{\s*return\s*2\.0", ea) is not None and
+        re.search(r"double\s+HardMaxDDPercent\(\)\{\s*return\s*8\.0", ea) is not None,
+        "F8 the HARD ceilings are 0.50% / 2.00% / 8.00%")
 # 2026-11-06 audit (A1/A2): this used to pin a SECOND, undocumented 1.0% clamp
 # inside CalcLots while HardMaxRiskPercent() was 5.00 and OnInit rejected
 # anything above 1.0 - three different ceilings for one limit, and the operator
@@ -114,8 +134,21 @@ require("InpMaxRiskPercent>HardMaxRiskPercent()" in code,
         "sizing path enforces")
 require("double pct=MathMin(InpRiskPercent,vmax_cap);" in code,
         "the requested risk is clamped to the ceiling before sizing")
-require("AccountInfoDouble(ACCOUNT_EQUITY)*pct/100.0" in code,
+require("eq_sizing*pct/100.0" in code and
+        "double eq_sizing=AccountInfoDouble(ACCOUNT_EQUITY);" in code,
         "risk is a fraction of current equity, not of balance or a fixed lot guess")
+# F3 (2026-11-09): the size AND the printed risk now come from OrderCalcProfit().
+# The tick arithmetic (dist/tick_size)*tick_value assumed a per-price tick value
+# and a contract multiplier of 1.0; where that is false the journal printed one
+# risk and the account took another.
+require("if(!EstimateLossAtSL(sym,buy,1.0,entry,sl,loss_per_lot))" in code,
+        "F3 RISK% sizing measures one lot with OrderCalcProfit() and fails closed")
+require("(dist/tick_size)*tick_value" not in code,
+        "F3 the tick-arithmetic size is gone from CalcLots")
+require("if(!EstimateLossAtSL(sym,buy,lots,price,s.sl,risk_money))" in code,
+        "F3 the risk printed in HandleSignal is measured at the volume being sent")
+require("if(measured<=risk_money*1.0000001) break;" in code,
+        "F3 the volume is stepped DOWN until the measured loss fits the target")
 
 # MQL5's integer-to-string converter is IntegerToString(long); there is no
 # LongToString(). One invented name produced 27 compile errors in this file.
@@ -150,9 +183,11 @@ must = {
     "target already reached (no chase)": 'not chasing',
     "broker stops level": 'broker stops level rejects',
     "spread filter": 'spread above',
-    # 2026-11-06 audit (D5): the refusal now says it is a LATCH and names the
-    # only way out, instead of the vaguer "daily loss guard" phrasing.
-    "daily loss guard": 'DAILY-LOSS breaker tripped - EA restart required to resume',
+    # 2026-11-06 audit (D5): the refusal says it is a LATCH and names the way out.
+    # 2026-11-09 (F6): that way out was WRONG for the day guard - a restart never
+    # cleared it and no restart is needed, because it clears at the server-day
+    # roll. The needle now asserts the sentence that is true.
+    "daily loss guard": 'DAILY-LOSS breaker tripped for this server day - it clears by itself at the next server day roll',
     "open-position cap": 'position(s) open',
     "signal age": 'aged out',
 }
@@ -311,11 +346,13 @@ require("if(loss>cap_money)" in code,
         "the fixed-lot path really refuses a size above the ceiling")
 require('Note("FIXED_LOT_TOO_BIG"' in ea,
         "and it names the refusal, so a silent no-trade is not mistaken for a bug")
-require("double guard_pct=InpFixedLotsMaxRiskPercent;" in code,
-        "the cap is an input")
-require("if(guard_pct<=0.0 || guard_pct>HardMaxRiskPercent()) guard_pct=HardMaxRiskPercent();" in code,
-        "0 or an over-limit value falls back to the ONE HARD ceiling: a fixed-lot "
-        "guard of 0 must never mean 'no ceiling at all'")
+require("double guard_pct=EffFixedLotRiskPct();" in code,
+        "F2 the fixed-lot cap is resolved by ONE function, not recomputed per site")
+require("double EffFixedLotRiskPct()" in code and
+        "double cap_pct=EffFixedLotRiskPct();" in code and
+        "MathMin(InpMaxRiskPercent,1.0)" not in code,
+        "F2 the banner prints the ceiling the guard enforces (no third number; "
+        "0 or an over-limit value falls back to the ONE HARD ceiling)")
 require("!OrderCalcProfit(" in code and "if(!measured)" in code,
         "an unmeasurable loss fails closed instead of being sent")
 require("if(step<=0.0 || tick_size<=0.0 || tick_value<=0.0) return fixed_v;" not in code,
@@ -360,5 +397,53 @@ require(vals.get("InpPartialCloseAtR") == "0.0",
         "the preset disables the R-based partial, so ONE exit manager owns the position")
 require("pip ladder ON" in pset or "pip ladder" in pset,
         "the preset explains the pip convention it relies on")
+
+# ---------------------------------------------------------------------------
+# 2026-11-09 delivery: the eight fixes that shipped with the demo-first defaults
+# ---------------------------------------------------------------------------
+# F1 the consecutive-loss streak is counted from the last REVIEWED reset. Without
+# this, InpResetBreakersAtInit cleared the flag and the next tick recomputed the
+# same streak from the same deals.
+require("string ResetStampKey()" in code and 'QSMC_AT_RST_' in ea,
+        "F1 the reset writes a timestamp under its own GV namespace")
+require("GlobalVariableSet(ResetStampKey(),(double)(long)TimeCurrent());" in code,
+        "F1 a reviewed reset stamps the review time")
+require("datetime rst=ResetStamp();" in code and
+        "if(rst>0 && (datetime)HistoryDealGetInteger(t,DEAL_TIME)<=rst) break;" in code,
+        "F1 the streak walk stops at the reset, so the reset survives the next tick")
+
+# F4 the account-DD breaker measures from the equity HIGH-WATER MARK, persisted,
+# not from the equity captured at the first attach.
+require("double    g_equity_hwm=0.0;" in code, "F4 the EA tracks an equity high-water mark")
+require("double dd_ref=(g_equity_hwm>0.0 ? g_equity_hwm : g_session_start_equity);" in code,
+        "F4 the DD breaker measures from the HWM (with the legacy baseline as fallback)")
+require('SessionGuardKey("_HWM")' in ea and "GlobalVariableSet(SessionGuardKey(\"_HWM\"),g_equity_hwm);" in ea,
+        "F4 the HWM is persisted, so a reload cannot lower the drawdown reference")
+require("g_equity_hwm=MathMax(hwm_stored,MathMax(g_session_start_equity,AccountInfoDouble(ACCOUNT_EQUITY)));" in code,
+        "F4 restore takes the highest of stored HWM, session baseline and equity")
+require('GlobalVariableDel(SessionGuardKey("_HWM"))' in ea,
+        "F4 a reviewed reset clears the stale HWM instead of resurrecting it")
+
+# F5 the guard-key namespaces are KeySafe()-sanitised. GlobalVariableSet() rejects
+# names outside [A-Za-z0-9_] SILENTLY, so "XAUUSD.m" never persisted a baseline.
+require('"_"+KeySafe(_Symbol)+"_"+leaf' in ea,
+        "F5 day and session keys sanitise the symbol")
+require('"_"+_Symbol+"_"+leaf' not in ea and '"_"+_Symbol+"_"+leaf' not in code,
+        "F5 no guard key uses the raw symbol name any more")
+
+# F6 the messages name what actually clears each breaker.
+for stale in ("EA restart required to resume",
+              "requires EA restart to clear",
+              "restart required"):
+    require(stale not in ea,
+            "F6 the retired sentence %r is gone from the file outside its own "
+            "audit note (a restart never cleared a persisted breaker)" % stale)
+require("clears by itself at the next server day roll" in ea,
+        "F6 the daily refusal says it clears at the server-day roll")
+
+# F7 a dry run has its own counter (see tools/test_execution_safety.py for the full
+# set of assertions); here: the counters are separate objects.
+require("int DryTradesToday()" in code and "void CountOneDryTrade()" in code,
+        "F7 dry rehearsals have their own persisted counter")
 
 print("AutoTrader contract checks passed; this is not an MT5 run and not a backtest.")

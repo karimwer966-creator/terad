@@ -139,10 +139,21 @@ check("PositionModify(ticket,new_sl,tp)" in be_block,
       "D5 the only stop change is still towards break-even (never widened)")
 
 # ------------------------------------------------------------------- safety envelope
-check(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*false", ea) is not None,
-      "the companion still ships INERT after these fixes")
-check(re.search(r"input\s+bool\s+InpDryRun\s*=\s*true", ea) is not None,
-      "the companion still ships in DRY RUN after these fixes")
+# 2026-11-09: the shipping default changed from "inert + dry run" to "armed on
+# demo". The property these two checks protected is unchanged - a fresh attach
+# must not be able to lose real money - so it is now asserted where it lives: the
+# demo-only flag, the operator-named real account, and the unconditional refusal
+# in OnInit. Asserting the old literals would assert the wrong invariant.
+check(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*true", ea) is not None,
+      "the companion ships ARMED (demo-first delivery): InpEnableTrading=true")
+check(re.search(r"input\s+bool\s+InpDryRun\s*=\s*false", ea) is not None,
+      "orders are really sent, so the demo run is not a second dry run: InpDryRun=false")
+check(re.search(r"input\s+bool\s+InpDemoOnly\s*=\s*true", ea) is not None,
+      "and the account class that makes that safe is still DEMO only: InpDemoOnly=true")
+check(re.search(r'input\s+string\s+InpRealAccountConfirm\s*=\s*""', ea) is not None,
+      "real money still needs the account number typed in: InpRealAccountConfirm is empty")
+check("if(is_real)" in code and "INIT REFUSED" in ea,
+      "OnInit refuses a real account before the first tick, not only when already armed")
 check("InpMinRRAtFill<0.0 || InpOrderRetryMax<1" in code,
       "both new inputs are validated at init instead of failing at the first signal")
 
@@ -256,8 +267,19 @@ check("moved>=InpPartialCloseAtR*risk" in code,
 check(code.find("moved>=InpPartialCloseAtR*risk") < code.find("moved<InpBreakEvenAtR*risk") or
       code.find("InpPartialCloseAtR>0.0 && moved") < code.find("moved<InpBreakEvenAtR*risk"),
       "D7p the partial is taken BEFORE break-even can overwrite the stop distance")
-check(code.count("CountOneTrade();") >= 2,
-      "D7s a DRY RUN entry is counted too, so the daily cap is rehearsable before it costs money")
+# 2026-11-09 (F7): the old rule was "a dry run counts toward InpMaxTradesPerDay so
+# the cap is rehearsable". In practice it meant three rehearsed plans consumed the
+# budget and the first REAL signal of the day was refused. The cap is still
+# rehearsable - the dry counter is persisted and printed - but it is counted apart.
+check('CountOneDryTrade();' in code,
+      "F7 a DRY RUN entry is counted in its own counter, not in the live entry budget")
+check('CountOneTrade();' in code and
+      code.count("CountOneDryTrade();") >= 1 and
+      "CountOneTrade();\r\n      g_dry++;" not in code and
+      "CountOneTrade();\n      g_dry++;" not in code,
+      "F7 a dry run can no longer spend the live budget (the g_dry branch counts dry only)")
+check("entries today " in ea and "dry rehearsals today " in ea,
+      "F7 the heartbeat prints both counters, so a rehearsal is visible without being spent")
 check("DisciplineSuffix()" in code,
       "D7q the heartbeat names the discipline layer instead of leaving 'CORE 1, sent 0' unexplained")
 check("discipline: " in noc,
