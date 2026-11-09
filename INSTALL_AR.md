@@ -66,14 +66,18 @@ MQL5/Experts/KLJ_DataFeeder.mq5             (اختياري، يصل معطلً�
 ```text
 InpEnableTrading=true
 InpDryRun=false
-InpDemoOnly=true
+InpAllowRealTrading=false   (فارغ = REAL مُنزع السلاح افتراضيًا)
 InpRealAccountConfirm=      (فارغ)
+InpRealServerConfirm=       (فارغ)
 InpPinTimeframeMinutes=15   (شارت M15 فقط)
 ```
 
-أي أنه **يرسل أوامر حقيقية على demo** من أول إرفاق. الحساب الحقيقي يُرفض في
-`OnInit` (`INIT_FAILED`) ولا يمكن تسليحه إلا بـ `InpDemoOnly=false` **وكتابة رقم
-الحساب** في `InpRealAccountConfirm`. القواطع كلها تعمل كما هي: خسارة يومية
+أي أنه **يرسل أوامر حقيقية على demo** من أول إرفاق (الوضع `EXECUTION_DEMO`،
+ويُكتشف تلقائيًا من `ACCOUNT_TRADE_MODE`). الحساب الحقيقي يبقى `EXECUTION_REAL`
+**مرفوضًا** في `OnInit` (`INIT_FAILED`) وعند كل أمر، ولا يمكن تسليحه إلا بـ
+`InpAllowRealTrading=true` **وكتابة login الحساب حرفيًا** في
+`InpRealAccountConfirm` **وكتابة اسم الخادم حرفيًا** في `InpRealServerConfirm` —
+وكلها تُعاد قبل كل أمر. القواطع كلها تعمل كما هي: خسارة يومية
 0.50%، سحب حساب 3.00% من أعلى حقوق ملكية، خسارتان متتاليتان، 3 دخولات/يوم.
 
 إن أردت سلّم المشاهدة القديم (خامل ثم DRY RUN) فحمّل

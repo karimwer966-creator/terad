@@ -129,7 +129,7 @@ def main():
         "commit=%s%s" % (commit, " (working tree had uncommitted changes)" if dirty else ""),
         "compile_status=NOT COMPILED HERE - MetaEditor F7 required",
         "offline_gate=OFFLINE GO (curated checks); release gate GO (0 warnings)",
-        "safety=EA ships InpEnableTrading=false, InpDryRun=true, InpDemoOnly=true",
+        "safety=EA ships ARMED ON DEMO (EXECUTION_DEMO): InpEnableTrading=true, InpDryRun=false; REAL disarmed: InpAllowRealTrading=false, empty login/server confirmations",
         "",
         "files:",
     ]

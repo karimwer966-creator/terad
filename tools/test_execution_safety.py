@@ -160,7 +160,7 @@ check("PositionModify(ticket,new_sl,tp)" in be_block,
 # 2026-11-09: the shipping default changed from "inert + dry run" to "armed on
 # demo". The property these two checks protected is unchanged - a fresh attach
 # must not be able to lose real money - so it is now asserted where it lives: the
-# demo-only flag, the operator-named real account, and the unconditional refusal
+# disarmed REAL (arming switch OFF, empty login/server), and the unconditional refusal
 # in OnInit. Asserting the old literals would assert the wrong invariant.
 check(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*true", ea) is not None,
       "the companion ships ARMED (demo-first delivery): InpEnableTrading=true")

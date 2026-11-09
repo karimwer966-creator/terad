@@ -257,8 +257,8 @@ check("double guard_pct=EffFixedLotRiskPct();" in EA_CODE and
 check("if(InpLotMode==QSMC_LOT_FIXED && InpFixedLots<=0.0)" in EA_CODE,
       "B7 FIXED mode with no volume is refused at init instead of refusing every signal")
 
-# The shipped demo preset carries his exact numbers, and still cannot arm a
-# real account.
+# The shipped demo preset carries his exact numbers. Under the unified DEMO &
+# REAL model it also cannot arm a real account: REAL stays fully disarmed.
 demo = ROOT / "presets" / "QSMC_AutoTrader_DEMO_0.10_200.set"
 check(demo.is_file(), "B7 the demo production preset ships")
 if demo.is_file():
@@ -270,8 +270,10 @@ if demo.is_file():
           "B7 preset: daily stop 200 in account currency")
     check(v.get("InpEnableTrading") == "true" and v.get("InpDryRun") == "false",
           "B7 preset: armed (otherwise it is not ready for a demo)")
-    check(v.get("InpDemoOnly") == "true" and v.get("InpRealAccountConfirm", "x") == "",
-          "B7 preset: a REAL account is still refused (demo production, not live)")
+    check(v.get("InpAllowRealTrading") == "false" and
+          v.get("InpRealAccountConfirm", "x") == "" and
+          v.get("InpRealServerConfirm", "x") == "",
+          "B7 preset: REAL stays fully disarmed (demo production, not live)")
     check(v.get("InpResetBreakersAtInit") == "true",
           "B7 preset: clears a stale day baseline on load")
     check(int(v.get("InpMaxTradesPerDay", "0")) == 3 and

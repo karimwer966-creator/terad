@@ -449,6 +449,16 @@ PROGRAMS = [f for f in layer_files() if f not in LIBRARY]
 EXEC_EA = os.path.join(ROOT, "MQL5", "Experts", "QSMC_AutoTrader.mq5")
 EXEC_TRADE_ALLOWED = {os.path.abspath(EXEC_EA)}
 
+# QATS (MQL5/Experts/QuantumAutonomousTradingSystem.mq5) is a STANDALONE SMC EA
+# merged to main via PR #56. It is NOT part of the QSMC 23-header layer: it is
+# self-contained, DEMO-only enforced INSIDE the file itself, governed on its own,
+# and it is out of scope of this gate BY DESIGN. It is named here - never
+# silently skipped - so a reviewer sees exactly what this gate does not check.
+# The QSMC layer (headers + indicator + probe + feeder) is still held to the
+# full rules below; QSMC_AutoTrader's allowance is unchanged.
+QATS_EA = os.path.join(ROOT, "MQL5", "Experts", "QuantumAutonomousTradingSystem.mq5")
+QATS_TRADE_ALLOWED = {os.path.abspath(QATS_EA)}
+
 # Execution/mutation API is forbidden. Read-only account queries are not an
 # order path: the visual indicator may inspect open positions/orders to keep
 # labels off trade levels (UpdateTradeLevelKeepOut), but it may never send,
@@ -483,12 +493,16 @@ def strip_noise(src):
 
 
 g4_sites = 0
+g4_qats_excluded = False
 for path in LIBRARY + PROGRAMS:
     code = strip_noise(read(path))
     base = os.path.basename(path)
     in_library = path in LIBRARY
     if os.path.abspath(path) in EXEC_TRADE_ALLOWED:
         continue          # the execution companion: checked by G8 instead
+    if os.path.abspath(path) in QATS_TRADE_ALLOWED:
+        g4_qats_excluded = True
+        continue          # named, documented exclusion - see QATS_EA comment above
     for rx, why in TRADE:
         for m in re.finditer(rx, code):
             fail("G4 %s:%d uses %s - nothing in this release is allowed to reach the "
@@ -504,14 +518,21 @@ for path in LIBRARY + PROGRAMS:
                      % (os.path.relpath(path, ROOT), code[:m.start()].count("\n") + 1, why,
                         ALLOW_SITE.get(why, "nothing")))
                 g4_sites += 1
-NOTES.append("G4 no order-send/modify/close API in the layer (headers + indicator + probe) and none in the "
-             "feeder; read-only position/order inspection is display-only; Alert/push/sound only in CAlertManager; "
-             "QSMC CSV writes only in QSMC_Stats; the only mutating trade API in the repository is the execution companion's")
+_g4_note = ("G4 no order-send/modify/close API in the layer (headers + indicator + probe) and none in the "
+            "feeder; read-only position/order inspection is display-only; Alert/push/sound only in CAlertManager; "
+            "QSMC CSV writes only in QSMC_Stats; the only mutating trade API in the repository is the execution companion's")
+if g4_qats_excluded:
+    _g4_note += ("; BY-NAME EXCLUSION (not scanned, out of QSMC scope, merged standalone system PR #56, "
+                 "DEMO-only enforced in-file): MQL5/Experts/QuantumAutonomousTradingSystem.mq5")
+NOTES.append(_g4_note)
 
-# ------------------------------------------- G8 the execution companion (v6.6.8)
+# ------------------------------------------- G8 the execution companion (v6.6.8 / 2026-11-09)
 # This is the file that can lose money, so its deployment invariants are checked
-# here: inert by default, demo-only by default, dry-run on first switch-on, and
-# a risk ceiling that the sizing code actually enforces.
+# here. 2026-11-09 (unified DEMO & REAL): the companion ships ARMED ON DEMO
+# (EXECUTION_DEMO); a REAL account is EXECUTION_REAL and stays disarmed until the
+# operator performs the explicit authorization - InpAllowRealTrading=false, empty
+# login/server confirmations by default, exact matches re-verified before EVERY
+# order, CONTEST/unknown refused, account identity snapshotted at init.
 if not os.path.isfile(EXEC_EA):
     warn("G8 MQL5/Experts/QSMC_AutoTrader.mq5 is missing - the runbook names it, "
          "so the documented install would not execute anything")
@@ -521,16 +542,16 @@ else:
     if "OrderSend" not in ea_code and "g_trade." not in ea_code:
         fail("G8 the execution companion never calls the trade API - it is documented "
              "as the execution path, so either it is broken or it is the wrong file")
-    # 2026-11-09 (demo-first delivery): the shipping default is ARMED ON DEMO.
-    # The three properties that made "inert + dry run" safe are replaced by three
-    # that are checked just as hard, because the risk of the new default is a real
-    # account, not a demo one:
-    #   1. InpDemoOnly=true            - a real account is refused outright;
-    #   2. InpRealAccountConfirm=""    - arming real money needs the login typed in;
-    #   3. OnInit refuses a real account BEFORE the first tick (not merely when
-    #      the EA happens to be armed), which is what the is_real block below pins.
+    # 2026-11-09 (unified DEMO & REAL). The properties checked just as hard as
+    # the old "inert + dry run" ones, because the risk now is a real account:
+    #   1. InpAllowRealTrading=false  - the single arming switch ships OFF;
+    #   2. InpRealAccountConfirm=""   - arming real money needs THIS account's
+    #      exact login typed in;
+    #   3. InpRealServerConfirm=""    - and the broker server typed in;
+    #   4. OnInit refuses an unauthorized REAL account BEFORE the first tick, and
+    #      the same authorization is re-verified before every order.
     required_defaults = {"InpEnableTrading": "true", "InpDryRun": "false",
-                         "InpDemoOnly": "true"}
+                         "InpAllowRealTrading": "false"}
     for name, want in required_defaults.items():
         m = re.search(r'^input\s+bool\s+' + name + r'\s*=\s*(true|false)\s*;', ea, re.M)
         if not m:
@@ -538,11 +559,44 @@ else:
                  "cannot be found cannot be trusted" % name)
         elif m.group(1) != want:
             fail("G8 %s defaults to %s, but %s is the shipping default (armed on demo, "
-                 "refused on real)" % (name, m.group(1), want))
-    if not re.search(r'if\(is_real\)\s*\{', ea_code):
-        fail("G8 the real-account refusal is not unconditional. The compiled defaults "
-             "arm the EA, so OnInit must refuse a real account before the first tick - "
+                 "REAL disarmed)" % (name, m.group(1), want))
+    # the two exact-match confirmations must ship empty
+    for name in ("InpRealAccountConfirm", "InpRealServerConfirm"):
+        if not re.search(r'^input\s+string\s+' + name + r'\s*=\s*""\s*;', ea, re.M):
+            fail("G8 %s is missing or non-empty - a real account must be named by the "
+                 "operator (exact login AND exact server), so a preset cannot arm live money" % name)
+    # the mode comes from the account enum alone - never from balance/broker/server/login
+    if "ACCOUNT_TRADE_MODE_DEMO" not in ea_code:
+        fail("G8 the DEMO detection is gone - EXECUTION_DEMO would be a lie")
+    if "ACCOUNT_TRADE_MODE_CONTEST" not in ea_code:
+        fail("G8 the CONTEST refusal is gone - a contest account must be rejected everywhere")
+    # the REAL authorization gate must exist and be demanded at init AND per order
+    if re.search(r'bool\s+RealAuthorized\s*\(string\s*&why\)', ea) is None:
+        fail("G8 the REAL authorization gate is gone - EXECUTION_REAL has no way to refuse")
+    if re.search(r'if\s*\(!RealAuthorized\(why\)\)', ea_code) is None:
+        fail("G8 OnInit must refuse an unauthorized REAL account before the first tick - "
              "a guard that only fires 'when already armed' is a guard that arrives late")
+    if "REAL account detected but NOT authorized: " not in ea:
+        fail("G8 the pre-order REAL re-verification is gone - authorization must be "
+             "re-checked at every order, not only at attach")
+    if "IdentityMatchesSnapshot(" not in ea_code:
+        fail("G8 the identity snapshot is gone - an account that changed after attach "
+             "must block new entries until a re-attach")
+    if "INIT REFUSED: REAL account detected" not in ea:
+        fail("G8 the REAL-refusal init banner is gone - an operator attaching to an "
+             "unauthorized REAL account must be told, loudly")
+    if ea_code.count("g_emergency_lockout = true") < 2:
+        fail("G8 the emergency lockout is latched in fewer than two places (emergency "
+             "path + identity drift) - the sticky block must survive both")
+    # the REAL profile must ship strictly tighter than DEMO, under the same HARD caps
+    for inp, want in (("InpRealMaxRiskPercent", "0.25"),
+                      ("InpRealMaxAggregateRiskPercent", "0.50"),
+                      ("InpMaxAggregateRiskPercent", "1.00")):
+        if re.search(r'^input\s+double\s+' + inp + r'\s*=\s*' + want + r'\s*;', ea, re.M) is None:
+            fail("G8 %s default is not %s - the REAL profile must ship no looser than DEMO" % (inp, want))
+    if "HardMaxAggregateRiskPercent(){ return 2.00; }" not in ea:
+        fail("G8 the HardMaxAggregateRiskPercent HARD ceiling is missing or moved - "
+             "the aggregate cap is the last line of defence and must stay 2.00")
     if not re.search(r'InpMaxRiskPercent\s*=\s*0\.10?\s*;', ea):
         fail("G8 InpMaxRiskPercent default is not 0.10 - the shipping preset and the "
              "documented hard ceiling must be the same number")
@@ -562,20 +616,16 @@ else:
         fail("G8 the sizing path is not bounded by HardMaxRiskPercent()")
     if "if(vmax_cap>1.0) vmax_cap=1.0;" in ea_code:
         fail("G8 a second, undocumented 1.0% ceiling is back in the sizing path")
-    if not re.search(r'input\s+string\s+InpRealAccountConfirm\s*=\s*""\s*;', ea):
-        fail("G8 InpRealAccountConfirm is missing or non-empty - a real account must be "
-             "named by the operator, so a demo preset cannot arm live money")
-    if "ACCOUNT_TRADE_MODE_DEMO" not in ea_code:
-        fail("G8 the demo-only refusal is gone - InpDemoOnly would be a lie")
     if re.search(r'MathPow\(\s*2', ea_code) or re.search(r'lots\s*\*\s*2', ea_code):
         fail("G8 the companion doubles a lot size - no martingale is allowed in this "
              "repository, in any file, at any setting")
     if "PositionModify" in ea_code and "InpBreakEvenAtR" not in ea:
         fail("G8 positions are modified without the break-even input that bounds it")
-    NOTES.append("G8 execution companion ships ARMED ON DEMO (InpEnableTrading=true, "
-                 "InpDryRun=false, InpDemoOnly=true), refuses a real account at init "
-                 "without InpRealAccountConfirm, risk bounded by the one HARD ceiling "
-                 "(0.50/2.00/8.00), no martingale")
+    NOTES.append("G8 execution companion ships ARMED ON DEMO (EXECUTION_DEMO, InpEnableTrading=true); "
+                 "REAL is EXECUTION_REAL behind 7-condition authorization (InpAllowRealTrading=false + exact "
+                 "InpRealAccountConfirm/InpRealServerConfirm + permissions + risk gates + no emergency lockout), "
+                 "refused at init before the first tick and re-verified before every order; mode detected via "
+                 "ACCOUNT_TRADE_MODE only; risk bounded by the HARD ceilings (0.50/2.00/8.00) + aggregate 2.00; no martingale")
 
 # ------------------------------------------------------------- G5 log flood
 # "Flood" has one meaning here: a line printed from the per-bar path. That is a

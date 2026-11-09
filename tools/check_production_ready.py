@@ -201,7 +201,8 @@ def main():
     if code == 0:
         print("Still manual: F7 in MetaEditor, v6.6.20 banner, EA iCustom handshake, demo/paper run.")
         print("Real money only after docs/QSMC_GO_LIVE_RUNBOOK.md; the EA ships ARMED ON DEMO "
-              "(InpDemoOnly=true, no InpRealAccountConfirm) and refuses a real account at init.")
+              "(EXECUTION_DEMO) with REAL disarmed (InpAllowRealTrading=false, empty login/server "
+              "confirmations) and refuses an unauthorized REAL account at init and at every order.")
     else:
         print("See %s for per-check logs." % OUT)
     return code

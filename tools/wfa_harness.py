@@ -312,33 +312,32 @@ def param_warnings(params) -> list:
 
 
 def safety_warnings(expert: str, params) -> list:
-    """Repo-specific trap: this EA ships INERT.
+    """Repo-specific trap: this EA arms the DEMO by default and REAL never arms itself.
 
-    QSMC_AutoTrader defaults to InpEnableTrading=false, InpDryRun=true,
-    InpDemoOnly=true. In the Strategy Tester those three mean the EA logs a
-    beautiful explanation of why it did nothing, and the report shows zero
-    trades - which, if you only look at the equity curve, looks like "no
-    signal" rather than "no permission". A tester run therefore needs its OWN
-    arming inputs, and arming them in a shared .set that later reaches a live
-    chart is a catastrophic mistake. This warning exists so the arming set is a
-    deliberate, visible act.
+    QSMC_AutoTrader defaults (2026-11-09, unified DEMO & REAL) to
+    InpEnableTrading=true, InpDryRun=false, InpAllowRealTrading=false with empty
+    login/server confirmations. A backtest spec is an INPUT SURFACE, not a toy: a
+    spec that arms REAL and ever reaches a live chart is a catastrophic mistake,
+    and the Strategy Tester cannot prove anything about REAL arming. This warning
+    exists so arming REAL in a spec is always a deliberate, visible act.
     """
     if "autotrader" not in str(expert).lower():
         return []
     vals = {p["name"]: str(p["value"]).strip().lower() for p in params
-            if p["name"] in ("InpEnableTrading", "InpDryRun", "InpDemoOnly",
-                             "InpRealAccountConfirm")}
+            if p["name"] in ("InpEnableTrading", "InpDryRun", "InpAllowRealTrading",
+                             "InpRealAccountConfirm", "InpRealServerConfirm")}
     out = []
     if vals.get("InpEnableTrading") not in ("true", "1"):
-        out.append("%s ships with InpEnableTrading=false: the tester will record "
-                   "ZERO trades. Add it to the spec as value \"true\" for the "
-                   "backtest .set only - never to a live preset." % expert)
+        out.append("%s runs in the tester with InpEnableTrading=false: the tester will "
+                   "record ZERO trades. Add it to the spec as value \"true\" for the "
+                   "backtest .set only - never share it with a live chart." % expert)
     if vals.get("InpDryRun") not in ("false", "0"):
         out.append("InpDryRun is not false: orders would be journaled, not sent, "
                    "and the report would contain no trades")
-    if vals.get("InpDemoOnly") in ("false", "0"):
-        out.append("InpDemoOnly=false in a backtest spec is meaningless at best "
-                   "and dangerous if the same .set is reused on a real account")
+    if vals.get("InpAllowRealTrading") in ("true", "1"):
+        out.append("InpAllowRealTrading=true in a backtest spec: meaningless for the "
+                   "tester at best, and dangerous if the spec .set is ever reused on a "
+                   "real account with matching login/server confirmations")
     return out
 
 

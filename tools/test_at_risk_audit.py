@@ -130,7 +130,7 @@ check("FIXED_LOT_REPORT" in calc and "REFUSED: OrderCalcProfit()" in calc,
 
 # B3: the HARD ceiling applies to FIXED as well.
 fixed_branch = calc[calc.index("if(InpLotMode==QSMC_LOT_FIXED)"):]
-fixed_branch = fixed_branch[:fixed_branch.index("double pct=MathMin")]
+fixed_branch = fixed_branch[:fixed_branch.index("double pct=(RealProfileActive()")]
 check("EffFixedLotRiskPct()" in fixed_branch and "HardMaxRiskPercent()" in fn_body("EffFixedLotRiskPct"),
       "B3 the HARD per-trade ceiling is enforced in FIXED mode as well (via the one resolver)")
 # 2026-11-09 (F2): the clamp moved into EffFixedLotRiskPct(), which the guard AND
@@ -240,20 +240,23 @@ check("a chart .set cannot reach this instance" in ident,
       "E3 the identity line states that a chart .set cannot reach this instance")
 
 # =================================================== F. prohibitions (unchanged)
-# 2026-11-09: the shipping default is now ARMED ON DEMO (the production preset
-# became the compiled defaults). The prohibition these two checks encoded - "a
-# fresh attach cannot lose real money" - is enforced by the blockers below it:
-# demo-only, an empty InpRealAccountConfirm, and an unconditional real-account
-# refusal in OnInit. Asserting the old literals would assert a default that no
-# longer exists.
+# 2026-11-09 (unified DEMO & REAL): the shipping default is ARMED ON DEMO and
+# REAL is a first-class EXECUTION_REAL mode that ships DISARMED. The prohibition
+# these checks encode - "a fresh attach cannot lose real money" - is enforced by
+# the blockers below: REAL stays disarmed (arming switch OFF, empty login/server
+# confirmations), authorization is re-verified before every order, and an
+# unauthorized REAL attach is refused in OnInit before the first tick.
 check(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*true", RAW) is not None,
       "F1 ships ARMED for demo")
 check(re.search(r"input\s+bool\s+InpDryRun\s*=\s*false", RAW) is not None,
       "F1 sends orders instead of printing them")
-check("if(is_real)" in CODE and "INIT REFUSED: this is a REAL account" in RAW,
-      "F1b a real account is refused in OnInit before the first tick")
-check(re.search(r"input\s+bool\s+InpDemoOnly\s*=\s*true", RAW) is not None,
-      "F1 ships demo-only")
+check("if(!RealAuthorized(why))" in CODE and "INIT REFUSED: REAL account detected" in RAW,
+      "F1b an unauthorized REAL account is refused in OnInit before the first tick")
+check(re.search(r"input\s+bool\s+InpAllowRealTrading\s*=\s*false", RAW) is not None,
+      "F1 REAL is disarmed by default (the single arming switch ships OFF)")
+check(re.search(r'input\s+string\s+InpRealAccountConfirm\s*=\s*""', RAW) is not None and
+      re.search(r'input\s+string\s+InpRealServerConfirm\s*=\s*""', RAW) is not None,
+      "F1 REAL ships without login/server confirmations")
 check("for(int shift=count-1;shift>=1;shift--)" in CODE,
       "F2 never reads the forming bar (shift 0)")
 check(re.search(r"MathPow\(\s*2", CODE) is None and re.search(r"lots\s*\*\s*2", CODE) is None,

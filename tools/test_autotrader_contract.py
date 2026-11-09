@@ -5,7 +5,7 @@ The companion is the only file in this repository allowed to reach the trade API
 so these checks are deliberately about the things that lose money:
   * it consumes ONLY the CORE published-signal buffers, not previews or ZRE,
   * its buffer indices really are the indicator's CORE export slots,
-  * it ships inert / dry-run / demo-only, with a 1% risk ceiling,
+  * it ships ARMED ON DEMO (EXECUTION_DEMO) with REAL disarmed, detection-derived mode,
   * its sizing rounds DOWN and refuses rather than rounding risk up,
   * it refuses a signal with no stop or with a stop on the wrong side,
   * nothing in the layer can trade with it, and it cannot martingale.

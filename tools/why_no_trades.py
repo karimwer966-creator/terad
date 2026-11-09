@@ -347,8 +347,9 @@ def diagnose(lines) -> dict:
             "The EA refused to send: %s" % (m_ref.group(1).strip() if m_ref else "?"),
             refused,
             "This is the environment gate (Algo Trading off, symbol close-only, "
-            "real account with InpDemoOnly=true, or InpRealAccountConfirm not "
-            "matching the login).",
+            "a REAL account without the full authorization - InpAllowRealTrading=true "
+            "AND the exact InpRealAccountConfirm login AND the exact InpRealServerConfirm "
+            "server, or account identity drift after attach).",
             "Fix the named condition. Do not disable the gate.")
 
     failed, m_fail = first_line(lines, r"ORDER FAILED .* retcode=%s" % NUM)

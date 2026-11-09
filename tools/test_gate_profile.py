@@ -211,9 +211,16 @@ require(re.search(r"input\s+double\s+InpMaxRiskPercent\s*=\s*0\.10\s*;", ea) is 
         "the risk default is the 0.10% preset value")
 require("if(vmax_cap>HardMaxRiskPercent()) vmax_cap=HardMaxRiskPercent();" in ea,
         "the ceiling still cannot be raised by the operator (one HARD value)")
-require(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*true", ea) is not None and
-        re.search(r"input\s+bool\s+InpDemoOnly\s*=\s*true", ea) is not None,
-        "the companion ships armed on demo (2026-11-09), and demo-only")
+# 2026-11-09 (unified DEMO & REAL): no account-type input exists anymore. The
+# companion ships armed on DEMO; REAL is a first-class EXECUTION_REAL mode that
+# exists only behind the full authorization block and is DISARMED by default.
+require(re.search(r"input\s+bool\s+InpEnableTrading\s*=\s*true", ea) is not None,
+        "the companion ships armed on demo (2026-11-09)")
+require(re.search(r"input\s+bool\s+InpAllowRealTrading\s*=\s*false", ea) is not None,
+        "the companion ships with REAL disarmed (unified DEMO & REAL, 2026-11-09)")
+require(re.search(r'input\s+string\s+InpRealAccountConfirm\s*=\s*""', ea) is not None and
+        re.search(r'input\s+string\s+InpRealServerConfirm\s*=\s*""', ea) is not None,
+        "REAL stays unconfirmed by default (empty login and server)")
 
 print("-" * 74)
 print("Gate-profile contracts passed: default STRICT, five numeric thresholds only,")
