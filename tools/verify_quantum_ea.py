@@ -176,6 +176,19 @@ for name, count in fn_count.items():
     if count > 1:
         errors.append(f"function '{name}' defined {count} times")
 
+# --- MQL5 dialect regressions reported by MetaEditor ----------------------
+# Static member methods are valid, but free-standing functions cannot be static.
+for m in re.finditer(r'\bstatic\s+\w+\s+\w+\s*\([^;{}]*\)\s*\{', code):
+    prefix = code[:m.start()]
+    if prefix.count('{') == prefix.count('}'):
+        errors.append("global function cannot be declared static")
+
+# SYMBOL_VOLUME_LIMIT is a double-valued property, not an integer enum.
+if re.search(r'\bSymbolInfoInteger\s*\(\s*[^,]+,\s*SYMBOL_VOLUME_LIMIT\b', code):
+    errors.append("SYMBOL_VOLUME_LIMIT must be read with SymbolInfoDouble")
+if not re.search(r'\bdouble\s+volLimit\s*;', code):
+    errors.append("volLimit must retain fractional lots as a double")
+
 # --- 6/7. required lifecycle + mandatory protection markers ----------------
 for needle in ["int OnInit()", "void OnDeinit(", "void OnTick()"]:
     if needle not in code:
