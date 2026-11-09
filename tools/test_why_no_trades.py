@@ -176,12 +176,12 @@ check(not any(f["severity"] == "BLOCKER" and "day" in f["id"] for f in ok_guard[
       "an untripped guard line does not invent a breaker", ids(ok_guard))
 
 # ---------------------------------------------------------------------------
-# 4. signal starvation is a CAUSE, kept separate from "cannot send"
+# 4. zero exports are a symptom, not a proven cause
 # ---------------------------------------------------------------------------
 starved = W.diagnose([ATTACH, GUARD, HEARTBEAT])
 zero = by_id(starved, "no-signal") or by_id(starved, "zero-signal")
 check(zero is not None, "zero CORE signals produce a finding of their own", ids(starved))
-check(zero["severity"] == "CAUSE", "zero signals is a CAUSE, not a blocker",
+check(zero["severity"] == "WARNING", "zero exports are a warning, not a proven cause",
       zero["severity"])
 check("200" in zero["detail"], "the closed-bar lookback is quoted", zero["detail"][:80])
 
@@ -194,25 +194,23 @@ check("NO_STRUCTURE_EVENT" in zv["detail"],
       "the verdict is repeated in the no-signal detail", zv["detail"][:120])
 
 # ---------------------------------------------------------------------------
-# 5. MTF history: role decides whether it is a cause or a footnote
+# 5. MTF history: report the role without asserting causation
 # ---------------------------------------------------------------------------
 ea_down = W.diagnose([ATTACH, HEALTH, HEARTBEAT])
 check("mtf-history" in ids(ea_down), "a missing EA-reader feed is reported", ids(ea_down))
-check(by_id(ea_down, "mtf-history")["severity"] == "CAUSE",
-      "a missing EA-reader feed is a CAUSE")
+check(by_id(ea_down, "mtf-history")["severity"] == "WARNING",
+      "a missing EA-reader feed is a warning, not a proven CORE cause")
 check("ATR_PERIOD_W1" in by_id(ea_down, "mtf-history")["title"],
       "the missing feed is named", by_id(ea_down, "mtf-history")["title"])
-check("25%" in by_id(ea_down, "mtf-history")["detail"],
-      "the 25% Sniper-pillar weight is stated", by_id(ea_down, "mtf-history")["detail"][:200])
-check("4806" in by_id(ea_down, "mtf-history")["detail"],
-      "terminal_error 4806 is explained")
+check("does not establish a CORE rejection" in by_id(ea_down, "mtf-history")["detail"],
+      "missing Sniper data is not asserted to cause a CORE rejection")
 
 vis_only = W.diagnose([ATTACH, HEALTH_VISUAL, HEARTBEAT])
 check("mtf-history" in ids(vis_only), "a missing visual feed is still mentioned", ids(vis_only))
-check("NOT why" in by_id(vis_only, "mtf-history")["detail"].replace("\n", " "),
-      "a visual-only outage is explicitly downgraded", by_id(vis_only, "mtf-history")["detail"][-160:])
-check(by_id(vis_only, "mtf-history")["severity"] == "CAUSE",
-      "a visual-only outage still stays out of BLOCKER")
+check("1 visual-only feed(s)" in by_id(vis_only, "mtf-history")["detail"],
+      "a visual-only outage is distinguished from the EA reader")
+check(by_id(vis_only, "mtf-history")["severity"] == "WARNING",
+      "a visual-only outage is not treated as proven cause")
 
 # ---------------------------------------------------------------------------
 # 6. noise stays noise
@@ -245,10 +243,10 @@ check(all(len(f["evidence"]) <= W.EVIDENCE_MAX for f in noisy["findings"]),
 # ---------------------------------------------------------------------------
 text = W.render(noisy)
 check(text.startswith("QSMC 'why no trades'"), "the report has a header")
-check("TWO INDEPENDENT PROBLEMS" in text,
-      "blockers + causes are announced as two independent problems")
-check("Order of work" in text and "fix the CAUSE" in text,
-      "the report tells the operator which problem to work on first")
+check("TWO INDEPENDENT PROBLEMS" not in text,
+      "zero exports alone are not presented as a proven independent cause")
+check("does not prove" in text or "does not\n" in text,
+      "the report preserves the qualification on historical conclusions")
 check(text.count("    action:") == len(noisy["findings"]),
       "every finding renders exactly one action block", text.count("    action:"))
 clean = W.render(W.diagnose([ATTACH_LIVE]))

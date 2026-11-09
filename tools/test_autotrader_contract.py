@@ -280,7 +280,7 @@ require("GlobalVariableCheck(GlobName(bar_time,dir))" in code,
 # ------------------------------------------------------------- heartbeat diagnostics
 # A silent chart cannot distinguish "the indicator published nothing" from "the
 # EA refused every signal". The heartbeat is a throttled, read-only diagnostic
-# that copies buffer 7 over a deep window and names which root cause applies.
+# that copies buffer 7; it cannot establish a root cause or replay history.
 hb = re.search(r"input\s+int\s+InpHeartbeatSeconds\s*=\s*(\d+)\s*;", ea)
 require(hb is not None and int(hb.group(1)) > 0,
         "a throttled diagnostic heartbeat exists and is on by default (InpHeartbeatSeconds)")
@@ -294,8 +294,9 @@ require(not re.search(r"g_trade\.|OrderSend|PositionOpen|PositionModify|Position
         "the heartbeat is strictly read-only: no order, modify or close call can hide in it")
 require('if(InpHeartbeatSeconds<=0) return;' in hb_body,
         "InpHeartbeatSeconds=0 switches the heartbeat off (quiet on demand)")
-require("published NO CORE setup" in ea,
-        "when the window has zero signals the heartbeat says so explicitly instead of staying silent")
+require("none in the current indicator export buffer" in ea and
+        "history before this instance was attached is not proven" in ea,
+        "the zero-export heartbeat states the finding and its session-history limitation")
 require(code.count("DiagnosticHeartbeat();") >= 2,
         "the heartbeat runs from both OnTick and OnTimer (a quiet symbol must still report)")
 

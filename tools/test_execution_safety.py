@@ -622,7 +622,7 @@ check(outcome(False, 10004, False, False) == "REJECTED (retry if transient, else
 
 # ================================================================ D11 buffers
 # Scenario 10: empty/invalid buffers never trigger trades / scenario 6: duplicates
-check("if(CopyBuffer(g_handle,QSMC_BUF_CORE_DIR,0,count,g_dir)<count) return false;" in code,
+check("if(CopyBuffer(g_handle,QSMC_BUF_CORE_DIR,0,count,g_dir)<count) { g_signal_copy_failures++; return false; }" in code,
       "D11 a short copy is a refusal, never a partial read")
 check("if(!CopySignalBuffers(count)) return;" in code,
       "D11 ProcessSignals refuses to evaluate anything on a failed copy")
