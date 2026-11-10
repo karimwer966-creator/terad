@@ -135,9 +135,11 @@ check("EffFixedLotRiskPct()" in fixed_branch and "HardMaxRiskPercent()" in fn_bo
       "B3 the HARD per-trade ceiling is enforced in FIXED mode as well (via the one resolver)")
 # 2026-11-09 (F2): the clamp moved into EffFixedLotRiskPct(), which the guard AND
 # the banner call. Pinning the old inline clamp would pin the duplication.
-check("double guard_pct=EffFixedLotRiskPct();" in fixed_branch and
+check("double guard_pct=EffFixedLotRiskPct()*class_mult;" in fixed_branch and
       "double cap_pct=EffFixedLotRiskPct();" in RAW,
-      "B3 a fixed-lot guard of 0 no longer means 'no ceiling at all'")
+      "B3 a fixed-lot guard of 0 no longer means 'no ceiling at all' "
+      "(v6.6.21 scales the one resolved guard by the signal class; the banner still "
+      "prints the unscaled operator ceiling, so the two are intentionally distinct)")
 
 # B4: the five required fields.
 for field in ("REQUESTED=", "NORMALIZED=", "EST_SL_LOSS=", "EFFECTIVE_RISK_PCT="):

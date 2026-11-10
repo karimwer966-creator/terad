@@ -81,6 +81,11 @@ CHECKS = [
     ("defaults-match-preset", [sys.executable, "tools/test_defaults_match_preset.py"]),
     # v6.6.21: one classifier, one risk scale, one entry review - pinned end to end.
     ("signal-execution-profiles", [sys.executable, "tools/test_signal_execution_profiles.py"]),
+    # v6.6.21 closed two holes this gate did not cover: the risk/limit audit that
+    # pinned the un-scaled fixed-lot guard, and the QATS structural verifier that
+    # caught a used-but-undeclared input. Both run in CI; they run here now too.
+    ("at-risk-audit", [sys.executable, "tools/test_at_risk_audit.py"]),
+    ("quantum-ea-verify", [sys.executable, "tools/verify_quantum_ea.py"]),
     ("release-gate", [sys.executable, "tools/check_release_gate.py"]),
 ]
 

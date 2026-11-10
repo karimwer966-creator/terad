@@ -77,6 +77,11 @@ enum ENUM_SIGNAL_CLASS
 };
 
 //--- 1. switches -------------------------------------------------------
+// v6.6.21 unified signal execution profile. QATS computes its own confluence
+// score, so it also needs its own ceiling: STRICT keeps only STRONG, BALANCED
+// adds MODERATE, PERMISSIVE adds WEAK. Applied in ExecuteSignal() BEFORE any
+// sizing, so a refused class never reaches CalcPositionVolume().
+input ENUM_SIGNAL_EXECUTION_PROFILE InpSignalExecutionProfile = SIGNAL_PROFILE_PERMISSIVE; // classification ceiling for entries (PERMISSIVE = all classes)
 input bool     InpEnableTrading        = true;    // MASTER SWITCH: false = never sends an order
 input bool     InpDryRun               = false;   // true = log the order it would send, send nothing
 input bool     InpDemoOnly             = true;    // refuse any non-DEMO account (mandatory protection)
