@@ -21,6 +21,10 @@ jobs:
         run: python3 tools/verify_quantum_ea.py
       - name: MetaEditor error regression checks (not a compile)
         run: python3 tools/test_quantum_compile_regressions.py
+      - name: XAUUSD execution and account authorization harnesses (offline)
+        run: |
+          python3 tools/test_xau_execution_policy.py
+          python3 tools/test_quantum_account_policy.py
       - name: Manual gate still required
         run: |
           echo "This job is NOT a MetaEditor compile and NOT an MT5 demo test."

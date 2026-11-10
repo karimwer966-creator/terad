@@ -117,7 +117,7 @@ check("structure_bar>=0 ? g_atr_buf[structure_bar] : g_atr" in FLAT,
 # auto-heal, and the retention caps are literal. The practical preset is loaded
 # by one click and used to ship InpDisplacementATR=0 with 3/4/2/2 caps and a
 # causal-graph cap of ONE event - structurally incapable of a CORE signal.
-preset = ROOT / "presets" / "nadir2_PRODUCTION_XAUUSD.set"
+preset = ROOT / "tools" / "fixtures" / "legacy_presets" / "nadir2_PRODUCTION_XAUUSD.set.txt"
 check(preset.is_file(), "B4 the practical XAUUSD preset still ships")
 if preset.is_file():
     raw = preset.read_bytes()
@@ -260,7 +260,7 @@ check("if(InpLotMode==QSMC_LOT_FIXED && InpFixedLots<=0.0)" in EA_CODE,
 
 # The shipped demo preset carries his exact numbers. Under the unified DEMO &
 # REAL model it also cannot arm a real account: REAL stays fully disarmed.
-demo = ROOT / "presets" / "QSMC_AutoTrader_DEMO_0.10_200.set"
+demo = ROOT / "tools" / "fixtures" / "legacy_presets" / "QSMC_AutoTrader_DEMO_0.10_200.set.txt"
 check(demo.is_file(), "B7 the demo production preset ships")
 if demo.is_file():
     raw = demo.read_bytes()
@@ -296,8 +296,8 @@ if demo.is_file():
 # checked for drift in CI.
 gen = ROOT / "tools" / "generate_set_presets.py"
 check(gen.is_file(), "B8 the preset generator ships")
-nd = ROOT / "presets" / "nadir2_PRODUCTION_XAUUSD.set"
-ea_p = ROOT / "presets" / "QSMC_AutoTrader_DEMO_0.10_200.set"
+nd = ROOT / "tools" / "fixtures" / "legacy_presets" / "nadir2_PRODUCTION_XAUUSD.set.txt"
+ea_p = ROOT / "tools" / "fixtures" / "legacy_presets" / "QSMC_AutoTrader_DEMO_0.10_200.set.txt"
 check(nd.is_file() and ea_p.is_file(), "B8 both generated presets exist")
 check(not (ROOT / "presets" / "nadir2_PRACTICAL_XAUUSD.set").exists(),
       "B8 the corrupted practical preset is retired, so nobody loads it by habit")

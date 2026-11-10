@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate complete MT5 .set files for nadir2 and QSMC_AutoTrader.
+"""Generate legacy nadir2 and QSMC_AutoTrader regression fixtures, not deployment presets.
 
 WHY THIS FILE EXISTS
 --------------------
@@ -19,7 +19,7 @@ one differs. Nothing is typed by hand twice, so the file cannot drift from the
 code, and `--check` fails in CI the moment it does.
 
 Usage:
-  python3 tools/generate_set_presets.py           # write the .set files
+  python3 tools/generate_set_presets.py           # write legacy .set.txt fixtures
   python3 tools/generate_set_presets.py --check    # fail on drift (CI)
 """
 from __future__ import print_function
@@ -420,14 +420,15 @@ def render(entries, overrides, header, reasons):
 
 
 def main(argv):
+    # Historical regression fixtures, not deployable presets.
     nadir_src = (ROOT / "nadir2.mq5").read_text(encoding="utf-8", errors="replace")
     ea_src = (ROOT / "MQL5" / "Experts" / "QSMC_AutoTrader.mq5").read_text(
         encoding="utf-8", errors="replace")
 
     targets = [
-        (ROOT / "presets" / "nadir2_PRODUCTION_XAUUSD.set",
+        (ROOT / "tools" / "fixtures" / "legacy_presets" / "nadir2_PRODUCTION_XAUUSD.set.txt",
          parse(nadir_src), NADIR2_OVERRIDES, NADIR2_REASONS, NADIR2_HEADER),
-        (ROOT / "presets" / "QSMC_AutoTrader_DEMO_0.10_200.set",
+        (ROOT / "tools" / "fixtures" / "legacy_presets" / "QSMC_AutoTrader_DEMO_0.10_200.set.txt",
          parse(ea_src), EA_OVERRIDES, EA_REASONS, EA_HEADER),
     ]
 

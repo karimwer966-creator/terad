@@ -408,7 +408,7 @@ require("if(buy && sl>=entry) continue;" in code and "if(!buy && sl<=entry) cont
 # A preset is an input surface the operator loads with one click, so it is
 # checked like code: it must not arm anything, and the numbers must be the
 # request it claims to answer (0.05 lots, 100/200/300, 40% + 40%).
-PRESET = ROOT / "presets/QSMC_fixed005_tp100_200_300.set"
+PRESET = ROOT / "tools/fixtures/legacy_presets/QSMC_fixed005_tp100_200_300.set.txt"
 require(PRESET.is_file(), "the fixed-0.05 / 100-200-300 preset ships with the repository")
 pset = PRESET.read_text(encoding="utf-8", errors="replace")
 vals = dict(re.findall(r"^(Inp\w+)=(.*)$", pset, re.M))
