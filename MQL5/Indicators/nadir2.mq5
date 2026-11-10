@@ -5531,10 +5531,10 @@ int    QSMC_ClassifySignal(const double score,const double reliability,const dou
                            const bool geometry_ok,const bool causal_ok,
                            const bool data_ready,const bool topdown_computed,
                            const bool topdown_agrees,const bool invalidated,
-                           const bool expired,const string &why);
+                           const bool expired,string &why);
 double QSMC_RRAcceptFloor();
 void   PrintSignalExecutionProfileBanner();
-bool   QSMC_ApplyExecClassification(STradeSetup &setup,const string &why);
+bool   QSMC_ApplyExecClassification(STradeSetup &setup,string &why);
 void   QSMC_SignalAudit(const string stage,const string setup_id,const int cls,
                         const double score,const double reliability,const double rr1,
                         const string why);
@@ -19737,7 +19737,7 @@ int QSMC_ClassifySignal(const double score,const double reliability,const double
                         const bool geometry_ok,const bool causal_ok,
                         const bool data_ready,const bool topdown_computed,
                         const bool topdown_agrees,const bool invalidated,
-                        const bool expired,const string &why)
+                        const bool expired,string &why)
 {
    why="";
    if(invalidated)
@@ -19987,10 +19987,14 @@ void QSMC_BuildEntryReview(SEntryReview &r,const STradeSetup &setup)
    // 07 reversal candle: the confirmation candle must reject in our direction.
    bool candle_ok=false;
    string candle_detail="no closed-candle rejection in this direction";
+   // SCandleIntelligence carries confirms_buy/confirms_sell (not bullish/bearish,
+   // which belong to the other candle struct) and description (not pattern).
+   // Reading the wrong members is a compile error, not a silent false, so the
+   // names are pinned here deliberately.
    if(g_candle_intel.valid)
      {
-      candle_ok=(is_buy ? g_candle_intel.bullish : g_candle_intel.bearish);
-      candle_detail=g_candle_intel.pattern+" "+IntegerToString(g_candle_intel.score)+"/100";
+      candle_ok=(is_buy ? g_candle_intel.confirms_buy : g_candle_intel.confirms_sell);
+      candle_detail=g_candle_intel.description+" "+IntegerToString(g_candle_intel.score)+"/100";
      }
    QSMC_ReviewSet(r,6,candle_ok,candle_detail);
 
@@ -20858,7 +20862,7 @@ int BinarySearchNearestLiquidity(const double price,const bool find_above,const 
 // caller then leaves the setup unconfirmed/pending and lets it re-evaluate);
 // on success the class and its risk multiplier are stored on the setup so the
 // immutable journal entry and the buffers always agree.
-bool QSMC_ApplyExecClassification(STradeSetup &setup,const string &why)
+bool QSMC_ApplyExecClassification(STradeSetup &setup,string &why)
 {
    why="";
    setup.exec_class=QSMC_CLASS_NONE;
