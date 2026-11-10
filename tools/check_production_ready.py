@@ -84,6 +84,11 @@ CHECKS = [
     # v6.6.21 closed two holes this gate did not cover: the risk/limit audit that
     # pinned the un-scaled fixed-lot guard, and the QATS structural verifier that
     # caught a used-but-undeclared input. Both run in CI; they run here now too.
+    # v6.6.22: F7 shipped 15 errors no suite in this tree looked for. These two
+    # check the error CLASSES (const-reference writes, unknown struct members)
+    # and the scalper envelope, at the gate rather than only in CI.
+    ("compile-errors", [sys.executable, "tools/test_compile_errors.py"]),
+    ("scalper-preset", [sys.executable, "tools/test_scalper_preset.py"]),
     ("at-risk-audit", [sys.executable, "tools/test_at_risk_audit.py"]),
     ("quantum-ea-verify", [sys.executable, "tools/verify_quantum_ea.py"]),
     ("release-gate", [sys.executable, "tools/check_release_gate.py"]),
