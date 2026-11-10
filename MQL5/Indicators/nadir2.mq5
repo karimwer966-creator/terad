@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.620"
+#property version   "6.621"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -622,9 +622,9 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.15).
-#define QSMC_VERSION_TEXT "v6.6.20"
+#define QSMC_VERSION_TEXT "v6.6.21"
 #property indicator_chart_window
-#property indicator_buffers 21   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)
+#property indicator_buffers 26   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)
 #property indicator_plots   7
 //+------------------------------------------------------------------+
 //| v6.6.0 SIGNAL ARBITRATION LAYER                                  |
@@ -1861,6 +1861,58 @@ input double            InpSniperMaxRiskPct    = 1.50;   // Golden Rule 7: Advis
 input bool              InpSniperRunSelfTest   = true;   // Run MTF_SniperZone_SelfTest() at OnInit()
 
 //====================================================================
+// SIGNAL EXECUTION PROFILE (unified weak/moderate/strong classification)
+//
+// Appended after every existing input so positional iCustom() callers
+// keep their parameter order. This profile classifies every CONFIRMED
+// candidate by its confidence (final_score), reliability and RR1, and
+// decides whether it may publish to the CORE buffers the EA reads.
+//   STRICT     = STRONG_VALID only (shipped behaviour, 75/80/1.5)
+//   BALANCED   = MODERATE_VALID + STRONG_VALID (60/60/1.5)
+//   PERMISSIVE = WEAK_VALID + MODERATE_VALID + STRONG_VALID (40/50/1.2)
+// The Allow* switches are the explicit opt-in: PERMISSIVE with
+// InpAllowWeakSignals=false still publishes STRONG only, so the shipped
+// default (PERMISSIVE + AllowWeak=false + AllowModerate=false) is
+// behaviour-identical to STRICT until the operator opts in. Invalidated,
+// expired, incomplete, contradictory, unprotected and duplicate signals
+// never publish under any profile (see QSMC_ClassifySignal).
+//====================================================================
+enum ENUM_SIGNAL_EXECUTION_PROFILE
+  {
+   SIGNAL_PROFILE_STRICT    = 0,   // STRONG_VALID only
+   SIGNAL_PROFILE_BALANCED  = 1,   // MODERATE_VALID + STRONG_VALID
+   SIGNAL_PROFILE_PERMISSIVE= 2    // WEAK_VALID + MODERATE_VALID + STRONG_VALID (when Allow* is set)
+  };
+
+enum ENUM_SIGNAL_CLASS
+  {
+   QSMC_CLASS_NONE          = 0,   // no classification yet
+   QSMC_CLASS_WEAK_VALID    = 1,   // meets WEAK floors, allowed by profile
+   QSMC_CLASS_MODERATE_VALID= 2,   // meets MODERATE floors, allowed by profile
+   QSMC_CLASS_STRONG_VALID  = 3,   // meets STRONG floors, allowed by profile
+   QSMC_CLASS_REJECTED      = 4,   // below floors or profile does not allow the class
+   QSMC_CLASS_INVALIDATED   = 5,   // setup invalidated before publication
+   QSMC_CLASS_EXPIRED       = 6    // setup expired before publication
+  };
+
+input group "====== SIGNAL EXECUTION PROFILE (weak/moderate/strong) ======"
+input ENUM_SIGNAL_EXECUTION_PROFILE InpSignalExecutionProfile = SIGNAL_PROFILE_PERMISSIVE; // STRICT=strong only | BALANCED=moderate+strong | PERMISSIVE=weak+moderate+strong (Allow* still required)
+input bool   InpAllowWeakSignals     = false;  // allow WEAK_VALID candidates to publish (PERMISSIVE only; default false = shipped behaviour)
+input bool   InpAllowModerateSignals = false;  // allow MODERATE_VALID candidates to publish (BALANCED/PERMISSIVE; default false = shipped behaviour)
+input bool   InpAllowStrongSignals   = true;   // allow STRONG_VALID candidates to publish (all profiles)
+input int    InpWeakSignalMinScore     = 40;   // WEAK_VALID confidence floor (0-100, final_score)
+input int    InpModerateSignalMinScore = 60;   // MODERATE_VALID confidence floor (0-100, final_score)
+input int    InpStrongSignalMinScore   = 75;   // STRONG_VALID confidence floor (matches STRICT InpMinConfidenceScore)
+input int    InpWeakSignalMinReliability     = 50;  // WEAK_VALID reliability floor (0-100)
+input int    InpModerateSignalMinReliability = 60;  // MODERATE_VALID reliability floor (0-100)
+input int    InpStrongSignalMinReliability   = 80;  // STRONG_VALID reliability floor (matches STRICT InpMinReliability)
+input double InpWeakSignalMinRR     = 1.20;  // WEAK_VALID RR1 floor (reward:risk)
+input double InpModerateSignalMinRR = 1.50;  // MODERATE_VALID RR1 floor (reward:risk)
+input double InpStrongSignalMinRR   = 1.50;  // STRONG_VALID RR1 floor (matches STRICT InpMinRR1)
+input bool   InpTopDownHardGateForWeak = true;  // TopDown veto is HARD for WEAK signals even when InpRequireInstitutionalConfirm=false (weak needs stronger protection)
+input bool   InpPrintEntryReview        = true;  // print the [QSMC_ENTRY_REVIEW] checklist (12 checks with PASS/FAIL) before a signal is published
+
+//====================================================================
 // v6.6.15 iCustom init-race WRITABLE SHADOWS for threshold ATR doubles.
 //
 // 'input' variables in MQL5 are compile-time constants; code below
@@ -2736,6 +2788,12 @@ struct SConfirmedSignalJournalEntry
    string   structure_event_id;
    string   zone_event_id;
    string   candle_confirmation;
+   // v6.6.21: the immutable classification the buffers published.
+   int      exec_class;          // ENUM_SIGNAL_CLASS
+   int      exec_score;
+   int      exec_reliability;
+   double   exec_rr1;
+   double   exec_risk_mult;
 };
 
 // Phase 44: Statistical Analysis Metrics
@@ -3549,6 +3607,12 @@ struct STradeSetup
    int    relationship_score;    // InstitutionalRelationshipMatrix diagnostic (0-100)
    string relationship_label;
    string mtf_conflict_label;    // MarketConflictEngine classification label
+   // v6.6.21 unified classification (decided once, at confirmation time).
+   int    exec_class;            // ENUM_SIGNAL_CLASS at publication
+   int    exec_score;            // confidence the class was derived from
+   int    exec_reliability;      // reliability the class was derived from
+   double exec_rr1;              // RR1 the class was derived from
+   double exec_risk_mult;        // 0.25 / 0.50 / 1.00 for the companions
 };
 
 // These declarations require the complete STradeSetup type above.
@@ -3859,6 +3923,13 @@ struct SSignalGateAudit
    int    leg_min_bars_apart; // 2 (hard)
    int    leg_max_bars_apart; // InpSweepToStructureMaxBars
    string leg_fail_key;       // the first GateAuditReject key that fired
+   // Unified signal-classification counters (diagnostic only; never gate).
+   long   weak_valid;      // candidates classified WEAK_VALID and published
+   long   moderate_valid;  // candidates classified MODERATE_VALID and published
+   long   strong_valid;    // candidates classified STRONG_VALID and published
+   long   rejected_class;  // candidates rejected by QSMC_ClassifySignal (below floors or profile)
+   long   rejected_topdown;// candidates rejected by the TopDown hard gate for WEAK signals
+   long   rejected_data;   // candidates rejected for missing mandatory data (ATR/TopDown not ready)
 };
 SSignalGateAudit g_gate_audit;
 // Dashboard diagnostic state (recomputed each closed bar; display only)
@@ -5449,6 +5520,24 @@ int    EffMinConfidenceScore();
 int    EffMinReliability();
 double EffMinRR1();
 double EffMaxStopATR();
+// v6.6.21 UNIFIED SIGNAL EXECUTION PROFILE: one classification, one audit line.
+string QSMC_SignalClassName(const ENUM_SIGNAL_CLASS cls);
+string QSMC_ProfileName(const ENUM_SIGNAL_EXECUTION_PROFILE p);
+double QSMC_RiskMultForClass(const int cls);
+bool   QSMC_ProfileAllowsClass(const int cls);
+bool   QSMC_ClassAllowedBySwitch(const int cls);
+int    QSMC_ClassifyByNumbers(const double score,const double reliability,const double rr1);
+int    QSMC_ClassifySignal(const double score,const double reliability,const double rr1,
+                           const bool geometry_ok,const bool causal_ok,
+                           const bool data_ready,const bool topdown_computed,
+                           const bool topdown_agrees,const bool invalidated,
+                           const bool expired,const string &why);
+double QSMC_RRAcceptFloor();
+void   PrintSignalExecutionProfileBanner();
+bool   QSMC_ApplyExecClassification(STradeSetup &setup,const string &why);
+void   QSMC_SignalAudit(const string stage,const string setup_id,const int cls,
+                        const double score,const double reliability,const double rr1,
+                        const string why);
 // v6.6.11 GATE PROFILER (read-only): how far each candidate was from passing.
 void   GateProfileReset();
 void   GateProfileNote(const string what,const double value);
@@ -13508,6 +13597,11 @@ double BufSigZREDir[],BufSigZREEntry[],BufSigZRESL[],BufSigZRETP1[],BufSigZRETP2
 // BufSigCoreDir (chronological, 0.0 = not yet written). The EA can CopyBuffer
 // these instead of relying on GlobalVariables (which require instance match).
 double BufSigCoreVerdict[],BufSigZREVerdict[];
+// Unified classification buffers (21-25): score/class/reliability/RR1/risk-mult.
+// Written alongside 7-12 for every CORE publication so the EA can apply
+// score-based risk scaling without re-deriving the class from score alone.
+// 21=confidence 22=class(1/2/3) 23=reliability 24=RR1 25=risk-mult(0.25/0.5/1.0)
+double BufSigCoreScore[],BufSigCoreClass[],BufSigCoreReliability[],BufSigCoreRR1[],BufSigCoreRiskMult[];
 
 // SIGLOG_CORE_BEGIN - pure functions: no chart state, no globals, no I/O
 void SigLog_RecInit(SSigLogRec &r)
@@ -14149,6 +14243,8 @@ bool       g_siglog_cap_warned=false;
 datetime   g_sigbuf_time[];
 int        g_sigbuf_src[];
 double     g_sigbuf_dir[],g_sigbuf_e[],g_sigbuf_sl[],g_sigbuf_tp1[],g_sigbuf_tp2[],g_sigbuf_tp3[];
+double     g_sigbuf_score[],g_sigbuf_reliability[],g_sigbuf_rr1[];
+int        g_sigbuf_class[];
 
 void SigLog_Init()
 {
@@ -14168,6 +14264,10 @@ void SigLog_Init()
    ArrayResize(g_sigbuf_tp1,0);
    ArrayResize(g_sigbuf_tp2,0);
    ArrayResize(g_sigbuf_tp3,0);
+   ArrayResize(g_sigbuf_score,0);
+   ArrayResize(g_sigbuf_reliability,0);
+   ArrayResize(g_sigbuf_rr1,0);
+   ArrayResize(g_sigbuf_class,0);
 }
 
 bool SigLog_SeenHas(const string id)
@@ -14230,15 +14330,34 @@ void SigLog_BufWrite(const int idx,const int src,const double dir,const double e
    }
 }
 
+// Unified classification buffers (21-25): written alongside 7-12 for CORE only.
+// ZRE (src==1) has no class: the EA never executes ZRE, so 21-25 stay 0 for ZRE.
+void SigLog_BufWriteClass(const int idx,const double score,const int cls,
+                          const double reliability,const double rr1,const double risk_mult)
+{
+   if(idx<0) return;
+   if(idx>=ArraySize(BufSigCoreScore) || idx>=ArraySize(BufSigCoreClass) ||
+      idx>=ArraySize(BufSigCoreReliability) || idx>=ArraySize(BufSigCoreRR1) ||
+      idx>=ArraySize(BufSigCoreRiskMult)) return;
+   BufSigCoreScore[idx]=score;
+   BufSigCoreClass[idx]=(double)cls;
+   BufSigCoreReliability[idx]=reliability;
+   BufSigCoreRR1[idx]=rr1;
+   BufSigCoreRiskMult[idx]=risk_mult;
+}
+
 void SigLog_BufZero(const int idx)
 {
    SigLog_BufWrite(idx,0,0.0,0.0,0.0,0.0,0.0,0.0);
    SigLog_BufWrite(idx,1,0.0,0.0,0.0,0.0,0.0,0.0);
+   SigLog_BufWriteClass(idx,0.0,QSMC_CLASS_NONE,0.0,0.0,0.0);
 }
 
 // Registers a published signal for the calculation buffers and writes it.
 void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,const double e,
-                        const double sl,const double t1,const double t2,const double t3,const int rates_total)
+                        const double sl,const double t1,const double t2,const double t3,const int rates_total,
+                        const double score=0.0,const int cls=QSMC_CLASS_NONE,
+                        const double reliability=0.0,const double rr1=0.0)
 {
    int n=ArraySize(g_sigbuf_time);
    if(n>=SIGLOG_BUF_MAX)
@@ -14255,6 +14374,10 @@ void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,con
          g_sigbuf_tp1[i]=g_sigbuf_tp1[j];
          g_sigbuf_tp2[i]=g_sigbuf_tp2[j];
          g_sigbuf_tp3[i]=g_sigbuf_tp3[j];
+         g_sigbuf_score[i]=g_sigbuf_score[j];
+         g_sigbuf_reliability[i]=g_sigbuf_reliability[j];
+         g_sigbuf_rr1[i]=g_sigbuf_rr1[j];
+         g_sigbuf_class[i]=g_sigbuf_class[j];
       }
       n=keep;
    }
@@ -14266,6 +14389,10 @@ void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,con
    ArrayResize(g_sigbuf_tp1,n+1,256);
    ArrayResize(g_sigbuf_tp2,n+1,256);
    ArrayResize(g_sigbuf_tp3,n+1,256);
+   ArrayResize(g_sigbuf_score,n+1,256);
+   ArrayResize(g_sigbuf_reliability,n+1,256);
+   ArrayResize(g_sigbuf_rr1,n+1,256);
+   ArrayResize(g_sigbuf_class,n+1,256);
    g_sigbuf_time[n]=bar_time;
    g_sigbuf_src[n]=src;
    g_sigbuf_dir[n]=(buy ? 1.0 : -1.0);
@@ -14274,8 +14401,16 @@ void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,con
    g_sigbuf_tp1[n]=t1;
    g_sigbuf_tp2[n]=t2;
    g_sigbuf_tp3[n]=t3;
+   g_sigbuf_score[n]=score;
+   g_sigbuf_reliability[n]=reliability;
+   g_sigbuf_rr1[n]=rr1;
+   g_sigbuf_class[n]=cls;
    int idx=SigLog_FindBar(bar_time,rates_total);
-   if(idx>=0) SigLog_BufWrite(idx,src,g_sigbuf_dir[n],e,sl,t1,t2,t3);
+   if(idx>=0)
+   {
+      SigLog_BufWrite(idx,src,g_sigbuf_dir[n],e,sl,t1,t2,t3);
+      if(src==0) SigLog_BufWriteClass(idx,score,cls,reliability,rr1,QSMC_RiskMultForClass(cls));
+   }
 }
 
 // Zeroes the bars this call may have (re)allocated and re-applies the
@@ -14289,7 +14424,10 @@ void SigLog_PrepareBuffers(const int rates_total,const int prev_calculated)
       ArraySize(BufSigCoreTP2)<rates_total || ArraySize(BufSigCoreTP3)<rates_total ||
       ArraySize(BufSigZREDir)<rates_total || ArraySize(BufSigZREEntry)<rates_total ||
       ArraySize(BufSigZRESL)<rates_total || ArraySize(BufSigZRETP1)<rates_total ||
-      ArraySize(BufSigZRETP2)<rates_total || ArraySize(BufSigZRETP3)<rates_total) return;
+      ArraySize(BufSigZRETP2)<rates_total || ArraySize(BufSigZRETP3)<rates_total ||
+      ArraySize(BufSigCoreScore)<rates_total || ArraySize(BufSigCoreClass)<rates_total ||
+      ArraySize(BufSigCoreReliability)<rates_total || ArraySize(BufSigCoreRR1)<rates_total ||
+      ArraySize(BufSigCoreRiskMult)<rates_total) return;
    int from=(prev_calculated>0 ? (int)MathMax(0,MathMin(prev_calculated,rates_total)-1) : 0);
    if(from==0)
    {
@@ -14307,6 +14445,16 @@ void SigLog_PrepareBuffers(const int rates_total,const int prev_calculated)
       ArrayInitialize(BufSigZRETP3,0.0);
       ArrayInitialize(BufSigCoreVerdict,0.0);
       ArrayInitialize(BufSigZREVerdict,0.0);
+      ArrayInitialize(BufSigCoreScore,0.0);
+      ArrayInitialize(BufSigCoreClass,0.0);
+      ArrayInitialize(BufSigCoreReliability,0.0);
+      ArrayInitialize(BufSigCoreRR1,0.0);
+      ArrayInitialize(BufSigCoreRiskMult,0.0);
+      ArrayInitialize(BufSigCoreScore,0.0);
+      ArrayInitialize(BufSigCoreClass,0.0);
+      ArrayInitialize(BufSigCoreReliability,0.0);
+      ArrayInitialize(BufSigCoreRR1,0.0);
+      ArrayInitialize(BufSigCoreRiskMult,0.0);
       ArrayInitialize(BufEntryBuy0,EMPTY_VALUE);    // v6.4.1: marks must start EMPTY.
       ArrayInitialize(BufEntrySell0,EMPTY_VALUE);   // Uninitialised 0.0 would paint a
       ArrayInitialize(BufPrevBuy0,EMPTY_VALUE);     // stray arrow at price 0 on every
@@ -14320,8 +14468,14 @@ void SigLog_PrepareBuffers(const int rates_total,const int prev_calculated)
       if(from>0 && g_sigbuf_time[i]<t_from) continue;
       int idx=SigLog_FindBar(g_sigbuf_time[i],rates_total);
       if(idx>=0)
+      {
          SigLog_BufWrite(idx,g_sigbuf_src[i],g_sigbuf_dir[i],g_sigbuf_e[i],g_sigbuf_sl[i],
                          g_sigbuf_tp1[i],g_sigbuf_tp2[i],g_sigbuf_tp3[i]);
+         if(g_sigbuf_src[i]==0)
+            SigLog_BufWriteClass(idx,g_sigbuf_score[i],g_sigbuf_class[i],
+                                 g_sigbuf_reliability[i],g_sigbuf_rr1[i],
+                                 QSMC_RiskMultForClass(g_sigbuf_class[i]));
+      }
    }
 }
 
@@ -14544,7 +14698,11 @@ void SigLog_CollectCore(const int rates_total,const int closed)
          SigLog_BufRegister(g_buf_t[idx],0,g_confirmed_signal_journal[i].is_buy,
                             g_confirmed_signal_journal[i].entry,g_confirmed_signal_journal[i].stop_loss,
                             g_confirmed_signal_journal[i].target1,g_confirmed_signal_journal[i].target2,
-                            g_confirmed_signal_journal[i].target3,rates_total);
+                            g_confirmed_signal_journal[i].target3,rates_total,
+                            (double)g_confirmed_signal_journal[i].exec_score,
+                            g_confirmed_signal_journal[i].exec_class,
+                            (double)g_confirmed_signal_journal[i].exec_reliability,
+                            g_confirmed_signal_journal[i].exec_rr1);
       if(want_csv) SigLog_AddCore(g_confirmed_signal_journal[i],idx,closed);
    }
    g_siglog_core_seen=n;
@@ -15050,6 +15208,14 @@ AlertDispatcherClear();
    SetIndexBuffer(18, BufSigZRETP3,   INDICATOR_CALCULATIONS);
    SetIndexBuffer(19, BufSigCoreVerdict, INDICATOR_CALCULATIONS);
    SetIndexBuffer(20, BufSigZREVerdict,  INDICATOR_CALCULATIONS);
+   // v6.6.21 unified classification: score / class / reliability / RR1 / risk mult.
+   // The companions read these through iCustom so they never have to re-derive
+   // the class from the score alone (and never disagree with this indicator).
+   SetIndexBuffer(21, BufSigCoreScore,       INDICATOR_CALCULATIONS);
+   SetIndexBuffer(22, BufSigCoreClass,       INDICATOR_CALCULATIONS);
+   SetIndexBuffer(23, BufSigCoreReliability, INDICATOR_CALCULATIONS);
+   SetIndexBuffer(24, BufSigCoreRR1,         INDICATOR_CALCULATIONS);
+   SetIndexBuffer(25, BufSigCoreRiskMult,    INDICATOR_CALCULATIONS);
    ArraySetAsSeries(BufSigCoreDir,false);
    ArraySetAsSeries(BufSigCoreEntry,false);
    ArraySetAsSeries(BufSigCoreSL,false);
@@ -15064,6 +15230,11 @@ AlertDispatcherClear();
    ArraySetAsSeries(BufSigZRETP3,false);
    ArraySetAsSeries(BufSigCoreVerdict,false);
    ArraySetAsSeries(BufSigZREVerdict,false);
+   ArraySetAsSeries(BufSigCoreScore,false);
+   ArraySetAsSeries(BufSigCoreClass,false);
+   ArraySetAsSeries(BufSigCoreReliability,false);
+   ArraySetAsSeries(BufSigCoreRR1,false);
+   ArraySetAsSeries(BufSigCoreRiskMult,false);
 
    h_ema_fast = iMA(_Symbol, PERIOD_CURRENT, InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
    h_ema_slow = iMA(_Symbol, PERIOD_CURRENT, InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
@@ -15433,6 +15604,9 @@ AlertDispatcherClear();
    // v6.6.12: state the active gate profile in the journal at attach, so a
    // relaxed threshold is never something the operator has to discover later.
    PrintGateProfileBanner();
+   // v6.6.21: state the execution policy in the journal too - a relaxed
+   // signal class the operator cannot read is a silent one.
+   PrintSignalExecutionProfileBanner();
    // Phase 1 signal outcome log: measurement only, no entry authority.
    SigLog_Init();
    if(InpSigLogCSV)
@@ -19446,6 +19620,483 @@ void PrintGateProfileBanner()
 }
 
 //====================================================================
+// v6.6.21 UNIFIED SIGNAL EXECUTION PROFILE
+//
+// One classification function decides, in one place, whether a candidate
+// may publish to the CORE buffers the execution companions read, and with
+// how much of the base risk. Before this, "is this signal good enough"
+// was answered by three unrelated tests (the STRICT threshold gates here,
+// the EA's InpMinRRAtFill, and QATS's own MinScore), so a candidate could
+// pass one and fail another and nobody could say which rule produced the
+// trade. Now there is one table:
+//
+//   class            score  reliability  RR1    risk multiplier
+//   WEAK_VALID       >= 40  >= 50        >=1.20  0.25x
+//   MODERATE_VALID   >= 60  >= 60        >=1.50  0.50x
+//   STRONG_VALID     >= 75  >= 80        >=1.50  1.00x
+//
+// and one gate: QSMC_ProfileAllowsClass(). The profile sets the ceiling
+// (STRICT=STRONG, BALANCED=MODERATE+, PERMISSIVE=WEAK+), the Allow* switch
+// is the explicit opt-in. With the shipped defaults (PERMISSIVE but both
+// AllowWeak and AllowModerate false) the effective set is STRONG only, so
+// this feature changes NOTHING until an operator turns it on.
+//
+// Hard rules that NO profile can relax, checked before any class test:
+//   - invalidated / expired / superseded setups never publish
+//   - a missing or inverted stop, or a target that does not pay for the
+//     risk, never publishes (geometry is not a "weak signal")
+//   - a candidate whose mandatory data was not ready never publishes
+//     (CopyBuffer/ATR/handle failures are not low confidence, they are
+//     ignorance, and ignorance must not be traded at a discount)
+//   - a WEAK candidate is always subject to the top-down veto, even when
+//     InpRequireInstitutionalConfirm is false
+//====================================================================
+string QSMC_SignalClassName(const ENUM_SIGNAL_CLASS cls)
+{
+   switch(cls)
+   {
+      case QSMC_CLASS_WEAK_VALID:     return "WEAK_VALID";
+      case QSMC_CLASS_MODERATE_VALID: return "MODERATE_VALID";
+      case QSMC_CLASS_STRONG_VALID:   return "STRONG_VALID";
+      case QSMC_CLASS_REJECTED:       return "REJECTED";
+      case QSMC_CLASS_INVALIDATED:    return "INVALIDATED";
+      case QSMC_CLASS_EXPIRED:        return "EXPIRED";
+      default:                        return "NONE";
+   }
+}
+
+string QSMC_ProfileName(const ENUM_SIGNAL_EXECUTION_PROFILE p)
+{
+   switch(p)
+   {
+      case SIGNAL_PROFILE_STRICT:     return "STRICT";
+      case SIGNAL_PROFILE_BALANCED:   return "BALANCED";
+      case SIGNAL_PROFILE_PERMISSIVE: return "PERMISSIVE";
+   }
+   return "STRICT";
+}
+
+// Risk multiplier for a class. Zero means "do not execute": the companions
+// treat 0 as a refusal, never as "size it small".
+double QSMC_RiskMultForClass(const int cls)
+{
+   if(cls==QSMC_CLASS_WEAK_VALID)     return 0.25;
+   if(cls==QSMC_CLASS_MODERATE_VALID) return 0.50;
+   if(cls==QSMC_CLASS_STRONG_VALID)   return 1.00;
+   return 0.0;
+}
+
+// The explicit allow switch for a class (operator intent, not the ceiling).
+bool QSMC_ClassAllowedBySwitch(const int cls)
+{
+   if(cls==QSMC_CLASS_WEAK_VALID)     return InpAllowWeakSignals;
+   if(cls==QSMC_CLASS_MODERATE_VALID) return InpAllowModerateSignals;
+   if(cls==QSMC_CLASS_STRONG_VALID)   return InpAllowStrongSignals;
+   return false;
+}
+
+// The profile ceiling. A stricter profile always wins over a looser switch:
+// STRICT never publishes a WEAK candidate even with InpAllowWeakSignals=true,
+// because the operator chose STRICT on purpose and a hidden veto that
+// contradicts the visible profile is exactly the kind of surprise this
+// release is removing.
+bool QSMC_ProfileAllowsClass(const int cls)
+{
+   if(cls!=QSMC_CLASS_WEAK_VALID && cls!=QSMC_CLASS_MODERATE_VALID &&
+      cls!=QSMC_CLASS_STRONG_VALID) return false;
+   if(InpSignalExecutionProfile==SIGNAL_PROFILE_STRICT)
+      return (cls==QSMC_CLASS_STRONG_VALID);
+   if(InpSignalExecutionProfile==SIGNAL_PROFILE_BALANCED)
+      return (cls==QSMC_CLASS_STRONG_VALID || cls==QSMC_CLASS_MODERATE_VALID);
+   return true;   // PERMISSIVE: the Allow* switch still has the final word
+}
+
+// Class of a candidate that satisfies every hard rule, by its own numbers.
+// Pure function of its arguments: same inputs, same class, every time.
+int QSMC_ClassifyByNumbers(const double score,const double reliability,const double rr1)
+{
+   if(score>=(double)InpStrongSignalMinScore &&
+      reliability>=(double)InpStrongSignalMinReliability &&
+      rr1+1e-9>=InpStrongSignalMinRR)     return QSMC_CLASS_STRONG_VALID;
+   if(score>=(double)InpModerateSignalMinScore &&
+      reliability>=(double)InpModerateSignalMinReliability &&
+      rr1+1e-9>=InpModerateSignalMinRR)   return QSMC_CLASS_MODERATE_VALID;
+   if(score>=(double)InpWeakSignalMinScore &&
+      reliability>=(double)InpWeakSignalMinReliability &&
+      rr1+1e-9>=InpWeakSignalMinRR)       return QSMC_CLASS_WEAK_VALID;
+   return QSMC_CLASS_REJECTED;
+}
+
+// Full classification of a confirmed candidate. Order matters and is the
+// documented contract (tools/test_signal_execution_profiles.py mirrors it):
+//   1 invalidated  2 expired  3 mandatory data missing
+//   4 geometry/causality broken  5 top-down veto  6 class by numbers
+//   7 class switch  8 profile ceiling
+// Returns the class the candidate PUBLISHES as, or a REJECTED_* code.
+int QSMC_ClassifySignal(const double score,const double reliability,const double rr1,
+                        const bool geometry_ok,const bool causal_ok,
+                        const bool data_ready,const bool topdown_computed,
+                        const bool topdown_agrees,const bool invalidated,
+                        const bool expired,const string &why)
+{
+   why="";
+   if(invalidated)
+   {
+      why="setup invalidated before publication";
+      return QSMC_CLASS_INVALIDATED;
+   }
+   if(expired)
+   {
+      why="setup expired before publication";
+      return QSMC_CLASS_EXPIRED;
+   }
+   if(!data_ready)
+   {
+      why="mandatory data not ready (ATR/CopyBuffer/handle) - ignorance is not a low score";
+      return QSMC_CLASS_REJECTED;
+   }
+   if(rr1<=0.0 || !geometry_ok)
+   {
+      why="geometry invalid (stop/target missing, inverted or not paying for the risk)";
+      return QSMC_CLASS_REJECTED;
+   }
+   if(!causal_ok)
+   {
+      why="causal chain incomplete (sweep/displacement/structure/zone)";
+      return QSMC_CLASS_REJECTED;
+   }
+   int cls=QSMC_ClassifyByNumbers(score,reliability,rr1);
+   if(cls==QSMC_CLASS_REJECTED)
+   {
+      why=StringFormat("below every floor (score %.0f rel %.0f rr1 %.2f)",
+                       score,reliability,rr1);
+      return QSMC_CLASS_REJECTED;
+   }
+   if(!QSMC_ClassAllowedBySwitch(cls))
+   {
+      why=QSMC_SignalClassName((ENUM_SIGNAL_CLASS)cls)+" not allowed by the Allow* switch";
+      return QSMC_CLASS_REJECTED;
+   }
+   if(!QSMC_ProfileAllowsClass(cls))
+   {
+      why=QSMC_SignalClassName((ENUM_SIGNAL_CLASS)cls)+" not allowed by profile "+
+          QSMC_ProfileName(InpSignalExecutionProfile);
+      return QSMC_CLASS_REJECTED;
+   }
+   // WEAK is the only class that gets an unconditional top-down veto.
+   if(cls==QSMC_CLASS_WEAK_VALID && InpTopDownHardGateForWeak)
+   {
+      if(!topdown_computed)
+      {
+         why="WEAK candidate with top-down not computed - refusing to trade blind";
+         return QSMC_CLASS_REJECTED;
+      }
+      if(!topdown_agrees)
+      {
+         why="WEAK candidate against the top-down bias - hard veto";
+         return QSMC_CLASS_REJECTED;
+      }
+   }
+   return cls;
+}
+
+// Minimum RR1 that the ACTIVE configuration will accept, for diagnostics.
+// A caller reporting "RR1 gate = x" must use this, not the raw input.
+double QSMC_RRAcceptFloor()
+{
+   double f=InpStrongSignalMinRR;
+   if(InpAllowModerateSignals || InpSignalExecutionProfile!=SIGNAL_PROFILE_STRICT)
+      f=MathMin(f,InpModerateSignalMinRR);
+   if(InpAllowWeakSignals && InpSignalExecutionProfile==SIGNAL_PROFILE_PERMISSIVE)
+      f=MathMin(f,InpWeakSignalMinRR);
+   return f;
+}
+
+// Printed once at init, immediately after the gate-profile banner, because a
+// relaxed execution policy the operator cannot read is a silent one.
+void PrintSignalExecutionProfileBanner()
+{
+   Print(">>> ",QSMC_VERSION_TEXT," SIGNAL EXECUTION PROFILE: ",
+         QSMC_ProfileName(InpSignalExecutionProfile));
+   Print(">>>   STRONG   score>=",InpStrongSignalMinScore," rel>=",InpStrongSignalMinReliability,
+         " rr1>=",DoubleToString(InpStrongSignalMinRR,2),
+         "  allow=",(InpAllowStrongSignals?"ON":"OFF"),"  risk 1.00x");
+   Print(">>>   MODERATE score>=",InpModerateSignalMinScore," rel>=",InpModerateSignalMinReliability,
+         " rr1>=",DoubleToString(InpModerateSignalMinRR,2),
+         "  allow=",(InpAllowModerateSignals?"ON":"OFF"),"  risk 0.50x");
+   Print(">>>   WEAK     score>=",InpWeakSignalMinScore," rel>=",InpWeakSignalMinReliability,
+         " rr1>=",DoubleToString(InpWeakSignalMinRR,2),
+         "  allow=",(InpAllowWeakSignals?"ON":"OFF"),"  risk 0.25x");
+   if(!InpAllowWeakSignals && !InpAllowModerateSignals)
+      Print(">>>   EFFECTIVE SET: STRONG only - weak and moderate are OFF, so this",
+            " profile does not change the shipped behaviour.");
+   else
+      Print(">>>   WARNING: allowing weak/moderate signals makes MORE trades possible,",
+            " not better ones. They execute at 0.25x / 0.50x of the base risk and",
+            " are still subject to every breaker in the companion.");
+   if(InpTopDownHardGateForWeak)
+      Print(">>>   WEAK candidates are always subject to the top-down veto",
+            " (InpTopDownHardGateForWeak=true), whatever InpRequireInstitutionalConfirm says.");
+}
+
+//====================================================================
+// v6.6.21 ENTRY REVIEW - "did every professional condition actually hold?"
+//
+// The gates already decide. This does not decide anything: it RECORDS each
+// condition, one line per check, at the moment the signal is confirmed, so a
+// published signal can be audited against the checklist instead of trusted.
+// A condition that is not observed is reported as FAIL with the reason, never
+// as PASS by default - an unreviewed condition is not a satisfied one.
+//
+// The checklist is the one a discretionary professional runs before size:
+//   01 LIQUIDITY_SWEEP   a pool was swept and price closed back inside
+//   02 SWEEP_SIDE        the sweep is of the side the trade needs
+//                        (low/sell-side for a BUY, high/buy-side for a SELL)
+//   03 DISPLACEMENT      an energetic leg left the sweep
+//   04 MSS               market structure shifted against the swept side
+//   05 POI               a causal OB/FVG exists and is bound to that displacement
+//   06 LOCATION          entry is at the zone, in discount (buy) / premium (sell)
+//   07 REVERSAL_CANDLE   the confirmation candle shows rejection in the direction
+//   08 HTF_BIAS          D1/H4 bias agrees or is neutral
+//   09 SESSION           inside a tradable session/kill zone
+//   10 SPREAD            spread is a small fraction of the stop
+//   11 GEOMETRY          sl < entry < tp with RR1 at or above the active floor
+//   12 NO_CONFLICT       no opposite/contradictory active setup
+//====================================================================
+#define QSMC_REVIEW_CHECKS 12
+// A spread that costs more than this share of the stop distance is not an edge.
+#define QSMC_REVIEW_MAX_SPREAD_FRAC 0.10
+
+struct SEntryReview
+  {
+   bool     checked[QSMC_REVIEW_CHECKS];
+   bool     passed[QSMC_REVIEW_CHECKS];
+   string   detail[QSMC_REVIEW_CHECKS];
+   int      pass_count;
+   int      fail_count;
+   bool     complete;        // every check was actually evaluated
+   string   verdict;         // READY / NOT_READY
+  };
+
+string QSMC_ReviewName(const int i)
+  {
+   switch(i)
+     {
+      case 0:  return "01 LIQUIDITY_SWEEP";
+      case 1:  return "02 SWEEP_SIDE";
+      case 2:  return "03 DISPLACEMENT";
+      case 3:  return "04 MSS";
+      case 4:  return "05 POI";
+      case 5:  return "06 LOCATION";
+      case 6:  return "07 REVERSAL_CANDLE";
+      case 7:  return "08 HTF_BIAS";
+      case 8:  return "09 SESSION";
+      case 9:  return "10 SPREAD";
+      case 10: return "11 GEOMETRY";
+      case 11: return "12 NO_CONFLICT";
+     }
+   return "?? UNKNOWN";
+  }
+
+void QSMC_ReviewSet(SEntryReview &r,const int i,const bool ok,const string detail)
+  {
+   if(i<0 || i>=QSMC_REVIEW_CHECKS) return;
+   r.checked[i]=true;
+   r.passed[i]=ok;
+   r.detail[i]=detail;
+   if(ok) r.pass_count++;
+   else   r.fail_count++;
+  }
+
+// Build the review for a confirmed candidate. READ-ONLY: it reads the same
+// closed-bar state the gates used and changes nothing.
+void QSMC_BuildEntryReview(SEntryReview &r,const STradeSetup &setup)
+  {
+   r.pass_count=0;
+   r.fail_count=0;
+   r.complete=false;
+   r.verdict="NOT_READY";
+   for(int i=0;i<QSMC_REVIEW_CHECKS;i++)
+     {
+      r.checked[i]=false;
+      r.passed[i]=false;
+      r.detail[i]="not evaluated";
+     }
+
+   bool is_buy=setup.is_buy;
+   string need=(is_buy ? "sell-side (lows)" : "buy-side (highs)");
+
+   // 01 liquidity sweep: the chain must name a sweep event AND a swept price.
+   bool sweep_ok=(setup.sweep_event_id!="" && setup.sweep_price>0.0);
+   QSMC_ReviewSet(r,0,sweep_ok,
+      sweep_ok ? StringFormat("swept %.5f on bar %d",setup.sweep_price,setup.sweep_bar)
+               : "no confirmed sweep event on this chain");
+
+   // 02 the sweep must be of the side this trade needs. A BUY that swept a HIGH
+   // is a breakout chase, not a reversal - and it is the single most common way
+   // a "sweep + reversal candle" confluence turns out to be short-side liquidity.
+   bool side_ok=false;
+   string side_detail="swept price %.5f is not on the "+need+" side";
+   if(sweep_ok && setup.zone_top>setup.zone_bottom)
+     {
+      // The swept extreme must sit at/beyond the zone edge in the direction of
+      // the sweep, which is what makes the zone a reversal area rather than a
+      // continuation one.
+      side_ok=(is_buy ? (setup.sweep_price<=setup.zone_bottom+_Point*0.5)
+                      : (setup.sweep_price>=setup.zone_top-_Point*0.5));
+      side_detail=StringFormat("swept %.5f vs zone %.5f-%.5f (%s)",setup.sweep_price,
+                               setup.zone_bottom,setup.zone_top,need);
+     }
+   QSMC_ReviewSet(r,1,side_ok,side_detail);
+
+   // 03 displacement: the causal chain must contain one.
+   bool disp_ok=(setup.displacement_event_id!="");
+   QSMC_ReviewSet(r,2,disp_ok,
+      disp_ok ? "displacement event "+setup.displacement_event_id : "no displacement event");
+
+   // 04 MSS: the structure event is the market-structure shift.
+   bool mss_ok=(setup.structure_event_id!="");
+   QSMC_ReviewSet(r,3,mss_ok,
+      mss_ok ? "structure shift "+setup.structure_event_id : "no market-structure shift");
+
+   // 05 point of interest: a causal zone bound to the leg.
+   bool poi_ok=(setup.zone_event_id!="" && setup.zone_top>setup.zone_bottom);
+   QSMC_ReviewSet(r,4,poi_ok,
+      poi_ok ? setup.zone_source+" zone bound" : "no causal OB/FVG bound to the leg");
+
+   // 06 location: entry inside the zone AND on the correct side of the range.
+   bool loc_ok=false;
+   string loc_detail="entry not inside the POI";
+   if(poi_ok)
+     {
+      bool in_zone=(setup.entry>=setup.zone_bottom-_Point && setup.entry<=setup.zone_top+_Point);
+      bool pd_ok=true;
+      string pd_text="premium/discount unknown";
+      if(g_quant.computed)
+        {
+         pd_text=g_quant.pd_position;
+         if(is_buy)  pd_ok=(g_quant.pd_position!="PREMIUM");
+         else        pd_ok=(g_quant.pd_position!="DISCOUNT");
+        }
+      loc_ok=(in_zone && pd_ok);
+      loc_detail=StringFormat("entry %.5f in zone %s | %s",setup.entry,
+                              (in_zone?"yes":"NO"),pd_text);
+     }
+   QSMC_ReviewSet(r,5,loc_ok,loc_detail);
+
+   // 07 reversal candle: the confirmation candle must reject in our direction.
+   bool candle_ok=false;
+   string candle_detail="no closed-candle rejection in this direction";
+   if(g_candle_intel.valid)
+     {
+      candle_ok=(is_buy ? g_candle_intel.bullish : g_candle_intel.bearish);
+      candle_detail=g_candle_intel.pattern+" "+IntegerToString(g_candle_intel.score)+"/100";
+     }
+   QSMC_ReviewSet(r,6,candle_ok,candle_detail);
+
+   // 08 HTF bias: agree, or be explicitly neutral (never silently neutral).
+   bool d1_bull=(StringFind(g_d1_structure_state,"BULL")>=0);
+   bool d1_bear=(StringFind(g_d1_structure_state,"BEAR")>=0);
+   bool htf_ok=(!d1_bull && !d1_bear) || (is_buy ? d1_bull : d1_bear);
+   QSMC_ReviewSet(r,7,htf_ok,"D1 structure "+g_d1_structure_state);
+
+   // 09 session: reported from the quant engine; OFF is a fail for a new entry.
+   string sess=(g_quant.computed ? g_quant.session_label : "UNKNOWN");
+   bool sess_ok=(sess!="OFF" && sess!="UNKNOWN" && sess!="");
+   QSMC_ReviewSet(r,8,sess_ok,sess);
+
+   // 10 spread: TWO limits, because either one alone is a lie.
+   //     absolute - above InpMaxSpreadPts the broker is charging too much;
+   //     relative - above 10% of the stop distance the spread alone eats the
+   //                edge the setup was measured on. A 60-point spread is
+   //                nothing against a 5000-point stop and fatal against a
+   //                25-point one, so the ratio is the check that matters.
+   double risk=MathAbs(setup.entry-setup.sl);
+   double risk_pts=(_Point>0.0 ? risk/_Point : 0.0);
+   bool spread_ok=false;
+   string spread_detail="spread unknown";
+   if(risk_pts>0.0 && g_spread>=0)
+     {
+      double frac=((double)g_spread)/risk_pts;
+      bool abs_ok=((int)g_spread<=InpMaxSpreadPts);
+      bool rel_ok=(frac<=QSMC_REVIEW_MAX_SPREAD_FRAC);
+      spread_ok=(abs_ok && rel_ok);
+      spread_detail=StringFormat("%d pts = %.1f%% of a %.0f-pt stop (abs cap %d, share cap %.0f%%)",
+                                 (int)g_spread,frac*100.0,risk_pts,InpMaxSpreadPts,
+                                 QSMC_REVIEW_MAX_SPREAD_FRAC*100.0);
+     }
+   QSMC_ReviewSet(r,9,spread_ok,spread_detail);
+
+   // 11 geometry + RR floor, measured on the plan, not on the current price.
+   bool geo_ok=false;
+   string geo_detail="geometry invalid";
+   if(risk>0.0 && setup.tp1>0.0)
+     {
+      bool shape=(is_buy ? (setup.sl<setup.entry && setup.tp1>setup.entry)
+                         : (setup.sl>setup.entry && setup.tp1<setup.entry));
+      double rr=MathAbs(setup.tp1-setup.entry)/risk;
+      geo_ok=(shape && rr+1e-9>=QSMC_RRAcceptFloor());
+      geo_detail=StringFormat("RR1 %.2f (floor %.2f) shape=%s",rr,QSMC_RRAcceptFloor(),
+                              (shape?"ok":"BROKEN"));
+     }
+   QSMC_ReviewSet(r,10,geo_ok,geo_detail);
+
+   // 12 no conflict: an opposite setup must not be live on the same bar.
+   bool conflict=false;
+   if(g_active_setup.active && g_active_setup.is_buy!=is_buy) conflict=true;
+   if(g_trade_setup.valid && g_trade_setup.is_buy!=is_buy &&
+      g_trade_setup.confirmation_bar==setup.confirmation_bar) conflict=true;
+   QSMC_ReviewSet(r,11,!conflict,
+      conflict ? "an opposite setup is live on this bar" : "no opposite setup live");
+
+   r.complete=true;
+   r.verdict=(r.fail_count==0 ? "READY" : "NOT_READY");
+  }
+
+// Printed once per published signal (never per tick).
+void QSMC_PrintEntryReview(const SEntryReview &r,const string setup_id,
+                           const STradeSetup &setup)
+  {
+   if(!InpPrintEntryReview) return;
+   if(QSMC_IsReaderSilent()) return;
+   Print("[QSMC_ENTRY_REVIEW] BEGIN setup=",(setup_id==""?"none":setup_id),
+         " dir=",(setup.is_buy?"BUY":"SELL"),
+         " entry=",DoubleToString(setup.entry,_Digits),
+         " sl=",DoubleToString(setup.sl,_Digits),
+         " tp1=",DoubleToString(setup.tp1,_Digits),
+         " class=",QSMC_SignalClassName((ENUM_SIGNAL_CLASS)setup.exec_class),
+         " verdict=",r.verdict);
+   for(int i=0;i<QSMC_REVIEW_CHECKS;i++)
+      Print("[QSMC_ENTRY_REVIEW]   ",(r.passed[i]?"PASS":"FAIL")," ",
+            QSMC_ReviewName(i)," - ",r.detail[i]);
+   Print("[QSMC_ENTRY_REVIEW] END pass=",IntegerToString(r.pass_count),
+         "/",IntegerToString(QSMC_REVIEW_CHECKS),
+         " fail=",IntegerToString(r.fail_count),
+         " verdict=",r.verdict);
+  }
+
+// One line per classification decision, in a shape a machine can parse. Emitted
+// for rejections as well as publications: a signal that never reached the
+// buffers is exactly what an operator needs to see when a chart is quiet.
+// Readers are silent, like every other journal line, so an iCustom instance
+// cannot flood the terminal of the EA it feeds.
+void QSMC_SignalAudit(const string stage,const string setup_id,const int cls,
+                      const double score,const double reliability,const double rr1,
+                      const string why)
+{
+   if(QSMC_IsReaderSilent()) return;
+   Print("[QSMC_SIGNAL_AUDIT] stage=",stage,
+         " setup=",(setup_id==""?"none":setup_id),
+         " class=",QSMC_SignalClassName((ENUM_SIGNAL_CLASS)cls),
+         " score=",DoubleToString(score,0),
+         " reliability=",DoubleToString(reliability,0),
+         " rr1=",DoubleToString(rr1,2),
+         " risk_mult=",DoubleToString(QSMC_RiskMultForClass(cls),2),
+         " profile=",QSMC_ProfileName(InpSignalExecutionProfile),
+         " why=",(why==""?"":why));
+}
+
+//====================================================================
 // v6.6.11 GATE PROFILER: what did each candidate ACTUALLY score?
 // Until now the only durable record of a refusal was the top blocker, which is
 // a vote count: it says which gate fires most, never how far a candidate was
@@ -20202,6 +20853,66 @@ int BinarySearchNearestLiquidity(const double price,const bool find_above,const 
 // documented decision is made to revive or remove it. Do not enable silently.
 
 // Append exactly one immutable confirmed-signal fact record per stable setup id.
+// v6.6.21: decide the execution class ONCE, at confirmation time, before the
+// journal append. Returns false when the candidate must NOT publish (the
+// caller then leaves the setup unconfirmed/pending and lets it re-evaluate);
+// on success the class and its risk multiplier are stored on the setup so the
+// immutable journal entry and the buffers always agree.
+bool QSMC_ApplyExecClassification(STradeSetup &setup,const string &why)
+{
+   why="";
+   setup.exec_class=QSMC_CLASS_NONE;
+   setup.exec_score=setup.confidence;
+   setup.exec_reliability=setup.reliability;
+   setup.exec_rr1=setup.rr1;
+   setup.exec_risk_mult=0.0;
+
+   // Mandatory data: without a closed ATR there is no geometry to judge and a
+   // zero score would be read as "bad signal" when it really means "no data".
+   bool data_ready=(g_atr>0.0 && setup.confidence>0 && setup.reliability>0 &&
+                    ArraySize(g_buf_t)>0 && setup.entry>0.0 && setup.sl>0.0 &&
+                    setup.tp1>0.0);
+   // Geometry: a long must have its stop below and its target above the entry.
+   bool geometry_ok=false;
+   if(data_ready)
+   {
+      double risk=MathAbs(setup.entry-setup.sl);
+      double reward=(setup.is_buy ? setup.tp1-setup.entry : setup.entry-setup.tp1);
+      geometry_ok=(risk>0.0 && reward>0.0 && setup.rr1+1e-9>=QSMC_RRAcceptFloor()*0.5);
+   }
+   // Causality: the chain that produced this setup must be complete.
+   bool causal_ok=(setup.sweep_event_id!="" && setup.displacement_event_id!="" &&
+                   setup.structure_event_id!="" && setup.zone_event_id!="");
+   bool td_computed=g_td.computed;
+   bool td_agrees=(g_td.computed && g_td.dir!=0 &&
+                   ((g_td.dir>0)==setup.is_buy));
+   // Terminal states are classified before the numbers are looked at: a setup
+   // whose zone was invalidated or whose age ran out is not a weak signal.
+   bool invalidated=(setup.created_bar<0 || setup.sl<=0.0);
+   bool expired=(setup.created_bar>=0 && ArraySize(g_buf_t)>0 &&
+                 g_rates_total-2-setup.created_bar>InpRetestTimeoutBars);
+
+   int cls=QSMC_ClassifySignal((double)setup.confidence,(double)setup.reliability,
+                               setup.rr1,geometry_ok,causal_ok,data_ready,
+                               td_computed,td_agrees,invalidated,expired,why);
+   if(cls!=QSMC_CLASS_WEAK_VALID && cls!=QSMC_CLASS_MODERATE_VALID &&
+      cls!=QSMC_CLASS_STRONG_VALID)
+   {
+      if(cls==QSMC_CLASS_INVALIDATED)      g_gate_audit.rejected_class++;
+      else if(cls==QSMC_CLASS_EXPIRED)     g_gate_audit.rejected_class++;
+      else if(!data_ready)                 g_gate_audit.rejected_data++;
+      else if(why!="" && StringFind(why,"top-down")>=0) g_gate_audit.rejected_topdown++;
+      else                                 g_gate_audit.rejected_class++;
+      return false;
+   }
+   setup.exec_class=cls;
+   setup.exec_risk_mult=QSMC_RiskMultForClass(cls);
+   if(cls==QSMC_CLASS_WEAK_VALID)          g_gate_audit.weak_valid++;
+   else if(cls==QSMC_CLASS_MODERATE_VALID) g_gate_audit.moderate_valid++;
+   else                                    g_gate_audit.strong_valid++;
+   return true;
+}
+
 bool AppendConfirmedSignalJournal(const STradeSetup &setup,const string candle_conf)
 {
    if(!setup.valid || setup.setup_event_id=="" ||
@@ -20267,6 +20978,13 @@ bool AppendConfirmedSignalJournal(const STradeSetup &setup,const string candle_c
    g_confirmed_signal_journal[n].structure_event_id=setup.structure_event_id;
    g_confirmed_signal_journal[n].zone_event_id=setup.zone_event_id;
    g_confirmed_signal_journal[n].candle_confirmation=candle_conf;
+   // v6.6.21: the classification is part of the immutable record, so a
+   // published signal can always be explained after the fact.
+   g_confirmed_signal_journal[n].exec_class=setup.exec_class;
+   g_confirmed_signal_journal[n].exec_score=setup.exec_score;
+   g_confirmed_signal_journal[n].exec_reliability=setup.exec_reliability;
+   g_confirmed_signal_journal[n].exec_rr1=setup.exec_rr1;
+   g_confirmed_signal_journal[n].exec_risk_mult=setup.exec_risk_mult;
    return true;
 }
 
@@ -20346,6 +21064,29 @@ void ConfirmPendingDirectSetup(const int total,const datetime &t[])
    // v6.4.0: a pending setup cannot confirm while the top-down chain disagrees;
    // it stays pending and re-evaluates on a later closed bar.
    if(TopDown_VetoesDirection(g_trade_setup.is_buy)) return;   // v6.4.1
+
+   // v6.6.21 UNIFIED CLASSIFICATION. This is the last gate before a signal
+   // becomes immutable fact and reaches the execution buffers, so it is where
+   // the weak/moderate/strong decision is made - once, with the reason kept.
+   string class_why="";
+   if(!QSMC_ApplyExecClassification(g_trade_setup,class_why))
+   {
+      QSMC_SignalAudit("CONFIRM",g_trade_setup.setup_event_id,QSMC_CLASS_REJECTED,
+                       g_trade_setup.confidence,g_trade_setup.reliability,g_trade_setup.rr1,class_why);
+      if(InpLogLifecycleTransitions)
+         LogLifecycle("CONFIRMATION WITHHELD: "+class_why);
+      return;   // stays pending: a later bar may satisfy the class
+   }
+   // v6.6.21 ENTRY REVIEW: record every professional condition, PASS or FAIL,
+   // before the signal becomes fact. Diagnostic only - the gates above decide.
+   SEntryReview review;
+   QSMC_BuildEntryReview(review,g_trade_setup);
+   QSMC_PrintEntryReview(review,g_trade_setup.setup_event_id,g_trade_setup);
+   QSMC_SignalAudit("CONFIRM",g_trade_setup.setup_event_id,
+                    (ENUM_SIGNAL_CLASS)g_trade_setup.exec_class,
+                    g_trade_setup.confidence,g_trade_setup.reliability,g_trade_setup.rr1,
+                    "published review="+review.verdict+" "+IntegerToString(review.pass_count)+
+                    "/"+IntegerToString(QSMC_REVIEW_CHECKS));
 
    string setup_id=g_trade_setup.setup_event_id;
    if(!TryTransitionSignalState(STATE_CONFIRMATION_PENDING,setup_id,closed)) return;
@@ -21750,6 +22491,32 @@ void ManageSetupLifecycle(const int total,const double &o[],const double &h[],co
       g_trade_setup.immutable_target_barrier_event_id=g_active_setup.immutable_target_barrier_event_id;
       g_trade_setup.immutable_target_barrier_bar=g_active_setup.immutable_target_barrier_bar;
       g_trade_setup.causal_path_score=g_active_setup.causal_path_score;
+
+      // v6.6.21 UNIFIED CLASSIFICATION, retest path. Same gate, same reason
+      // string and same audit line as the direct-confirmation path, so both
+      // routes into the journal can only publish what the profile allows.
+      string class_why2="";
+      if(!QSMC_ApplyExecClassification(g_trade_setup,class_why2))
+      {
+         QSMC_SignalAudit("RETEST",g_active_setup.setup_event_id,QSMC_CLASS_REJECTED,
+                          g_trade_setup.confidence,g_trade_setup.reliability,
+                          g_trade_setup.rr1,class_why2);
+         if(InpLogLifecycleTransitions)
+            LogLifecycle("RETEST CONFIRMATION WITHHELD: "+class_why2);
+         g_trade_setup.valid=false;
+         g_trade_setup.confirmation_pending=true;
+         return;   // stays ARMED: a later bar may satisfy the class
+      }
+      SEntryReview review_rt;
+      QSMC_BuildEntryReview(review_rt,g_trade_setup);
+      QSMC_PrintEntryReview(review_rt,g_active_setup.setup_event_id,g_trade_setup);
+      QSMC_SignalAudit("RETEST",g_active_setup.setup_event_id,
+                       (ENUM_SIGNAL_CLASS)g_trade_setup.exec_class,
+                       g_trade_setup.confidence,g_trade_setup.reliability,
+                       g_trade_setup.rr1,
+                       "published review="+review_rt.verdict+" "+
+                       IntegerToString(review_rt.pass_count)+"/"+
+                       IntegerToString(QSMC_REVIEW_CHECKS));
       EntryMarkCoreFromSetup();   // v6.4.1: publish the entry mark on the immutable confirmed bar
 
       if(!TryTransitionSignalState(STATE_CONFIRMED,g_active_setup.setup_event_id,closed))
@@ -42427,6 +43194,28 @@ int MTF_SniperCopyBufferBounded(const int handle,const int count,double &buf_out
          Print("[SniperDataHealth] role=",EnumToString(g_instance_role)," ",tag,
                " unavailable (invalid handle or non-positive count) - no buffer values published");
         }
+      return 0;
+   }
+   // v6.6.21 DATA-HEALTH GATE (4806 root cause). CopyBuffer on a handle whose
+   // indicator has not finished its first calculation returns -1 with error
+   // 4806 ("indicator data not ready") and leaves the array untouched. Retrying
+   // 200 times cannot fix that, because the retry counter is per-update while
+   // the calculation is still in progress; what it DID do was let a partial
+   // array be read as if it were a complete one. So the readiness is asked
+   // directly: an uncalculated handle publishes nothing, and the caller sees a
+   // zero-length array rather than a half-filled one.
+   int calc=BarsCalculated(handle);
+   if(calc<count+1)
+   {
+      if(!warned_flag)
+      {
+         warned_flag=true;
+         Print("[SniperDataHealth] role=",EnumToString(g_instance_role)," ",tag,
+               " not ready (BarsCalculated ",IntegerToString(calc),
+               " < ",IntegerToString(count+1),
+               ") - no buffer values published; this is the 4806 condition, not a",
+               " short history");
+      }
       return 0;
    }
    ArraySetAsSeries(buf_out,false);

@@ -79,6 +79,8 @@ CHECKS = [
     ("host-patch-idempotent", [sys.executable, "tools/apply_qsmc_arb_patch.py", "--check"]),
     ("native-toolchain", [sys.executable, "tools/test_native_toolchain.py"]),
     ("defaults-match-preset", [sys.executable, "tools/test_defaults_match_preset.py"]),
+    # v6.6.21: one classifier, one risk scale, one entry review - pinned end to end.
+    ("signal-execution-profiles", [sys.executable, "tools/test_signal_execution_profiles.py"]),
     ("release-gate", [sys.executable, "tools/check_release_gate.py"]),
 ]
 

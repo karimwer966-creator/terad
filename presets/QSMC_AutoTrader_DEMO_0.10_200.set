@@ -111,3 +111,11 @@ InpVerbose=false
 ; InpHeartbeatSeconds: one heartbeat every 5 minutes
 InpHeartbeatSeconds=300
 InpHeartbeatLookback=200
+InpSignalExecutionProfile=SIGNAL_PROFILE_PERMISSIVE
+InpAllowWeakSignals=false
+InpRequireProfileMatch=true
+InpWeakRiskMultiplier=0.25
+InpModerateRiskMultiplier=0.5
+InpStrongRiskMultiplier=1.0
+InpOwnExecutionLane=true
+InpPrintEntryReview=true

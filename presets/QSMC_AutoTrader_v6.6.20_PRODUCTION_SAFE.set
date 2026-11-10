@@ -107,3 +107,17 @@ InpPollSeconds=2
 InpVerbose=false
 InpHeartbeatSeconds=300
 InpHeartbeatLookback=200
+
+; ---- unified signal execution profile (v6.6.21) ------------------------
+; The indicator classifies every signal and publishes the class + a risk
+; multiplier; this EA applies it. With BOTH Allow* switches OFF the effective
+; set is STRONG only, so these lines do not change the demo behaviour - they
+; document the ceiling the operator can loosen deliberately.
+InpSignalExecutionProfile=SIGNAL_PROFILE_PERMISSIVE
+InpAllowWeakSignals=false
+InpRequireProfileMatch=true
+InpWeakRiskMultiplier=0.25
+InpModerateRiskMultiplier=0.50
+InpStrongRiskMultiplier=1.00
+InpOwnExecutionLane=true
+InpPrintEntryReview=true

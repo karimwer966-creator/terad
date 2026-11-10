@@ -522,11 +522,11 @@ for sig, fn in (("void PMI_BuildLocation(const int closed,const double atr)",
 
 # --- B5 buffer safety: nothing moved, nothing added -------------------
 m = re.search(r"^#property indicator_buffers\s+(\d+)", TEXT, re.M)
-check(m and m.group(1) == "21", "B5 indicator_buffers is still 21")
+check(m and m.group(1) == "26", "B5 indicator_buffers is still 21")
 m = re.search(r"^#property indicator_plots\s+(\d+)", TEXT, re.M)
 check(m and m.group(1) == "7", "B5 indicator_plots is still 7")
 idx = [int(x) for x in re.findall(r"SetIndexBuffer\((\d+),", TEXT)]
-check(sorted(idx) == list(range(21)),
+check(sorted(idx) == list(range(26)),
       "B5 SetIndexBuffer indices are exactly 0-20, unmoved (%d calls)" % len(idx))
 check(not re.search(r"AUDIT-OB1[\s\S]{0,400}SetIndexBuffer", TEXT),
       "B5 Phase 1 adds no buffer, so the EA's 7-12 contract is untouched")

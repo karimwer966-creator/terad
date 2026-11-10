@@ -55,9 +55,10 @@ require("#include <Trade/Trade.mqh>" in ea,
 buf_bind = dict(re.findall(r"SetIndexBuffer\((\d+),\s*(BufSig\w+)", host))
 ea_bufs = {name: int(num) for name, num in
            re.findall(r"#define\s+QSMC_BUF_CORE_(\w+)\s+(\d+)", ea)}
-expected = {"DIR": 7, "ENTRY": 8, "SL": 9, "TP1": 10, "TP2": 11, "TP3": 12, "VCODE": 19}
+expected = {"DIR": 7, "ENTRY": 8, "SL": 9, "TP1": 10, "TP2": 11, "TP3": 12, "VCODE": 19,
+            "SCORE": 21, "CLASS": 22, "REL": 23, "RR1": 24, "RISKMUL": 25}
 require(ea_bufs == expected,
-        "the companion's CORE buffer map is 7..12 plus VCODE=19 (v6.6.14)")
+        "the companion's CORE buffer map is 7..12 plus VCODE=19, and the v6.6.21 classification slots 21..25")
 for i, field in [(7, "Dir"), (8, "Entry"), (9, "SL"), (10, "TP1"), (11, "TP2"), (12, "TP3"),
                  (19, "Verdict"), (20, "ZREVerdict")]:
     require(buf_bind.get(str(i)) == f"BufSigCore{field}" or
@@ -374,8 +375,9 @@ require("if(loss>cap_money)" in code,
         "the fixed-lot path really refuses a size above the ceiling")
 require('Note("FIXED_LOT_TOO_BIG"' in ea,
         "and it names the refusal, so a silent no-trade is not mistaken for a bug")
-require("double guard_pct=EffFixedLotRiskPct();" in code,
-        "F2 the fixed-lot cap is resolved by ONE function, not recomputed per site")
+require("double guard_pct=EffFixedLotRiskPct()*class_mult;" in code,
+        "F2 the fixed-lot cap is resolved by ONE function, not recomputed per site "
+        "(v6.6.21 scales that one number by the signal class instead of adding a second cap)")
 require("double EffFixedLotRiskPct()" in code and
         "double cap_pct=EffFixedLotRiskPct();" in code and
         "MathMin(InpMaxRiskPercent,1.0)" not in code,

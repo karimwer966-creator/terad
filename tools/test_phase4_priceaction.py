@@ -822,14 +822,14 @@ check(pa_inputs == set(EXPECT), "F the declared inputs are exactly the documente
 for nm in sorted(pa_inputs):
     check(TEXT.count(nm) >= 2, "F %s is declared and actually referenced" % nm)
 
-check(TEXT.count("#property indicator_buffers 21") == 1,
+check(TEXT.count("#property indicator_buffers 26") == 1,
       "F indicator_buffers is still 21 - no buffer was appended")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,
       "F indicator_plots is still 7")
-check(len(re.findall(r"SetIndexBuffer\(\s*(\d+)", TEXT)) == 21,
-      "F there are still exactly 21 SetIndexBuffer calls")
+check(len(re.findall(r"SetIndexBuffer\(\s*(\d+)", TEXT)) == 26,
+      "F there are exactly 26 SetIndexBuffer calls (21 shipped + 5 classification)")
 idx = sorted(int(m) for m in re.findall(r"SetIndexBuffer\(\s*(\d+)", TEXT))
-check(idx == list(range(21)), "F buffer indices are still 0..20 with no gap or shift", str(idx))
+check(idx == list(range(26)), "F buffer indices are 0..25 with no gap or shift", str(idx))
 
 pa_globals = re.findall(r"^(?:string|int|double|bool)\s+(g_pa_\w+)\s*[=;]", TEXT, flags=re.M)
 check(len(set(pa_globals)) >= 13,

@@ -94,7 +94,7 @@ def parse_set(path):
 
 ea_text = io.open(EA, encoding="utf-8", errors="replace").read()
 inputs = parse_inputs(ea_text)
-check(len(inputs) == 59, "the companion declares 59 inputs", len(inputs))
+check(len(inputs) == 67, "the companion declares 67 inputs (59 in v6.6.20 + 7 execution profile + 1 entry-review switch)", len(inputs))
 
 # ---------------------------------------------------------------------------
 # 1. the demo preset exists and is a complete picture of the compiled defaults

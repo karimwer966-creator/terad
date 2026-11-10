@@ -250,10 +250,11 @@ check('"mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED "' in EA_CODE or
 # irrelevant risk input, but the comparison is now against a money cap derived
 # from min(operator cap, HARD ceiling) after OrderCalcProfit() at the real SL,
 # and it fails closed when that loss cannot be measured.
-check("double guard_pct=EffFixedLotRiskPct();" in EA_CODE and
+check("double guard_pct=EffFixedLotRiskPct()*class_mult;" in EA_CODE and
       "if(loss>cap_money)" in EA_CODE and "OrderCalcProfit(" in EA_CODE and
       "if(!measured)" in EA_CODE,
-      "B7 the fixed-lot guard measures the STOP, not the irrelevant risk input")
+      "B7 the fixed-lot guard measures the STOP, not the irrelevant risk input "
+      "(and v6.6.21 scales that one resolved cap by the signal class)")
 check("if(InpLotMode==QSMC_LOT_FIXED && InpFixedLots<=0.0)" in EA_CODE,
       "B7 FIXED mode with no volume is refused at init instead of refusing every signal")
 

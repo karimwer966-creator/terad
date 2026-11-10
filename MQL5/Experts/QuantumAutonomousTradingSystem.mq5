@@ -47,7 +47,7 @@
 //|  v1.00 - consolidated production build (2026-11-09).             |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / Quantum"
-#property version   "1.10"
+#property version   "1.11"
 #property description "Autonomous SMC trading EA. DEMO-only execution enforced. Standalone: no external dependencies."
 #property description "Trades the chart symbol with dynamic equity-risk sizing and full protection guards."
 
@@ -58,7 +58,23 @@
 #define QATS_HARD_CAP_RISK_PCT   2.0    // absolute per-trade risk ceiling, % of equity
 #define QATS_HARD_CAP_DAILY_PCT  5.0    // absolute daily-loss ceiling, % of baseline
 #define QATS_HARD_CAP_DD_PCT     15.0   // absolute drawdown ceiling, % from high-water mark
-#define QATS_VERSION            "1.10"
+#define QATS_VERSION            "1.11"
+
+enum ENUM_SIGNAL_EXECUTION_PROFILE
+{
+   SIGNAL_PROFILE_STRICT     = 0,   // STRONG only
+   SIGNAL_PROFILE_BALANCED   = 1,   // MODERATE + STRONG
+   SIGNAL_PROFILE_PERMISSIVE = 2    // WEAK + MODERATE + STRONG
+};
+
+enum ENUM_SIGNAL_CLASS
+{
+   QSMC_CLASS_NONE           = 0,
+   QSMC_CLASS_WEAK_VALID     = 1,
+   QSMC_CLASS_MODERATE_VALID = 2,
+   QSMC_CLASS_STRONG_VALID   = 3,
+   QSMC_CLASS_REJECTED       = 4
+};
 
 //--- 1. switches -------------------------------------------------------
 input bool     InpEnableTrading        = true;    // MASTER SWITCH: false = never sends an order
@@ -1090,12 +1106,36 @@ bool CalcPositionVolume(const double slDist, const bool isBuy, double &volumeOut
       PrintFormat("[QATS][SIZE] stop distance %.10f invalid - trade refused", slDist);
       return false;
    }
-   // monetary loss at SL for 1.0 lot, derived from broker-provided tick economics
-   double lossPerLot = (slDist / g_spec.tickSize) * g_spec.tickValue;
+   // v6.6.21: monetary loss at the stop for 1.0 lot, asked of the TERMINAL.
+   //
+   // The old identity (slDist / tickSize) * tickValue assumes the tick value is
+   // quoted per PRICE tick and that the contract multiplier is 1.0. Both are
+   // usually true on FX and routinely false on gold, indices and anything with a
+   // non-trivial contract size - and this number decides the lot, so a wrong
+   // identity is a wrong position. OrderCalcProfit() answers the question with
+   // the broker's own contract specification instead.
+   double refPrice = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+                           : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double slPrice  = isBuy ? refPrice - slDist : refPrice + slDist;
+   if(refPrice <= 0.0 || slPrice <= 0.0)
+   {
+      PrintFormat("[QATS][SIZE] no quote (ref %.5f) - trade refused", refPrice);
+      return false;
+   }
+   double lossPerLot = 0.0;
+   if(!OrderCalcProfit(isBuy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, _Symbol, 1.0,
+                       refPrice, slPrice, lossPerLot))
+   {
+      PrintFormat("[QATS][SIZE] OrderCalcProfit failed at stop %.5f from %.5f, error=%d - trade refused",
+                  slPrice, refPrice, GetLastError());
+      return false;
+   }
+   // OrderCalcProfit returns a NEGATIVE number for a losing exit.
+   lossPerLot = -lossPerLot;
    if(lossPerLot <= 0.0)
    {
-      PrintFormat("[QATS][SIZE] lossPerLot %.5f invalid (tickSize=%.10f tickValue=%.5f) - trade refused",
-                  lossPerLot, g_spec.tickSize, g_spec.tickValue);
+      PrintFormat("[QATS][SIZE] lossPerLot %.5f invalid (ref %.5f stop %.5f) - trade refused",
+                  lossPerLot, refPrice, slPrice);
       return false;
    }
    double vol = riskMoney / lossPerLot;
@@ -1242,11 +1282,80 @@ bool VerifyPositionOpened(const int dir, ulong &ticketOut)
    return false;
 }
 
+//+------------------------------------------------------------------+
+//| v6.6.21 unified signal audit + class helpers                     |
+//|                                                                  |
+//| QATS computes its own confluence score, so the class it reports   |
+//| is derived from THAT score and its own RR - never from the        |
+//| indicator's buffers (it has no handle). Emitting the same line    |
+//| shape as nadir2 and QSMC_AutoTrader is what lets one parser read  |
+//| all three sides of the pipeline.                                  |
+//+------------------------------------------------------------------+
+string QATS_ClassName(const int cls)
+{
+   if(cls == QSMC_CLASS_WEAK_VALID)     return "WEAK_VALID";
+   if(cls == QSMC_CLASS_MODERATE_VALID) return "MODERATE_VALID";
+   if(cls == QSMC_CLASS_STRONG_VALID)   return "STRONG_VALID";
+   if(cls == QSMC_CLASS_REJECTED)       return "REJECTED";
+   return "NONE";
+}
+
+string QATS_ProfileName(const ENUM_SIGNAL_EXECUTION_PROFILE p)
+{
+   if(p == SIGNAL_PROFILE_STRICT) return "STRICT";
+   if(p == SIGNAL_PROFILE_BALANCED) return "BALANCED";
+   return "PERMISSIVE";
+}
+
+// Same three floors the indicator uses, applied to QATS's own numbers.
+int QATS_Classify(const double score, const double rr)
+{
+   if(score >= 75.0 && rr + 1e-9 >= 1.50) return QSMC_CLASS_STRONG_VALID;
+   if(score >= 60.0 && rr + 1e-9 >= 1.50) return QSMC_CLASS_MODERATE_VALID;
+   if(score >= 40.0 && rr + 1e-9 >= 1.20) return QSMC_CLASS_WEAK_VALID;
+   return QSMC_CLASS_REJECTED;
+}
+
+// The profile ceiling. STRICT keeps only STRONG, exactly like the indicator.
+bool QATS_ProfileAllows(const int cls)
+{
+   if(cls == QSMC_CLASS_STRONG_VALID) return true;
+   if(cls == QSMC_CLASS_MODERATE_VALID) return (InpSignalExecutionProfile != SIGNAL_PROFILE_STRICT);
+   if(cls == QSMC_CLASS_WEAK_VALID) return (InpSignalExecutionProfile == SIGNAL_PROFILE_PERMISSIVE);
+   return false;
+}
+
+void QATS_Audit(const string stage, const int cls, const double score, const double rr,
+                const string result, const string why)
+{
+   PrintFormat("[QATS][AUDIT] stage=%s class=%s score=%.0f rr=%.2f profile=%s result=%s why=%s",
+               stage, QATS_ClassName(cls), score, rr,
+               QATS_ProfileName(InpSignalExecutionProfile), result, why);
+}
+
 bool ExecuteSignal(const SAnalysis &plan)
 {
+   // v6.6.21: classify from QATS's own confluence score and RR, then apply the
+   // profile ceiling BEFORE any sizing work. A class this EA's profile does not
+   // allow is refused outright - never quietly sized to zero.
+   double plan_rr = (plan.stopDist > 0.0 ? MathAbs(plan.tp - plan.entry) / plan.stopDist : 0.0);
+   int plan_cls = QATS_Classify((double)plan.score, plan_rr);
+   if(!QATS_ProfileAllows(plan_cls))
+   {
+      QATS_Audit("EXEC", plan_cls, (double)plan.score, plan_rr, "REFUSED",
+                 "class not allowed by profile " + QATS_ProfileName(InpSignalExecutionProfile));
+      return false;
+   }
+
    double volume = 0.0, riskMoney = 0.0;
    if(!CalcPositionVolume(plan.stopDist, plan.dir > 0, volume, riskMoney))
+   {
+      QATS_Audit("SIZE", plan_cls, (double)plan.score, plan_rr, "REFUSED",
+                 "position volume could not be sized");
       return false;
+   }
+   QATS_Audit("EXEC", plan_cls, (double)plan.score, plan_rr, "SIZED",
+              "volume " + DoubleToString(volume, 2) + " risk " + DoubleToString(riskMoney, 2));
 
    double spreadPts = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) / g_spec.point;
    if(spreadPts > plan.stopDist / g_spec.point * InpMaxSpreadFracOfStop)
