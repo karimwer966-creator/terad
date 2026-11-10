@@ -1,0 +1,50 @@
+; QuantumAutonomousTradingSystem only - XAUUSD
+; Demo armed. REAL requires manual opt-in and exact account/server confirmation.
+; Compile and test in Strategy Tester and demo before considering live trading.
+; Keep stop, margin, broker and risk checks enabled.
+InpSignalExecutionProfile=2
+InpEnableTrading=true
+InpDryRun=false
+InpDemoOnly=true
+InpAllowRealTrading=false
+InpRealAccountConfirm=
+InpRealServerConfirm=
+InpMagic=26011091
+InpTradeComment=QATS
+InpDeviationPoints=30
+InpResetBreakersAtInit=false
+InpRiskPercent=0.10
+InpMaxRiskPercent=0.10
+InpRewardRisk=2.0
+InpMinRR=1.5
+InpMaxOpenPositions=1
+InpMaxTradesPerDay=3
+InpMaxDailyLossPercent=0.50
+InpMaxDailyLossMoney=0.0
+InpMaxAccountDrawdownPct=3.00
+InpStopAfterConsecLoss=2
+InpCooldownAfterLossMin=60
+InpMaxMarginUse=0.90
+InpMaxSpreadPoints=50
+InpMaxSpreadFracOfStop=0.20
+InpMinStopPoints=20
+InpMaxStopPoints=5000
+InpSessionStartHour=0
+InpSessionEndHour=0
+InpMaxDataAgeSeconds=60
+InpRequireZoneTouch=false
+InpSwingLookback=120
+InpSwingK=2
+InpDisplaceATR=0.8
+InpDisplaceBodyRatio=0.65
+InpLiquidityToleranceATR=0.10
+InpMinScore=55
+InpUseEMAAlignmentVeto=true
+InpAllowCounterBias=false
+InpATRPeriod=14
+InpBreakEvenAtR=1.0
+InpPartialCloseAtR=1.5
+InpPartialClosePercent=50.0
+InpCloseOnOpposite=true
+InpHeartbeatSeconds=300
+InpVerbose=true

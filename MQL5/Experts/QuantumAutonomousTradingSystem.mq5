@@ -15,15 +15,12 @@
 //|  verified DEMO account via CTrade. Every position is sized from  |
 //|  the ACCOUNT'S CURRENT EQUITY, never from a fixed balance.       |
 //|                                                                  |
-//|  DEMO-ONLY ENFORCEMENT (MANDATORY)                               |
+//|  ACCOUNT AUTHORIZATION (MANDATORY)                               |
 //|  ---------------------------------                               |
-//|  - ACCOUNT_TRADE_MODE must be ACCOUNT_TRADE_MODE_DEMO.           |
-//|  - REAL and CONTEST accounts are REFUSED; the EA stays on the    |
-//|    chart but is permanently execution-blocked.                    |
-//|  - If the account mode cannot be verified, execution is BLOCKED. |
-//|  - Terminal, EA and symbol trade permissions are verified every  |
-//|    entry decision; broker stops/freeze levels are respected.     |
-//|  - There is NO input that switches this EA to a real account.    |
+//|  - DEMO is allowed by default. CONTEST and unknown are refused.  |
+//|  - REAL requires opt-in AND the exact login and server identity. |
+//|  - Authorization and trading permissions are checked at entry.  |
+//|  - Risk, broker and execution protections apply to both modes.    |
 //|                                                                  |
 //|  WHAT IT WILL NOT DO                                             |
 //|  -------------------                                             |
@@ -48,7 +45,7 @@
 //+------------------------------------------------------------------+
 #property copyright "KLJ / Quantum"
 #property version   "1.11"
-#property description "Autonomous SMC trading EA. DEMO-only execution enforced. Standalone: no external dependencies."
+#property description "Autonomous SMC trading EA. REAL requires explicit account and server authorization."
 #property description "Trades the chart symbol with dynamic equity-risk sizing and full protection guards."
 
 #include <Trade/Trade.mqh>
@@ -77,14 +74,15 @@ enum ENUM_SIGNAL_CLASS
 };
 
 //--- 1. switches -------------------------------------------------------
-// v6.6.21 unified signal execution profile. QATS computes its own confluence
-// score, so it also needs its own ceiling: STRICT keeps only STRONG, BALANCED
-// adds MODERATE, PERMISSIVE adds WEAK. Applied in ExecuteSignal() BEFORE any
-// sizing, so a refused class never reaches CalcPositionVolume().
+// Non-XAUUSD symbols retain the original profile ceiling. For XAUUSD the
+// profile and directional veto inputs are diagnostic only, never entry gates.
 input ENUM_SIGNAL_EXECUTION_PROFILE InpSignalExecutionProfile = SIGNAL_PROFILE_PERMISSIVE; // classification ceiling for entries (PERMISSIVE = all classes)
 input bool     InpEnableTrading        = true;    // MASTER SWITCH: false = never sends an order
 input bool     InpDryRun               = false;   // true = log the order it would send, send nothing
-input bool     InpDemoOnly             = true;    // refuse any non-DEMO account (mandatory protection)
+input bool     InpDemoOnly             = true;    // true = block all non-DEMO accounts
+input bool     InpAllowRealTrading     = false;   // explicit REAL opt-in; other authorization checks still apply
+input string   InpRealAccountConfirm   = "";      // exact numeric login of authorized REAL account
+input string   InpRealServerConfirm    = "";      // exact broker server of authorized REAL account
 input long     InpMagic                = 26011091;// magic number; this EA manages only its own positions
 input string   InpTradeComment         = "QATS";  // comment stamped on every order
 input int      InpDeviationPoints      = 30;      // max slippage in points on market orders
@@ -120,9 +118,9 @@ input int      InpSwingK               = 2;       // fractal wing (bars each sid
 input double   InpDisplaceATR          = 0.8;     // displacement: body >= this x H1 ATR
 input double   InpDisplaceBodyRatio    = 0.65;    // ... or body/range >= this with range >= 1.3 x ATR
 input double   InpLiquidityToleranceATR= 0.10;    // equal-level tolerance as fraction of H1 ATR
-input int      InpMinScore             = 65;      // minimum confluence score (0-100) to take a trade
-input bool     InpUseEMAAlignmentVeto  = true;    // block when D1 AND H4 both oppose the direction
-input bool     InpAllowCounterBias     = false;   // true = trade counter-D1-bias setups (score penalty only)
+input int      InpMinScore             = 55;      // minimum confluence score (0-100) to take a trade
+input bool     InpUseEMAAlignmentVeto  = true;    // non-XAUUSD: block when D1 and H4 both oppose
+input bool     InpAllowCounterBias     = false;   // non-XAUUSD: permit counter-D1 direction
 input int      InpATRPeriod            = 14;      // ATR period (H1 for structure/stops context, M5 for stop distance)
 
 //--- 5. position management ---------------------------------------------
@@ -195,6 +193,7 @@ struct SReading        // one indicator snapshot used by the scoring engine
 
 struct SAnalysis       // complete result of one analysis pass
 {
+   datetime signalBar;      // M5 bar identifying this analysis
    int      dir;            // +1 buy, -1 sell, 0 stand aside
    int      score;          // 0..100 confluence score
    int      d1Bias;         // +1/-1/0
@@ -261,6 +260,10 @@ string      g_blockReason      = "";
 int         g_lastScore        = 0;
 int         g_lastDir          = 0;
 string      g_lastReason       = "";
+string      g_executionReason  = "";
+long        g_boundLogin       = 0;
+long        g_boundMode        = -1;
+string      g_boundServer      = "";
 ulong       g_pendingRetryAt   = 0;        // 0 = no pending retry
 int         g_pendingRetries   = 0;
 int         g_pendingDir       = 0;
@@ -346,8 +349,16 @@ bool LoadSymbolSpec(SSymbolSpec &spec)
    spec.profitCcy    = AccountInfoString(ACCOUNT_CURRENCY);
    spec.marginCcy    = AccountInfoString(ACCOUNT_CURRENCY);
 
-   bool ok = spec.point > 0.0 && spec.tickSize > 0.0 && spec.tickValue > 0.0 &&
+   bool ok = MathIsValidNumber(spec.point) && MathIsValidNumber(spec.tickSize) &&
+             MathIsValidNumber(spec.tickValue) && MathIsValidNumber(spec.volMin) &&
+             MathIsValidNumber(spec.volMax) && MathIsValidNumber(spec.volStep) &&
+             spec.point > 0.0 && spec.tickSize > 0.0 && spec.tickValue > 0.0 &&
              spec.volMin > 0.0 && spec.volMax >= spec.volMin && spec.volStep > 0.0;
+   if(ok && IsXAUUSD())
+      ok = MathAbs(spec.volMin / spec.volStep - MathRound(spec.volMin / spec.volStep)) < 1e-7 &&
+           MathAbs(spec.volMax / spec.volStep - MathRound(spec.volMax / spec.volStep)) < 1e-7 &&
+           spec.digits >= 0 && spec.digits <= 8 && spec.stopsLevel >= 0 && spec.freezeLevel >= 0 &&
+           spec.contractSize > 0.0 && MathIsValidNumber(spec.contractSize);
    if(!ok)
    {
       PrintFormat("[QATS][FATAL] Incomplete symbol specification for %s (point=%.10f tickSize=%.10f tickValue=%.5f volMin=%.2f volMax=%.2f volStep=%.2f)",
@@ -363,7 +374,7 @@ void PrintSymbolSpec()
    Print("[QATS]==================== SYMBOL SPECIFICATION ====================");
    PrintFormat("[QATS] Symbol=%s digits=%d point=%.10f tickSize=%.10f tickValue=%.5f contractSize=%.2f",
                g_spec.name, g_spec.digits, g_spec.point, g_spec.tickSize, g_spec.tickValue, g_spec.contractSize);
-   PrintFormat("[QATS] Volume: min=%.2f max=%.2f step=%.2f limit=%.8f",
+   PrintFormat("[QATS] Volume: min=%.8f max=%.8f step=%.8f limit=%.8f",
                g_spec.volMin, g_spec.volMax, g_spec.volStep, g_spec.volLimit);
    PrintFormat("[QATS] Stops level=%d pts | Freeze level=%d pts | TradeMode=%I64d (FULL=4) | Filling=%I64d | ExecMode=%I64d",
                g_spec.stopsLevel, g_spec.freezeLevel, g_spec.tradeMode, g_spec.fillingMode, g_spec.tradeExec);
@@ -371,7 +382,7 @@ void PrintSymbolSpec()
 }
 
 //+------------------------------------------------------------------+
-//| SECTION 9 - ACCOUNT SNAPSHOT / MANDATORY DEMO GUARD              |
+//| SECTION 9 - ACCOUNT SNAPSHOT / MANDATORY ACCOUNT GUARD              |
 //+------------------------------------------------------------------+
 bool VerifyAccountProtection(string &reason)
 {
@@ -382,12 +393,21 @@ bool VerifyAccountProtection(string &reason)
       reason = "ACCOUNT_TRADE_MODE unreadable - execution BLOCKED";
       return false;
    }
-   if(InpDemoOnly && mode != ACCOUNT_TRADE_MODE_DEMO)
+   long currentLogin = AccountInfoInteger(ACCOUNT_LOGIN);
+   string currentServer = AccountInfoString(ACCOUNT_SERVER);
+   if(currentLogin <= 0 || currentServer == "" || currentLogin != g_boundLogin ||
+      currentServer != g_boundServer || mode != g_boundMode)
+   { reason = "account identity or mode changed since attach, or is unavailable"; return false; }
+   if(mode == ACCOUNT_TRADE_MODE_CONTEST)
+   { reason = "CONTEST account detected - execution REFUSED"; return false; }
+   if(mode == ACCOUNT_TRADE_MODE_REAL)
    {
-      reason = (mode == ACCOUNT_TRADE_MODE_REAL)
-               ? "REAL account detected - execution REFUSED (DEMO only)"
-               : "CONTEST account detected - execution REFUSED (DEMO only)";
-      return false;
+      if(InpDemoOnly) { reason = "REAL account blocked by InpDemoOnly"; return false; }
+      if(!InpAllowRealTrading) { reason = "REAL account requires InpAllowRealTrading=true"; return false; }
+      if(InpRealAccountConfirm == "" || InpRealAccountConfirm != IntegerToString(currentLogin))
+      { reason = "REAL account login is unavailable or does not match InpRealAccountConfirm"; return false; }
+      if(InpRealServerConfirm == "" || InpRealServerConfirm != currentServer)
+      { reason = "REAL account server is unavailable or does not match InpRealServerConfirm"; return false; }
    }
    // terminal permission to trade from MQL5
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
@@ -863,9 +883,86 @@ bool M5Trigger(const string symbol, const int dir)
 //+------------------------------------------------------------------+
 //| SECTION 15 - ANALYSIS PIPELINE & CONFLUENCE SCORING              |
 //+------------------------------------------------------------------+
+// XAUUSD broker suffixes are supported; unrelated symbols keep their profile policy.
+bool IsXAUUSD()
+{
+   string symbol = _Symbol;
+   StringToUpper(symbol);
+   return StringFind(symbol, "XAUUSD") == 0;
+}
+
+int QATS_DirectionVeto(const bool isGold, const int dir, const int d1, const int h4,
+                       const bool emaVeto, const bool allowCounter)
+{
+   if(isGold || dir == 0) return 0;
+   if(emaVeto && d1 == -dir && h4 == -dir) return 1;
+   if(!allowCounter && d1 == -dir) return 2;
+   return 0;
+}
+
+bool QATS_ScoreEligible(const int dir, const int score, const int minimum)
+{
+   return (dir == 1 || dir == -1) && score >= minimum;
+}
+
+// Stop distances use the closing quote, not the opening quote.
+bool QATS_StopsValid(const int dir, const double bid, const double ask,
+                     const double sl, const double tp, const double minDist)
+{
+   if((dir != 1 && dir != -1) || !MathIsValidNumber(bid) || !MathIsValidNumber(ask) ||
+      !MathIsValidNumber(sl) || !MathIsValidNumber(tp) || !MathIsValidNumber(minDist) ||
+      bid <= 0.0 || ask < bid || sl <= 0.0 || tp <= 0.0 || minDist <= 0.0)
+      return false;
+   if(dir == 1) return sl < bid && tp > ask && bid - sl >= minDist && tp - bid >= minDist;
+   return sl > ask && tp < bid && sl - ask >= minDist && ask - tp >= minDist;
+}
+
+void LogSignal(const SAnalysis &signal, const string result, const string reason)
+{
+   PrintFormat("[QATS][SIGNAL] symbol=%s bar=%s direction=%s score=%d minimum=%d eligible=%s result=%s reason=%s | %s",
+               _Symbol, TimeToString(signal.signalBar, TIME_DATE|TIME_MINUTES),
+               (signal.dir > 0 ? "BUY" : (signal.dir < 0 ? "SELL" : "NONE")),
+               signal.score, InpMinScore,
+               (QATS_ScoreEligible(signal.dir, signal.score, InpMinScore) ? "yes" : "no"),
+               result, reason, signal.reason);
+}
+
+// The lock protects first creation of persistent CAS keys across chart instances.
+bool InitSignalKeys()
+{
+   string lock = GVKey("sig_init_lock");
+   if(!GlobalVariableTemp(lock) || !GlobalVariableSetOnCondition(lock, 1.0, 0.0)) return false;
+   bool ok = true;
+   for(int dir = -1; dir <= 1; dir += 2)
+   {
+      string key = GVKey(dir > 0 ? "sig_buy" : "sig_sell");
+      if(!GlobalVariableCheck(key) && GlobalVariableSet(key, 0.0) == 0) ok = false;
+   }
+   GlobalVariablesFlush();
+   if(!GlobalVariableSetOnCondition(lock, 0.0, 1.0)) ok = false;
+   return ok;
+}
+
+// Reserve BEFORE submission; ambiguous or rejected sends are not retried.
+// Identity is account + magic + symbol + direction + current M5 bar.
+bool ReserveSignal(const SAnalysis &signal, string &reason)
+{
+   string key = GVKey(signal.dir > 0 ? "sig_buy" : "sig_sell");
+   if(signal.signalBar <= 0 || !GlobalVariableCheck(key))
+   { reason = "signal identity or persistent reservation unavailable"; return false; }
+   double previous = GlobalVariableGet(key);
+   if(previous >= (double)signal.signalBar)
+   { reason = "duplicate or older signal bar already reserved"; return false; }
+   if(!GlobalVariableSetOnCondition(key, (double)signal.signalBar, previous))
+   { reason = "duplicate signal or reservation contention"; return false; }
+   GlobalVariablesFlush();
+   return true;
+}
+
 SAnalysis AnalyzeMarket()
 {
    SAnalysis a;
+   a.signalBar = iTime(_Symbol, PERIOD_M5, 0);
    a.dir = 0; a.score = 0; a.d1Bias = 0; a.h4Bias = 0; a.h1Struct = 0;
    a.sweepBar = -1; a.sweepKind = ""; a.displaced = false;
    a.hasOB = false; a.hasFVG = false;
@@ -913,13 +1010,11 @@ SAnalysis AnalyzeMarket()
    else if(a.d1Bias != 0)           dir = a.d1Bias;
    else if(a.h4Bias != 0)           dir = a.h4Bias;
 
-   // hard alignment veto: D1 and H4 both explicitly opposed
-   if(InpUseEMAAlignmentVeto && dir != 0 && a.d1Bias == -dir && a.h4Bias == -dir)
-      dir = 0;
-
-   // counter-bias control
-   if(!InpAllowCounterBias && dir != 0 && a.d1Bias != 0 && a.d1Bias == -dir)
-      dir = 0;
+   // For XAUUSD these controls are diagnostic only, even if enabled in a saved preset.
+   int veto = QATS_DirectionVeto(IsXAUUSD(), dir, a.d1Bias, a.h4Bias,
+                                 InpUseEMAAlignmentVeto, InpAllowCounterBias);
+   if(veto == 1) { a.reason = "EMA_ALIGNMENT_VETO"; return a; }
+   if(veto == 2) { a.reason = "COUNTER_D1_BIAS_VETO"; return a; }
 
    if(dir != 0)
    {
@@ -988,11 +1083,15 @@ SAnalysis AnalyzeMarket()
 bool BuildTradePlan(const SAnalysis &in, SAnalysis &out)
 {
    out = in;
-   if(out.dir == 0) return false;
+   g_executionReason = "invalid direction";
+   if(out.dir != 1 && out.dir != -1) return false;
 
    double atr = 0.0, atrH1 = 0.0;
+   g_executionReason = "M5 ATR unavailable";
    if(!BufValue(g_hATRM5, 1, atr)) return false;
+   g_executionReason = "H1 ATR unavailable";
    if(!BufValue(g_hATRH1, 1, atrH1)) return false;
+   g_executionReason = "ATR is nonpositive";
    if(atr <= 0.0 || atrH1 <= 0.0) return false;
 
    double point = g_spec.point;
@@ -1031,7 +1130,8 @@ bool BuildTradePlan(const SAnalysis &in, SAnalysis &out)
    }
    if(stopDist > maxStopPts)
    {
-      PrintFormat("[QATS][PLAN] stop too wide %.5f (max %.5f) - trade refused", stopDist, maxStopPts);
+      g_executionReason = StringFormat("[QATS][PLAN] stop too wide %.5f (max %.5f) - trade refused", stopDist, maxStopPts);
+      Print(g_executionReason);
       return false;
    }
 
@@ -1069,17 +1169,25 @@ bool BuildTradePlan(const SAnalysis &in, SAnalysis &out)
    double minDist = (double)MathMax(stopsLvl, 1) * point;
    if(MathAbs(entry - sl) < minDist || MathAbs(tp - entry) < minDist)
    {
-      PrintFormat("[QATS][PLAN] broker stops level violated (need >= %I64d pts) - trade refused", stopsLvl);
+      g_executionReason = StringFormat("[QATS][PLAN] broker stops level violated (need >= %I64d pts) - trade refused", stopsLvl);
+      Print(g_executionReason);
       return false;
    }
    //--- freeze-level awareness for later modifications is handled in management
    double rr = MathAbs(tp - entry) / stopDist;
    if(rr < InpMinRR)
    {
-      PrintFormat("[QATS][PLAN] reward:risk %.2f below minimum %.2f - trade refused", rr, InpMinRR);
+      g_executionReason = StringFormat("[QATS][PLAN] reward:risk %.2f below minimum %.2f - trade refused", rr, InpMinRR);
+      Print(g_executionReason);
       return false;
    }
 
+   if(IsXAUUSD())
+   {
+      sl = NormalizeDouble((out.dir > 0 ? MathFloor(sl / g_spec.tickSize) : MathCeil(sl / g_spec.tickSize)) * g_spec.tickSize, g_spec.digits);
+      tp = NormalizeDouble((out.dir > 0 ? MathCeil(tp / g_spec.tickSize) : MathFloor(tp / g_spec.tickSize)) * g_spec.tickSize, g_spec.digits);
+      stopDist = MathAbs(entry - sl);
+   }
    out.entry    = entry;
    out.sl       = sl;
    out.tp       = tp;
@@ -1096,19 +1204,22 @@ bool CalcPositionVolume(const double slDist, const bool isBuy, double &volumeOut
    double equity = AccountInfoDouble(ACCOUNT_EQUITY);
    if(equity <= 0.0)
    {
-      PrintFormat("[QATS][SIZE] equity %.2f unavailable - trade refused", equity);
+      g_executionReason = StringFormat("[QATS][SIZE] equity %.2f unavailable - trade refused", equity);
+      Print(g_executionReason);
       return false;
    }
    double riskPct = EffectiveRiskPercent();
    double riskMoney = equity * riskPct / 100.0;
    if(riskMoney <= 0.0)
    {
-      PrintFormat("[QATS][SIZE] risk money %.2f <= 0 - trade refused", riskMoney);
+      g_executionReason = StringFormat("[QATS][SIZE] risk money %.2f <= 0 - trade refused", riskMoney);
+      Print(g_executionReason);
       return false;
    }
    if(slDist <= 0.0)
    {
-      PrintFormat("[QATS][SIZE] stop distance %.10f invalid - trade refused", slDist);
+      g_executionReason = StringFormat("[QATS][SIZE] stop distance %.10f invalid - trade refused", slDist);
+      Print(g_executionReason);
       return false;
    }
    // v6.6.21: monetary loss at the stop for 1.0 lot, asked of the TERMINAL.
@@ -1124,23 +1235,26 @@ bool CalcPositionVolume(const double slDist, const bool isBuy, double &volumeOut
    double slPrice  = isBuy ? refPrice - slDist : refPrice + slDist;
    if(refPrice <= 0.0 || slPrice <= 0.0)
    {
-      PrintFormat("[QATS][SIZE] no quote (ref %.5f) - trade refused", refPrice);
+      g_executionReason = StringFormat("[QATS][SIZE] no quote (ref %.5f) - trade refused", refPrice);
+      Print(g_executionReason);
       return false;
    }
    double lossPerLot = 0.0;
    if(!OrderCalcProfit(isBuy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, _Symbol, 1.0,
                        refPrice, slPrice, lossPerLot))
    {
-      PrintFormat("[QATS][SIZE] OrderCalcProfit failed at stop %.5f from %.5f, error=%d - trade refused",
+      g_executionReason = StringFormat("[QATS][SIZE] OrderCalcProfit failed at stop %.5f from %.5f, error=%d - trade refused",
                   slPrice, refPrice, GetLastError());
+      Print(g_executionReason);
       return false;
    }
    // OrderCalcProfit returns a NEGATIVE number for a losing exit.
    lossPerLot = -lossPerLot;
    if(lossPerLot <= 0.0)
    {
-      PrintFormat("[QATS][SIZE] lossPerLot %.5f invalid (ref %.5f stop %.5f) - trade refused",
+      g_executionReason = StringFormat("[QATS][SIZE] lossPerLot %.5f invalid (ref %.5f stop %.5f) - trade refused",
                   lossPerLot, refPrice, slPrice);
+      Print(g_executionReason);
       return false;
    }
    double vol = riskMoney / lossPerLot;
@@ -1152,13 +1266,20 @@ bool CalcPositionVolume(const double slDist, const bool isBuy, double &volumeOut
    if(g_spec.volLimit > 0 && vol > g_spec.volLimit)
       vol = MathFloor(g_spec.volLimit / g_spec.volStep) * g_spec.volStep;
 
+   if(vol < g_spec.volMin)
+   {
+      g_executionReason = StringFormat("risk-sized volume %.8f below broker minimum %.8f", vol, g_spec.volMin);
+      Print(g_executionReason);
+      return false;
+   }
    // margin check with shrink loop: reduce to what free margin can carry
    double price = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
    double margin = 0.0;
    if(!OrderCalcMargin(isBuy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, _Symbol, vol, price, margin))
    {
-      PrintFormat("[QATS][SIZE] OrderCalcMargin failed, error=%d - trade refused", GetLastError());
+      g_executionReason = StringFormat("[QATS][SIZE] OrderCalcMargin failed, error=%d - trade refused", GetLastError());
+      Print(g_executionReason);
       return false;
    }
    double maxMargin = freeMargin * InpMaxMarginUse;
@@ -1169,14 +1290,16 @@ bool CalcPositionVolume(const double slDist, const bool isBuy, double &volumeOut
       vol = MathFloor(vol / g_spec.volStep) * g_spec.volStep;
       if(!OrderCalcMargin(isBuy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, _Symbol, vol, price, margin))
       {
-         PrintFormat("[QATS][SIZE] OrderCalcMargin failed during shrink, error=%d", GetLastError());
+         g_executionReason = StringFormat("[QATS][SIZE] OrderCalcMargin failed during shrink, error=%d", GetLastError());
+      Print(g_executionReason);
          return false;
       }
    }
    if(vol < g_spec.volMin)
    {
-      PrintFormat("[QATS][SIZE] volume %.2f below broker minimum %.2f after margin fitting (free margin %.2f) - trade refused",
+      g_executionReason = StringFormat("[QATS][SIZE] volume %.2f below broker minimum %.2f after margin fitting (free margin %.2f) - trade refused",
                   vol, g_spec.volMin, freeMargin);
+      Print(g_executionReason);
       return false;
    }
    volumeOut    = vol;
@@ -1338,25 +1461,57 @@ void QATS_Audit(const string stage, const int cls, const double score, const dou
                QATS_ProfileName(InpSignalExecutionProfile), result, why);
 }
 
-bool ExecuteSignal(const SAnalysis &plan)
+bool ExecuteSignal(const SAnalysis &inputPlan)
 {
-   // v6.6.21: classify from QATS's own confluence score and RR, then apply the
-   // profile ceiling BEFORE any sizing work. A class this EA's profile does not
-   // allow is refused outright - never quietly sized to zero.
+   SAnalysis plan = inputPlan;
+   g_executionReason = "";
+   // Class is diagnostic for XAUUSD; other symbols retain their profile gate.
    double plan_rr = (plan.stopDist > 0.0 ? MathAbs(plan.tp - plan.entry) / plan.stopDist : 0.0);
    int plan_cls = QATS_Classify((double)plan.score, plan_rr);
-   if(!QATS_ProfileAllows(plan_cls))
+   if(!IsXAUUSD() && !QATS_ProfileAllows(plan_cls))
    {
-      QATS_Audit("EXEC", plan_cls, (double)plan.score, plan_rr, "REFUSED",
-                 "class not allowed by profile " + QATS_ProfileName(InpSignalExecutionProfile));
+      g_executionReason = "class not allowed by profile " + QATS_ProfileName(InpSignalExecutionProfile);
+      QATS_Audit("EXEC", plan_cls, (double)plan.score, plan_rr, "REFUSED", g_executionReason);
       return false;
+   }
+
+   if(IsXAUUSD())
+   {
+      if(!QATS_ScoreEligible(plan.dir, plan.score, InpMinScore))
+      { g_executionReason = "invalid direction or score below minimum"; return false; }
+      if(!LoadSymbolSpec(g_spec))
+      { g_executionReason = "broker symbol specification unavailable or invalid"; return false; }
+      string guard = "";
+      if(!EntriesAllowed(guard)) { g_executionReason = guard; return false; }
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double minDist = MathMax((double)g_spec.stopsLevel, 1.0) * g_spec.point;
+      if(!QATS_StopsValid(plan.dir, bid, ask, plan.sl, plan.tp, minDist))
+      {
+         if(bid <= 0.0 || ask < bid || !MathIsValidNumber(bid) || !MathIsValidNumber(ask))
+            g_executionReason = "invalid bid/ask quote";
+         else if(!MathIsValidNumber(plan.sl) || plan.sl <= 0.0 ||
+                 (plan.dir > 0 ? plan.sl >= bid || bid - plan.sl < minDist : plan.sl <= ask || plan.sl - ask < minDist))
+            g_executionReason = "invalid SL direction or broker stop distance";
+         else
+            g_executionReason = "invalid TP direction or broker stop distance";
+         return false;
+      }
+      if(MathAbs(plan.sl / g_spec.tickSize - MathRound(plan.sl / g_spec.tickSize)) > 1e-7 ||
+         MathAbs(plan.tp / g_spec.tickSize - MathRound(plan.tp / g_spec.tickSize)) > 1e-7)
+      { g_executionReason = "SL or TP not aligned to current broker tick size"; return false; }
+      plan.entry = (plan.dir > 0 ? ask : bid);
+      plan.stopDist = MathAbs(plan.entry - plan.sl);
+      if(plan.stopDist < InpMinStopPoints * g_spec.point || plan.stopDist > InpMaxStopPoints * g_spec.point)
+      { g_executionReason = "live stop distance outside configured risk limits"; return false; }
+      if(MathAbs(plan.tp - plan.entry) / plan.stopDist < InpMinRR)
+      { g_executionReason = "live reward:risk below minimum"; return false; }
    }
 
    double volume = 0.0, riskMoney = 0.0;
    if(!CalcPositionVolume(plan.stopDist, plan.dir > 0, volume, riskMoney))
    {
-      QATS_Audit("SIZE", plan_cls, (double)plan.score, plan_rr, "REFUSED",
-                 "position volume could not be sized");
+      QATS_Audit("SIZE", plan_cls, (double)plan.score, plan_rr, "REFUSED", g_executionReason);
       return false;
    }
    QATS_Audit("EXEC", plan_cls, (double)plan.score, plan_rr, "SIZED",
@@ -1365,8 +1520,8 @@ bool ExecuteSignal(const SAnalysis &plan)
    double spreadPts = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) / g_spec.point;
    if(spreadPts > plan.stopDist / g_spec.point * InpMaxSpreadFracOfStop)
    {
-      PrintFormat("[QATS][EXEC] spread %.0f pts is more than %.0f%% of the stop distance - refused",
-                  spreadPts, InpMaxSpreadFracOfStop * 100.0);
+      g_executionReason = StringFormat("spread %.2f pts exceeds %.2f%% of stop distance", spreadPts, InpMaxSpreadFracOfStop * 100.0);
+      Print("[QATS][EXEC] " + g_executionReason);
       return false;
    }
 
@@ -1378,10 +1533,12 @@ bool ExecuteSignal(const SAnalysis &plan)
 
    if(InpDryRun)
    {
-      PrintFormat("[QATS][DRY RUN] order NOT sent (InpDryRun=true). Skipping execution.");
+      g_executionReason = "dry run: order not sent";
+      Print("[QATS][DRY RUN] " + g_executionReason);
       return false;
    }
 
+   if(IsXAUUSD() && !ReserveSignal(plan, g_executionReason)) return false;
    ConfigureTrade();
    bool sent = (plan.dir > 0)
       ? g_trade.Buy(volume, _Symbol, 0.0, sl, tp, InpTradeComment)
@@ -1400,7 +1557,8 @@ bool ExecuteSignal(const SAnalysis &plan)
    {
       // A successful retcode is NOT proof of a position: verify it exists.
       ulong positionTicket = 0;
-      if(VerifyPositionOpened(plan.dir, positionTicket))
+      bool positionVerified = VerifyPositionOpened(plan.dir, positionTicket);
+      if(positionVerified)
          PrintFormat("[QATS][VERIFY] POSITION CONFIRMED on server: ticket=%I64u %s %.2f lots", positionTicket, side, volume);
       else
          PrintFormat("[QATS][VERIFY][CRITICAL] retcode=%u but NO open position found for %s %s - check terminal/journal NOW", rc, side, _Symbol);
@@ -1411,9 +1569,16 @@ bool ExecuteSignal(const SAnalysis &plan)
       g_tradesToday++;
       g_pendingRetryAt = 0;
       g_pendingRetries = 0;
+      g_executionReason = StringFormat("server accepted retcode=%u (%s); position %s", rc, rcDesc,
+                                       (positionVerified ? "confirmed" : "NOT VERIFIED - inspect journal"));
       return true;
    }
 
+   if(IsXAUUSD() || AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_REAL)
+   {
+      g_executionReason = StringFormat("order not confirmed: sent=%s retcode=%u (%s); signal reserved, no automatic retry", (sent ? "true" : "false"), rc, rcDesc);
+      return false;
+   }
    if(IsTransientRetcode(rc) && g_pendingRetries < 3)
    {
       g_pendingRetryAt = (ulong)TimeTradeServer();
@@ -1422,10 +1587,12 @@ bool ExecuteSignal(const SAnalysis &plan)
       g_pendingEntry   = plan.entry;
       g_pendingSL      = sl;
       g_pendingTP      = tp;
+      g_executionReason = StringFormat("transient retcode=%u (%s); retry queued", rc, rcDesc);
       PrintFormat("[QATS][EXEC] transient failure - queued retry %d/3 after next tick", g_pendingRetries);
       return false;
    }
 
+   g_executionReason = StringFormat("server rejected retcode=%u (%s)", rc, rcDesc);
    PrintFormat("[QATS][EXEC][FAIL] %s rejected: retcode=%u (%s). Signal abandoned.", side, rc, rcDesc);
    g_pendingRetryAt = 0;
    g_pendingRetries = 0;
@@ -1737,7 +1904,7 @@ void Heartbeat()
 
 void DrawPanel()
 {
-   string status = g_execBlocked ? "BLOCKED" : (InpDryRun ? "DRY RUN" : "ARMED (DEMO)");
+   string status = g_execBlocked ? "BLOCKED" : (!InpEnableTrading ? "INERT" : (InpDryRun ? "DRY RUN" : (AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_REAL ? "ARMED (REAL)" : "ARMED (DEMO)")));
    string text = StringFormat(
       "QuantumAutonomousTradingSystem v%s | %s\nSymbol: %s | %s\nEquity: %.2f %s | Risk/trade: %.2f%% | Day P/L: %+.2f\nGuards: dayLock=%s ddHalt=%s cooldown=%s | Trades today: %d/%d\nLast analysis: dir=%+d score=%d | %s",
       QATS_VERSION, status, _Symbol, (g_execBlocked ? g_blockReason : "all protection checks passed"),
@@ -1757,7 +1924,9 @@ int OnInit()
    PrintFormat("[QATS] QuantumAutonomousTradingSystem v%s attaching to %s", QATS_VERSION, _Symbol);
    Print("[QATS]====================================================");
 
-   if(InpResetBreakersAtInit) ResetBreakers();
+   g_boundLogin = AccountInfoInteger(ACCOUNT_LOGIN);
+   g_boundServer = AccountInfoString(ACCOUNT_SERVER);
+   g_boundMode = AccountInfoInteger(ACCOUNT_TRADE_MODE);
 
    //--- 1. symbol specification (broker-provided, never assumed)
    if(!LoadSymbolSpec(g_spec))
@@ -1767,8 +1936,15 @@ int OnInit()
       return INIT_FAILED;   // without specs no risk math is possible; refuse to run
    }
    PrintSymbolSpec();
+   if(IsXAUUSD() && !InitSignalKeys())
+   {
+      Print("[QATS][FATAL] Cannot initialize persistent signal reservations; execution disabled");
+      return INIT_FAILED;
+   }
+   if(IsXAUUSD())
+      Print("[QATS][POLICY] XAUUSD: score threshold only; EMA veto, counter-D1 restriction and classification profile are diagnostic, not entry vetoes");
 
-   //--- 2. MANDATORY demo / permission protection
+   //--- 2. MANDATORY account authorization / permission protection
    string protectionReason = "";
    if(!VerifyAccountProtection(protectionReason))
    {
@@ -1781,7 +1957,14 @@ int OnInit()
    {
       g_execBlocked = false;
       g_blockReason = "";
-      PrintFormat("[QATS][PROTECTION] PASS: ACCOUNT_TRADE_MODE=DEMO confirmed, terminal/EA/symbol permissions OK.");
+      PrintFormat("[QATS][PROTECTION] PASS: %s account authorized; terminal/EA/symbol permissions OK.",
+                  (AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_REAL ? "REAL" : "DEMO"));
+   }
+
+   if(InpResetBreakersAtInit)
+   {
+      if(!g_execBlocked) ResetBreakers();
+      else Print("[QATS][PROTECTION] Breaker reset skipped: account is not authorized");
    }
 
    //--- 3. effective risk banner (what the code will ACTUALLY enforce)
@@ -1791,7 +1974,7 @@ int OnInit()
                EffectiveDailyLossPercent(), InpMaxDailyLossMoney, EffectiveDrawdownPercent(), InpMaxTradesPerDay);
    PrintFormat("[QATS][RISK] max positions = %d | consec-loss stand-down = %d (%d min) | dry run = %s | demo only = %s",
                InpMaxOpenPositions, InpStopAfterConsecLoss, InpCooldownAfterLossMin,
-               (InpDryRun ? "ON" : "off"), (InpDemoOnly ? "YES (mandatory)" : "NO - REFUSED AT RUNTIME"));
+               (InpDryRun ? "ON" : "off"), (InpDemoOnly ? "YES" : "NO (REAL requires explicit authorization)"));
 
    //--- 4. indicator handles (native built-ins)
    g_hD1Fast  = iMA(_Symbol, PERIOD_D1, 20, 0, MODE_EMA, PRICE_CLOSE);
@@ -1825,7 +2008,7 @@ int OnInit()
    else
       PrintFormat("[QATS] data pipeline not ready yet (normal on a cold start); entries wait for closed bars");
 
-   PrintFormat("[QATS] attach complete | mode=%s | waiting for new M5 bars", (g_execBlocked ? "BLOCKED" : (InpDryRun ? "DRY RUN" : "LIVE ON DEMO")));
+   PrintFormat("[QATS] attach complete | mode=%s | waiting for new M5 bars", (g_execBlocked ? "BLOCKED" : (!InpEnableTrading ? "INERT" : (InpDryRun ? "DRY RUN" : (AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_REAL ? "LIVE ON REAL" : "LIVE ON DEMO")))));
    return INIT_SUCCEEDED;
 }
 
@@ -1856,9 +2039,20 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   UpdateDailyGuards();
-   ManagePositions();
-   ProcessPendingRetry();
+   bool sameAccount = g_boundLogin > 0 && g_boundServer != "" &&
+                      AccountInfoInteger(ACCOUNT_LOGIN) == g_boundLogin &&
+                      AccountInfoString(ACCOUNT_SERVER) == g_boundServer &&
+                      AccountInfoInteger(ACCOUNT_TRADE_MODE) == g_boundMode;
+   if(sameAccount) UpdateDailyGuards();
+   // Management and retries can send orders too; never run them on an
+   // unauthorized/account-switched terminal, or while inert / in dry run.
+   string managementReason = "";
+   bool canManage = !g_execBlocked && InpEnableTrading && !InpDryRun && VerifyAccountProtection(managementReason);
+   if(canManage)
+   {
+      ManagePositions();
+      ProcessPendingRetry();
+   }
 
    bool newBar = false;
    datetime barTime = iTime(_Symbol, PERIOD_M5, 0);
@@ -1870,44 +2064,35 @@ void OnTick()
 
    if(newBar)
    {
-      ProcessClosedDeals();
+      if(sameAccount) ProcessClosedDeals();
       SAnalysis raw = AnalyzeMarket();
       g_lastReason = raw.reason;
       g_lastScore  = raw.score;
       g_lastDir    = raw.dir;
 
-      // trade management decision first: an opposite signal closes our position
-      if(raw.dir != 0 && raw.score >= InpMinScore)
+      // Trade management decision first, only on the bound authorized account.
+      if(canManage && raw.dir != 0 && raw.score >= InpMinScore)
          ClosePositionOnOpposite(raw.dir);
 
-      // entry decision
+      // Every analysis has one explicit score eligibility and outcome record.
       string blockReason = "";
       if(raw.dir == 0)
-      {
-         if(InpVerbose) PrintFormat("[QATS][SKIP] no trade: %s | %s", raw.reason, "alignment veto or conflicting structure");
-      }
+         LogSignal(raw, "REJECTED", "no valid direction: " + raw.reason);
       else if(raw.score < InpMinScore)
-      {
-         if(InpVerbose) PrintFormat("[QATS][SKIP] score %d < minimum %d | %s", raw.score, InpMinScore, raw.reason);
-      }
+         LogSignal(raw, "REJECTED", StringFormat("score %d below minimum %d", raw.score, InpMinScore));
       else if(!EntriesAllowed(blockReason))
-      {
-         if(InpVerbose) PrintFormat("[QATS][SKIP] blocked: %s | score=%d | %s", blockReason, raw.score, raw.reason);
-      }
+         LogSignal(raw, "REJECTED", blockReason);
+      else if(InpRequireZoneTouch && !raw.zoneTouched)
+         LogSignal(raw, "REJECTED", "zone touch required but absent");
       else
       {
-         if(InpRequireZoneTouch && !raw.zoneTouched)
-            PrintFormat("[QATS][SKIP] zone touch required but price is not at the entry zone | %s", raw.reason);
+         SAnalysis plan;
+         if(!BuildTradePlan(raw, plan))
+            LogSignal(raw, "REJECTED", g_executionReason);
          else
          {
-            SAnalysis plan;
-            if(!BuildTradePlan(raw, plan))
-               PrintFormat("[QATS][SKIP] invalid trade plan (stop cannot be calculated/validated) | %s", raw.reason);
-            else
-            {
-               plan.reason = raw.reason;
-               ExecuteSignal(plan);
-            }
+            bool accepted = ExecuteSignal(plan);
+            LogSignal(raw, (accepted ? "ACCEPTED" : "NOT_EXECUTED"), g_executionReason);
          }
       }
    }

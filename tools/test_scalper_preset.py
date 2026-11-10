@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EA = ROOT / "MQL5/Experts/QSMC_AutoTrader.mq5"
-SCALP = ROOT / "presets/QSMC_AutoTrader_v6.6.22_SCALP_M5.set"
+SCALP = ROOT / "tools/fixtures/legacy_presets/QSMC_AutoTrader_v6.6.22_SCALP_M5.set.txt"
 
 FAILURES = []
 COUNT = [0]
@@ -131,7 +131,7 @@ check(demo.get("InpMagic") != "20261027",
       "the scalper uses its OWN magic, so it never manages the M15 plan's positions",
       demo.get("InpMagic"))
 check(demo.get("InpMagic") in ea or True, "magic is an input, not hard-coded")
-m15 = ROOT / "presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set"
+m15 = ROOT / "tools/fixtures/legacy_presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set.txt"
 if m15.is_file():
     other = parse_set(m15)
     check(other.get("InpMagic") != demo.get("InpMagic"),

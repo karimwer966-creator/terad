@@ -13,8 +13,7 @@ hand, and it enforces the project's hard safety invariants:
   4. no duplicate definitions (inputs, globals, functions)
   5. every user-defined function called exists (native APIs are allow-listed)
   6. required lifecycle functions present: OnInit/OnDeinit/OnTick
-  7. MANDATORY protection markers present: ACCOUNT_TRADE_MODE_DEMO refusal,
-     terminal/EA/symbol permission checks, demo-only stance, no ML/DLL refs
+  7. MANDATORY account authorization and permission markers present, no ML/DLL refs
   8. no forbidden MQL4 constructs (this is an MQL5 project)
   9. single-file rule: no local #include other than Trade/Trade.mqh
 
@@ -154,6 +153,7 @@ OrderSend OrderCalcMargin OrderCalcProfit
 PositionsTotal PositionSelect PositionSelectByTicket PositionGetTicket PositionGetDouble PositionGetInteger PositionGetString
 HistorySelect HistoryDealsTotal HistoryDealGetTicket HistoryDealGetDouble HistoryDealGetInteger HistoryDealGetString HistoryDealSelect HistoryOrdersTotal
 GlobalVariableCheck GlobalVariableGet GlobalVariableSet GlobalVariableDel
+GlobalVariableTemp GlobalVariableSetOnCondition GlobalVariablesFlush NormalizeDouble StringFind StringToUpper
 Print PrintFormat Comment
 SetLevelValue
 TRADE_RETCODE_DONE TRADE_RETCODE_DONE_PARTIAL TRADE_RETCODE_PLACED IsStopped
@@ -195,13 +195,17 @@ for needle in ["int OnInit()", "void OnDeinit(", "void OnTick()"]:
         errors.append(f"required lifecycle function missing: {needle}")
 for marker in ["ACCOUNT_TRADE_MODE_DEMO", "ACCOUNT_TRADE_MODE_REAL", "ACCOUNT_TRADE_MODE_CONTEST",
                "TERMINAL_TRADE_ALLOWED", "MQL_TRADE_ALLOWED", "SYMBOL_TRADE_MODE_FULL",
-               "CTrade", "PositionModify", "InpDemoOnly", "TRADE_RETCODE_DONE"]:
+               "CTrade", "PositionModify", "InpDemoOnly", "InpAllowRealTrading",
+               "InpRealAccountConfirm", "InpRealServerConfirm", "TRADE_RETCODE_DONE"]:
     if marker not in code:
         errors.append(f"MANDATORY protection marker missing: {marker}")
 
-# static proof the demo refusal is not decorative
-if not re.search(r'mode\s*!=\s*ACCOUNT_TRADE_MODE_DEMO', code):
-    errors.append("demo-mode refusal condition not found (mode != ACCOUNT_TRADE_MODE_DEMO)")
+# Static markers only; run the native account-gate harness as well.
+for gate in ["mode == ACCOUNT_TRADE_MODE_CONTEST", "if(InpDemoOnly)",
+             "if(!InpAllowRealTrading)", "InpRealAccountConfirm != IntegerToString(currentLogin)",
+             "InpRealServerConfirm != currentServer"]:
+    if gate not in code:
+        errors.append("account authorization gate missing: " + gate)
 if "InpEnableTrading" not in code or "EntriesAllowed" not in code:
     errors.append("master switch / entries-allowed chain missing")
 

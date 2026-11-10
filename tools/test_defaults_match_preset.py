@@ -36,8 +36,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
 EA = os.path.join(ROOT, "MQL5", "Experts", "QSMC_AutoTrader.mq5")
-DEMO = os.path.join(ROOT, "presets", "QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set")
-INERT = os.path.join(ROOT, "presets", "QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set")
+DEMO = os.path.join(ROOT, "tools", "fixtures", "legacy_presets", "QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set.txt")
+INERT = os.path.join(ROOT, "tools", "fixtures", "legacy_presets", "QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set.txt")
 
 FAILS = []
 COUNT = [0]
