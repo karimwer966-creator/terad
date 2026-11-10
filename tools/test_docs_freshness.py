@@ -128,8 +128,8 @@ def find_def(name):
 ANCHORS = [
     # --- structure the doc's whole argument leans on
     ("OnCalculate starts at L14396", 15097, r"^int OnCalculate\(", None),
-    ("#property indicator_buffers 21 at L627", 627,
-     r"^#property indicator_buffers\s+21\b", None),
+    ("#property indicator_buffers 26 at L627", 627,
+     r"^#property indicator_buffers\s+26\b", None),
     ("#property indicator_plots 7 at L628", 628,
      r"^#property indicator_plots\s+7\b", None),
     ("enum ENUM_P3_PHASE at L747", 747, r"^enum\s+ENUM_P3_PHASE\s*$", None),
@@ -269,18 +269,18 @@ for label, cited, pat, defname in ANCHORS:
 # The doc's section 5 asserts this exact order. RM must run after CF (whose
 # verdict it attaches to) and after TopDown (whose plan it may adopt).
 ORDER = [
-    (15341, r"AUDIT-OB1 AGE BOUND", "OB age bound"),
-    (15455, r"P3_Update\(closed\);", "P3_Update"),
-    (15456, r"SB_Update\(closed\);", "SB_Update"),
-    (15460, r"WY_Update\(closed\);", "WY_Update"),
-    (15516, r"TopDown_Update\(rates_total,false\);", "TopDown_Update"),
-    (15538, r"PMI_Update\(\);", "PMI_Update"),
-    (15688, r"MVP_Update\(", "MVP_Update"),
-    (15697, r"PA_Update\(closed\);", "PA_Update"),
-    (15705, r"MR_Update\(closed,rates_total,full_indicators\);", "MR_Update"),
-    (15711, r"CF_Update\(closed,rates_total\);", "CF_Update"),
-    (15716, r"RM_Update\(closed,rates_total\);", "RM_Update"),
-    (15723, r"ZRE_Update\(", "ZRE_Update"),
+    (16020, r"AUDIT-OB1 AGE BOUND", "OB age bound"),
+    (16134, r"P3_Update\(closed\);", "P3_Update"),
+    (16135, r"SB_Update\(closed\);", "SB_Update"),
+    (16139, r"WY_Update\(closed\);", "WY_Update"),
+    (16202, r"TopDown_Update\(rates_total,false\);", "TopDown_Update"),
+    (16224, r"PMI_Update\(\);", "PMI_Update"),
+    (16383, r"MVP_Update\(", "MVP_Update"),
+    (16392, r"PA_Update\(closed\);", "PA_Update"),
+    (16400, r"MR_Update\(closed,rates_total,full_indicators\);", "MR_Update"),
+    (16406, r"CF_Update\(closed,rates_total\);", "CF_Update"),
+    (16411, r"RM_Update\(closed,rates_total\);", "RM_Update"),
+    (16418, r"ZRE_Update\(", "ZRE_Update"),
 ]
 for cited, pat, name in ORDER:
     check(re.search(pat, line_at(cited)) is not None,
@@ -390,20 +390,20 @@ check("67 new inputs" in DOC_FLAT or "**67 new inputs**" in DOC_FLAT,
       "D the doc states 67 new inputs", "phrase absent from the doc")
 
 ALL_INPUTS = len(re.findall(r"(?m)^input\s", RAW))
-check(ALL_INPUTS == 583, "D nadir2.mq5 declares 583 `input` lines in total",
+check(ALL_INPUTS == 599, "D nadir2.mq5 declares 583 `input` lines in total",
       "actual %d" % ALL_INPUTS)
 check("548 total" in DOC_FLAT, "D the doc states 583 total `input` lines",
       "phrase absent from the doc")
 
 ENUMS = len(re.findall(r"(?m)^enum\s+\w+", RAW))
-check(ENUMS == 44, "D the file has 44 top-level enums (all new ones appended)",
+check(ENUMS == 47, "D the file has 47 top-level enums (44 shipped + 3 for v6.6.21)",
       "actual %d" % ENUMS)
 check("Enums | 43" in DOC_FLAT or "43, all appended" in DOC_FLAT,
       "D the doc states 43 enums", "phrase absent from the doc")
 
-check("#property indicator_buffers 21" in RAW and
+check("#property indicator_buffers 26" in RAW and
       "#property indicator_plots   7" in RAW,
-      "D indicator_buffers is still 21 and indicator_plots still 7 - zero new buffers")
+      "D indicator_buffers is 26 (21 shipped + 5 classification) and indicator_plots is still 7")
 check("indicator_buffers` 21" in DOC_FLAT or "indicator_buffers 21" in DOC_FLAT,
       "D the doc states buffers 19 / plots 7")
 

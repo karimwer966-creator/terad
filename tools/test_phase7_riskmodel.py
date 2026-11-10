@@ -504,7 +504,7 @@ DELTA = {
     # untouched: existing scoring state
     "g_score.": 73, "final_score": 21, "setup_quality_score": 5,   # -1 each: one dead setter
     # untouched: buffers, objects, closed-bar conventions
-    "SetIndexBuffer(": 21, "ObjectCreate(": 16,   # 24 -> 16: 8 calls lived in dead renderers
+    "SetIndexBuffer(": 26, "ObjectCreate(": 16,   # 24 -> 16 dead renderers; 21 -> 26 v6.6.21 classification buffers
     "int closed=rates_total-2;": 12, "int closed=ArraySize(g_buf_c)-2;": 2,   # 3 -> 2: purge
     "int closed=g_rates_total-2;": 8,
 }
@@ -703,7 +703,7 @@ check(input_default("InpTopDownMinRR") == "2.0",
 check(input_default("InpSniperMaxRiskPct") == "1.50",
       "E the reused risk percentage InpSniperMaxRiskPct still defaults to 1.50")
 
-check(re.search(r"#property\s+indicator_buffers\s+21\b", TEXT) is not None,
+check(re.search(r"#property\s+indicator_buffers\s+26\b", TEXT) is not None,
       "E indicator_buffers is still 21 - no buffer was added")
 check(re.search(r"#property\s+indicator_plots\s+7\b", TEXT) is not None,
       "E indicator_plots is still 7 - no plot was added")

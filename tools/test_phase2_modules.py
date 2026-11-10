@@ -400,12 +400,12 @@ def input_default(name):
 
 
 m = re.search(r"^#property indicator_buffers\s+(\d+)", TEXT, re.M)
-check(m and m.group(1) == "21", "B1 indicator_buffers is still 21 - no buffer was added")
+check(m and m.group(1) == "26", "B1 indicator_buffers is 26: 0..20 as shipped plus 21..25 classification (v6.6.21)")
 m = re.search(r"^#property indicator_plots\s+(\d+)", TEXT, re.M)
 check(m and m.group(1) == "7", "B1 indicator_plots is still 7")
 idx = sorted(int(x) for x in re.findall(r"SetIndexBuffer\((\d+),", TEXT))
-check(idx == list(range(21)),
-      "B1 the 21 buffer indices are still exactly 0..20", "got %s" % idx)
+check(idx == list(range(26)),
+      "B1 the 26 buffer indices are exactly 0..25 (no gap, no shift)", "got %s" % idx)
 check("string lines[11]; color cols[11]; int ln=0;" in TEXT,
       "B1 the pinned 11-row dashboard card is untouched")
 check("if(ln>11) ln=11;" in TEXT, "B1 the card's row clamp is untouched")

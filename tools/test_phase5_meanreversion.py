@@ -702,15 +702,15 @@ check(code_only.count("int closed=ArraySize(g_buf_c)-2;") == 2,
 check(code_only.count("int closed=g_rates_total-2;") == 8,
       "D all 8 replay-path closed-bar sites are unchanged")
 check(TEXT.count('#property version   "6.620"') == 1, "D the version property is 6.620 (runtime-log hotfix)")
-check(TEXT.count('"v6.6.20"') >= 1, "D the version text is v6.6.20 (runtime-log hotfix)")
-check(len(re.findall(r'(?m)^#property indicator_buffers\s+21\b', TEXT)) == 1,
-      "D indicator_buffers is still 21 - no buffer was appended")
+check(TEXT.count('"v6.6.21"') >= 1, "D the version text is v6.6.21 (unified signal execution profile + entry review)")
+check(len(re.findall(r'(?m)^#property indicator_buffers\s+26\b', TEXT)) == 1,
+      "D indicator_buffers is 26 (21 shipped + 5 classification, v6.6.21)")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,
       "D indicator_plots is still 7")
 idx = sorted(int(m) for m in re.findall(r'SetIndexBuffer\(\s*(\d+)', TEXT))
-check(idx == list(range(21)), "D buffer indices are still 0..20 with no gap or shift", str(idx))
+check(idx == list(range(26)), "D buffer indices are 0..25 with no gap or shift", str(idx))
 ENUMS = len(re.findall(r'(?m)^enum\s+ENUM_', TEXT))
-check(ENUMS == 44, "D no enum was added or removed (%d, was 44 before this phase)" % ENUMS)
+check(ENUMS == 47, "D enum count is 47: 44 before this phase + execution profile, signal class, and the v6.6.21 pair (%d)" % ENUMS)
 check(re.search(r"enum\s+ENUM_", mr_section) is None,
       "D the section declares no enum, so no existing enumerator can shift")
 check(BARE_LF == 0, "D the file has no bare LF (%d)" % BARE_LF)

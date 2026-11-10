@@ -277,8 +277,9 @@ require("input bool   InpDebugLog                = false;" in host,
         "AUDIT-E the quant-path diagnostic uses the existing InpDebugLog switch")
 require(re.search(r"input bool   InpAlertDispatcherLog\s+= false;", host) is not None,
         "AUDIT-E the dispatcher diagnostic uses the existing InpAlertDispatcherLog switch")
-require(len(re.findall(r"(?m)^input\s", host)) == 583,
-        "AUDIT-E and the file still declares 583 inputs (no new one was added)")
+require(len(re.findall(r"(?m)^input\s", host)) == 599,
+        "AUDIT-E and the file declares 599 inputs (583 shipped + 15 v6.6.21 execution-profile "
+        "floors/flags + 1 entry-review switch)")
 
 
 def body_of(sig):

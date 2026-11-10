@@ -117,7 +117,7 @@
 //|  and checked by tools/test_diag_bridge.py.                        |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
-#property version   "6.620"
+#property version   "6.621"
 #property description "Companion execution EA for the QSMC indicator. Ships inert; no strategy claim."
 #property strict
 
@@ -137,6 +137,39 @@
 // never write these buffers, so they stay 0 and we fall back to GV).
 #define QSMC_BUF_CORE_VCODE 19
 #define QSMC_BUF_ZRE_VKIND  20
+// v6.6.21 unified classification (nadir2.mq5 SetIndexBuffer 21..25). The
+// indicator decides the class; this EA only reads it, so the two can never
+// disagree about whether a signal was weak, moderate or strong.
+#define QSMC_BUF_CORE_SCORE   21
+#define QSMC_BUF_CORE_CLASS   22
+#define QSMC_BUF_CORE_REL     23
+#define QSMC_BUF_CORE_RR1     24
+#define QSMC_BUF_CORE_RISKMUL 25
+
+// Cross-EA execution ownership. One terminal can hold QSMC_AutoTrader and
+// QuantumAutonomousTradingSystem at the same time; before this, both could act
+// on the same closed bar and the account would carry two positions for one
+// idea. The owner global records which EA (by magic) holds the lane for the
+// signal identity below, so the second one declines instead of doubling.
+#define QSMC_EXEC_OWNER_PREFIX "QSMC_EXEC_OWNER_"
+
+enum ENUM_SIGNAL_EXECUTION_PROFILE
+  {
+   SIGNAL_PROFILE_STRICT    = 0,   // STRONG only
+   SIGNAL_PROFILE_BALANCED  = 1,   // MODERATE + STRONG
+   SIGNAL_PROFILE_PERMISSIVE= 2    // WEAK + MODERATE + STRONG (Allow* still required)
+  };
+
+enum ENUM_SIGNAL_CLASS
+  {
+   QSMC_CLASS_NONE           = 0,
+   QSMC_CLASS_WEAK_VALID     = 1,
+   QSMC_CLASS_MODERATE_VALID = 2,
+   QSMC_CLASS_STRONG_VALID   = 3,
+   QSMC_CLASS_REJECTED       = 4,
+   QSMC_CLASS_INVALIDATED    = 5,
+   QSMC_CLASS_EXPIRED        = 6
+  };
 
 #define QSMC_AT_SEEN_RING   64
 
@@ -340,6 +373,22 @@ input bool   InpVerbose              = false;  // print every skipped signal and
 input int    InpHeartbeatSeconds     = 300;    // diagnostic journal line every N seconds (0 = off)
 input int    InpHeartbeatLookback    = 200;    // bars scanned to prove whether the indicator publishes CORE at all
 
+//--- 7. unified signal execution profile ------------------------------
+// The indicator classifies every signal (QSMC_ClassifySignal) and publishes the
+// class in buffer 22 together with a risk multiplier in buffer 25. This EA does
+// NOT re-decide the class - it applies it. InpRequireProfileMatch is the one
+// switch that lets the EA be STRICTER than the chart it reads; it can never be
+// looser, because a weaker-than-indicator execution policy would trade signals
+// the indicator itself would have refused.
+input ENUM_SIGNAL_EXECUTION_PROFILE InpSignalExecutionProfile = SIGNAL_PROFILE_PERMISSIVE; // ceiling used when InpRequireProfileMatch=true (PERMISSIVE = accept whatever the indicator published)
+input bool   InpAllowWeakSignals      = false; // execute WEAK_VALID signals at InpWeakRiskMultiplier (buffer 22 == 1); default OFF
+input bool   InpRequireProfileMatch   = true;  // refuse a class this EA's profile does not allow (indicator already applied its own ceiling)
+input double InpWeakRiskMultiplier    = 0.25;  // risk multiplier for WEAK_VALID, applied to the effective risk %
+input double InpModerateRiskMultiplier= 0.50;  // risk multiplier for MODERATE_VALID
+input double InpStrongRiskMultiplier  = 1.00;  // risk multiplier for STRONG_VALID
+input bool   InpOwnExecutionLane      = true;  // claim a cross-EA ownership global per signal identity; a second EA declines instead of doubling
+input bool   InpPrintEntryReview       = true;  // print the 12-line [QSMC_ENTRY_REVIEW] checklist before every order attempt
+
 //+------------------------------------------------------------------+
 //| State                                                            |
 //+------------------------------------------------------------------+
@@ -362,6 +411,14 @@ string    g_seen[QSMC_AT_SEEN_RING];
 int       g_seen_n=0;
 
 double    g_dir[], g_entry[], g_sl[], g_tp1[], g_tp2[], g_tp3[];
+// v6.6.21 classification buffers 21..25 (see QSMC_BUF_CORE_* above).
+double    g_score_buf[], g_class_buf[], g_rel_buf[], g_rr1_buf[], g_riskmul_buf[];
+int       g_weak_valid=0;          // executed as WEAK_VALID
+int       g_moderate_valid=0;      // executed as MODERATE_VALID
+int       g_strong_valid=0;        // executed as STRONG_VALID
+int       g_duplicates_prevented=0;// signal identity refused because it was already handled
+int       g_owner_refused=0;       // another EA holds the execution lane for this identity
+int       g_profile_refused=0;     // class not allowed by this EA's profile/switch
 
 int       g_signals=0;
 int       g_sent=0;
@@ -449,6 +506,14 @@ struct SQsigSignal
    double    entry;
    double    sl;
    double    tp;
+   // v6.6.21: the class the INDICATOR decided (buffer 22) plus the numbers it
+   // decided it from. 0 = the indicator build predates the classification, in
+   // which case the EA falls back to STRONG-only behaviour (never to permissive).
+   int       cls;
+   double    score;
+   double    reliability;
+   double    rr1;
+   double    risk_mult;
   };
 
 //+------------------------------------------------------------------+
@@ -492,7 +557,12 @@ string GlobName(const datetime bar_time,const int dir)
    // across symbols, so two charts could produce the same bar time and the same
    // direction - and a name without the symbol made the second chart read the
    // first chart's signal as "already seen" and silently drop a real trade.
-   return ("QSMC_AT_"+IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_"+
+   // v6.6.21: the ACCOUNT LOGIN is part of the name as well. Terminal globals
+   // outlive a login switch inside one terminal session, and a magic number that
+   // is reused on two accounts (which the presets do) would otherwise make the
+   // second account believe it had already traded a bar it never saw.
+   return ("QSMC_AT_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"_"+
+           IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_"+
            IntegerToString((long)bar_time)+"_"+(dir>0 ? "B" : "S"));
   }
 
@@ -521,8 +591,16 @@ bool RetcodeIsTransient(const uint rc)
 bool SeenBefore(const string key,const datetime bar_time,const int dir)
   {
    for(int i=0;i<g_seen_n && i<QSMC_AT_SEEN_RING;i++)
-      if(g_seen[i]==key) return true;
-   return (GlobalVariableCheck(GlobName(bar_time,dir)));
+      if(g_seen[i]==key) { g_duplicates_prevented++; return true; }
+   if(GlobalVariableCheck(GlobName(bar_time,dir)))
+     {
+      // The ring is per-attach; the terminal global is not. This is the branch
+      // that stops an EA reload or a chart change from re-firing a signal, so
+      // it is counted: "signals: 0" must not hide "the same idea was refused 4x".
+      g_duplicates_prevented++;
+      return true;
+     }
+   return false;
   }
 
 void MarkSeen(const string key,const datetime bar_time,const int dir)
@@ -1050,8 +1128,21 @@ double OpenRiskMoney()
    return total;
   }
 
-double CalcLots(const string sym,const double entry,const double sl,const bool buy)
+double CalcLots(const string sym,const double entry,const double sl,const bool buy,
+                const int cls=QSMC_CLASS_STRONG_VALID)
   {
+   // v6.6.21: the class multiplier is applied to the CAP here, before any volume
+   // is derived, so a weak signal can never be sized off the full base risk even
+   // for one intermediate calculation. ScaledRiskPercent() clamps to the HARD
+   // ceiling and can only reduce the input value.
+   double class_mult=RiskMultiplierForClass(cls);
+   if(class_mult<=0.0)
+     {
+      Print("[QSMC_AT SIZING] REFUSED: class ",ClassName(cls),
+            " has no risk multiplier - a non-executable class never reaches sizing");
+      return 0.0;
+     }
+   if(class_mult>1.0) class_mult=1.0;
    // v6.6.16: effective per-trade risk = MIN(input, HARD_CEILING). The clamp
    // is at sizing time because MQL5 'input' doubles are read-only.
    // 2026-11-06 audit (A2): there is ONE ceiling - HardMaxRiskPercent() - and
@@ -1133,7 +1224,10 @@ double CalcLots(const string sym,const double entry,const double sl,const bool b
       // operator's own, never the HARD one.
       // 2026-11-09 (F2): the operator's guard and the HARD ceiling are resolved
       // in ONE place (EffFixedLotRiskPct), the same call the ladder banner makes.
-      double guard_pct=EffFixedLotRiskPct();
+      // A weak class may not consume the full fixed-lot allowance either: the
+      // guard is the same number, scaled by the class, so "fixed lot" stays a
+      // comment on the ticket size and never a bypass of the profile.
+      double guard_pct=EffFixedLotRiskPct()*class_mult;
       double cap_money=eq*guard_pct/100.0;
       double eff_pct=(eq>0.0 ? loss/eq*100.0 : 0.0);
       if(loss>cap_money)
@@ -1162,6 +1256,10 @@ double CalcLots(const string sym,const double entry,const double sl,const bool b
      }
 
    double pct=(RealProfileActive() ? vmax_cap : MathMin(InpRiskPercent,vmax_cap));
+   // v6.6.21 score-based risk scaling: WEAK 0.25x, MODERATE 0.50x, STRONG 1.00x.
+   // The HARD per-trade ceiling is re-applied AFTER scaling (never before), so a
+   // multiplier can never be used to climb above it.
+   pct=MathMin(pct*class_mult,HardMaxRiskPercent());
    if(pct<=0.0) return 0.0;
    double eq_sizing=AccountInfoDouble(ACCOUNT_EQUITY);
    double risk_money=eq_sizing*pct/100.0;
@@ -1681,8 +1779,163 @@ bool CooldownActive(string &why)
   }
 
 //+------------------------------------------------------------------+
+//| UNIFIED SIGNAL EXECUTION PROFILE (v6.6.21)                       |
+//|                                                                   |
+//| The indicator classifies each signal (QSMC_ClassifySignal) and    |
+//| publishes the class in buffer 22 plus a risk multiplier in 25.     |
+//| This EA does not re-decide the class: it applies it. That is the   |
+//| whole point - one authoritative classifier, one executor.          |
+//|                                                                   |
+//| Two independent tests still apply here, and both are ceilings the  |
+//| operator can only tighten, never widen:                            |
+//|   * InpAllowWeakSignals: explicit opt-in to the WEAK class         |
+//|   * InpSignalExecutionProfile + InpRequireProfileMatch             |
+//| A class this EA does not allow is REFUSED, never downsized to zero |
+//| and never silently promoted.                                       |
+//+------------------------------------------------------------------+
+string ClassName(const int cls)
+  {
+   if(cls==QSMC_CLASS_WEAK_VALID)     return "WEAK_VALID";
+   if(cls==QSMC_CLASS_MODERATE_VALID) return "MODERATE_VALID";
+   if(cls==QSMC_CLASS_STRONG_VALID)   return "STRONG_VALID";
+   if(cls==QSMC_CLASS_REJECTED)       return "REJECTED";
+   if(cls==QSMC_CLASS_INVALIDATED)    return "INVALIDATED";
+   if(cls==QSMC_CLASS_EXPIRED)        return "EXPIRED";
+   return "NONE";
+  }
+
+string ProfileName(const ENUM_SIGNAL_EXECUTION_PROFILE p)
+  {
+   if(p==SIGNAL_PROFILE_STRICT)     return "STRICT";
+   if(p==SIGNAL_PROFILE_BALANCED)   return "BALANCED";
+   return "PERMISSIVE";
+  }
+
+// Risk multiplier for a class. 0 = do not execute (never "size it small").
+double RiskMultiplierForClass(const int cls)
+  {
+   if(cls==QSMC_CLASS_WEAK_VALID)     return InpWeakRiskMultiplier;
+   if(cls==QSMC_CLASS_MODERATE_VALID) return InpModerateRiskMultiplier;
+   if(cls==QSMC_CLASS_STRONG_VALID)   return InpStrongRiskMultiplier;
+   return 0.0;
+  }
+
+// Is this class allowed by the operator's switch and this EA's profile?
+// The indicator's own profile already rejected anything it did not allow; this
+// is the second, independent ceiling. It can only narrow.
+bool ClassAllowed(const int cls,string &why)
+  {
+   why="";
+   if(cls==QSMC_CLASS_WEAK_VALID)
+     {
+      if(!InpAllowWeakSignals) { why="WEAK_VALID needs InpAllowWeakSignals=true"; return false; }
+      if(InpSignalExecutionProfile==SIGNAL_PROFILE_STRICT)
+        { why="WEAK_VALID not allowed by profile STRICT"; return false; }
+      return true;
+     }
+   if(cls==QSMC_CLASS_MODERATE_VALID)
+     {
+      if(InpSignalExecutionProfile==SIGNAL_PROFILE_STRICT)
+        { why="MODERATE_VALID not allowed by profile STRICT"; return false; }
+      return true;
+     }
+   if(cls==QSMC_CLASS_STRONG_VALID) return true;
+   why="class "+ClassName(cls)+" is not executable";
+   return false;
+  }
+
+// Effective per-trade risk % AFTER the class multiplier, still bounded by the
+// HARD ceiling. This is the only place a class is allowed to change the size,
+// and it can only ever reduce it (every multiplier is clamped to <= 1).
+double ScaledRiskPercent(const int cls)
+  {
+   double base=EffectiveRiskPercent();
+   if(base<=0.0) return 0.0;                 // 0 = OFF, never a ceiling
+   double m=RiskMultiplierForClass(cls);
+   if(m<=0.0) return 0.0;
+   if(m>1.0) m=1.0;                          // a class can never increase risk
+   return MathMin(base*m,HardMaxRiskPercent());
+  }
+
+// Account-login-scoped ownership of the execution lane for one signal identity.
+// Two EAs with DIFFERENT magics on the same terminal would otherwise both act.
+// The first EA to claim an identity owns it; the second declines and says so.
+string OwnerGlobalName(const string key)
+  {
+   return QSMC_EXEC_OWNER_PREFIX+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
+          "_"+IntegerToString(InpMagic)+"_"+key;
+  }
+
+bool ClaimExecutionLane(const string key,const datetime bar_time,const int dir)
+  {
+   if(!InpOwnExecutionLane) return true;
+   string gv=OwnerGlobalName(key);
+   if(GlobalVariableCheck(gv))
+     {
+      long owner=(long)GlobalVariableGet(gv);
+      if(owner!=(long)InpMagic)
+        {
+         g_owner_refused++;
+         Print("[QSMC_SIGNAL_AUDIT] stage=LANE key=",key," result=REFUSED",
+               " owner_magic=",IntegerToString(owner)," my_magic=",IntegerToString(InpMagic),
+               " why=another QSMC executor already claimed this signal bar");
+         return false;
+        }
+      return true;   // ours already: re-entry is handled by SeenBefore
+     }
+   GlobalVariableSet(gv,(double)InpMagic);
+   GlobalVariablesFlush();
+   return true;
+  }
+
+void ReleaseExecutionLane(const string key)
+  {
+   if(!InpOwnExecutionLane) return;
+   string gv=OwnerGlobalName(key);
+   if(GlobalVariableCheck(gv)) GlobalVariableDel(gv);
+  }
+
+// One machine-readable line per execution decision, in the same shape the
+// indicator emits so a single parser can read both sides of the pipeline.
+void SignalAudit(const string stage,const string key,const int cls,
+                 const double score,const double reliability,const double rr1,
+                 const string result,const string why)
+  {
+   Print("[QSMC_SIGNAL_AUDIT] stage=",stage," key=",(key==""?"none":key),
+         " class=",ClassName(cls),
+         " score=",DoubleToString(score,0),
+         " reliability=",DoubleToString(reliability,0),
+         " rr1=",DoubleToString(rr1,2),
+         " risk_mult=",DoubleToString(RiskMultiplierForClass(cls),2),
+         " profile=",ProfileName(InpSignalExecutionProfile),
+         " result=",result," why=",why);
+  }
+
+//+------------------------------------------------------------------+
 //| Copy the CORE export buffers. 0 = no signal.                     |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| The classification is OPTIONAL by design: an older indicator build 
+//| does not bind buffers 21..25, CopyBuffer fails, and the EA must not   
+//| refuse to trade because of a feature it can live without. A failure   
+//| here leaves the class at 0, which the executor reads as STRONG-only   
+//| (the shipped behaviour) - never as permissive.                        
+//+------------------------------------------------------------------+
+bool CopyClassificationBuffers(const int count)
+  {
+   ArraySetAsSeries(g_score_buf,true);
+   ArraySetAsSeries(g_class_buf,true);
+   ArraySetAsSeries(g_rel_buf,true);
+   ArraySetAsSeries(g_rr1_buf,true);
+   ArraySetAsSeries(g_riskmul_buf,true);
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_SCORE,0,count,g_score_buf)<count) return false;
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_CLASS,0,count,g_class_buf)<count) return false;
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_REL,0,count,g_rel_buf)<count) return false;
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_RR1,0,count,g_rr1_buf)<count) return false;
+   if(CopyBuffer(g_handle,QSMC_BUF_CORE_RISKMUL,0,count,g_riskmul_buf)<count) return false;
+   return true;
+  }
+
 bool CopySignalBuffers(const int count)
   {
    g_last_copy_ok=false;
@@ -1699,6 +1952,7 @@ bool CopySignalBuffers(const int count)
    if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP1,0,count,g_tp1)<count) { g_signal_copy_failures++; return false; }
    if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP2,0,count,g_tp2)<count) { g_signal_copy_failures++; return false; }
    if(CopyBuffer(g_handle,QSMC_BUF_CORE_TP3,0,count,g_tp3)<count) { g_signal_copy_failures++; return false; }
+   CopyClassificationBuffers(count);   // optional: failure = class 0 = STRONG-only
    g_last_copy_ok=true;
    return true;
   }
@@ -1754,6 +2008,172 @@ double PlanTP(const int shift,const double base,const bool buy)
   {
    if(!InpUseTPPips) return PickTP(shift);
    return PipsToPrice(_Symbol,base,InpTP3Pips,buy);
+  }
+
+//+------------------------------------------------------------------+
+//| ENTRY REVIEW (v6.6.21) - "مراجع النظام"                          |
+//|                                                                   |
+//| The final checklist run IMMEDIATELY before the order is sent. It   |
+//| does not re-decide anything the signal already proved: it re-reads |
+//| the ACCOUNT and MARKET state that can change between the indicator |
+//| publishing and this tick. That is the only thing a pre-send review   |
+//| can honestly add, and it is where the money is actually at risk:     |
+//|                                                                   |
+//|   R1  CLASS         the signal class is executable here             |
+//|   R2  ACCOUNT       DEMO armed, or REAL fully authorized            |
+//|   R3  TICK AGE      the feed is live (not a frozen terminal)        |
+//|   R4  SPREAD        absolute cap and share of the stop              |
+//|   R5  SESSION       inside the configured window                    |
+//|   R6  TRADES TODAY  under the daily cap                             |
+//|   R7  OPEN POSITIONS under the max for this symbol                  |
+//|   R8  GEOMETRY      sl < entry < tp on the CURRENT price            |
+//|   R9  RR AT FILL    reward:risk still pays after slippage/entry     |
+//|   R10 STOPS LEVEL   the broker will accept this SL/TP               |
+//|   R11 RISK SIZE     a volume exists at the class-scaled risk        |
+//|   R12 NO OPPOSITE   no opposite position of this magic is live      |
+//|                                                                   |
+//| Every line is printed, PASS or FAIL. A FAIL ends the trade and the  |
+//| reason is the line itself - never "unknown error". This is the      |
+//| difference between an EA that refuses and an EA that fails quietly. |
+//+------------------------------------------------------------------+
+#define QSMC_AT_REVIEW_CHECKS 12
+
+string ReviewName(const int i)
+  {
+   switch(i)
+     {
+      case 0:  return "R1  CLASS";
+      case 1:  return "R2  ACCOUNT";
+      case 2:  return "R3  TICK_AGE";
+      case 3:  return "R4  SPREAD";
+      case 4:  return "R5  SESSION";
+      case 5:  return "R6  TRADES_TODAY";
+      case 6:  return "R7  OPEN_POSITIONS";
+      case 7:  return "R8  GEOMETRY";
+      case 8:  return "R9  RR_AT_FILL";
+      case 9:  return "R10 STOPS_LEVEL";
+      case 10: return "R11 RISK_SIZE";
+      case 11: return "R12 NO_OPPOSITE";
+     }
+   return "?? UNKNOWN";
+  }
+
+void ReviewLine(const int i,const bool ok,const string detail)
+  {
+   Print("[QSMC_ENTRY_REVIEW]   ",(ok?"PASS ":"FAIL "),ReviewName(i)," - ",detail);
+  }
+
+// Returns the first failing check name, or "" when every check passed.
+// It prints every line either way: a review you can only see when it passes
+// is not a review.
+string RunEntryReview(const SQsigSignal &s,const string sym,const double price,
+                      const double lots,const ulong opposite,const bool buy)
+  {
+   if(!InpPrintEntryReview) return "";
+   string first_fail="";
+   Print("[QSMC_ENTRY_REVIEW] BEGIN key=",SignalKey(s.bar_time,s.dir),
+         " ",DirText(s.dir)," ",sym," @ ",DoubleToString(price,_Digits),
+         " class=",ClassName(s.cls));
+
+   // R1 class
+   string cls_why="";
+   bool ok1=ClassAllowed(s.cls,cls_why);
+   ReviewLine(0,ok1,ok1 ? ClassName(s.cls)+" executable (mult "+DoubleToString(RiskMultiplierForClass(s.cls),2)+"x)" : cls_why);
+   if(!ok1 && first_fail=="") first_fail=ReviewName(0);
+
+   // R2 account
+   string env=TradeEnvBlock(buy);
+   bool ok2=(env=="");
+   ReviewLine(1,ok2,ok2 ? (RealProfileActive()?"REAL authorized":"DEMO armed") : env);
+   if(!ok2 && first_fail=="") first_fail=ReviewName(1);
+
+   // R3 tick age
+   bool ok3=true;
+   string age_txt="check disabled";
+   if(InpMaxDataAgeSeconds>0)
+     {
+      long age=(long)TimeCurrent()-(long)SymbolInfoInteger(sym,SYMBOL_TIME);
+      ok3=(age<=InpMaxDataAgeSeconds);
+      age_txt=IntegerToString(age)+"s old (cap "+IntegerToString(InpMaxDataAgeSeconds)+"s)";
+     }
+   ReviewLine(2,ok3,age_txt);
+   if(!ok3 && first_fail=="") first_fail=ReviewName(2);
+
+   // R4 spread: absolute cap AND share of the stop
+   double sp_pts=MathAbs((SymbolInfoDouble(sym,SYMBOL_ASK)-SymbolInfoDouble(sym,SYMBOL_BID))
+                         /MathMax(SymbolInfoDouble(sym,SYMBOL_POINT),1e-12));
+   double stop_pts=MathAbs(price-s.sl)/MathMax(SymbolInfoDouble(sym,SYMBOL_POINT),1e-12);
+   bool abs_ok=((int)sp_pts<=InpMaxSpreadPoints);
+   bool share_ok=true;
+   double share=0.0;
+   if(InpMaxSpreadFracOfStop>0.0 && stop_pts>0.0)
+     {
+      share=sp_pts/stop_pts;
+      share_ok=(share<=InpMaxSpreadFracOfStop);
+     }
+   bool ok4=(abs_ok && share_ok);
+   ReviewLine(3,ok4,StringFormat("%.0f pts (abs cap %d) = %.1f%% of a %.0f-pt stop (share cap %.0f%%)",
+                                 sp_pts,InpMaxSpreadPoints,share*100.0,stop_pts,
+                                 InpMaxSpreadFracOfStop*100.0));
+   if(!ok4 && first_fail=="") first_fail=ReviewName(3);
+
+   // R5 session: the SAME resolver the entry path uses, so the review can
+   // never disagree with the gate that already ran.
+   string sess_why="";
+   bool ok5=SessionOpenNow(sess_why);
+   ReviewLine(4,ok5,ok5 ? "inside the session window" : sess_why);
+   if(!ok5 && first_fail=="") first_fail=ReviewName(4);
+
+   // R6 daily cap
+   int max_day=MaxTradesPerDayNow();
+   bool ok6=(max_day<=0 || TradesToday()<max_day);
+   ReviewLine(5,ok6,IntegerToString(TradesToday())+" of "+
+              (max_day<=0?"unlimited":IntegerToString(max_day))+" today");
+   if(!ok6 && first_fail=="") first_fail=ReviewName(5);
+
+   // R7 open positions
+   int max_pos=MaxOpenPositionsNow();
+   int open_n=OpenCount(sym);
+   bool ok7=(open_n<max_pos);
+   ReviewLine(6,ok7,IntegerToString(open_n)+" of "+IntegerToString(max_pos)+" open on "+sym);
+   if(!ok7 && first_fail=="") first_fail=ReviewName(6);
+
+   // R8 geometry on the CURRENT price
+   bool shape=(buy ? (s.sl<price && s.tp>price) : (s.sl>price && s.tp<price));
+   bool ok8=(shape && s.sl>0.0 && s.tp>0.0);
+   ReviewLine(7,ok8,StringFormat("sl %.5f / price %.5f / tp %.5f",s.sl,price,s.tp));
+   if(!ok8 && first_fail=="") first_fail=ReviewName(7);
+
+   // R9 RR at fill: the indicator validates RR at a ZONE EDGE, this EA fills
+   // at MARKET, so the remaining reward:risk is measured again here.
+   double dist=MathAbs(price-s.sl);
+   double reward=(buy ? s.tp-price : price-s.tp);
+   double rr=(dist>0.0 ? reward/dist : 0.0);
+   bool ok9=(InpMinRRAtFill<=0.0 || rr+1e-9>=InpMinRRAtFill);
+   ReviewLine(8,ok9,StringFormat("RR %.2f at fill (floor %.2f)",rr,InpMinRRAtFill));
+   if(!ok9 && first_fail=="") first_fail=ReviewName(8);
+
+   // R10 broker stops level
+   bool ok10=StopsDistanceOK(sym,price,s.sl,s.tp);
+   ReviewLine(9,ok10,"broker stops/freeze level accepts this SL/TP");
+   if(!ok10 && first_fail=="") first_fail=ReviewName(9);
+
+   // R11 size
+   bool ok11=(lots>0.0);
+   ReviewLine(10,ok11,StringFormat("%.2f lots = %.2f%% of equity at the stop (class %.2fx of base %.2f%%)",
+                                   lots,ScaledRiskPercent(s.cls),RiskMultiplierForClass(s.cls),
+                                   EffectiveRiskPercent()));
+   if(!ok11 && first_fail=="") first_fail=ReviewName(10);
+
+   // R12 opposite exposure
+   bool ok12=(opposite==0 || InpCloseOnOpposite);
+   ReviewLine(11,ok12,ok12 ? "no opposite position of this magic"
+                            : "opposite position #"+IntegerToString((long)opposite)+" is live");
+   if(!ok12 && first_fail=="") first_fail=ReviewName(11);
+
+   Print("[QSMC_ENTRY_REVIEW] END key=",SignalKey(s.bar_time,s.dir),
+         " verdict=",(first_fail==""?"READY":"BLOCKED by "+first_fail));
+   return first_fail;
   }
 
 //+------------------------------------------------------------------+
@@ -2013,7 +2433,7 @@ void HandleSignal(SQsigSignal &s)
       return;
      }
 
-   double lots=CalcLots(sym,price,s.sl,buy);
+   double lots=CalcLots(sym,price,s.sl,buy,s.cls);
    if(lots<=0.0)
      {
       Note(key,"volume resolves to 0 (risk cap, margin or broker minimum)");
@@ -2069,6 +2489,23 @@ void HandleSignal(SQsigSignal &s)
 
    g_signals++;
 
+   // One line per signal that got all the way to a decision, naming the class,
+   // the multiplier, the effective risk % and the money at the stop. This is the
+   // line an operator needs to answer "why is this trade a quarter of the size".
+   double eff_pct_send=ScaledRiskPercent(s.cls);
+   double eq_now=AccountInfoDouble(ACCOUNT_EQUITY);
+   Print("[QSMC_SIGNAL_AUDIT] stage=SEND key=",key," class=",ClassName(s.cls),
+         " score=",DoubleToString(s.score,0)," reliability=",DoubleToString(s.reliability,0),
+         " rr1=",DoubleToString(s.rr1,2),
+         " risk_mult=",DoubleToString(RiskMultiplierForClass(s.cls),2),
+         " base_risk_pct=",DoubleToString(EffectiveRiskPercent(),2),
+         " eff_risk_pct=",DoubleToString(eff_pct_send,2),
+         " lots=",DoubleToString(lots,2),
+         " risk_money=",DoubleToString(risk_money,2)," ",AccountInfoString(ACCOUNT_CURRENCY),
+         " equity=",DoubleToString(eq_now,2),
+         " risk_pct_of_equity=",DoubleToString(eq_now>0.0?risk_money/eq_now*100.0:0.0,2),
+         " profile=",ProfileName(InpSignalExecutionProfile));
+
    if(!InpEnableTrading)
      {
       NoteClass(key,"INERT (InpEnableTrading=false)",REJECT_TRANSIENT);
@@ -2116,6 +2553,19 @@ void HandleSignal(SQsigSignal &s)
          g_refused++;
          return;
         }
+     }
+
+   // v6.6.21 ENTRY REVIEW: the 12-condition checklist, run at the last moment
+   // before submission, when the account and market state that can change between
+   // the indicator publishing and this tick are read again. A FAIL blocks the
+   // order and names the condition; it never degrades into "unknown refusal".
+   string review_fail=RunEntryReview(s,sym,price,lots,opposite,buy);
+   if(review_fail!="")
+     {
+      NoteClass(key,"ENTRY REVIEW BLOCKED: "+review_fail,REJECT_TRANSIENT);
+      SignalAudit("REVIEW",key,s.cls,s.score,s.reliability,s.rr1,"BLOCKED",review_fail);
+      g_refused++;
+      return;
      }
 
    // 2026-11-09 (Phase 2-B): the account gate runs again IMMEDIATELY before
@@ -2387,6 +2837,38 @@ void HandleSignal(SQsigSignal &s)
 //+------------------------------------------------------------------+
 //| Poll: read the buffers, evaluate every fresh CORE signal.        |
 //+------------------------------------------------------------------+
+// Read buffers 21..25 for one closed bar and resolve the class. The mapping is
+// deliberately conservative: an unrecognised or missing class becomes
+// STRONG_VALID only when the indicator's numbers say STRONG, and REJECTED
+// otherwise. "No classification" must never mean "allow it".
+void ReadClassification(const int shift,SQsigSignal &s)
+  {
+   s.cls=QSMC_CLASS_NONE;
+   s.score=0.0;
+   s.reliability=0.0;
+   s.rr1=0.0;
+   s.risk_mult=0.0;
+   if(shift<0 || shift>=ArraySize(g_class_buf)) return;
+   int cls=(int)MathRound(g_class_buf[shift]);
+   if(cls<QSMC_CLASS_WEAK_VALID || cls>QSMC_CLASS_STRONG_VALID)
+     {
+      // No classification from the indicator (older build, or the bar predates
+      // the feature). Fall back to STRONG-only: the EA keeps working exactly as
+      // it did before this release and can never act on an unclassified signal.
+      s.cls=QSMC_CLASS_STRONG_VALID;
+      s.score=(shift<ArraySize(g_score_buf) ? g_score_buf[shift] : 0.0);
+      s.reliability=(shift<ArraySize(g_rel_buf) ? g_rel_buf[shift] : 0.0);
+      s.rr1=(shift<ArraySize(g_rr1_buf) ? g_rr1_buf[shift] : 0.0);
+      s.risk_mult=InpStrongRiskMultiplier;
+      return;
+     }
+   s.cls=cls;
+   s.score=(shift<ArraySize(g_score_buf) ? g_score_buf[shift] : 0.0);
+   s.reliability=(shift<ArraySize(g_rel_buf) ? g_rel_buf[shift] : 0.0);
+   s.rr1=(shift<ArraySize(g_rr1_buf) ? g_rr1_buf[shift] : 0.0);
+   s.risk_mult=(shift<ArraySize(g_riskmul_buf) ? g_riskmul_buf[shift] : RiskMultiplierForClass(cls));
+  }
+
 void ProcessSignals()
   {
    if(g_handle==INVALID_HANDLE) return;
@@ -2478,6 +2960,33 @@ void ProcessSignals()
       s.entry=g_entry[shift];
       s.sl=g_sl[shift];
       s.tp=PickTP(shift);
+
+      // v6.6.21: read the classification the indicator published on this bar.
+      // A build that does not bind buffers 21..25 leaves these at 0.0, which
+      // resolves to STRONG_VALID below - never to a permissive class.
+      ReadClassification(shift,s);
+
+      // The class this EA may execute. Refusing here (before any order-side
+      // work) keeps "not allowed" and "could not be sized" out of the trade log
+      // as if they were the same event.
+      string class_why="";
+      if(InpRequireProfileMatch && !ClassAllowed(s.cls,class_why))
+        {
+         g_profile_refused++;
+         g_refused++;
+         MarkSeen(key,bt,dir);
+         SignalAudit("EXEC",key,s.cls,s.score,s.reliability,s.rr1,"REFUSED",class_why);
+         NoteClass(key,"class "+ClassName(s.cls)+" refused: "+class_why,REJECT_PERMANENT);
+         continue;
+        }
+
+      // Cross-EA ownership: one terminal, one execution of one idea.
+      if(!ClaimExecutionLane(key,bt,dir)) continue;
+
+      if(s.cls==QSMC_CLASS_WEAK_VALID)          g_weak_valid++;
+      else if(s.cls==QSMC_CLASS_MODERATE_VALID) g_moderate_valid++;
+      else                                      g_strong_valid++;
+      SignalAudit("EXEC",key,s.cls,s.score,s.reliability,s.rr1,"ACCEPTED","");
       HandleSignal(s);
      }
   }
@@ -3169,6 +3678,14 @@ void DiagnosticHeartbeat()
          " signal_copy_failures "+IntegerToString(g_signal_copy_failures)+
          " unconfirmed "+IntegerToString(g_unconfirmed)+
          " unprotected "+IntegerToString(g_unprotected)+
+         // v6.6.21: the review's own tallies, so "no trades" can be read as
+         // "nothing qualified" vs "the class was refused" vs "already handled".
+         " weak "+IntegerToString(g_weak_valid)+
+         " moderate "+IntegerToString(g_moderate_valid)+
+         " strong "+IntegerToString(g_strong_valid)+
+         " dup_prevented "+IntegerToString(g_duplicates_prevented)+
+         " owner_refused "+IntegerToString(g_owner_refused)+
+         " profile_refused "+IntegerToString(g_profile_refused)+
          " open "+IntegerToString(OpenCount(_Symbol))+
          _guard+
          DisciplineSuffix();

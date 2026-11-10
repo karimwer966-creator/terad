@@ -458,7 +458,7 @@ public:
       // VISUAL instance already owns user-facing diagnostics). QSMC_SilentReader()
       // is forward-declared in nadir2.mq5 before this include.
       if(!QSMC_SilentReader())
-         Print("[QSMC_ARB] v6.6.20 arbitration layer ON | preset ",m_preset.EffectiveName(),
+         Print("[QSMC_ARB] v6.6.21 arbitration layer ON | preset ",m_preset.EffectiveName(),
                " | gates ",IntegerToString(m_arbiter.GateCount()),
                " | exec TF ",QSMC_TFName(m_exec_tf),
                " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"),
