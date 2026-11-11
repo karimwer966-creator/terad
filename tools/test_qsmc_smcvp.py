@@ -252,8 +252,8 @@ def run(key, *args, **kw):
     return proc.returncode, proc.stdout
 
 
-# the sanitizer runs are slow: they start now and are read in section G
-BACKGROUND = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+# the sanitizer runs are slow: they start now, two at a time, and are read in sections G and J
+BACKGROUND = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 SAN_UNIT = BACKGROUND.submit(run, "san", "unit", timeout=600)
 SAN_STORY = BACKGROUND.submit(run, "san", "story", "--back", "5000", timeout=600)
 # ... and the HOST itself (OnInit / OnCalculate / OnTimer / OnDeinit, the view, the dashboard) bar after bar

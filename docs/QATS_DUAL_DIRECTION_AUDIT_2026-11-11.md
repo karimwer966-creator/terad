@@ -301,10 +301,10 @@ that runs is the text MetaEditor compiles.
 | suite | result | what it establishes |
 |---|---|---|
 | `tools/test_qats_native_build.py` | **57 / 57 PASS** | The whole file builds with 17 strict flags as errors: **0 errors, 0 warnings**. 14 injected defects (lossy conversions, wrong property getter, shadowing, unused variable, string + number, undeclared name, missing return, wrong arity, unknown member, struct by value, assignment to an input, static function) are each rejected at the right .mq5 line. All 100 `PrintFormat`/`StringFormat` calls carry exactly as many arguments as conversions. **743 boolean operands** (every `if`, `while`, `for`, `?:`, `&&`, `\|\|`, `!`) are type-checked to be `bool` — MetaEditor's "expression not boolean" — and 8 injected integer conditions are rejected. |
-| `tools/test_qats_dual_direction.py` | **71 / 71 PASS** | 235 unit checks (each bullish case beside its bearish mirror); 45 integration scenarios with 575 checks, each replayed tick by tick through `OnInit` / `OnTick` / `OnTradeTransaction`; 11 mirrored scenario pairs; a 14,040-bar symmetry replay with **0** mismatching bars; all of it again under AddressSanitizer + UBSan with poisoned locals and a zero-divide trap, with identical results. |
+| `tools/test_qats_dual_direction.py` | **73 / 73 PASS** (71 when this audit was first published; section 4b, the file-seam replay, was added with the loader fix) | 235 unit checks (each bullish case beside its bearish mirror); 45 integration scenarios with 575 checks, each replayed tick by tick through `OnInit` / `OnTick` / `OnTradeTransaction`; 11 mirrored scenario pairs; a 14,040-bar symmetry replay with **0** mismatching bars; all of it again under AddressSanitizer + UBSan with poisoned locals and a zero-divide trap, with identical results. |
 | `tools/test_qats_journal_report.py` | **33 / 33 PASS** | The report counts what the journal says, for v1.11 and v1.20 formats, in UTF-16 / UTF-8 / CRLF. |
 | `tools/verify_quantum_ea.py`, `test_xau_execution_policy.py`, `test_quantum_account_policy.py`, `test_quantum_compile_regressions.py`, `test_signal_execution_profiles.py` | PASS | The pre-existing structural, authorization and execution-policy contracts still hold; the verifier gained checks for the direction policy, the life-cycle tags and the weights summing to 100, and fails v1.11 on 17 of them. |
-| `tools/check_production_ready.py` | **OFFLINE GO 55 / 55** | The repository's curated gate, with the three new suites in it. |
+| `tools/check_production_ready.py` | **OFFLINE GO 57 / 57** (55 when first published; the two QSMC suites were added later) | The repository's curated gate, with the three QATS suites in it. |
 
 Scenario coverage (`qats_<tag> selftest --list`): strong BUY and strong SELL from detection to a closed position
 in each profile; sweep-only and BOS-only in each profile and direction; counter-trend on XAUUSD and on another
@@ -332,6 +332,12 @@ default inputs (189 trades): no runtime error, no API misuse, no format error.
 complete 2019 journal — 76,369 lines, 41.6 MB — the trade list and the summary byte-identical, and the whole study
 was re-run on the final source with identical numbers.
 
+**Regenerated after a loader fix.** The yearly files of the dataset overlap at their seams (8,127 one-minute rows)
+and the loader of the first publication fed them twice. The loader now skips a row that does not move time forward
+(section 4b of `tools/test_qats_dual_direction.py`), and the study, the mirror proof and the two sanitizer replays
+above were run again: the figures in this document are those of the re-run. No conclusion changed; the note at the
+top of [`QATS_BACKTEST_STUDY_2026-11-11.md`](QATS_BACKTEST_STUDY_2026-11-11.md) lists what moved.
+
 What this does **not** establish: that MetaEditor accepts the file (MQL5 and C++ are different languages), that
 MT5 behaves like the simulator, or that a broker fills like the fill model.
 
@@ -353,32 +359,32 @@ out-of-sample 2023-09 → 2026-09. The out-of-sample window was not used while t
 
 | configuration | dir | setups detected | eligible bars | executed | win rate | profit factor | expectancy (R) |
 |---|---|---|---|---|---|---|---|
-| v1.11 | BUY | n/a | 169,977 | 3,485 | 16.0 % | 0.78 | −0.106 |
-| | SELL | n/a | 128,843 | 3,021 | 15.3 % | 0.71 | −0.148 |
-| | **both** | | | **6,506** | **15.7 %** | **0.75** | **−0.126** |
-| v1.20 BALANCED (default) | BUY | 1,644 | 49,106 | 1,150 | 19.5 % | 0.79 | −0.110 |
-| | SELL | 1,554 | 35,590 | 987 | 19.2 % | 0.78 | −0.145 |
-| | **both** | | | **2,137** | **19.4 %** | **0.79** | **−0.126** |
+| v1.11 | BUY | n/a | 169,952 | 3,484 | 16.0 % | 0.79 | −0.104 |
+| | SELL | n/a | 128,891 | 3,023 | 15.3 % | 0.71 | −0.148 |
+| | **both** | | | **6,507** | **15.6 %** | **0.76** | **−0.124** |
+| v1.20 BALANCED (default) | BUY | 1,645 | 49,114 | 1,151 | 19.5 % | 0.79 | −0.111 |
+| | SELL | 1,556 | 35,613 | 989 | 19.2 % | 0.78 | −0.146 |
+| | **both** | | | **2,140** | **19.4 %** | **0.79** | **−0.127** |
 | v1.20 CONSERVATIVE | BUY | 417 | 9,164 | 409 | 19.1 % | 0.79 | −0.105 |
-| | SELL | 385 | 7,780 | 379 | 21.1 % | 0.82 | −0.093 |
-| | **both** | | | **788** | **20.1 %** | **0.80** | **−0.099** |
-| v1.20 ACTIVE | **both** | | | **2,748** | **18.9 %** | **0.77** | **−0.137** |
+| | SELL | 387 | 7,791 | 381 | 21.0 % | 0.83 | −0.088 |
+| | **both** | | | **790** | **20.0 %** | **0.81** | **−0.097** |
+| v1.20 ACTIVE | **both** | | | **2,752** | **18.8 %** | **0.77** | **−0.138** |
 
 Every in-sample calendar year is negative for v1.20 BALANCED (2017 … 2023). Maximum drawdown of the signal-study
-equity: 77.8 % (v1.20 BALANCED), 98.8 % (v1.11).
+equity: 78.0 % (v1.20 BALANCED), 98.7 % (v1.11).
 
 ### Out-of-sample, 2023-09-01 → 2026-09-01
 
 | configuration | dir | setups detected | eligible bars | executed | win rate | profit factor | expectancy (R) |
 |---|---|---|---|---|---|---|---|
-| v1.11 | BUY | n/a | 100,042 | 1,881 | 17.4 % | 0.93 | −0.024 |
-| | SELL | n/a | 38,689 | 1,083 | 15.8 % | 0.63 | −0.157 |
-| | **both** | | | **2,964** | **16.8 %** | **0.82** | **−0.072** |
-| v1.20 BALANCED (default) | BUY | 783 | 29,518 | 605 | 24.0 % | 1.16 | +0.092 |
-| | SELL | 661 | 10,984 | 358 | 17.0 % | 0.76 | −0.136 |
-| | **both** | | | **963** | **21.4 %** | **1.00** | **+0.007** |
-| v1.20 BALANCED, raw feed spread | **both** | | | **827** | **19.5 %** | **0.92** | **−0.033** |
-| v1.20 CONSERVATIVE | **both** | | | **350** | **18.3 %** | **0.86** | **−0.075** |
+| v1.11 | BUY | n/a | 99,967 | 1,884 | 17.4 % | 0.95 | −0.016 |
+| | SELL | n/a | 38,700 | 1,080 | 15.8 % | 0.64 | −0.156 |
+| | **both** | | | **2,964** | **16.8 %** | **0.83** | **−0.067** |
+| v1.20 BALANCED (default) | BUY | 784 | 29,544 | 606 | 23.9 % | 1.16 | +0.090 |
+| | SELL | 662 | 10,985 | 358 | 17.0 % | 0.76 | −0.136 |
+| | **both** | | | **964** | **21.4 %** | **1.00** | **+0.006** |
+| v1.20 BALANCED, raw feed spread | **both** | | | **828** | **19.4 %** | **0.92** | **−0.034** |
+| v1.20 CONSERVATIVE | **both** | | | **349** | **18.3 %** | **0.87** | **−0.072** |
 
 By year (v1.20 BALANCED): 2023 −, 2024 −, **2025 +**, 2026 −. Over this window gold went from 1,940 to 4,324 in
 the dataset, and by 65 % in 2025 alone. The out-of-sample "break-even" is that one year carrying the BUY side; the
@@ -391,39 +397,39 @@ columns is the market's.
 The drawdown halt is a latch: once equity is the configured percentage below its high-water mark the EA sends
 nothing until an operator resets it (`InpResetBreakersAtInit=true`, once). With the compiled defaults (0.5 % risk,
 8 % halt) the last in-sample entry of v1.20 is on 2017-06-01 — 114 trades, balance 9,985 — and the halt then
-refuses 2,580 further setups; out-of-sample the last entry is on 2023-09-27, after 22 trades. v1.11 stops after 38
-and 50 trades.
+refuses 2,583 further setups; out-of-sample the last entry is on 2023-09-27, after 23 trades. v1.11 stops after 38
+and 30 trades.
 
 With the **shipped preset** (`presets/Quantum_XAUUSD_PRODUCTION.set`: 0.10 % risk, 3 % drawdown halt, 0.5 % daily
 loss, 3 trades a day) the same replay gives:
 
 | window | closed trades (BUY / SELL) | last entry | end balance | max DD | profit factor | expectancy | what stopped it |
 |---|---|---|---|---|---|---|---|
-| in-sample 2017-02 → 2023-09 | 273 (142 / 131) | 2017-11-16 | 9,853.98 | 3.1 % | 0.90 | −0.045 R | the 3 % halt latched after 9.5 months and refused 2,403 further setups for the remaining 5.8 years |
-| out-of-sample 2023-09 → 2026-09 | 944 (605 / 339) | 2026-08-31 | 10,134.30 | 2.9 % | 1.03 | +0.030 R | nothing: the halt was never reached (+1.3 % in three years, before commission and swap) |
+| in-sample 2017-02 → 2023-09 | 273 (142 / 131) | 2017-11-16 | 9,853.98 | 3.1 % | 0.90 | −0.045 R | the 3 % halt latched after 9.5 months and refused 2,406 further setups for the remaining 5.8 years |
+| out-of-sample 2023-09 → 2026-09 | 945 (606 / 339) | 2026-08-31 | 10,126.46 | 2.9 % | 1.03 | +0.029 R | nothing: the halt was never reached (+1.3 % in three years, before commission and swap) |
 
 Read together: the preset bounds the damage exactly as designed — and a strategy whose expectancy is not positive
 reaches that bound. The out-of-sample +1.3 % in three years is smaller than one month of realistic commission on
-944 round trips; it is not evidence of an edge.
+945 round trips; it is not evidence of an edge.
 
 ### Why eligible signals were not executed (v1.20 BALANCED, in-sample; journal records)
 
 | reason | BUY | SELL |
 |---|---|---|
-| `DUPLICATE_SETUP` (the setup already produced a position) | 2,508 | 1,831 |
-| `MAX_POSITIONS` | 1,196 | 885 |
+| `DUPLICATE_SETUP` (the setup already produced a position) | 2,510 | 1,835 |
+| `MAX_POSITIONS` | 1,197 | 887 |
 | `SPREAD` | 236 | 39 |
-| `LOSS_COOLDOWN` | 229 | 189 |
-| `SPREAD_VS_STOP` (execution stage) | 165 | 137 |
+| `LOSS_COOLDOWN` | 229 | 190 |
+| `SPREAD_VS_STOP` (execution stage) | 165 | 143 |
 | `DAILY_TRADE_CAP` | 14 | 9 |
 
-Entry orders sent / accepted / failed: 2,138 / 2,138 / 0. Format errors 0, API misuse 0, critical errors 0.
+Entry orders sent / accepted / failed: 2,141 / 2,141 / 0. Format errors 0, API misuse 0, critical errors 0.
 
 ### Reading
 
 - v1.20 trades a third as often as v1.11, wins more often, plans a reachable target, and treats both directions
-  alike. Its expectancy per unit of risk is about the same as v1.11's in-sample (−0.126 R) and better
-  out-of-sample (+0.007 R against −0.072 R). **That is not profitability.**
+  alike. Its expectancy per unit of risk is about the same as v1.11's in-sample (−0.127 R against −0.124 R) and better
+  out-of-sample (+0.006 R against −0.067 R). **That is not profitability.**
 - The 2,780 in-sample trades of an intermediate build were broken down by every feature the EA scores — D1/H4
   alignment, sweep present, BOS versus CHoCH, zone touched, premium/discount, VWAP side, M15/M5, score bucket, hour
   of day, planned R:R. No subset showed a stable positive expectancy. No filter was added on the strength of that

@@ -163,11 +163,12 @@ here), `study` (in-sample / out-of-sample, v1.11 against v1.20, per direction),
 [`docs/QATS_BACKTEST_STUDY_2026-11-11.md`](docs/QATS_BACKTEST_STUDY_2026-11-11.md).
 It is not the MT5 Strategy Tester.
 
-> **Erratum (file seams).** The yearly files of the public dataset overlap at their seams (8,127
-> one-minute rows, 0.23%, appear in two files). The study figures were produced by a loader that
-> fed those rows twice. The loader now skips a row that does not move time forward
-> (`tools/test_qats_dual_direction.py` 4b pins it); the study has **not been re-run yet**, so its
-> exact figures predate the fix. See the note at the top of the study document.
+> **Regenerated after a loader fix (file seams).** The yearly files of the public dataset overlap
+> at their seams (8,127 one-minute rows, 0.23%, appear in two files) and the loader of the first
+> publication fed those rows twice. The loader now skips a row that does not move time forward
+> (`tools/test_qats_dual_direction.py` 4b pins it) and the whole study was run again: the document
+> and its JSON carry the figures of the re-run. No conclusion changed; the note at the top of the
+> study document lists what moved.
 
 ## QSMC indicator: a clean chart, and an SMC + Volume Profile decision engine (v6.6.22)
 

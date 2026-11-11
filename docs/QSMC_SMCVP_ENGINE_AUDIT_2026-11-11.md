@@ -288,7 +288,8 @@ replay or a picture rather than by a unit written in advance.
    their seams (8,127 rows). The duplicated bars made the engine refuse 6,978 bars of the
    two-year window ("series unusable") — the engine was right, the loader was wrong. Fixed;
    section I. **The same flaw was in the QATS back-test loader**: fixed and pinned there too,
-   but the QATS study has not been re-run and carries an erratum.
+   and the QATS study was regenerated with the fixed loader (its document lists what moved;
+   no conclusion changed).
 
 ---
 
