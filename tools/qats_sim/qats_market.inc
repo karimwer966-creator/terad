@@ -207,9 +207,17 @@ static Marks patternCounterTrend(Scn &sc)
    return m;
 }
 
+// Every scenario that predates v1.21 reproduces the MARKET entry path: it pins
+// InpUseLimitEntry=false explicitly, so it measures exactly the code it was
+// written for. The limit entry has its own scenarios (limit_*), which set it back
+// to true. A scenario that names the switch itself is not overridden.
 static void setInputs(const std::vector<std::pair<std::string, std::string>> &sets)
 {
    QATS_SetInput("InpHeartbeatSeconds", "0");
+   bool limitNamed = false;
+   for(const auto &kv : sets)
+      if(kv.first == "InpUseLimitEntry") limitNamed = true;
+   if(!limitNamed) QATS_SetInput("InpUseLimitEntry", "false");
    for(const auto &kv : sets)
       if(!QATS_SetInput(kv.first, kv.second)) { printf("unknown input %s\n", kv.first.c_str()); exit(2); }
 }

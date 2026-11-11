@@ -58,9 +58,14 @@
 //|  v1.00 - consolidated production build (2026-11-09).             |
 //|  v1.20 - dual-direction evidence engine, core confirmation gate, |
 //|          liquidity map, explicit cooldown state (2026-11-11).    |
+//|  v1.21 - LIMIT entry at the OB/FVG zone (InpUseLimitEntry=true). |
+//|          The setup is detected as before; the ENTRY rests a      |
+//|          limit at the zone instead of buying mid-move. Every     |
+//|          guard is unchanged, and InpUseLimitEntry=false is the   |
+//|          previous market-entry path, byte for byte in behaviour. |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / Quantum"
-#property version   "1.20"
+#property version   "1.21"
 #property description "Autonomous SMC trading EA. REAL requires explicit account and server authorization."
 #property description "Scores BUY and SELL independently on every bar; dynamic equity-risk sizing and full protection guards."
 
@@ -73,7 +78,7 @@
 #define QATS_HARD_CAP_RISK_PCT   2.0    // absolute per-trade risk ceiling, % of equity
 #define QATS_HARD_CAP_DAILY_PCT  5.0    // absolute daily-loss ceiling, % of baseline
 #define QATS_HARD_CAP_DD_PCT     15.0   // absolute drawdown ceiling, % from high-water mark
-#define QATS_VERSION            "1.20"
+#define QATS_VERSION            "1.21"
 
 // Confluence weights. They sum to exactly 100 and absent evidence scores 0, so a
 // score is a plain percentage of the evidence present. BUY and SELL use the SAME
@@ -180,6 +185,18 @@ input double   InpBreakEvenAtR         = 1.0;     // move SL to entry after +1R 
 input double   InpPartialCloseAtR      = 1.5;     // close InpPartialClosePercent at this R (0 = off)
 input double   InpPartialClosePercent  = 50.0;    // percent of the position volume banked at that R
 input bool     InpCloseOnOpposite      = true;    // close this magic's position on an opposite ELIGIBLE setup
+
+//--- 5b. limit entry at the OB / FVG zone (v1.21) -------------------------
+// The setup is still detected and scored exactly as before; only the ENTRY
+// changes: instead of buying mid-move the EA rests a LIMIT order at a strong
+// SMC zone and waits for the retracement into it. Every guard above still runs.
+input bool     InpUseLimitEntry        = true;    // Limit order at OB/FVG zone; false = old market entry
+input double   InpLimitMaxDistATR      = 3.0;     // refuse/cancel when zone is farther than this x H1 ATR
+input int      InpLimitExpiryMin       = 180;     // pending order lifetime in minutes
+input int      InpLimitEntryMode       = 0;       // 0 = 50% of zone, 1 = near edge
+input double   InpLimitSLBufferATR     = 0.30;    // stop beyond the zone, x H1 ATR
+input double   InpLimitMinRR           = 2.0;     // min RR measured from the LIMIT price
+input bool     InpLimitNeedPD          = true;    // SELL only in premium, BUY only in discount
 
 //--- 6. diagnostics -----------------------------------------------------
 input int      InpHeartbeatSeconds     = 300;     // diagnostic journal line every N seconds (0 = off)
@@ -1985,9 +2002,13 @@ int GuardBlocks(string &codes, string &detail, string &first)
    double spreadPts = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) / g_spec.point;
    if(spreadPts > (double)InpMaxSpreadPoints)
       AddBlock(codes, detail, first, count, "SPREAD", StringFormat("spread %.0f pts > max %d", spreadPts, InpMaxSpreadPoints));
-   // position cap (this magic + symbol)
-   if(CountMyPositions() >= InpMaxOpenPositions)
-      AddBlock(codes, detail, first, count, "MAX_POSITIONS", StringFormat("max open positions reached (%d)", InpMaxOpenPositions));
+   // position cap (this magic + symbol). A working LIMIT is capacity the same
+   // way an open position is: with InpUseLimitEntry a resting order already
+   // occupies the slot, and the engine can never stack two of them.
+   if(CountMyPositions() + CountMyPending() >= InpMaxOpenPositions)
+      AddBlock(codes, detail, first, count, "MAX_POSITIONS",
+               StringFormat("max open positions reached (%d: %d filled + %d pending)",
+                            InpMaxOpenPositions, CountMyPositions(), CountMyPending()));
    // duplicate order prevention: a pending retry is already in flight
    if(g_pendingRetryAt != 0)
       AddBlock(codes, detail, first, count, "RETRY_PENDING", "order retry pending");
@@ -2476,6 +2497,709 @@ void ClosePositionOnOpposite(const int newSignalDir)
          PrintFormat("[QATS][MANAGE] ticket=%I64u closed on OPPOSITE signal (%s)", ticket, (newSignalDir > 0 ? "BUY" : "SELL"));
       else
          PrintFormat("[QATS][MANAGE] opposite-close failed for ticket=%I64u retcode=%u", ticket, (uint)g_trade.ResultRetcode());
+   }
+}
+
+//+------------------------------------------------------------------+
+//| SECTION 20b - LIMIT ENTRY AT THE SMC ZONE (v1.21)                |
+//|                                                                  |
+//| The evidence engine, the scoring, the guard chain and the trade  |
+//| plan are unchanged. What changes is WHERE the order sits: with   |
+//| InpUseLimitEntry the EA rests a BUY LIMIT / SELL LIMIT at a      |
+//| strong, UNMITIGATED order block or fair value gap and lets the   |
+//| retracement come to it, instead of paying the market mid-move.   |
+//|                                                                  |
+//| Rules that are never bent here:                                   |
+//|  - every structural input comes from CLOSED bars (shift >= 1);   |
+//|  - every order carries a server-side stop loss;                   |
+//|  - the stop is the far edge of the zone plus a buffer: it is      |
+//|    derived from the zone, never widened to make a setup fit;      |
+//|  - a pending order is NOT a trade: it never consumes the daily    |
+//|    trade cap. Only a FILLED entry does, exactly once.             |
+//+------------------------------------------------------------------+
+#define QATS_LIMIT_PREFIX  "[QATS][LIMIT]"
+
+// Zone sources, in the order BuildLimitPlan prefers them.
+#define QATS_ZONE_OB_FVG   0     // order block and fair value gap overlap
+#define QATS_ZONE_OB       1
+#define QATS_ZONE_FVG      2
+
+int    g_limitZoneSource = -1;   // source of the last limit plan (journal + tests)
+
+string ZoneSourceName(const int src)
+{
+   if(src == QATS_ZONE_OB_FVG) return "OB+FVG";
+   if(src == QATS_ZONE_OB)     return "OB";
+   if(src == QATS_ZONE_FVG)    return "FVG";
+   return "NONE";
+}
+
+// Contract size of ONE lot in account currency: the terminal's own answer, the
+// same identity CalcPositionVolume already uses (money per price unit).
+double LimitMoneyPerPriceUnit()
+{
+   if(g_spec.tickSize <= 0.0) return 0.0;
+   return g_spec.tickValue / g_spec.tickSize;
+}
+
+// BUY LIMIT / SELL LIMIT orders of this EA on this symbol.
+int CountMyPending()
+{
+   int count = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0) continue;
+      if(OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
+      if(OrderGetInteger(ORDER_MAGIC) != InpMagic) continue;
+      long type = OrderGetInteger(ORDER_TYPE);
+      if(type != ORDER_TYPE_BUY_LIMIT && type != ORDER_TYPE_SELL_LIMIT) continue;
+      count++;
+   }
+   return count;
+}
+
+// A zone is MITIGATED when a closed H1 bar has already traded through it: for a
+// supply zone (dir < 0) the first bar after the zone whose HIGH is above the top
+// has taken the orders resting in it; for a demand zone (dir > 0) the first bar
+// whose LOW is below the bottom has. Closed bars only: shift from z.shift-1 to 1.
+bool ZoneUnmitigated(const SZone &z, const int dir)
+{
+   if(!z.found || z.top <= z.bottom || dir == 0) return false;
+   int bars = iBars(_Symbol, PERIOD_H1);
+   if(bars < 2) return false;
+   int from = z.shift - 1;
+   if(from > bars - 1) from = bars - 1;
+   for(int s = from; s >= 1; s--)
+   {
+      if(dir < 0)
+      {
+         if(iHigh(_Symbol, PERIOD_H1, s) > z.top) return false;
+      }
+      else
+      {
+         if(iLow(_Symbol, PERIOD_H1, s) < z.bottom) return false;
+      }
+   }
+   return true;
+}
+
+// Union of an order block and a fair value gap, when they share prices.
+bool ZoneOverlaps(const SZone &a, const SZone &b)
+{
+   if(!a.found || !b.found) return false;
+   return (a.bottom <= b.top && b.bottom <= a.top);
+}
+
+// The limit price inside a zone. Mode 0 = the 50% of the zone (the usual
+// refinement), mode 1 = the near edge, i.e. the first price the retracement
+// meets. Both are snapped to the broker tick grid, always INTO the zone so a
+// limit can never sit outside the zone it is named after.
+double LimitEntryPrice(const SZone &z, const int dir, const double tick, const int digits)
+{
+   double mid = (z.top + z.bottom) / 2.0;
+   double near = (dir > 0) ? z.bottom : z.top;      // the edge the retracement meets first
+   double px = (InpLimitEntryMode == 1) ? near : mid;
+   bool roundUp = (dir > 0);       // BUY rounds up (stays inside), SELL rounds down
+   px = QATS_SnapToTick(px, tick, digits, roundUp);
+   if(dir > 0) { if(px < z.bottom) px = QATS_SnapToTick(z.bottom, tick, digits, true);
+                 if(px > z.top)    px = QATS_SnapToTick(z.top, tick, digits, false); }
+   else        { if(px > z.top)    px = QATS_SnapToTick(z.top, tick, digits, false);
+                 if(px < z.bottom) px = QATS_SnapToTick(z.bottom, tick, digits, true); }
+   return px;
+}
+
+// The candidate zone for one direction, in preference order:
+//   OB+FVG overlap -> OB -> FVG, skipping any zone that is already mitigated.
+bool PickEntryZone(const SSide &side, const int dir, SZone &out, int &source, string &why)
+{
+   SZone overlap;
+   overlap.found = false;
+   if(side.hasOB && side.hasFVG && ZoneOverlaps(side.ob, side.fvg))
+   {
+      overlap.found  = true;
+      overlap.isFVG  = false;
+      overlap.top    = MathMin(side.ob.top, side.fvg.top);
+      overlap.bottom = MathMax(side.ob.bottom, side.fvg.bottom);
+      overlap.shift  = MathMin(side.ob.shift, side.fvg.shift);
+   }
+   int order[3] = {QATS_ZONE_OB_FVG, QATS_ZONE_OB, QATS_ZONE_FVG};
+   why = "no OB and no FVG for this direction";
+   for(int i = 0; i < 3; i++)
+   {
+      SZone z;
+      z.found  = false;
+      z.top    = 0.0;
+      z.bottom = 0.0;
+      z.shift  = 0;
+      z.isFVG  = false;
+      if(order[i] == QATS_ZONE_OB_FVG) z = overlap;
+      if(order[i] == QATS_ZONE_OB)     z = side.ob;
+      if(order[i] == QATS_ZONE_FVG)    z = side.fvg;
+      if(!z.found) continue;
+      if(!ZoneUnmitigated(z, dir))
+      {
+         why = ZoneSourceName(order[i]) + " zone already mitigated by a closed H1 bar";
+         continue;
+      }
+      out    = z;
+      source = order[i];
+      why    = "";
+      return true;
+   }
+   return false;
+}
+
+// TRUE when a price is on the allowed side of the H1 dealing range's midpoint.
+bool LimitPriceInPD(const int dir, const double price, string &why)
+{
+   double hh = 0.0, ll = 0.0;
+   if(!HighestHigh(_Symbol, PERIOD_H1, 1, MathMax(1, InpSwingLookback), hh) ||
+      !LowestLow(_Symbol, PERIOD_H1, 1, MathMax(1, InpSwingLookback), ll))
+   {
+      why = "H1 dealing range unavailable";
+      return false;
+   }
+   double eq = (hh + ll) / 2.0;
+
+   if(dir < 0 && price < eq)
+   {
+      why = StringFormat("SELL entry %s is below the H1 equilibrium %s (needs premium)",
+                         PriceText(price), PriceText(eq));
+      return false;
+   }
+   if(dir > 0 && price > eq)
+   {
+      why = StringFormat("BUY entry %s is above the H1 equilibrium %s (needs discount)",
+                         PriceText(price), PriceText(eq));
+      return false;
+   }
+   why = "";
+   return true;
+}
+
+// The LIMIT plan: entry at the zone, stop beyond the FAR edge of the zone, target
+// at the nearest range liquidity, reward:risk measured from the LIMIT price.
+bool BuildLimitPlan(const SAnalysis &a, SAnalysis &out)
+{
+   out = a;
+   g_executionStage  = "LIMIT_PLAN";
+   g_executionReason = "invalid direction";
+   if(out.dir != 1 && out.dir != -1) return false;
+
+   double atrH1 = 0.0;
+   g_executionReason = "H1 ATR unavailable";
+   if(!BufValue(g_hATRH1, 1, atrH1)) return false;
+   g_executionReason = "H1 ATR is nonpositive";
+   if(atrH1 <= 0.0) return false;
+
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   g_executionReason = "invalid bid/ask quote";
+   if(bid <= 0.0 || ask < bid) return false;
+   double spread = ask - bid;
+   double point  = g_spec.point;
+   double tick   = g_spec.tickSize;
+   if(point <= 0.0 || tick <= 0.0 || g_spec.digits < 0)
+   {
+      g_executionReason = "broker tick size unavailable";
+      return false;
+   }
+
+   SSide side = (out.dir > 0) ? out.buy : out.sell;   // a copy: MQL5 has no struct pointers
+   SZone zone;
+   int source = 0;
+   string why = "";
+   g_executionReason = "no unmitigated OB/FVG zone for this direction";
+   if(!PickEntryZone(side, out.dir, zone, source, why))
+   {
+      g_executionReason = why;
+      return false;
+   }
+
+   //--- the entry: 50% of the zone, or the near edge, on the tick grid.
+   // Charts are drawn from the BID (see SECTION 16). A BUY LIMIT fills on the ASK,
+   // a SELL LIMIT on the BID, so the SELL price of a chart level sits one spread
+   // higher - exactly the convention BuildTradePlan already uses for SELL stops
+   // and targets. Without it a SELL limit would fill one spread LATE and the
+   // whole plan would stop being the mirror image of its BUY twin.
+   double chartEntry = LimitEntryPrice(zone, out.dir, tick, g_spec.digits);
+   double entry = (out.dir > 0) ? chartEntry : QATS_SnapToTick(chartEntry + spread, tick, g_spec.digits, true);
+   g_executionReason = "zone entry is not a valid price";
+   if(entry <= 0.0) return false;
+
+   //--- distance guards: broker freeze/stops level, already passed, too far away
+   double minGap = (double)MathMax(MathMax(g_spec.stopsLevel, g_spec.freezeLevel), 1) * point;
+   if(out.dir > 0)
+   {
+      if(entry >= ask - minGap)
+      {
+         g_executionReason = StringFormat("BUY zone entry %s is at/above the ask %s minus the stops level - already passed",
+                                          PriceText(entry), PriceText(ask));
+         return false;
+      }
+   }
+   else
+   {
+      if(entry <= bid + minGap)
+      {
+         g_executionReason = StringFormat("SELL zone entry %s is at/below the bid %s plus the stops level - already passed",
+                                          PriceText(entry), PriceText(bid));
+         return false;
+      }
+   }
+   double dist = (out.dir > 0) ? (ask - entry) : (entry - bid);
+   double maxDist = MathMax(InpLimitMaxDistATR, 0.0) * atrH1;
+   if(dist > maxDist)
+   {
+      g_executionReason = StringFormat("zone is %.1f pts away, more than %.1f x H1 ATR (%.1f pts)",
+                                       dist / point, InpLimitMaxDistATR, maxDist / point);
+      return false;
+   }
+
+   //--- premium / discount: never BUY into premium, never SELL into discount
+   if(InpLimitNeedPD && !LimitPriceInPD(out.dir, chartEntry, why))
+   {
+      g_executionReason = why;
+      return false;
+   }
+
+   //--- the stop: BEYOND THE FAR EDGE of the zone, plus buffer and current spread.
+   // It is snapped AWAY from the entry, so the stop can only get wider than the
+   // computed distance, never closer - and it is the zone that defines it.
+   double buffer = MathMax(InpLimitSLBufferATR, 0.0) * atrH1 + spread;
+   double chartSL = 0.0;
+   if(out.dir > 0) chartSL = QATS_SnapToTick(zone.bottom - buffer, tick, g_spec.digits, false);
+   else            chartSL = QATS_SnapToTick(zone.top + buffer,    tick, g_spec.digits, true);
+   // the BUY stop is hit by the BID (the chart level itself); the SELL stop is hit
+   // by the ASK, which reaches the same chart level one spread later
+   double sl = (out.dir > 0) ? chartSL : QATS_SnapToTick(chartSL + spread, tick, g_spec.digits, true);
+   double stopDist = MathAbs(entry - sl);
+   if(stopDist <= 0.0)
+   {
+      g_executionReason = "zone stop distance is zero";
+      return false;
+   }
+   double minStopPts = MathMax(MathMax((double)InpMinStopPoints, (double)g_spec.stopsLevel), 1.0) * point;
+   double maxStopPts = (double)InpMaxStopPoints * point;
+   if(stopDist < minStopPts)
+   {
+      g_executionReason = StringFormat("zone stop %.1f pts is below the minimum %.1f pts (zone too tight to protect the entry)",
+                                       stopDist / point, minStopPts / point);
+      return false;
+   }
+   if(stopDist > maxStopPts)
+   {
+      g_executionReason = StringFormat("zone stop %.1f pts is above the maximum %.1f pts", stopDist / point, maxStopPts / point);
+      return false;
+   }
+   // the stop must be at least a freezone/stops level away from the zone edge at
+   // the broker, or the pending order carries a stop the server will refuse
+   if(MathAbs(entry - sl) < minGap)
+   {
+      g_executionReason = StringFormat("zone stop is inside the broker stops/freeze level (%.1f pts)", minGap / point);
+      return false;
+   }
+
+   //--- the target: the nearest INTACT range liquidity the trade runs into,
+   // offset 0.10 x H1 ATR back inside the range; otherwise the RR fallback.
+   SSwing highs[], lows[];
+   FindSwings(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, highs, true);
+   FindSwings(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, lows, false);
+   SLiquidityPool pools[];
+   BuildLiquidityMap(_Symbol, PERIOD_H1, highs, lows, MathMax(atrH1 * InpLiquidityToleranceATR, point * 2.0),
+                     MathMax(1, InpSetupWindowBars), pools);
+   double inside = 0.10 * atrH1;
+   double tp = 0.0;
+   string tpSource = "RR";
+   double target = 0.0;
+   string targetKind = "";
+   double minRR = MathMax(InpLimitMinRR, 0.0);
+   if(NearestLiquidityTarget(pools, out.dir, entry, stopDist, minRR, spread, target, targetKind))
+   {
+      tp = (out.dir > 0) ? QATS_SnapToTick(target - inside, tick, g_spec.digits, false)
+                         : QATS_SnapToTick(target + inside, tick, g_spec.digits, true);
+      tpSource = "LIQUIDITY:" + targetKind;
+   }
+   else
+   {
+      double rrMult = MathMax(InpRewardRisk, minRR);
+      tp = (out.dir > 0) ? entry + stopDist * rrMult : entry - stopDist * rrMult;
+      tp = QATS_SnapToTick(tp, tick, g_spec.digits, (out.dir > 0));
+   }
+   if(MathAbs(tp - entry) < minGap)
+   {
+      g_executionReason = StringFormat("target %s is inside the broker stops level from the limit price %s",
+                                       PriceText(tp), PriceText(entry));
+      return false;
+   }
+   double rr = MathAbs(tp - entry) / stopDist;
+   if(rr + 0.000000001 < minRR)
+   {
+      g_executionReason = StringFormat("reward:risk %.2f from the limit price %s is below InpLimitMinRR %.2f",
+                                       rr, PriceText(entry), minRR);
+      return false;
+   }
+   // geometry sanity: a BUY limit needs the target above it and the stop below it
+   if(out.dir > 0 && !(tp > entry && sl < entry))
+   {
+      g_executionReason = "BUY limit geometry is inverted (target/stop)";
+      return false;
+   }
+   if(out.dir < 0 && !(tp < entry && sl > entry))
+   {
+      g_executionReason = "SELL limit geometry is inverted (target/stop)";
+      return false;
+   }
+
+   out.entry    = entry;
+   out.sl       = sl;
+   out.tp       = tp;
+   out.stopDist = stopDist;
+   out.tpSource = tpSource;
+   g_limitZoneSource = source;
+   g_executionReason = "";
+   g_executionStage  = "LIMIT_PLAN";
+   return true;
+}
+
+// Retcodes a pending order request can come back with when the FILLING POLICY is
+// the problem: the order is then re-sent with the next policy in line.
+bool IsInvalidFillRetcode(const uint rc)
+{
+   return (rc == TRADE_RETCODE_INVALID_FILL);
+}
+
+bool IsPlacedOrDone(const uint rc)
+{
+   return (rc == TRADE_RETCODE_PLACED || rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL);
+}
+
+// Place the zone limit. Same guard chain as a market entry, same sizing identity,
+// same XAUUSD duplicate reservation, same dry-run path - only the ORDER TYPE and
+// the price are different.
+bool PlaceLimitOrder(const SAnalysis &raw)
+{
+   g_executionReason = "";
+   g_executionStage  = "LIMIT_PRECHECK";
+   if(!InpUseLimitEntry) return false;
+   if(raw.dir != 1 && raw.dir != -1)
+   {
+      g_executionReason = "invalid direction";
+      return false;
+   }
+   if(!QATS_ScoreEligible(raw.dir, raw.score, InpMinScore))
+   {
+      g_executionReason = "invalid direction or score below minimum";
+      return false;
+   }
+   if(!LoadSymbolSpec(g_spec))
+   {
+      g_executionReason = "broker symbol specification unavailable or invalid";
+      return false;
+   }
+   // the whole guard chain, unchanged: authorization, locks, cooldown, daily cap,
+   // spread, session, stale tick, position cap (positions + pending)
+   string guard = "";
+   if(!EntriesAllowed(guard))
+   {
+      g_executionReason = guard;
+      PrintFormat("%s NOT_PLACED direction=%s reason=%s", QATS_LIMIT_PREFIX, SideName(raw.dir), guard);
+      return false;
+   }
+   // never hold both sides, never re-trade a spent setup - re-checked at send time
+   if(OppositePositionOpen(raw.dir))
+   {
+      g_executionReason = "an opposite position of this EA is still open";
+      PrintFormat("%s NOT_PLACED direction=%s reason=%s", QATS_LIMIT_PREFIX, SideName(raw.dir), g_executionReason);
+      return false;
+   }
+   if(SetupAlreadyTraded(raw.dir, raw.setupTime))
+   {
+      g_executionReason = "setup " + SetupId(raw.dir, raw.setupTime) + " was already traded";
+      PrintFormat("%s NOT_PLACED direction=%s reason=%s", QATS_LIMIT_PREFIX, SideName(raw.dir), g_executionReason);
+      return false;
+   }
+
+   SAnalysis plan;
+   if(!BuildLimitPlan(raw, plan))
+   {
+      PrintFormat("%s REJECTED direction=%s bar=%s reason=%s",
+                  QATS_LIMIT_PREFIX, SideName(raw.dir),
+                  TimeToString(raw.signalBar, TIME_DATE | TIME_MINUTES), g_executionReason);
+      return false;
+   }
+   if(CountMyPending() >= MathMax(1, InpMaxOpenPositions))
+   {
+      g_executionReason = "a pending order of this EA is already working";
+      PrintFormat("%s NOT_PLACED direction=%s reason=%s", QATS_LIMIT_PREFIX, SideName(raw.dir), g_executionReason);
+      return false;
+   }
+
+   // spread versus the stop the limit order will carry
+   g_executionStage = "LIMIT_SPREAD_VS_STOP";
+   double spreadPts = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) / g_spec.point;
+   if(spreadPts > plan.stopDist / g_spec.point * InpMaxSpreadFracOfStop)
+   {
+      g_executionReason = StringFormat("spread %.2f pts exceeds %.2f%% of the zone stop distance",
+                                       spreadPts, InpMaxSpreadFracOfStop * 100.0);
+      PrintFormat("%s NOT_PLACED direction=%s reason=%s", QATS_LIMIT_PREFIX, SideName(raw.dir), g_executionReason);
+      return false;
+   }
+
+   // sizing from the SL distance OF THE LIMIT PRICE, exactly as a market entry is
+   // sized from its own stop distance
+   g_executionStage = "LIMIT_SIZE";
+   double volume = 0.0, riskMoney = 0.0;
+   if(!CalcPositionVolume(plan.stopDist, plan.dir > 0, volume, riskMoney))
+   {
+      PrintFormat("%s NOT_PLACED direction=%s reason=%s", QATS_LIMIT_PREFIX, SideName(raw.dir), g_executionReason);
+      return false;
+   }
+
+   double rr = MathAbs(plan.tp - plan.entry) / plan.stopDist;
+   datetime expiry = TimeTradeServer() + (datetime)MathMax(InpLimitExpiryMin, 1) * 60;
+   string side  = (plan.dir > 0) ? "BUY" : "SELL";
+   string zsrc  = ZoneSourceName(g_limitZoneSource);
+   g_statApproved[SideIndex(plan.dir)]++;
+   PrintFormat("%s PLAN direction=%s symbol=%s bar=%s setup=%s score=%d type=%s_LIMIT entry=%s sl=%s tp=%s tpSource=%s rr=%.2f stopPts=%.1f zone=%s volume=%.2f risk=%.2f %s expiry=%s",
+               QATS_LIMIT_PREFIX, side, _Symbol, TimeToString(plan.signalBar, TIME_DATE | TIME_MINUTES),
+               SetupId(plan.dir, plan.setupTime), plan.score, side,
+               PriceText(plan.entry), PriceText(plan.sl), PriceText(plan.tp), plan.tpSource, rr,
+               plan.stopDist / g_spec.point, zsrc, volume, riskMoney, g_spec.profitCcy,
+               TimeToString(expiry, TIME_DATE | TIME_MINUTES));
+
+   if(InpDryRun)
+   {
+      g_executionStage  = "DRY_RUN";
+      g_executionReason = "dry run: pending order not sent";
+      PrintFormat("%s DRY_RUN NOT_PLACED direction=%s entry=%s sl=%s tp=%s volume=%.2f risk=%.2f %s zone=%s",
+                  QATS_LIMIT_PREFIX, side, PriceText(plan.entry), PriceText(plan.sl), PriceText(plan.tp),
+                  volume, riskMoney, g_spec.profitCcy, zsrc);
+      return false;
+   }
+
+   // XAUUSD duplicate protection, identical to the market path: reserve BEFORE sending
+   g_executionStage = "LIMIT_RESERVE";
+   if(IsXAUUSD() && !ReserveSignal(plan, g_executionReason))
+   {
+      PrintFormat("%s NOT_PLACED direction=%s reason=%s", QATS_LIMIT_PREFIX, side, g_executionReason);
+      return false;
+   }
+
+   g_executionStage = "LIMIT_BROKER";
+   ConfigureTrade();
+   ENUM_ORDER_TYPE otype = (plan.dir > 0) ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_SELL_LIMIT;
+   long fillingMode = (long)SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
+   ENUM_ORDER_TYPE_FILLING policies[3];
+   int npol = 0;
+   policies[npol++] = ORDER_FILLING_RETURN;                     // first choice: a resting limit
+   if((fillingMode & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC) policies[npol++] = ORDER_FILLING_IOC;
+   if((fillingMode & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK) policies[npol++] = ORDER_FILLING_FOK;
+
+   bool sent = false;
+   uint rc = TRADE_RETCODE_ERROR;
+   ulong orderTicket = 0;
+   string rcDesc = "";
+   for(int attempt = 0; attempt < npol; attempt++)
+   {
+      g_trade.SetTypeFilling(policies[attempt]);
+      sent = g_trade.OrderOpen(otype, volume, plan.entry, 0.0, plan.sl, plan.tp,
+                               ORDER_TIME_SPECIFIED, expiry, InpTradeComment);
+      rc      = (uint)g_trade.ResultRetcode();
+      orderTicket = g_trade.ResultOrder();
+      rcDesc  = g_trade.ResultRetcodeDescription();
+      PrintFormat("%s SEND direction=%s filling=%s sent=%s retcode=%u (%s) order=%I64u price=%s volume=%.2f",
+                  QATS_LIMIT_PREFIX, side,
+                  (policies[attempt] == ORDER_FILLING_RETURN ? "RETURN" : (policies[attempt] == ORDER_FILLING_IOC ? "IOC" : "FOK")),
+                  (sent ? "true" : "false"), rc, rcDesc, orderTicket, PriceText(plan.entry), volume);
+      if(!IsInvalidFillRetcode(rc)) break;
+   }
+   // the market path's filling policy is restored for every later send
+   ConfigureTrade();
+
+   if(sent && IsPlacedOrDone(rc))
+   {
+      // a PLACED retcode is not proof of an order: confirm it is on the server
+      bool onServer = (orderTicket != 0);
+      if(onServer)
+      {
+         for(int i = OrdersTotal() - 1; i >= 0; i--)
+         {
+            ulong t = OrderGetTicket(i);
+            if(t == 0) continue;
+            if(OrderGetInteger(ORDER_TICKET) != (long)orderTicket) continue;
+            if(OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
+            if(OrderGetInteger(ORDER_MAGIC) != InpMagic) continue;
+            onServer = true;
+            break;
+         }
+      }
+      if(!onServer)
+         PrintFormat("%s VERIFY[CRITICAL] retcode=%u but no pending order was found for %s %s - inspect the journal NOW",
+                     QATS_LIMIT_PREFIX, rc, side, _Symbol);
+      // The setup is NOT spent here: a placement is not a trade, and a limit that
+      // expires or is cancelled must leave the setup tradable. The identity is
+      // persisted so the FILL (which may come hours later, or after a restart)
+      // can spend it exactly once - see OnTradeTransaction.
+      if(plan.setupTime > 0)
+         GVSet(GVKey(plan.dir > 0 ? "limit_setup_buy" : "limit_setup_sell"), (double)plan.setupTime);
+      g_executionStage  = "LIMIT_PLACED";
+      g_executionReason = StringFormat("server accepted retcode=%u (%s); order %s", rc, rcDesc,
+                                       (onServer ? "confirmed" : "NOT VERIFIED - inspect journal"));
+      PrintFormat("%s PLACED direction=%s setup=%s order=%I64u entry=%s sl=%s tp=%s volume=%.2f risk=%.2f %s rr=%.2f zone=%s (pending orders are not counted against the daily trade cap)",
+                  QATS_LIMIT_PREFIX, side, SetupId(plan.dir, plan.setupTime), orderTicket,
+                  PriceText(plan.entry), PriceText(plan.sl), PriceText(plan.tp),
+                  volume, riskMoney, g_spec.profitCcy, rr, zsrc);
+      return true;
+   }
+
+   g_executionStage  = "LIMIT_BROKER";
+   g_executionReason = StringFormat("pending order not accepted: sent=%s retcode=%u (%s); no automatic retry",
+                                    (sent ? "true" : "false"), rc, rcDesc);
+   PrintFormat("%s NOT_PLACED direction=%s retcode=%u (%s) reason=%s",
+               QATS_LIMIT_PREFIX, side, rc, rcDesc, g_executionReason);
+   return false;
+}
+
+// Cancellation reasons, journalled with every delete.
+#define QATS_CANCEL_EXPIRED    0
+#define QATS_CANCEL_SL_CLOSED  1
+#define QATS_CANCEL_OPPOSITE   2
+#define QATS_CANCEL_RAN_AWAY   3
+#define QATS_CANCEL_MANUAL     4
+#define QATS_CANCEL_SETUP_GONE 5
+
+string CancelReasonName(const int code)
+{
+   if(code == QATS_CANCEL_EXPIRED)   return "EXPIRED";
+   if(code == QATS_CANCEL_SL_CLOSED) return "M5_CLOSED_BEYOND_SL";
+   if(code == QATS_CANCEL_OPPOSITE)  return "OPPOSITE_SIGNAL";
+   if(code == QATS_CANCEL_RAN_AWAY)  return "PRICE_RAN_AWAY";
+   if(code == QATS_CANCEL_SETUP_GONE) return "SETUP_GONE";
+   return "OPERATOR_OR_BROKER";
+}
+
+// The setup that produced a resting limit, as persisted at placement.
+datetime PendingOrderSetupTime(const int dir)
+{
+   return (datetime)GVGet(GVKey(dir > 0 ? "limit_setup_buy" : "limit_setup_sell"), 0.0);
+}
+
+bool DeletePendingOrder(const ulong ticket, const int reasonCode, const string detail)
+{
+   // position management must never run on an unauthorized terminal: the cancel
+   // is part of the same account, so re-verify before touching the server
+   string why = "";
+   if(!VerifyAccountProtection(why))
+   {
+      PrintFormat("%s CANCEL_DEFERRED ticket=%I64u reason=%s detail=%s (protection: %s)",
+                  QATS_LIMIT_PREFIX, ticket, CancelReasonName(reasonCode), detail, why);
+      return false;
+   }
+   ConfigureTrade();
+   bool ok = g_trade.OrderDelete(ticket);
+   uint rc = (uint)g_trade.ResultRetcode();
+   if(ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL || rc == TRADE_RETCODE_PLACED))
+   {
+      PrintFormat("%s CANCELLED ticket=%I64u reason=%s detail=%s (no trade was opened: the daily trade cap is untouched)",
+                  QATS_LIMIT_PREFIX, ticket, CancelReasonName(reasonCode), detail);
+      return true;
+   }
+   PrintFormat("%s CANCEL_FAILED ticket=%I64u reason=%s detail=%s retcode=%u (%s)",
+               QATS_LIMIT_PREFIX, ticket, CancelReasonName(reasonCode), detail, rc, g_trade.ResultRetcodeDescription());
+   return false;
+}
+
+// Housekeeping for this EA's pending limits. Each order is deleted for exactly
+// one named reason, and the journal always says which.
+void ManagePendingOrders(const SAnalysis &raw)
+{
+   if(!InpUseLimitEntry) return;
+   if(OrdersTotal() == 0) return;
+   double atrH1 = 0.0;
+   bool haveAtr = BufValue(g_hATRH1, 1, atrH1) && atrH1 > 0.0;
+   datetime now  = TimeTradeServer();
+   int oppositeDir = (raw.dataReady && raw.dir != 0 &&
+                      QATS_ScoreEligible(raw.dir, raw.score, InpMinScore)) ? -raw.dir : 0;
+
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0) continue;
+      if(OrderGetString(ORDER_SYMBOL) != _Symbol) continue;
+      if(OrderGetInteger(ORDER_MAGIC) != InpMagic) continue;
+      long type = OrderGetInteger(ORDER_TYPE);
+      bool isBuyLimit  = (type == ORDER_TYPE_BUY_LIMIT);
+      bool isSellLimit = (type == ORDER_TYPE_SELL_LIMIT);
+      if(!isBuyLimit && !isSellLimit) continue;
+      int dir = isBuyLimit ? +1 : -1;
+      double price = OrderGetDouble(ORDER_PRICE_OPEN);
+      double sl    = OrderGetDouble(ORDER_SL);
+      double tp    = OrderGetDouble(ORDER_TP);
+      datetime expiration = (datetime)OrderGetInteger(ORDER_TIME_EXPIRATION);
+
+      // 1. expired. The server also expires it; this keeps the journal exact.
+      if(expiration > 0 && now >= expiration)
+      {
+         DeletePendingOrder(ticket, QATS_CANCEL_EXPIRED,
+                            StringFormat("expiry %s reached", TimeToString(expiration, TIME_DATE | TIME_MINUTES)));
+         continue;
+      }
+
+      // 2. an M5 bar CLOSED beyond the order's stop: the idea is invalidated
+      double m5 = iClose(_Symbol, PERIOD_M5, 1);
+      if(sl > 0.0 && m5 > 0.0)
+      {
+         if((dir > 0 && m5 < sl) || (dir < 0 && m5 > sl))
+         {
+            DeletePendingOrder(ticket, QATS_CANCEL_SL_CLOSED,
+                               StringFormat("M5 close %s is beyond SL %s", PriceText(m5), PriceText(sl)));
+            continue;
+         }
+      }
+
+      // 3. an opposite, eligible signal: never hold both sides
+      if(oppositeDir != 0 && dir == oppositeDir)
+      {
+         DeletePendingOrder(ticket, QATS_CANCEL_OPPOSITE,
+                            StringFormat("opposite %s signal score=%d", SideName(raw.dir), raw.score));
+         continue;
+      }
+
+      // 4. price ran away from the zone: the retracement is not coming
+      if(haveAtr)
+      {
+         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         double away = (dir > 0) ? (ask - price) : (price - bid);
+         double limit = 1.5 * MathMax(InpLimitMaxDistATR, 0.0) * atrH1;
+         if(away > limit)
+         {
+            DeletePendingOrder(ticket, QATS_CANCEL_RAN_AWAY,
+                               StringFormat("price moved %.1f pts from the zone, limit %.1f pts",
+                                            away / g_spec.point, limit / g_spec.point));
+            continue;
+         }
+      }
+      // 5. the SET for which the order was placed is gone: the signal source now
+      //    shows a different, newer setup of this direction (or none at all), so
+      //    the resting limit no longer belongs to anything the EA believes in.
+      if(raw.dataReady)
+      {
+         // MQL5 has no pointer dereference on structures: take a COPY of the side
+         datetime liveSetup = (dir > 0) ? raw.buy.setupTime : raw.sell.setupTime;
+         datetime placed = PendingOrderSetupTime(dir);
+         if(placed > 0 && liveSetup > 0 && liveSetup != placed)
+         {
+            DeletePendingOrder(ticket, QATS_CANCEL_SETUP_GONE,
+                               StringFormat("setup changed from %s to %s", SetupId(dir, placed), SetupId(dir, liveSetup)));
+            continue;
+         }
+      }
+      // otherwise the order is still valid and keeps working until one of the
+      // conditions above, or its own expiry, says otherwise
+      (void)tp;
    }
 }
 
@@ -3081,6 +3805,10 @@ void ProcessSignal(const SAnalysis &raw, const bool canManage)
    // setup closes this magic's position.
    if(canManage && raw.dir != 0)
       ClosePositionOnOpposite(raw.dir);
+   // a resting LIMIT belongs to the same account and the same guards: expiring,
+   // invalidated and stale limits are cancelled right after the exit rule
+   if(canManage && InpUseLimitEntry)
+      ManagePendingOrders(raw);
 
    // MANDATORY RISK PROTECTION: every active guard is named.
    string codes = "", detail = "";
@@ -3089,6 +3817,27 @@ void ProcessSignal(const SAnalysis &raw, const bool canManage)
       g_statBlockedBars[SideIndex(raw.dir)]++;
       LogBlock(raw, codes, detail);
       LogSignal(raw, "BLOCKED", codes);
+      return;
+   }
+
+   // v1.21: with a LIMIT entry the order rests at the zone instead of paying the
+   // market. Everything above this line - the evidence, the score, the guard
+   // chain, the opposite-side exit - is exactly the same code.
+   if(InpUseLimitEntry)
+   {
+      if(PlaceLimitOrder(raw))
+      {
+         LogSignal(raw, "LIMIT_PLACED", "ORDER_PLACED");
+         return;
+      }
+      if(g_executionStage == "DRY_RUN")
+      {
+         LogSignal(raw, "DRY_RUN", "ORDER_NOT_SENT");
+         return;
+      }
+      g_statRejected[SideIndex(raw.dir)]++;
+      LogRejected(raw, g_executionStage, g_executionReason);
+      LogSignal(raw, "NOT_PLACED", "LIMIT");
       return;
    }
 
@@ -3174,6 +3923,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    if(magic != InpMagic && !closing) return;
    g_lastLoggedDeal = dealTicket;
    if(magic == InpMagic)
+   {
       PrintFormat("[QATS][DEAL] ticket=%I64u entry=%I64d symbol=%s type=%I64u volume=%.2f price=%.5f profit=%.2f",
                   dealTicket, dtype,
                   HistoryDealGetString(dealTicket, DEAL_SYMBOL),
@@ -3181,6 +3931,27 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
                   HistoryDealGetDouble(dealTicket, DEAL_VOLUME),
                   HistoryDealGetDouble(dealTicket, DEAL_PRICE),
                   HistoryDealGetDouble(dealTicket, DEAL_PROFIT));
+      // v1.21 LIMIT entry: the daily cap counts FILLED orders only. A placement or
+      // a cancellation produces no DEAL_ENTRY_IN deal and therefore never counts.
+      // The market path increments in ExecuteSignal, so it must NOT increment here.
+      if(InpUseLimitEntry && dtype == DEAL_ENTRY_IN)
+      {
+         // the setup that produced this fill is spent now, at the FILL - never at
+         // the placement - so a cancelled limit leaves the setup tradable
+         int fillDir = ((long)HistoryDealGetInteger(dealTicket, DEAL_TYPE) == DEAL_TYPE_BUY) ? +1 : -1;
+         double fillSetup = GVGet(GVKey(fillDir > 0 ? "limit_setup_buy" : "limit_setup_sell"), 0.0);
+         if(fillSetup > 0.0) MarkSetupTraded(fillDir, (datetime)fillSetup);
+         string limitDay = TodayKey();
+         int limitPersisted = (int)GVGet(GVKey("trades_" + limitDay), (double)g_tradesToday);
+         int limitCount = MathMax(limitPersisted, g_tradesToday) + 1;
+         GVSet(GVKey("trades_" + limitDay), (double)limitCount);
+         g_tradesToday = limitCount;
+         PrintFormat("%s FILLED entry=%s setup=%s deal=%I64u price=%s volume=%.2f - daily trade counter %d/%d (filled orders only)",
+                     QATS_LIMIT_PREFIX, SideName(fillDir), SetupId(fillDir, (datetime)fillSetup),
+                     dealTicket, PriceText(HistoryDealGetDouble(dealTicket, DEAL_PRICE)),
+                     HistoryDealGetDouble(dealTicket, DEAL_VOLUME), g_tradesToday, InpMaxTradesPerDay);
+      }
+   }
    // a closing deal updates the loss streak and the cooldown now, not at the next M5 bar
    if(closing && BoundAccountActive())
    {

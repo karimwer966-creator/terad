@@ -14,11 +14,14 @@ MT5's standard `Trade/Trade.mqh`. The single optional preset is
 `presets/Quantum_XAUUSD_PRODUCTION.set`; it is configured for DEMO, not a
 claim of production readiness.
 
-> **Status, v1.20 (2026-11-11): not production-ready.** The EA has not been compiled in
+> **Status, v1.21 (2026-11-11): not production-ready.** The EA has not been compiled in
 > MetaEditor, run in the MT5 Strategy Tester or forward-tested on DEMO in this work, and an
 > offline replay of the real source on 9.6 years of XAUUSD data shows **negative expectancy**
-> in-sample. What v1.20 fixes is engineering: v1.11 evaluated one direction per bar and could
-> buy for hours without ever scoring a sell. Read
+> in-sample. What v1.20 fixed is engineering: v1.11 evaluated one direction per bar and could
+> buy for hours without ever scoring a sell. **v1.21 changes how an entry is taken**: the signal,
+> the score and every guard are unchanged, but the order is now a LIMIT resting at an SMC
+> zone instead of a market order paid mid-move (see
+> [`docs/QATS_LIMIT_ENTRY_V121.md`](docs/QATS_LIMIT_ENTRY_V121.md)). Read
 > [`docs/QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md`](docs/QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md)
 > (Arabic: [`docs/QATS_DUAL_DIRECTION_AR.md`](docs/QATS_DUAL_DIRECTION_AR.md)) before attaching it.
 
@@ -29,7 +32,8 @@ D1 bias -> H4 context -> H1 structure (BOS / CHoCH) -> liquidity map -> liquidit
 -> displacement -> order block / fair value gap -> premium/discount -> VWAP
 -> M15 confirmation -> M5 entry trigger          ... for BUY and for SELL, every closed M5 bar
 -> core confirmation gate -> confluence score -> direction policy -> risk guards
--> CTrade market execution -> position management (break-even, partial bank)
+-> CTrade execution: BUY LIMIT / SELL LIMIT at the OB/FVG zone (v1.21)
+-> position management (break-even, partial bank)
 ```
 
 - **Market data / MTF engine** — closed candles only; D1/H4/H1/M15/M5 analysis,
@@ -46,6 +50,15 @@ D1 bias -> H4 context -> H1 structure (BOS / CHoCH) -> liquidity map -> liquidit
   a fixed priority list decides (score lead, H1 structure, D1, H4) or the EA
   stands aside; it never holds both sides, and a setup that produced a position
   cannot produce a second one.
+- **Limit entry at the zone (v1.21)** — instead of buying mid-move, the EA rests a
+  BUY LIMIT / SELL LIMIT at a strong SMC zone (an order block and a fair value gap
+  where they overlap, else the order block, else the gap), skips zones the market
+  has already mitigated, and puts its stop beyond the FAR edge of that zone. The
+  order carries its own server-side SL and TP, expires (`InpLimitExpiryMin`), and
+  is cancelled by name when the idea dies: `EXPIRED`, `M5_CLOSED_BEYOND_SL`,
+  `OPPOSITE_SIGNAL`, `PRICE_RAN_AWAY`, `SETUP_GONE`. A placement is **not** a
+  trade: the daily cap is incremented only when the limit FILLS. `InpUseLimitEntry=false`
+  restores the v1.20 market entry exactly.
 - **Scoring** — 0–100 weighted confluence, one table for both sides, weights
   summing to exactly 100; trades only at or above `InpMinScore` (default 55).
   On XAUUSD (including broker suffixes), EMA/counter-D1 vetoes and execution
@@ -99,6 +112,7 @@ headless Linux CI box.
    python3 tools/verify_quantum_ea.py            # structural verifier; not a compiler
    python3 tools/test_qats_native_build.py       # whole file, strict host C++ build against a typed MQL5 shim
    python3 tools/test_qats_dual_direction.py     # the real source in a broker simulator; BUY/SELL mirror proof
+   python3 tools/test_qats_limit_entry.py        # v1.21 LIMIT entry: no guard weakened, the cap counts FILLS only
    ```
 
    A clean host build is evidence, not proof, of a clean F7.
@@ -112,7 +126,7 @@ headless Linux CI box.
    This arms order submission on DEMO. The risk in this preset is 0.10% per trade;
    the compiled defaults without the preset differ.
 4. Read the attach banner in the Experts journal:
-   - `[QATS] QuantumAutonomousTradingSystem v1.20 attaching to ...`
+   - `[QATS] QuantumAutonomousTradingSystem v1.21 attaching to ...`
    - `[QATS][POLICY] direction: BUY and SELL are scored independently ...
      profile=BALANCED ...` — the strategy profile in force.
    - `[QATS][PROTECTION] PASS: DEMO account authorized ...` —
@@ -208,14 +222,14 @@ python3 tools/check_production_ready.py      # the whole offline gate (57 checks
 ## Repository layout
 
 ```
-MQL5/Experts/QuantumAutonomousTradingSystem.mq5   the EA (v1.20)
+MQL5/Experts/QuantumAutonomousTradingSystem.mq5   the EA (v1.21)
 presets/Quantum_XAUUSD_PRODUCTION.set               the only deployment preset
 tools/verify_quantum_ea.py                        offline structural verifier
 tools/qats_native.py                              .mq5 -> C++ rewrite, strict build, MQL5 lint
 tools/qats_sim/                                   typed MQL5 shim, broker simulator, scenarios
 tools/qats_backtest.py                            fetch / run / study / mirror / report
 tools/qats_journal_report.py                      BUY-vs-SELL report from an MT5 journal
-tools/test_qats_*.py                              the three v1.20 suites
+tools/test_qats_*.py                              the v1.20 / v1.21 suites
 docs/QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md      v1.20 audit, evidence, verdict
 docs/QATS_DUAL_DIRECTION_AR.md                    the same for the operator, in Arabic
 docs/QATS_BACKTEST_STUDY_2026-11-11.md            simulation study, full tables

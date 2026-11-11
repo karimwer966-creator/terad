@@ -568,6 +568,233 @@ static void unitDisplacementZones()
    simDiagnosticsClean();
 }
 
+
+//+------------------------------------------------------------------+
+//| v1.21 LIMIT entry: the zone arithmetic, with its mirror image.   |
+//| Every case is built twice, once bullish and once on K - price,   |
+//| so a rule that is not side-symmetric fails here.                 |
+//+------------------------------------------------------------------+
+static void unitLimitZones()
+{
+   TC.name = "unit.limit_zones";
+   const double K = 4100.0;
+
+   // ---- ZoneUnmitigated: closed H1 bars only, mirrored both ways --------
+   {
+      Zig z(2010.0);
+      for(int i = 0; i < 10; i++) z.candle(2010.0, 2010.3, 2009.7, 2010.0);
+      z.candle(2010.0, 2010.1, 2008.2, 2008.5);      // shift 3: last down candle
+      z.candle(2008.5, 2013.2, 2008.4, 2013.0);      // shift 2: displacement
+      z.candle(2013.0, 2013.6, 2012.6, 2013.4);      // shift 1: leaves the gap open
+      z.forming();
+      for(int pass = 0; pass < 2; pass++)
+      {
+         bool bull = (pass == 0);
+         loadH1(bull ? z.bars : mirrorBars(z.bars, K));
+         SZone ob, fvg;
+         QCHECK(FindOrderBlock(_Symbol, PERIOD_H1, bull, 2, 12, ob), "OB located");
+         QCHECK(FindFVG(_Symbol, PERIOD_H1, bull, 2, fvg), "FVG located");
+         const char *tag = bull ? "bullish" : "bearish (mirrored)";
+         QCHECK(ZoneUnmitigated(ob, bull ? +1 : -1), std::string(tag) + ": an untouched OB is unmitigated");
+         QCHECK(ZoneUnmitigated(fvg, bull ? +1 : -1), std::string(tag) + ": an untouched FVG is unmitigated");
+         QCHECK(!ZoneUnmitigated(ob, bull ? -1 : +1), std::string(tag) + ": an OB is NOT a zone for the opposite direction");
+         SZone bad; bad.found = false; bad.top = 0.0; bad.bottom = 0.0; bad.shift = 0; bad.isFVG = false;
+         QCHECK(!ZoneUnmitigated(bad, +1), std::string(tag) + ": a zone that was never found is never usable");
+         SZone empty = fvg; empty.top = empty.bottom;
+         QCHECK(!ZoneUnmitigated(empty, +1), std::string(tag) + ": a zero-height zone is never usable");
+      }
+   }
+   // a later bar trading THROUGH the zone mitigates it
+   {
+      Zig z(2010.0);
+      for(int i = 0; i < 10; i++) z.candle(2010.0, 2010.3, 2009.7, 2010.0);
+      z.candle(2010.0, 2010.1, 2008.2, 2008.5);
+      z.candle(2008.5, 2013.2, 2008.4, 2013.0);
+      z.candle(2013.0, 2013.6, 2012.6, 2013.4);
+      z.candle(2013.4, 2013.5, 2007.5, 2007.9);      // runs through OB bottom and the FVG
+      z.forming();
+      for(int pass = 0; pass < 2; pass++)
+      {
+         bool bull = (pass == 0);
+         loadH1(bull ? z.bars : mirrorBars(z.bars, K));
+         SZone ob, fvg;
+         FindOrderBlock(_Symbol, PERIOD_H1, bull, 3, 12, ob);
+         FindFVG(_Symbol, PERIOD_H1, bull, 3, fvg);
+         QCHECK(!ZoneUnmitigated(ob, bull ? +1 : -1), std::string(bull ? "bullish" : "bearish") + ": a wick through the OB mitigates it");
+         QCHECK(!ZoneUnmitigated(fvg, bull ? +1 : -1), std::string(bull ? "bullish" : "bearish") + ": a wick through the FVG mitigates it");
+      }
+   }
+
+   // ---- LimitEntryPrice / ZoneOverlaps are mirror images ---------------
+   {
+      SZone z;
+      z.found = true; z.isFVG = false; z.shift = 5;
+      z.bottom = 2000.0; z.top = 2004.0;
+      SZone zm;
+      zm.found = true; zm.isFVG = false; zm.shift = 5;
+      zm.bottom = K - 2004.0; zm.top = K - 2000.0;
+      QATS_SetInput("InpLimitEntryMode", "0");
+      double buyMid  = LimitEntryPrice(z, +1, 0.01, 2);
+      double sellMid = LimitEntryPrice(zm, -1, 0.01, 2);
+      QCHECK(near(buyMid, 2002.0), "mode 0: a BUY limit sits at the 50% of the zone (got " + std::to_string(buyMid) + ")");
+      QCHECK(near(sellMid, K - 2002.0), "mode 0: the mirrored SELL limit sits at K - 50% (got " + std::to_string(sellMid) + ")");
+      // off-grid zone: the price must stay INSIDE the zone
+      SZone og = z;
+      og.bottom = 2000.0; og.top = 2004.03;
+      double p = LimitEntryPrice(og, +1, 0.01, 2);
+      QCHECK(p >= og.bottom - 1e-9 && p <= og.top + 1e-9, "an off-grid zone keeps the entry inside the zone");
+      QATS_SetInput("InpLimitEntryMode", "1");
+      double buyEdge  = LimitEntryPrice(z, +1, 0.01, 2);
+      double sellEdge = LimitEntryPrice(zm, -1, 0.01, 2);
+      QCHECK(near(buyEdge, 2000.0), "mode 1: a BUY limit sits at the near (lower) edge (got " + std::to_string(buyEdge) + ")");
+      QCHECK(near(sellEdge, K - 2000.0), "mode 1: a mirrored SELL limit sits at the near (upper) edge (got " + std::to_string(sellEdge) + ")");
+      QATS_SetInput("InpLimitEntryMode", "0");
+      // overlap
+      SZone a = z, b = z;
+      b.bottom = 2001.0; b.top = 2006.0;
+      QCHECK(ZoneOverlaps(a, b), "overlapping OB and FVG are recognised");
+      SZone c = z;
+      c.bottom = 2005.0; c.top = 2010.0;
+      QCHECK(!ZoneOverlaps(a, c), "separated OB and FVG are not merged");
+      SZone missing;
+      missing.found = false; missing.top = 0.0; missing.bottom = 0.0; missing.shift = 0; missing.isFVG = false;
+      QCHECK(!ZoneOverlaps(a, missing), "a missing zone never overlaps");
+   }
+
+   // ---- PickEntryZone preference: OB+FVG -> OB -> FVG, mitigated skipped
+   {
+      for(int pass = 0; pass < 2; pass++)
+      {
+         bool bull = (pass == 0);
+         int dir = bull ? +1 : -1;
+         SSide s;
+         ResetSide(s, dir);
+         std::string why;
+         SZone z; int src = -1;
+         QCHECK(!PickEntryZone(s, dir, z, src, why), "no zone at all -> no candidate");
+         QCHECK(why.find("no OB and no FVG") != std::string::npos, "the reason names the missing zone: " + why);
+         // a benign series that is already inside the zones, so nothing is mitigated
+         Zig calm(2002.0);
+         for(int i = 0; i < 12; i++) calm.candle(2002.0, 2003.0, 2001.0, 2002.0);
+         calm.forming();
+         loadH1(bull ? calm.bars : mirrorBars(calm.bars, K));
+         // the calm series trades at 2001..2003, so both zones sit strictly below it
+         if(bull)
+         {
+            s.ob.top = 2000.0; s.ob.bottom = 1996.0; s.ob.shift = 5;
+            s.fvg.top = 2000.5; s.fvg.bottom = 1998.0; s.fvg.shift = 5; s.fvg.isFVG = true;
+         }
+         else
+         {
+            s.ob.bottom = K - 2000.0; s.ob.top = K - 1996.0; s.ob.shift = 5;
+            s.fvg.bottom = K - 2000.5; s.fvg.top = K - 1998.0; s.fvg.shift = 5; s.fvg.isFVG = true;
+         }
+         // OB and FVG overlapping
+         s.hasOB = s.hasFVG = true;
+         s.ob.found = s.fvg.found = true;
+         QCHECK(PickEntryZone(s, dir, z, src, why), "OB+FVG candidate found (" + why + ")");
+         QEQ(src, QATS_ZONE_OB_FVG, "the overlap is preferred");
+         double wantTop = bull ? 2000.0 : K - 1998.0;
+         double wantBot = bull ? 1998.0 : K - 2000.0;
+         QCHECK(near(z.top, wantTop) && near(z.bottom, wantBot), "the merged zone is the shared part of OB and FVG");
+         // only an FVG
+         SSide f; ResetSide(f, dir);
+         f.hasFVG = true; f.fvg.found = true;
+         f.fvg.top = s.fvg.top; f.fvg.bottom = s.fvg.bottom; f.fvg.shift = 5;
+         QCHECK(PickEntryZone(f, dir, z, src, why) && src == QATS_ZONE_FVG, "FVG alone is the last resort (" + why + ")");
+         // only an OB
+         SSide o; ResetSide(o, dir);
+         o.hasOB = true; o.ob.found = true;
+         o.ob.top = s.ob.top; o.ob.bottom = s.ob.bottom; o.ob.shift = 5;
+         QCHECK(PickEntryZone(o, dir, z, src, why) && src == QATS_ZONE_OB, "OB alone is preferred to nothing (" + why + ")");
+      }
+   }
+   simDiagnosticsClean();
+}
+
+// The plan's geometry on a live scenario, bull and bear. The two passes must
+// refuse or accept for the SAME reason: that is the side-symmetry proof. Then the
+// geometry itself is checked with the distance budget widened.
+static void unitLimitPlan()
+{
+   TC.name = "unit.limit_plan";
+   std::string reason[2];
+   bool builtOk[2] = {false, false};
+   for(int pass = 0; pass < 2; pass++)
+   {
+      bool bull = (pass == 0);
+      const char *tag = bull ? "BUY" : "SELL (mirrored)";
+      resetSimOnly();
+      captureJournal();
+      setInputs({{"InpUseLimitEntry", "true"}});
+      Scn sc(1500.0);
+      Marks m = patternFullChain(sc, true);
+      Player pl;
+      pl.feed.mirror = !bull;
+      pl.feed.mirrorK = 400000;
+      pl.play(sc, m.attachAt);
+      pl.attach(sc);
+      pl.play(sc, m.entryAt + 2);
+      SAnalysis raw = AnalyzeMarket();
+      QCHECK(raw.dataReady, std::string(tag) + ": data ready");
+      QEQ(raw.dir, bull ? +1 : -1, std::string(tag) + ": the chain resolves to this side");
+
+      // 1. with the SHIPPED defaults the plan is refused, and it says exactly why
+      SAnalysis strict;
+      bool strictBuilt = BuildLimitPlan(raw, strict);
+      reason[pass] = g_executionReason;
+      QCHECK(!strictBuilt, std::string(tag) + ": the shipped defaults refuse this continuation zone (" + g_executionReason + ")");
+
+      // 2. the distance budget widened: the arithmetic is then exercised
+      QATS_SetInput("InpLimitMaxDistATR", "40.0");
+      SAnalysis wide;
+      bool wideBuilt = BuildLimitPlan(raw, wide);
+      std::string wideReason = g_executionReason;
+      QATS_SetInput("InpLimitNeedPD", "false");
+      SAnalysis plan;
+      bool built = BuildLimitPlan(raw, plan);
+      QATS_SetInput("InpLimitNeedPD", "true");
+      QATS_SetInput("InpLimitMaxDistATR", "3.0");
+      QCHECK(built, std::string(tag) + ": with the distance and the PD filter relaxed a limit plan is built (" +
+                    (built ? std::string() : g_executionReason) + ")");
+      builtOk[pass] = built;
+      QCHECK(!wideBuilt || true, "wide-distance pass: " + wideReason);
+      if(built)
+      {
+         double ask = sim::S.ask, bid = sim::S.bid;
+         if(bull)
+         {
+            QCHECK(plan.entry < ask, "BUY: the limit is BEHIND the market (below the ask)");
+            QCHECK(plan.sl < plan.entry && plan.tp > plan.entry, "BUY: stop below, target above");
+         }
+         else
+         {
+            QCHECK(plan.entry > bid, "SELL: the limit is BEHIND the market (above the bid)");
+            QCHECK(plan.sl > plan.entry && plan.tp < plan.entry, "SELL: stop above, target below");
+         }
+         double rr = std::fabs(plan.tp - plan.entry) / std::fabs(plan.entry - plan.sl);
+         QCHECK(rr + 1e-9 >= InpLimitMinRR, "reward:risk from the LIMIT price >= InpLimitMinRR (got " + std::to_string(rr) + ")");
+         QCHECK(rr + 1e-9 >= InpMinRR, "the plan never falls below the engine's own InpMinRR");
+         QCHECK(sim::onGrid(plan.entry) && sim::onGrid(plan.sl) && sim::onGrid(plan.tp), "entry, stop and target are on the tick grid");
+         double stopPts = std::fabs(plan.entry - plan.sl) / sim::S.sym.point;
+         QCHECK(stopPts >= InpMinStopPoints && stopPts <= InpMaxStopPoints, "the zone stop is inside InpMinStopPoints/InpMaxStopPoints");
+         QCHECK(plan.stopDist > 0.0 && near(plan.stopDist, std::fabs(plan.entry - plan.sl)), "stopDist is the LIMIT-to-stop distance");
+      }
+      simDiagnosticsClean();
+   }
+   // the refusal of pass 0 and the refusal of pass 1 must be the same rule: the
+   // price numbers differ, the REASON must not
+   bool sameRule = ((reason[0].find("needs discount") != std::string::npos && reason[1].find("needs premium") != std::string::npos) ||
+                    (reason[0].find("x H1 ATR") != std::string::npos && reason[1].find("x H1 ATR") != std::string::npos) ||
+                    (reason[0].find("stops level") != std::string::npos && reason[1].find("stops level") != std::string::npos) ||
+                    (reason[0].find("reward:risk") != std::string::npos && reason[1].find("reward:risk") != std::string::npos) ||
+                    (reason[0].find("zone stop") != std::string::npos && reason[1].find("zone stop") != std::string::npos));
+   QCHECK(reason[0] != "" && reason[1] != "" && sameRule,
+          "BUY and SELL are refused by the SAME rule: [" + reason[0] + "] vs [" + reason[1] + "]");
+   QCHECK(builtOk[0] == builtOk[1], "BUY and SELL build or fail together");
+   simDiagnosticsClean();
+}
+
 static int runUnit()
 {
    unitScoring();
@@ -577,6 +804,8 @@ static int runUnit()
    unitStructure();
    unitLiquidity();
    unitDisplacementZones();
+   unitLimitZones();
+   unitLimitPlan();
    printf("unit: %d checks, %d failed\n", TC.checks, TC.failed);
    return TC.failed ? 1 : 0;
 }

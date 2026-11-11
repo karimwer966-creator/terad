@@ -751,6 +751,183 @@ static void scnMiscPaths()
    printf("RESULT scenario=misc_paths\n");
 }
 
+
+//+------------------------------------------------------------------+
+//| v1.21 LIMIT entry, end to end (bull and its exact mirror).        |
+//|   limit_entry      the order is a LIMIT at the zone, not a market |
+//|                    order, with its own server-side SL and TP      |
+//|   limit_cancel     price runs away: the limit is cancelled BY     |
+//|                    NAME, the daily cap stays 0, the setup is NOT  |
+//|                    spent (it is still tradable)                   |
+//|   limit_fill       the retracement reaches the limit: ONE fill,   |
+//|                    the cap moves to exactly 1, the setup is spent |
+//+------------------------------------------------------------------+
+static long pendingCount() { return (long)sim::S.orders.size(); }
+
+static long pendingTypeOf()
+{
+   return sim::S.orders.empty() ? -1 : (long)sim::S.orders[0].type;
+}
+
+static void scnLimitEntry(bool mirror)
+{
+   const char *side = mirror ? "SELL" : "BUY";
+   resetSimOnly();
+   captureJournal();
+   setInputs({{"InpUseLimitEntry", "true"}, {"InpLimitMaxDistATR", "40"}, {"InpLimitNeedPD", "false"}});
+   Scn sc(1500.0);
+   Marks m = patternFullChain(sc, true);
+   Player pl;
+   pl.feed.mirror = mirror;
+   pl.feed.mirrorK = 400000;
+   pl.play(sc, m.attachAt);
+   QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds");
+   pl.play(sc, m.entryAt);
+   QEQ(entryOkCount(), 0L, std::string("no MARKET entry is sent: the EA does not pay the market mid-move"));
+   pl.play(sc, m.entryAt + 5);
+   QEQ(pendingCount(), 1L, std::string("exactly one resting ") + side + "_LIMIT");
+   QEQ(pendingTypeOf(), mirror ? (long)ORDER_TYPE_SELL_LIMIT : (long)ORDER_TYPE_BUY_LIMIT,
+       std::string("the order type is ") + side + "_LIMIT");
+   if(pendingCount() == 1)
+   {
+      const sim::PendingOrder o = sim::S.orders[0];
+      QCHECK(o.sl > 0.0 && o.tp > 0.0, "the pending order carries its OWN server-side SL and TP (no order without a stop)");
+      QCHECK(o.volume > 0.0, "the order is sized");
+      if(mirror) QCHECK(o.price > sim::S.bid && o.sl > o.price && o.tp < o.price, "SELL LIMIT: above the bid, stop above, target below");
+      else       QCHECK(o.price < sim::S.ask && o.sl < o.price && o.tp > o.price, "BUY LIMIT: below the ask, stop below, target above");
+      QCHECK(o.typeTime == ORDER_TIME_SPECIFIED && o.timeExpiration > sim::S.now,
+             "expiry is ORDER_TIME_SPECIFIED and in the future (" + std::to_string((long)o.timeExpiration - (long)sim::S.now) + "s)");
+      QCHECK(sim::onGrid(o.price) && sim::onGrid(o.sl) && sim::onGrid(o.tp), "entry, SL and TP sit on the tick grid");
+      double stopPts = std::fabs(o.price - o.sl) / sim::S.sym.point;
+      QCHECK(stopPts >= InpMinStopPoints && stopPts <= InpMaxStopPoints, "the zone stop is inside InpMinStopPoints/InpMaxStopPoints");
+      double rr = std::fabs(o.tp - o.price) / std::fabs(o.price - o.sl);
+      QCHECK(rr + 1e-9 >= InpLimitMinRR, "reward:risk measured from the LIMIT price >= InpLimitMinRR (got " + std::to_string(rr) + ")");
+      // the risk carried by the resting order is the equity risk, not a guess
+      double riskMoney = std::fabs(o.price - o.sl) * sim::moneyPerPriceUnit(o.volume);
+      QCHECK(riskMoney <= 10000.0 * EffectiveRiskPercent() / 100.0 + 1e-6, "risk at the zone stop does not exceed the configured equity risk");
+   }
+   QCHECK(linesWith("[QATS][LIMIT] PLAN direction=" + std::string(side), "type=" + std::string(side) + "_LIMIT") == 1,
+          "one [QATS][LIMIT] PLAN line naming the order type");
+   QCHECK(linesWith("[QATS][LIMIT] PLACED", "zone=") == 1, "one [QATS][LIMIT] PLACED line naming the zone source");
+   QCHECK(firstWith("[QATS][LIMIT] PLACED").find("zone=OB") != std::string::npos, "the zone source is the OB/FVG that produced it");
+   QCHECK(firstWith("[QATS][LIMIT] PLAN").find("volume=") != std::string::npos, "the entry log carries entry, SL, TP, volume and risk");
+   QEQ(g_tradesToday, 0, "a PLACED limit does not touch the daily trade counter");
+   QEQ(linesWith("[QATS][EXECUTION][APPROVED]"), 0, "no market execution record was produced");
+   simDiagnosticsClean();
+   printf("RESULT scenario=limit_entry mirror=%d pending=%ld type=%ld trades=%d price=%.2f sl=%.2f tp=%.2f volume=%.2f\n",
+          mirror ? 1 : 0, pendingCount(), pendingTypeOf(), g_tradesToday,
+          sim::S.orders.empty() ? 0.0 : sim::S.orders[0].price,
+          sim::S.orders.empty() ? 0.0 : sim::S.orders[0].sl,
+          sim::S.orders.empty() ? 0.0 : sim::S.orders[0].tp,
+          sim::S.orders.empty() ? 0.0 : sim::S.orders[0].volume);
+}
+
+// walk the market AWAY from the zone in small steps that never reach the limit
+static void walkAway(bool mirror, double distance)
+{
+   double start = sim::S.bid;
+   for(int i = 0; i < 40; i++)
+   {
+      // the mirror of "price rises away from a BUY limit below the market" is
+      // "price falls away from a SELL limit above the market"
+      double d = (mirror ? -1.0 : +1.0) * distance * (i + 1) / 40.0;
+      double bid = start + d;
+      sim::feedTick(sim::S.now + 60, bid, bid + 22.0, 1, false, true);   // the spread stays positive
+   }
+}
+
+static void scnLimitCancel(bool mirror)
+{
+   const char *side = mirror ? "SELL" : "BUY";
+   resetSimOnly();
+   captureJournal();
+   // The placement needs the wider budget (the continuation zone is ~850 pts away,
+   // the shipped 3.0 x ATR is 675), and the run-away guard is then 1.5 x that
+   // budget x H1 ATR. The walk below crosses it - nothing else can cancel here,
+   // because the price only moves AWAY from the limit, never through its stop.
+   setInputs({{"InpUseLimitEntry", "true"}, {"InpLimitNeedPD", "false"}, {"InpLimitMaxDistATR", "8"}});
+   Scn sc(1500.0);
+   Marks m = patternFullChain(sc, true);
+   Player pl;
+   pl.feed.mirror = mirror;
+   pl.feed.mirrorK = 400000;
+   pl.play(sc, m.attachAt);
+   QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds");
+   pl.play(sc, m.entryAt + 5);
+   QEQ(pendingCount(), 1L, std::string("one ") + side + "_LIMIT is working");
+   SAnalysis raw = AnalyzeMarket();
+   int dir = mirror ? -1 : +1;
+   double setup = (double)raw.setupTime;
+   QCHECK(setup > 0.0, "the setup has an identity");
+   QCHECK(!SetupAlreadyTraded(dir, raw.setupTime), "placing the limit did NOT spend the setup");
+   QEQ(g_tradesToday, 0, "no trade counted at placement");
+
+   // the retracement never comes: the price leaves the zone
+   walkAway(mirror, 140.0);
+   QEQ(linesWith("[QATS][LIMIT] CANCELLED"), 1, "exactly one cancellation");
+   QCHECK(linesWith("[QATS][LIMIT] CANCELLED", "reason=PRICE_RAN_AWAY") == 1, "the cancellation names its reason");
+   QCHECK(linesWith("[QATS][LIMIT] CANCELLED", "the daily trade cap is untouched") == 1,
+          "the cancellation line states that the cap was not consumed");
+   QEQ(pendingCount(), 0L, "the order is gone from the server");
+   QEQ(g_tradesToday, 0, "a CANCELLED limit does NOT consume the daily trade cap");
+   QEQ((long)GVGet(GVKey(std::string("trades_") + TodayKey()), 0.0), 0L, "the persisted counter is still 0");
+   QCHECK(!SetupAlreadyTraded(dir, raw.setupTime), "a CANCELLED limit does NOT spend the setup: it can be traded again");
+   QEQ(entryOkCount(), 0L, "no order ever filled");
+   simDiagnosticsClean();
+   printf("RESULT scenario=limit_cancel mirror=%d cancelled=%d trades=%d pending=%ld setup=%ld\n",
+          mirror ? 1 : 0, linesWith("[QATS][LIMIT] CANCELLED"), g_tradesToday, pendingCount(), (long)setup);
+}
+
+static void scnLimitFill(bool mirror)
+{
+   const char *side = mirror ? "SELL" : "BUY";
+   resetSimOnly();
+   captureJournal();
+   setInputs({{"InpUseLimitEntry", "true"}, {"InpLimitMaxDistATR", "40"}, {"InpLimitNeedPD", "false"}});
+   Scn sc(1500.0);
+   Marks m = patternFullChain(sc, true);
+   Player pl;
+   pl.feed.mirror = mirror;
+   pl.feed.mirrorK = 400000;
+   pl.play(sc, m.attachAt);
+   QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds");
+   pl.play(sc, m.entryAt + 5);
+   QEQ(pendingCount(), 1L, "one limit is working");
+   double price = sim::S.orders[0].price;
+   double sl = sim::S.orders[0].sl;
+   double tp = sim::S.orders[0].tp;
+   QEQ(g_tradesToday, 0, "no trade counted yet");
+
+   // the retracement arrives: quote THROUGH the limit price, one tick
+   if(mirror) sim::feedTick(sim::S.now + 60, price + 20, price + 22, 1, false, true);
+   else       sim::feedTick(sim::S.now + 60, price - 22, price - 20, 1, false, true);
+
+   QEQ(pendingCount(), 0L, "the limit is consumed by the fill");
+   QEQ((long)sim::S.positions.size(), 1L, "exactly ONE position exists");
+   QEQ(linesWith("[QATS][LIMIT] FILLED"), 1, "the fill is journalled once, as a [QATS][LIMIT] line");
+   QEQ(g_tradesToday, 1, "a FILLED entry moves the daily counter to exactly 1");
+   QEQ((long)GVGet(GVKey(std::string("trades_") + TodayKey()), 0.0), 1L, "the persisted counter agrees");
+   if(!sim::S.positions.empty())
+   {
+      const sim::Position &p = sim::S.positions[0];
+      QCHECK(near(p.priceOpen, price), "the position opened AT the limit price, not at the market");
+      QCHECK(near(p.sl, sl) && near(p.tp, tp), "the fill kept the order's own SL and TP");
+      QCHECK(p.magic == InpMagic, "the position carries the EA magic");
+      QEQ(p.type, mirror ? (int)POSITION_TYPE_SELL : (int)POSITION_TYPE_BUY, "the position side is the order side");
+   }
+   QCHECK(linesWith("[QATS][LIMIT] FILLED", "filled orders only") == 1, "the fill line explains what the counter counts");
+   QCHECK(linesWith("[QATS][EXECUTION][FILLED]") == 0, "the MARKET execution log is not used by the limit path");
+   // never twice: the fill spent the setup
+   int before = g_tradesToday;
+   quiet(600, mirror ? 1900.0 : 2100.0);
+   QCHECK(g_tradesToday >= before, "the counter never goes backwards");
+   QCHECK((long)sim::S.positions.size() <= 1L, "no second position for the same setup");
+   QEQ(linesWith("[QATS][LIMIT] FILLED"), 1, "still exactly one fill after ten more minutes");
+   simDiagnosticsClean();
+   printf("RESULT scenario=limit_fill mirror=%d trades=%d positions=%zu filled=%d price=%.2f sl=%.2f tp=%.2f\n",
+          mirror ? 1 : 0, g_tradesToday, sim::S.positions.size(), linesWith("[QATS][LIMIT] FILLED"), price, sl, tp);
+}
+
 struct ScnEntry { const char *name; std::function<void()> fn; };
 static std::vector<ScnEntry> scenarioTable()
 {
@@ -800,6 +977,13 @@ static std::vector<ScnEntry> scenarioTable()
       {"retry_exhausted", [] { scnRetry(true); }},
       {"journal_invariants", [] { scnJournalInvariants(); }},
       {"misc_paths", [] { scnMiscPaths(); }},
+      // v1.21 LIMIT entry (each one in both directions)
+      {"limit_entry_buy", [] { scnLimitEntry(false); }},
+      {"limit_entry_sell", [] { scnLimitEntry(true); }},
+      {"limit_cancel_buy", [] { scnLimitCancel(false); }},
+      {"limit_cancel_sell", [] { scnLimitCancel(true); }},
+      {"limit_fill_buy", [] { scnLimitFill(false); }},
+      {"limit_fill_sell", [] { scnLimitFill(true); }},
    };
 }
 
