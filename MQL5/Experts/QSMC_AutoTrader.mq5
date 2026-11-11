@@ -117,7 +117,7 @@
 //|  and checked by tools/test_diag_bridge.py.                        |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
-#property version   "6.621"
+#property version   "6.622"
 #property description "Companion execution EA for the QSMC indicator. Ships inert; no strategy claim."
 #property strict
 

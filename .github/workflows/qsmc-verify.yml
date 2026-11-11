@@ -182,6 +182,19 @@ jobs:
       - name: Host patch must stay idempotent (marker in nadir2.mq5)
         run: python3 tools/apply_qsmc_arb_patch.py --check 2>&1 | tee out/patch_check.log
 
+      # v6.6.22 (AUDIT-CH1 / AUDIT-SVP). Both suites EXECUTE MQL5 text built by the
+      # runner's g++ against a simulator of the terminal - still not MetaEditor.
+      # The first runs the real AlertDispatcherDrawPrimary() of nadir2.mq5 before
+      # and after the fix (N marks per setup -> one). The second builds the SMC +
+      # Volume Profile engine and its modules, runs every unit, replays a series
+      # and its mirror image through OnInit/OnCalculate/OnDeinit, and repeats the
+      # run with poisoned array growth and under ASan + UBSan.
+      - name: Chart hygiene (one mark per setup, layer policy) - executed
+        run: python3 tools/test_qsmc_chart_hygiene.py 2>&1 | tee out/qsmc_chart_hygiene.log
+
+      - name: SMC + Volume Profile engine (units, mirrored replay, sanitizers) - executed
+        run: python3 tools/test_qsmc_smcvp.py 2>&1 | tee out/qsmc_smcvp.log
+
       # Separate from the static checks on purpose: they protect the code, this
       # one protects the deployment (single version, complete layout, documented
       # inputs, no trade/network reach, no per-bar log flood).
@@ -218,7 +231,8 @@ jobs:
         run: |
           echo "NOT COMPILED HERE. Open nadir2.mq5 in MetaEditor and press F7."
           echo "The init log must read:"
-          echo '  [QSMC_ARB] v6.6.19 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ...'
+          version="$(sed -n 's/^#define QSMC_VERSION_TEXT "\(v[0-9.]*\)".*/\1/p' nadir2.mq5 | head -1)"
+          echo "  [QSMC_ARB] ${version} arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ..."
           echo "Any other version in that line means a stale copy is in the Data Folder."
 
       - uses: actions/upload-artifact@v4

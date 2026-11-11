@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.621"
+#property version   "6.622"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -622,7 +622,7 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.15).
-#define QSMC_VERSION_TEXT "v6.6.21"
+#define QSMC_VERSION_TEXT "v6.6.22"
 #property indicator_chart_window
 #property indicator_buffers 26   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)
 #property indicator_plots   7
@@ -23982,7 +23982,7 @@ void DrawScaleLevel(const string suffix,const double price,const color col,const
 {
    if(!QSMC_PaintAllowed()) return;
    if(price<=0.0) return;
-   string name=PFX+"SCALE_"+suffix;
+   string name=PFX+"SCALE_"+suffix; if(!QSMC_DisplayAllowsObject(name)) { if(ObjectFind(0,name)>=0) ObjectDelete(0,name); return; }
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_HLINE,0,0,price);
    QSMC_SetObjDbl(name,OBJPROP_PRICE,price);
    QSMC_SetObjInt(name,OBJPROP_COLOR,col);
@@ -35410,7 +35410,7 @@ void MVP_Clear()
 void MVP_Rect(const string name, const datetime t1, const double p1,
               const datetime t2, const double p2, const color col, const string tip)
 {
-   if(!QSMC_PaintAllowed()) return;
+   if(!QSMC_PaintAllowed()) return; if(!QSMC_DisplayAllowsObject(name)) { if(ObjectFind(0,name)>=0) ObjectDelete(0,name); return; }
    datetime a=t1, b=t2;
    double hi=p1, lo=p2;
    if(b<a) { datetime tmp=a; a=b; b=tmp; }
@@ -41236,7 +41236,7 @@ bool QSMC_InVisualBand(const double lo,const double hi)
 
 bool QSMC_DisplayAllowsObject(const string name)
 {
-   if(QSMC_IsReaderSilent()) return false;
+   if(QSMC_IsReaderSilent()) return false; if(QCL_ProfileActive() && !QCL_AllowsName(name,PFX)) return false; // AUDIT-CH2: the clean profile decides by layer
    if(InpDisplayMode!=QSMC_MODE_MINIMAL) return true;
    if(StringFind(name,PFX+"PRIMARY_")==0 || StringFind(name,PFX+"SR_LINE_")==0 ||
       StringFind(name,PFX+"SR_BAND_")==0 || StringFind(name,PFX+"SR_TAG_")==0 ||
@@ -41524,17 +41524,17 @@ void AlertDispatcherDrawPrimary(const SAlertCandidate &a)
    double center=(a.zone_lo+a.zone_hi)*0.5;
    if(!QSMC_InVisualDistance(center)) return;
    {
-      string base=PFX+"PRIMARY_"+IntegerToString((long)a.bar_time);
-      string old=g_primary_mark_names[g_primary_mark_pos];
-      if(old!="")
+      // AUDIT-CH1: the mark belongs to the SETUP (zone + direction + source episode), never to the bar it was re-published on.
+      datetime sig_origin=a.bar_time; bool sig_new=QSR_Episode(_Symbol,(int)_Period,a.direction,QSR_SourceTag(a.source),a.zone_id,a.bar_time,QCL_EpisodeIdleSeconds(PeriodSeconds()),QSR_StateForLevel(a.source,a.level),sig_origin);
+      string base=PFX+"PRIMARY_"+IntegerToString((long)sig_origin); int evict=QSR_RingEvictSlot(g_primary_mark_pos,QSMC_PRIMARY_MARK_LIMIT,QCL_PrimaryMarkKeep(QSMC_PRIMARY_MARK_LIMIT));
+      string old=(sig_new?g_primary_mark_names[evict]:"");
+      if(old!="" && old!=base)
       {
          ObjectDelete(0,old+"_ARROW");
          ObjectDelete(0,old+"_TEXT");
       }
-      g_primary_mark_names[g_primary_mark_pos]=base;
-      g_primary_mark_pos=(g_primary_mark_pos+1)%QSMC_PRIMARY_MARK_LIMIT;
-      datetime tm=a.bar_time;
-      int idx=a.closed_index;
+      if(sig_new) { g_primary_mark_names[evict]=""; g_primary_mark_names[g_primary_mark_pos]=base; g_primary_mark_pos=(g_primary_mark_pos+1)%QSMC_PRIMARY_MARK_LIMIT; }
+      datetime tm=sig_origin; int idx=QSR_OriginIndex(g_buf_t,a.closed_index,sig_origin,512,tm);
       double atr=(idx>=0 && idx<ArraySize(g_atr_buf) && g_atr_buf[idx]>0.0?g_atr_buf[idx]:g_atr);
       if(!(atr>0.0)) atr=_Point;
       double y=(a.direction>0 ? g_buf_l[idx]-MathMax(2.0*_Point,atr*0.12)
@@ -44995,6 +44995,8 @@ bool MTF_SniperZone_SelfTest()
 #include <QSMC/QSMC_LiquidityValue.mqh>
 #include <QSMC/QSMC_UnifiedDecision.mqh>
 #include <QSMC/QSMC_IncidentSafety.mqh>
+#include <QSMC/QSMC_SignalRegistry.mqh>
+#include <QSMC/QSMC_ChartLayers.mqh>
 #define QSMC_HOST_IDENTITY
 #include <QSMC/QSMC_InstanceIdentity.mqh>
 #include <QSMC/QSMC_InputFingerprint.mqh>

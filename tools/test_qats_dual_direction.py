@@ -182,6 +182,32 @@ def main():
     check(sym["score_sum_violations"] == 0, "4  on every bar the listed points add up to the printed score (no hidden component)")
     check(sym["format_errors"] == 0 and sym["api_errors"] == 0 and not sym["critical"],
           "4  no format-string mismatch, no API misuse, no critical error in either replay")
+
+    # --------------------------------------------------------- 4b. file seam
+    # The public dataset ships one file per year and the files OVERLAP at their
+    # seams. Fed row by row the overlap sends the simulated clock backwards and
+    # replays up to a day of quotes. The loader must skip a row that does not move
+    # time forward: a market cut into two overlapping files replays exactly like
+    # the same market in one file.
+    parts = BT.split_with_overlap(synth, work, 24 * 7020 + 3000, repeated=300)
+    seam = {}
+    for tag, files in (("one", [synth]), ("two", parts)):
+        path = os.path.join(work, "seam_%s.json" % tag)
+        cmd = BT.run_replay(exe, None, "2024-06-03", "2024-07-08", path, dict(BT.SIGNAL_STUDY), "fixed:25", 1000000,
+                            "seam " + tag, files=files)
+        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        seam[tag] = BT.load_json(path) if proc.returncode == 0 else {}
+    one, two = seam["one"], seam["two"]
+    check(bool(one) and bool(two) and one.get("m1_rows_skipped_repeated_at_a_file_seam") == 0
+          and two.get("m1_rows_skipped_repeated_at_a_file_seam") == 300,
+          "4b a market cut into two files that overlap by 300 rows: exactly those 300 repeated rows are skipped",
+          "skipped %s / %s" % (one.get("m1_rows_skipped_repeated_at_a_file_seam"), two.get("m1_rows_skipped_repeated_at_a_file_seam")))
+    same = [k for k in one if k not in ("m1_rows_skipped_repeated_at_a_file_seam", "label") and one[k] != two.get(k)]
+    check(bool(one) and not same and one.get("all", {}).get("trades", 0) >= 3,
+          "4b ... and the replay is identical to the one-file replay in every other field (%d M1 bars, %d ticks, %d trades, "
+          "balance %.2f): the clock never runs backwards at a seam"
+          % (one.get("m1_bars", 0), one.get("ticks", 0), one.get("all", {}).get("trades", 0), one.get("balance_end", 0.0)),
+          "fields that differ: %s" % same[:6])
     shutil.rmtree(work, ignore_errors=True)
 
     # ----------------------------------------------------------- 5. memory

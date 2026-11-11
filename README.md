@@ -163,6 +163,47 @@ here), `study` (in-sample / out-of-sample, v1.11 against v1.20, per direction),
 [`docs/QATS_BACKTEST_STUDY_2026-11-11.md`](docs/QATS_BACKTEST_STUDY_2026-11-11.md).
 It is not the MT5 Strategy Tester.
 
+> **Erratum (file seams).** The yearly files of the public dataset overlap at their seams (8,127
+> one-minute rows, 0.23%, appear in two files). The study figures were produced by a loader that
+> fed those rows twice. The loader now skips a row that does not move time forward
+> (`tools/test_qats_dual_direction.py` 4b pins it); the study has **not been re-run yet**, so its
+> exact figures predate the fix. See the note at the top of the study document.
+
+## QSMC indicator: a clean chart, and an SMC + Volume Profile decision engine (v6.6.22)
+
+The repository also carries the QSMC indicator `nadir2.mq5` and its `MQL5/Include/QSMC`
+layer. Two display-side changes, neither of which can place an order:
+
+* **`nadir2.mq5` - one mark per setup.** A scenario that stayed primary for N closed bars
+  used to leave N arrows and N copies of the same label on the chart. The mark now belongs to
+  the setup, not to the bar it was re-published on, and a layer policy (`InpChartProfile=CLEAN`)
+  hides the optional and detail object families by default.
+* **`MQL5/Indicators/QSMC_SmcVpEngine.mq5` - a new, separate indicator.** Ten confirmations in a
+  fixed order (H4 bias, H1 structure, M15 liquidity, sweep, displacement, BOS/CHoCH, OB/FVG,
+  volume profile, entry, risk/reward), no scoring: `BUY SETUP` or `SELL SETUP` only when every
+  step of exactly one side holds on closed bars, otherwise `WAIT` with the step that blocks.
+  A 16-row dashboard, about 40-50 chart objects, entry / stop / target with a minimum
+  reward-to-risk, a volume profile labelled as what it is (broker tick volume).
+
+![before](docs/img/nadir2_primary_marks_before.svg)
+![after](docs/img/nadir2_primary_marks_after.svg)
+![engine](docs/img/smcvp_engine_xauusd_20250708.svg)
+
+The pictures are drawn from the object list a host-compiled run of the real MQL5 text left on
+a simulated chart (`tools/smcvp_make_pictures.py`); they are not MetaTrader screenshots.
+
+> **Status: not compiled in MetaEditor, not run in the Strategy Tester, not seen on a live
+> chart.** None of that can run where this was written. What was verified, how, and what was
+> not: [`docs/QSMC_SMCVP_ENGINE_AUDIT_2026-11-11.md`](docs/QSMC_SMCVP_ENGINE_AUDIT_2026-11-11.md)
+> (Arabic operator guide: [`docs/QSMC_SMCVP_ENGINE_AR.md`](docs/QSMC_SMCVP_ENGINE_AR.md)).
+> The engine describes conditions; nothing here shows that trading its setups is profitable.
+
+```
+python3 tools/test_qsmc_chart_hygiene.py     # nadir2: the real draw function, before / after
+python3 tools/test_qsmc_smcvp.py             # the engine: units, mirrored replay, sanitizers
+python3 tools/check_production_ready.py      # the whole offline gate (57 checks)
+```
+
 ## Repository layout
 
 ```
@@ -180,6 +221,19 @@ docs/QATS_BACKTEST_STUDY_2026-11-11.md            simulation study, full tables
 docs/incident-20261101/                           preserved incident audit record
 docs/PRODUCTION_AUDIT_2026-11-09_QUANTUM_EA.md    consolidation audit (v1.00)
 .github/workflows/quantum-verify.yml              CI: structural checks + host build + simulator
+
+nadir2.mq5, MQL5/Indicators/nadir2.mq5            the QSMC indicator (v6.6.22), two identical copies
+MQL5/Indicators/QSMC_SmcVpEngine.mq5              SMC + Volume Profile decision engine (display only)
+MQL5/Include/QSMC/QSMC_Svp*.mqh                   its modules: core, liquidity, zones, volume profile, decision, chart
+MQL5/Include/QSMC/QSMC_SignalRegistry.mqh         one identity and one lifecycle per setup (both indicators)
+MQL5/Include/QSMC/QSMC_ChartLayers.mqh            nadir2's layer policy (CLEAN / LEGACY)
+tools/smcvp_native.py, tools/smcvp_sim/           host build of the indicators + chart-object simulator + drivers
+tools/test_qsmc_chart_hygiene.py                  nadir2 chart-hygiene suite
+tools/test_qsmc_smcvp.py                          engine suite
+tools/smcvp_chart_svg.py, smcvp_make_pictures.py  the simulated chart as SVG (docs/img/)
+docs/QSMC_SMCVP_ENGINE_AUDIT_2026-11-11.md        audit, verification, limits
+docs/QSMC_SMCVP_ENGINE_AR.md                      operator guide, in Arabic
+docs/QSMC_BUILD_AND_RUN.md                        build / run / verify for the QSMC layer
 ```
 
 Historical recovery point before the consolidation cleanup:

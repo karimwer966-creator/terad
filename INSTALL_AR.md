@@ -52,7 +52,7 @@ MQL5/Experts/KLJ_DataFeeder.mq5             (اختياري، يصل معطلً�
 5. في Experts/Journal يجب أن ترى:
 
 ```text
-[QSMC_ARB] v6.6.20 arbitration layer ON | preset ...
+[QSMC_ARB] v6.6.22 arbitration layer ON | preset ...
 ```
 
 إذا رأيت `v6.6.19` أو أقدم، فأنت ما زلت تشغّل نسخة قديمة. أوقف كل شيء وأعد النسخ/الترجمة.

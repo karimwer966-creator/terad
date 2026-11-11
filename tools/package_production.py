@@ -19,7 +19,7 @@ import zipfile
 from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VERSION = "v6.6.21"
+VERSION = "v6.6.22"
 OUT_DIR = os.path.join(ROOT, "release")
 STAGE = os.path.join(ROOT, "out", "package_stage")
 

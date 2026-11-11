@@ -227,3 +227,35 @@ python3 tools/qats_journal_report.py MQL5/Logs/YYYYMMDD.log
 - الاستراتيجية نفسها (edge) **غير مُثبتة، والمحاكاة التاريخية تُظهر توقعًا سالبًا** داخل العيّنة للنسختين v1.11 وv1.20 — انظر `QATS_BACKTEST_STUDY_2026-11-11.md`.
 - نتيجة DEMO ≠ تنبؤ بالربح المستقبلي.
 - v1.20 **لم يُجمَّع بعد في MetaEditor** (غير متوفر في بيئة التطوير) ولم يُشغَّل في Strategy Tester ولا على الديمو. الدليل الميداني الوحيد هو سجل v1.11: ثلاث صفقات شراء وصفر بيع. الخطوات ومعايير القبول في `QATS_DUAL_DIRECTION_AR.md`.
+
+
+## 8. المكوّن الثاني في المستودع — مؤشر QSMC ومحرّك SMC + Volume Profile (v6.6.22)
+
+هذا المكوّن **منفصل تماماً** عن الـ EA أعلاه: مؤشرات عرض فقط، لا تفتح صفقات ولا تقرأ الحساب.
+
+```
+nadir2.mq5 (QSMC v6.6.22, 45,002 سطر)            المؤشر الأصلي — لم يُغيَّر فيه أي سطر تحليل
+ ├─ QSMC_SignalRegistry.mqh   هوية واحدة ودورة حياة واحدة لكل setup (لا تكرار للعلامات)
+ └─ QSMC_ChartLayers.mqh      سياسة الطبقات: PRIMARY / SECONDARY / VOLUME / DETAIL / OPTIONAL
+
+MQL5/Indicators/QSMC_SmcVpEngine.mq5 (v1.00)     مؤشر جديد مستقل — محرّك القرار
+ └─ QSMC_SvpChart.mqh          Chart Object Manager (SVC_*) + العرض (SVV_*) + اللوحة (16 سطراً)
+     └─ QSMC_SvpDecision.mqh   عشرة شروط بالترتيب، بدون scoring: BUY SETUP / SELL SETUP / WAIT
+         ├─ QSMC_SvpCore.mqh          البنية (BOS / CHoCH)، ATR، التقريب على tick
+         ├─ QSMC_SvpLiquidity.mqh     خريطة السيولة (EQH/EQL, PDH/PDL, PWH/PWL) + محرّك الـ sweep
+         ├─ QSMC_SvpZones.mqh         دورة حياة OB / FVG
+         └─ QSMC_SvpVolumeProfile.mqh POC / VAH / VAL / HVN / LVN من tick volume (سياق فقط)
+```
+
+* التحليل دائماً على الشموع **المغلقة** لـ M15 + H1 + H4 مهما كان إطار المخطط، مرّة واحدة لكل
+  إغلاق M15. لا repaint ولا look-ahead (مُثبَت بالاختبار، انظر التقرير).
+* كل كائن على المخطط يمرّ عبر مدير واحد وباسم `QSVP_*`؛ كائنات `nadir2` اسمها `QSMC_*`،
+  فالمؤشران يعملان على نفس المخطط دون تعارض.
+* وحدات التحليل لا تعرف بوجود مخطط: لا `ObjectCreate` ولا `CopyRates` ولا ساعة ولا تنبيه.
+  التنبيه الوحيد (`Alert`) موجود في ملف المؤشر نفسه، ومعطَّل افتراضياً.
+* لماذا مؤشر جديد وليس تعديل `nadir2.mq5`؟ لأن اختبارات التدقيق مربوطة بأرقام أسطر ذلك الملف
+  (`tools/pinmap.json`)، وأي إدراج داخله يكسرها كلها؛ ولأن فصل المحرّك يسمح بحذف أيٍّ منهما دون
+  المساس بالآخر.
+
+التقرير الكامل: `docs/QSMC_SMCVP_ENGINE_AUDIT_2026-11-11.md` — دليل المشغّل:
+`docs/QSMC_SMCVP_ENGINE_AR.md`. **لم يُترجَم (F7) ولم يُشغَّل في MetaTrader ضمن هذا العمل.**

@@ -63,6 +63,15 @@ QATS_NATIVE_SUITES = [
     ("qats-journal-report", "test_qats_journal_report.py", True),
 ]
 
+# v6.6.22: the chart-hygiene suite and the SMC + Volume Profile engine suite.
+# Both check the source first (always) and execute it second (compiler needed),
+# so both must exit 77 - with their source checks still reported - when the
+# compiler is absent. The gate runs them for real.
+SMCVP_NATIVE_SUITES = [
+    ("qsmc-chart-hygiene", "test_qsmc_chart_hygiene.py", True),
+    ("qsmc-smcvp-engine", "test_qsmc_smcvp.py", True),
+]
+
 
 def check(ok, name, detail=""):
     COUNT[0] += 1
@@ -160,7 +169,7 @@ NT.SKIPS[:] = saved_skips
 # ---------------------------------------------------------------------------
 # 3. the seven native suites: 77 when they cannot run, 0 when they can
 # ---------------------------------------------------------------------------
-for name, filename, has_source in NATIVE_SUITES + QATS_NATIVE_SUITES:
+for name, filename, has_source in NATIVE_SUITES + QATS_NATIVE_SUITES + SMCVP_NATIVE_SUITES:
     rc, text = run_suite(filename, force_no_native=True)
     check(rc == NT.SKIP_EXIT,
           "%s exits 77 when the toolchain is absent" % name, "rc=%s" % rc)
@@ -262,6 +271,9 @@ check(len(curated_native) == len(NATIVE_SUITES),
 curated_qats = [n for n, _, _ in QATS_NATIVE_SUITES if n in names]
 check(len(curated_qats) == len(QATS_NATIVE_SUITES),
       "the three QATS native suites are in the curated gate", curated_qats)
+curated_smcvp = [n for n, _, _ in SMCVP_NATIVE_SUITES if n in names]
+check(len(curated_smcvp) == len(SMCVP_NATIVE_SUITES),
+      "the chart-hygiene and SMC+VP engine suites are in the curated gate", curated_smcvp)
 check(all(isinstance(cmd, list) and all(isinstance(a, str) for a in cmd)
           for _, cmd in G.CHECKS), "every curated command is a list of strings")
 print("NOTE  curated checks: %d" % len(names))

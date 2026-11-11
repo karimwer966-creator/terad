@@ -305,6 +305,11 @@ def render_report(out_dir, results):
     w("")
     w("Dataset: `%s` @ `%s` (M1 bid+ask, UTC, 2016-09-01 .. 2026-09-01; first 5 months are warm-up)."
       % (DATASET["repo"], DATASET["commit"][:12]))
+    skipped = max([r.get("m1_rows_skipped_repeated_at_a_file_seam", 0) for r in results.values()] or [0])
+    if skipped:
+        w("The dataset ships one file per year and the files overlap at their seams. A row that does not move")
+        w("time forward is skipped, so no minute is replayed twice: %s rows over the whole history" % "{:,}".format(skipped))
+        w("(`tools/test_qats_dual_direction.py` section 4b pins this).")
     w("")
     w("| window | from | to | role |")
     w("|---|---|---|---|")
@@ -722,6 +727,27 @@ def synthetic_m1(path, weeks=32, seed=20261111, start_price=2000.0):
                             (o + spread) / 100.0, (hi + spread) / 100.0, (lo + spread) / 100.0, (c + spread) / 100.0,
                             v, v))
     return path
+
+
+def split_with_overlap(src, out_dir, split_row, repeated=300, names=("seam_part_a.csv", "seam_part_b.csv")):
+    """Cut one M1 CSV into two files that OVERLAP by `repeated` rows, like the
+    yearly files of the public dataset do at their seams (up to 23 hours of the
+    same minutes appear in two files). A loader that feeds both files row by row
+    sends the clock backwards at the seam; the fixture exists to prove ours do not.
+    """
+    with open(src) as fh:
+        header = fh.readline()
+        rows = fh.readlines()
+    if not (repeated < split_row < len(rows)):
+        raise ValueError("split_row %d outside the file (%d rows)" % (split_row, len(rows)))
+    a, b = os.path.join(out_dir, names[0]), os.path.join(out_dir, names[1])
+    with open(a, "w") as fh:
+        fh.write(header)
+        fh.writelines(rows[:split_row])
+    with open(b, "w") as fh:
+        fh.write(header)
+        fh.writelines(rows[split_row - repeated:])
+    return [a, b]
 
 
 def main(argv):

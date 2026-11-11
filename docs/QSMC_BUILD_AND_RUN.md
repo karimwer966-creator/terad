@@ -1,4 +1,4 @@
-# QSMC v6.6.20 — BUILD, RUN, VERIFY
+# QSMC v6.6.22 — BUILD, RUN, VERIFY
 
 Operational guide for `nadir2.mq5` + the `MQL5/Include/QSMC` arbitration layer.
 Design and root-cause analysis live in `docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md`;
@@ -26,18 +26,22 @@ v6.6.2: literal hygiene + the CI gate).
      `docs/QSMC_AUTOTRADER.md`. المؤشر نفسه لا يفتح صفقات أبداً.)
    - `MQL5/Indicators/QSMC_ScannerProbe.mq5` → `<Data Folder>/MQL5/Indicators/`
      (اختياري: مضيف طبقة الماسحات Phase 7 — لا يرسم ولا يتداول، فقط نصّ)
+   - `MQL5/Indicators/QSMC_SmcVpEngine.mq5` → `<Data Folder>/MQL5/Indicators/`
+     (اختياري، جديد في v6.6.22: محرّك قرار SMC + Volume Profile بلوحة من 16 سطراً
+     ومخطط نظيف — عرض فقط، لا يفتح صفقات. الدليل: `docs/QSMC_SMCVP_ENGINE_AR.md`)
    (المجلد `QSMC` داخل `Include` **ضروري**: الملفات تُضمَّن هكذا
    `#include <QSMC/QSMC_Root.mqh>`.)
 3. افتح `MetaEditor` (F4 داخل MT5) واضغط **F7** على كل ملف بالترتيب:
    `nadir2.mq5` ثم `QSMC_ArbiterTest.mq5` ثم `KLJ_DataFeeder.mq5`
    ثم `QSMC_ScannerProbe.mq5` إن أردت الماسحات،
+   ثم `QSMC_SmcVpEngine.mq5` إن أردت محرّك SMC + Volume Profile،
    ثم `QSMC_AutoTrader.mq5` إن أردت التنفيذ الآلي.
    النتيجة المطلوبة: `0 errors, 0 warnings`.
    ترجمة `QSMC_ScannerProbe.mq5` هي الوحيدة التي تُثبت أن
    `QSMC_Scanners.mqh` يُترجم فعلًا — قبل v6.6.3 لم يكن لهذا الملف أي مضيف.
 4. في MT5: `Navigator` ← `Indicators` ← `nadir2` اسحبه على مخطط M5/M15.
 5. راجع تبويب `Experts`/`Journal`: السطر الأول يجب أن يكون
-   `[QSMC_ARB] v6.6.20 arbitration layer ON | preset …`.
+   `[QSMC_ARB] v6.6.22 arbitration layer ON | preset …`.
 6. للاختبار الذاتي: اسحب `QSMC_ArbiterTest` (Scripts) على أي مخطط —
    النتيجة المطلوبة `RESULT: 45 passed, 0 failed` (includes quant, structure, and zone-scoring assertions).
 7. للتحقق بدون MT5 (من الطرفية، داخل المستودع):
@@ -56,6 +60,38 @@ here`، ويظهر جدول `top setups by EVIDENCE SCORE` مع قائمة «not
 
 **زر الإيقاف:** `InpArbEnabled = false` → الطبقة تصبح معطّلة تمامًا ويتصرف
 المؤشر مثل v6.5.5 (بدون إعادة تجميع، بدون تغيير في لوحة العرض).
+
+### v6.6.22 — chart hygiene, and a separate SMC + Volume Profile engine
+
+Two changes, both display-side. Neither moves an exported buffer of `nadir2.mq5`
+and neither can place an order. Full report: `docs/QSMC_SMCVP_ENGINE_AUDIT_2026-11-11.md`;
+operator guide in Arabic: `docs/QSMC_SMCVP_ENGINE_AR.md`.
+
+* **`nadir2.mq5`: one mark per setup.** `AlertDispatcherDrawPrimary()` named its
+  arrow and label after the bar a scenario was *published* on, once per closed
+  bar, so a scenario that stayed primary for N bars left N arrows and N copies of
+  the same label (bounded only by a 16-slot ring = 32 objects). The mark is now
+  named after the setup's originating bar (`QSMC_SignalRegistry.mqh`): a
+  re-publication updates the same two objects. A layer policy
+  (`QSMC_ChartLayers.mqh`, `InpChartProfile=CLEAN` by default) classifies every
+  object family as primary / secondary / volume / volume detail / optional and
+  shows the first three; `InpChartProfile=LEGACY` restores the previous behaviour.
+  The eight new inputs are at the end of the dialog. Verified by
+  `tools/test_qsmc_chart_hygiene.py`, which executes the real function before and
+  after (12 publications: 24 objects -> 2).
+* **`MQL5/Indicators/QSMC_SmcVpEngine.mq5`: a new, additive indicator.** Ten
+  confirmations in a fixed order (H4 bias, H1 structure, M15 liquidity, sweep,
+  displacement, BOS/CHoCH, OB/FVG, volume profile, entry, risk/reward), no score:
+  BUY SETUP or SELL SETUP only when every step of exactly one side holds on
+  closed bars, otherwise WAIT with the step that blocks. A 16-row dashboard, at
+  most about 50 objects named `QSVP_*`, five `DRAW_NONE` buffers. It was added
+  as its own program instead of being edited into the 45,000-line indicator so
+  that the line-pinned audit suites of `nadir2.mq5` stay valid and either
+  indicator can be removed without touching the other. Verified by
+  `tools/test_qsmc_smcvp.py`.
+* **Not verified here:** MetaEditor F7, the Strategy Tester and a live chart. No
+  MetaTrader runs in the repository's CI or in the environment this was written
+  in. Press F7 on `nadir2.mq5` and on `QSMC_SmcVpEngine.mq5` before trusting either.
 
 ### v6.6.20 — runtime-log review and diagnostic truthfulness
 
@@ -132,13 +168,16 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 
 ```
 <Data Folder>\MQL5\
-├─ Include\QSMC\QSMC_Types.mqh          <- all 23 headers go here, flat
+├─ Include\QSMC\QSMC_Types.mqh          <- all 31 headers go here, flat
 ├─ Include\QSMC\QSMC_MarketData.mqh
 ├─ Include\QSMC\…  (QSMC_Zones, _Reaction, _Bias, _Preset, _Gates,
 │                   _AlertManager, _Arbiter, _Stats, _Renderer, _Root,
-│                   _Selftest, _Scanners, _DataProvider, _LiquidityValue, _UnifiedDecision)
+│                   _Selftest, _Scanners, _DataProvider, _LiquidityValue, _UnifiedDecision,
+│                   v6.6.22: _SignalRegistry, _ChartLayers, _SvpCore, _SvpLiquidity,
+│                   _SvpZones, _SvpVolumeProfile, _SvpDecision, _SvpChart)
 ├─ Indicators\nadir2.mq5                <- the indicator itself (repo root)
 ├─ Indicators\QSMC_ScannerProbe.mq5      <- PART C Phase 7 scanner host (v6.6.3)
+├─ Indicators\QSMC_SmcVpEngine.mq5       <- v6.6.22 SMC + Volume Profile engine (display only, optional)
 ├─ Scripts\QSMC_ArbiterTest.mq5         <- deterministic self-test harness
 ├─ Experts\KLJ_DataFeeder.mq5           <- optional CSV data feeder (PART C)
 └─ Experts\QSMC_AutoTrader.mq5          <- v6.6.20 execution companion (armed on demo, real account refused)
@@ -146,7 +185,7 @@ folder's own `MQL5\Include`. There is no per-project include path in MQL5.
 
 The two `Experts` files are separate programs, and only one of them can trade:
 `QSMC_AutoTrader.mq5` is the single file on the release gate's G4 allowlist.
-`KLJ_DataFeeder.mq5` still contains no trade API, and the indicator and the 20
+`KLJ_DataFeeder.mq5` still contains no trade API, and the indicators and the
 headers still contain none at all — that is what makes the dashboard safe to leave
 on a chart.
 
@@ -217,7 +256,7 @@ its host is ever removed). It is not a type checker: a clean run still needs F7.
 3. Journal must show, in this order:
 
 ```
-[QSMC_ARB] v6.6.20 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
+[QSMC_ARB] v6.6.22 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10
              | exec TF M15 | tactical may confirm: NO (informational only)
              | on XAUUSD M15
 ```

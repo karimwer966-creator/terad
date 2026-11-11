@@ -375,7 +375,7 @@ struct RunResult
    std::vector<Trade> trades;
    double startBalance = 0.0, endBalance = 0.0, endEquity = 0.0;
    double maxDDMoney = 0.0, maxDDPct = 0.0, peakEquity = 0.0;
-   long ticks = 0, m1bars = 0;
+   long ticks = 0, m1bars = 0, m1repeated = 0;
    datetime firstTick = 0, lastTick = 0, attachTime = 0;
    int initCode = -1;
    long sendCount = 0, sendOk = 0;
@@ -438,6 +438,7 @@ static RunResult runBacktest(const RunCfg &cfg)
    Tick tk[4];
    M1 r{};
    bool stop = false;
+   datetime lastSt = 0;
    try
    {
       for(const std::string &fn : files)
@@ -451,6 +452,12 @@ static RunResult runBacktest(const RunCfg &cfg)
          {
             if(!parseM1(line.c_str(), r)) continue;
             datetime st = toServer(r.utc);
+            // The yearly files of the public dataset OVERLAP at their seams (up to
+            // 23 hours of the same minutes appear in two files). A row that does
+            // not move time forward is a repeat and is skipped: fed again it would
+            // send the simulated clock backwards and replay a day of quotes.
+            if(st <= lastSt) { res.m1repeated++; continue; }
+            lastSt = st;
             if(st < warmFrom) continue;
             if(cfg.to > 0 && st >= cfg.to) { stop = true; break; }
             res.m1bars++;
@@ -551,7 +558,7 @@ static std::string resultJson(const RunCfg &cfg, const RunResult &res)
      << "\", \"first_tick\": \"" << sim::timeString(res.firstTick, TIME_DATE | TIME_MINUTES)
      << "\", \"last_tick\": \"" << sim::timeString(res.lastTick, TIME_DATE | TIME_MINUTES) << "\"},\n";
    o << "  \"init_code\": " << res.initCode << ",\n";
-   o << "  \"m1_bars\": " << res.m1bars << ", \"ticks\": " << res.ticks << ",\n";
+   o << "  \"m1_bars\": " << res.m1bars << ", \"m1_rows_skipped_repeated_at_a_file_seam\": " << res.m1repeated << ", \"ticks\": " << res.ticks << ",\n";
    o << "  \"feed\": {\"spread_mode\": " << cfg.feed.spreadMode << ", \"spread_scale\": " << cfg.feed.spreadScale
      << ", \"spread_fixed_pts\": " << cfg.feed.spreadFixedPts << ", \"int_grid\": " << (cfg.feed.intGrid ? "true" : "false")
      << ", \"mirror\": " << (cfg.feed.mirror ? "true" : "false") << ", \"stop_slippage_pts\": " << cfg.stopSlipPts
