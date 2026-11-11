@@ -35,7 +35,7 @@ jobs:
         run: python3 tools/test_qats_dual_direction.py
       - name: Journal report (the DEMO forward-test evidence format)
         run: python3 tools/test_qats_journal_report.py
-      - name: v1.21 LIMIT-entry contracts (no weakened guard, cap counts fills only)
+      - name: LIMIT-entry contracts (v1.21+, F7-fixed in v1.22) (no weakened guard, cap counts fills only)
         run: python3 tools/test_qats_limit_entry.py
       - name: Manual gate still required
         run: |

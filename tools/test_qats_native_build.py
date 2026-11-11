@@ -123,6 +123,20 @@ def main():
          src.replace(anchor, anchor + "\n   InpMinScore = 10;"), "lint", None),
         ("a free function declared static",
          src.replace("int SideIndex(const int dir)", "static int SideIndex(const int dir)"), "lint", None),
+        # --- the three defects the first real F7 run reported (v1.21 -> v1.22).
+        # They are pinned as BUILD defects too, so the shim's own signature drift
+        # cannot hide them again.
+        ("OrderOpen without the symbol first (F7: cannot convert enum)",
+         src.replace("g_trade.OrderOpen(_Symbol, otype, volume, 0.0, plan.entry",
+                     "g_trade.OrderOpen(otype, volume, 0.0, plan.entry"), "both", "g_trade.OrderOpen(otype"),
+        # a swapped call still COMPILES; it is caught by the lint (argument 4 must
+        # be 0.0) and, at run time, by the shim, which refuses a non-zero
+        # limit_price on an order that is not a StopLimit
+        ("OrderOpen with limit_price and price swapped (builds a StopLimit request)",
+         src.replace("g_trade.OrderOpen(_Symbol, otype, volume, 0.0, plan.entry, plan.sl, plan.tp",
+                     "g_trade.OrderOpen(_Symbol, otype, volume, plan.entry, 0.0, plan.sl, plan.tp"), "lint", None),
+        ("a C-only (void) silencing cast (F7: illegal use of 'void' type)",
+         src.replace("   double atrStop = 1.5 * atr;", "   double atrStop = 1.5 * atr;\n   (void)atrStop;"), "lint", None),
     ]
     for label, text, how, needle in cases:
         if text == src:
@@ -130,10 +144,11 @@ def main():
             continue
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(text)
-        if how == "lint":
+        if how in ("lint", "both"):
             problems = Q.mql5_lint(text)
             check(bool(problems), "C  lint rejects: " + label, "no lint problem reported")
-            continue
+            if how == "lint":
+                continue
         # the missing-return diagnostic is flow-sensitive: it needs the full compile
         _, drc, ddiag = Q.build(path, "defect", syntax_only=("every path" not in label))
         check(drc not in (0, Q.SKIP_EXIT), "C  build rejects: " + label)

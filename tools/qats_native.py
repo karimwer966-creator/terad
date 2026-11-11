@@ -371,11 +371,54 @@ def mql5_lint(src):
                     (r"\bsize_t\b", "`size_t` is not MQL5"), (r"\bunsigned\b", "`unsigned` is not MQL5 (use uint/ulong)"),
                     (r"\blong\s+long\b", "`long long` is not MQL5"), (r"\bMqlArray\b", "shim type leaked into the source"),
                     (r"\bsim\s*::", "simulator symbol leaked into the source"),
+                    # MQL5 has no `(void)x;` silencing idiom: the compiler answers
+                    # "'void' - illegal use of 'void' type" + "invalid cast operation"
+                    # + "expression has no effect" (three errors/warnings, one line).
+                    # Remove the unused variable instead of silencing it.
+                    (r"\(\s*void\s*\)", "`(void)` cast is not MQL5 (F7: illegal use of 'void' type)"),
+                    (r"OrderOpen\s*\(\s*ORDER_TYPE_", "OrderOpen's first parameter is the symbol, not the order type"),
                     (r"#\s*ifdef\s+__cplusplus", "host-only preprocessor branch in the EA")):
         if why is None:
             continue
         for m in re.finditer(rx, code):
             problems.append("line %d: %s" % (line_of(m.start()), why))
+    # 3b. CTrade::OrderOpen(symbol, type, volume, limit_price, price, sl, tp,
+    #     type_time, expiration, comment). MetaEditor reported "cannot convert
+    #     enum" on the 9-argument form, and limit_price sits BEFORE price, so the
+    #     two are easy to swap. Both are caught here, by argument position.
+    def split_args(text, open_pos):
+        depth, args, cur = 0, [], ""
+        for ch in text[open_pos:]:
+            if ch in "([{":
+                depth += 1
+                if depth == 1:
+                    continue
+            elif ch in ")]}":
+                depth -= 1
+                if depth == 0:
+                    args.append(cur)
+                    return args, cur
+            if depth == 1 and ch == ",":
+                args.append(cur)
+                cur = ""
+                continue
+            cur += ch
+        return args, cur
+
+    for m in re.finditer(r"\bOrderOpen\s*\(", code):
+        args, _tail = split_args(code, m.end() - 1)
+        args = [a.strip() for a in args]
+        if len(args) >= 4 and args[0] not in ("_Symbol", "symbol", "sym", "s_symbol", "m_symbol", '""'):
+            problems.append("line %d: OrderOpen() must name the symbol first (got '%s'); the symbol-less "
+                            "form resolves to the symbol-first overload -> \"cannot convert enum\""
+                            % (line_of(m.start()), args[0][:40]))
+        if len(args) >= 4:
+            lp = args[3].replace(" ", "")
+            if lp not in ("0", "0.0", "0.00", ".0", "0.0f"):
+                problems.append("line %d: OrderOpen() argument 4 is limit_price (StopLimit trigger), not the "
+                                "execution price - a plain limit passes 0.0 there (got '%s')"
+                                % (line_of(m.start()), args[3][:40]))
+
     # 4. free functions cannot be static; struct members cannot carry initialisers
     for m in re.finditer(r"^static\s+\w+\s+\w+\s*\(", code, re.M):
         if depth_at(code, m.start()) == 0:

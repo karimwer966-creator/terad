@@ -150,9 +150,18 @@ for needle, label in [("EntriesAllowed", "the whole guard chain"),
                       ("LoadSymbolSpec", "broker specification")]:
     check(needle in place, "PlaceLimitOrder runs %s" % label)
 
-# a limit order always carries a server-side stop, and the stop comes from the zone
-check("g_trade.OrderOpen(otype, volume, plan.entry, 0.0, plan.sl, plan.tp," in place.replace("  ", " ").replace(" \n", "\n"),
-      "PlaceLimitOrder sends the stop and the target with the order (no order without a stop)")
+# A limit order always carries a server-side stop, and the stop comes from the
+# zone. The call is spelled out in full because three of its positions are traps
+# MetaEditor has already reported once (v1.21 F7): the SYMBOL is first, and
+# limit_price (arg 4) comes BEFORE price (arg 5) - a plain limit passes 0.0 there.
+flat = " ".join(place.split())
+CALL = ("g_trade.OrderOpen(_Symbol, otype, volume, 0.0, plan.entry, plan.sl, plan.tp, "
+        "ORDER_TIME_SPECIFIED, expiry, InpTradeComment)")
+check(CALL in flat, "PlaceLimitOrder sends the stop and the target with the order (no order without a stop)")
+check("g_trade.OrderOpen(_Symbol, otype, volume, 0.0, plan.entry" in flat,
+      "OrderOpen names the symbol first and passes limit_price=0.0 (a plain limit, not a StopLimit)")
+check("ORDER_TIME_SPECIFIED" in place and "expiry" in place,
+      "the order carries ORDER_TIME_SPECIFIED and the computed expiry")
 build = func("BuildLimitPlan")
 check("zone.bottom - buffer" in build and "zone.top + buffer" in build,
       "the stop is derived from the FAR EDGE of the zone, never widened to fit")
