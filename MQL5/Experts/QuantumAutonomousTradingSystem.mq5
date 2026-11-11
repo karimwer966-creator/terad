@@ -63,9 +63,14 @@
 //|          limit at the zone instead of buying mid-move. Every     |
 //|          guard is unchanged, and InpUseLimitEntry=false is the   |
 //|          previous market-entry path, byte for byte in behaviour. |
+//|  v1.22 - F7 fixes for v1.21: CTrade::OrderOpen now names the     |
+//|          symbol first and passes limit_price=0.0 BEFORE the      |
+//|          execution price (v1.21 built a StopLimit request); the  |
+//|          C-only `(void)x;` silencing idiom is gone. No behaviour |
+//|          change on the limit path, only a build that compiles.   |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / Quantum"
-#property version   "1.21"
+#property version   "1.22"
 #property description "Autonomous SMC trading EA. REAL requires explicit account and server authorization."
 #property description "Scores BUY and SELL independently on every bar; dynamic equity-risk sizing and full protection guards."
 
@@ -78,7 +83,7 @@
 #define QATS_HARD_CAP_RISK_PCT   2.0    // absolute per-trade risk ceiling, % of equity
 #define QATS_HARD_CAP_DAILY_PCT  5.0    // absolute daily-loss ceiling, % of baseline
 #define QATS_HARD_CAP_DD_PCT     15.0   // absolute drawdown ceiling, % from high-water mark
-#define QATS_VERSION            "1.21"
+#define QATS_VERSION            "1.22"
 
 // Confluence weights. They sum to exactly 100 and absent evidence scores 0, so a
 // score is a plain percentage of the evidence present. BUY and SELL use the SAME
@@ -3004,7 +3009,14 @@ bool PlaceLimitOrder(const SAnalysis &raw)
    for(int attempt = 0; attempt < npol; attempt++)
    {
       g_trade.SetTypeFilling(policies[attempt]);
-      sent = g_trade.OrderOpen(otype, volume, plan.entry, 0.0, plan.sl, plan.tp,
+      // CTrade::OrderOpen(symbol, type, volume, LIMIT_PRICE, PRICE, sl, tp,
+      // type_time, expiration, comment). Two things MetaEditor caught in v1.21:
+      //   * the SYMBOL is the first parameter. The 9-argument form resolved to this
+      //     overload and reported "cannot convert enum" on the order type.
+      //   * LIMIT_PRICE (the StopLimit trigger) comes BEFORE PRICE. A plain limit
+      //     passes 0.0 there and its execution price in `price`; passing them the
+      //     other way round sends a StopLimit order that never works as a limit.
+      sent = g_trade.OrderOpen(_Symbol, otype, volume, 0.0, plan.entry, plan.sl, plan.tp,
                                ORDER_TIME_SPECIFIED, expiry, InpTradeComment);
       rc      = (uint)g_trade.ResultRetcode();
       orderTicket = g_trade.ResultOrder();
@@ -3136,7 +3148,6 @@ void ManagePendingOrders(const SAnalysis &raw)
       int dir = isBuyLimit ? +1 : -1;
       double price = OrderGetDouble(ORDER_PRICE_OPEN);
       double sl    = OrderGetDouble(ORDER_SL);
-      double tp    = OrderGetDouble(ORDER_TP);
       datetime expiration = (datetime)OrderGetInteger(ORDER_TIME_EXPIRATION);
 
       // 1. expired. The server also expires it; this keeps the journal exact.
@@ -3199,7 +3210,6 @@ void ManagePendingOrders(const SAnalysis &raw)
       }
       // otherwise the order is still valid and keeps working until one of the
       // conditions above, or its own expiry, says otherwise
-      (void)tp;
    }
 }
 

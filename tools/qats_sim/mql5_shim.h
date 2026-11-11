@@ -108,7 +108,11 @@ enum ENUM_ACCOUNT_MARGIN_MODE : int { ACCOUNT_MARGIN_MODE_RETAIL_NETTING = 0, AC
 enum ENUM_TERMINAL_INFO_INTEGER : int { TERMINAL_CONNECTED = 6, TERMINAL_TRADE_ALLOWED = 8, TERMINAL_DLLS_ALLOWED = 7, TERMINAL_BUILD = 5 };
 enum ENUM_MQL_INFO_INTEGER : int { MQL_TRADE_ALLOWED = 4, MQL_TESTER = 6, MQL_OPTIMIZATION = 7, MQL_VISUAL_MODE = 8, MQL_DEBUG = 5 };
 
-enum ENUM_ORDER_TYPE : int { ORDER_TYPE_BUY = 0, ORDER_TYPE_SELL = 1, ORDER_TYPE_BUY_LIMIT, ORDER_TYPE_SELL_LIMIT, ORDER_TYPE_BUY_STOP, ORDER_TYPE_SELL_STOP };
+// the real ENUM_ORDER_TYPE order and names (StopLimit included: Trade.mqh's
+// OrderOpen documents a limit_price parameter that only a StopLimit order uses)
+enum ENUM_ORDER_TYPE : int { ORDER_TYPE_BUY = 0, ORDER_TYPE_SELL = 1, ORDER_TYPE_BUY_LIMIT, ORDER_TYPE_SELL_LIMIT,
+                             ORDER_TYPE_BUY_STOP, ORDER_TYPE_SELL_STOP,
+                             ORDER_TYPE_BUY_STOP_LIMIT, ORDER_TYPE_SELL_STOP_LIMIT };
 enum ENUM_ORDER_TYPE_FILLING : int { ORDER_FILLING_FOK = 0, ORDER_FILLING_IOC = 1, ORDER_FILLING_RETURN = 2, ORDER_FILLING_BOC = 3 };
 enum ENUM_ORDER_TYPE_TIME : int { ORDER_TIME_GTC = 0, ORDER_TIME_DAY, ORDER_TIME_SPECIFIED, ORDER_TIME_SPECIFIED_DAY };
 enum ENUM_ORDER_STATE : int { ORDER_STATE_STARTED = 0, ORDER_STATE_PLACED, ORDER_STATE_CANCELED, ORDER_STATE_PARTIAL, ORDER_STATE_FILLED };
@@ -1754,16 +1758,33 @@ public:
       return open(ORDER_TYPE_SELL, volume, symbol.empty() ? sim::S.sym.name : symbol, sl, tp, comment);
    }
    // CTrade::OrderOpen / OrderModify / OrderDelete, same signatures as the
-   // standard library (expiration type + datetime, then stoploss / takeprofit),
-   // so the EA source is the bytes MetaEditor compiles.
-   bool OrderOpen(const ENUM_ORDER_TYPE type, const double volume, const double price, const double limit_price = 0.0,
-                  const double sl = 0.0, const double tp = 0.0, const ENUM_ORDER_TYPE_TIME type_time = ORDER_TIME_GTC,
+   // standard library, so the EA source is the bytes MetaEditor compiles.
+   //
+   // OrderOpen is SYNTAX-EXACT with Trade.mqh and it matters twice over:
+   //   * the SYMBOL is the first parameter - a 9-argument call silently resolves
+   //     to this overload and MetaEditor then reports "cannot convert enum" on
+   //     the order type (this is the v1.21 F7 error, reproduced here);
+   //   * limit_price comes BEFORE price. Anything but a StopLimit order passes
+   //     limit_price = 0.0 and the real execution price in `price`; swapping them
+   //     builds a StopLimit request and the order never behaves as a limit.
+   bool OrderOpen(const string symbol, const ENUM_ORDER_TYPE type, const double volume,
+                  const double limit_price, const double price, const double sl = 0.0, const double tp = 0.0,
+                  const ENUM_ORDER_TYPE_TIME type_time = ORDER_TIME_GTC,
                   const datetime expiration = 0, const string comment = "")
    {
-      (void)limit_price;
+      if(type != ORDER_TYPE_BUY_LIMIT && type != ORDER_TYPE_SELL_LIMIT &&
+         type != ORDER_TYPE_BUY_STOP && type != ORDER_TYPE_SELL_STOP &&
+         type != ORDER_TYPE_BUY_STOP_LIMIT && type != ORDER_TYPE_SELL_STOP_LIMIT)
+         return false;                                   // Trade.mqh checks the order type
+      if(!symbol.empty() && symbol != sim::S.sym.name)
+         return false;                                   // the server refuses a foreign symbol
+      if(limit_price != 0.0 && type != ORDER_TYPE_BUY_STOP_LIMIT && type != ORDER_TYPE_SELL_STOP_LIMIT)
+         return false;                                   // a limit_price only belongs to a StopLimit
+      if(type == ORDER_TYPE_BUY_STOP_LIMIT || type == ORDER_TYPE_SELL_STOP_LIMIT)
+         return false;                                   // not implemented: the EA never sends one
       MqlTradeRequest rq{};
       rq.action = TRADE_ACTION_PENDING;
-      rq.symbol = sim::S.sym.name;
+      rq.symbol = symbol;
       rq.magic = m_magic;
       rq.volume = volume;
       rq.type = type;

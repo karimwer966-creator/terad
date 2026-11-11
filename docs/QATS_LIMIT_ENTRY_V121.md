@@ -1,6 +1,7 @@
-# QATS v1.21 — LIMIT entry at the SMC zone
+# QATS v1.21 → v1.22 — LIMIT entry at the SMC zone
 
-`MQL5/Experts/QuantumAutonomousTradingSystem.mq5` — `#property version "1.21"`.
+`MQL5/Experts/QuantumAutonomousTradingSystem.mq5` — `#property version "1.22"`
+(v1.21 was the feature; v1.22 is the build that compiles after F7 — see section 2b).
 
 **What changed:** the entry order. v1.20 bought or sold at market the moment an M5
 setup scored high enough. v1.21 keeps the same detection, the same scoring, the
@@ -188,9 +189,65 @@ the setup still tradable on the next bar.
 
 ---
 
+## 2b. The first real F7 result, and what it changed
+
+The user ran F7. v1.21 as merged **did not compile**. Verbatim:
+
+```
+cannot convert enum                          QuantumAutonomousTradingSystem.mq5 3007 39
+   bool CTrade::OrderOpen(const string,const ENUM_ORDER_TYPE,const double,const double,...)
+'void' - illegal use of 'void' type          QuantumAutonomousTradingSystem.mq5 3202 8
+'(void*)' - invalid cast operation           QuantumAutonomousTradingSystem.mq5 3202 7
+expression has no effect                     QuantumAutonomousTradingSystem.mq5 3202 7
+3 errors, 1 warnings
+```
+
+Three separate defects, and the second one exposed a worse one that F7 did not
+reach yet:
+
+1. **`OrderOpen` was called with 9 arguments and no symbol.** The real signature
+   is `OrderOpen(symbol, type, volume, limit_price, price, sl, tp, type_time,
+   expiration, comment)`. MetaEditor resolved it to the symbol-first overload and
+   failed to convert the order type into a string. Fixed by naming `_Symbol`.
+2. **`(void)tp;`** — a C idiom for "this variable is unused". MQL5 rejects it,
+   and one line produced three diagnostics (`void` misuse, invalid cast,
+   expression has no effect). The variable is now removed, not silenced: the
+   target was never needed there because `PLAN` / `PLACED` already journal it.
+3. **The worse one, found while fixing (1):** `limit_price` comes **before**
+   `price`. The merged code passed `plan.entry` into `limit_price` and `0.0` into
+   `price` — i.e. it was building a **StopLimit** request with no execution
+   price. Had the symbol bug not stopped the compile, every limit entry would
+   have been sent as a broken stop-limit order. The call is now
+   `OrderOpen(_Symbol, otype, volume, 0.0, plan.entry, plan.sl, plan.tp,
+   ORDER_TIME_SPECIFIED, expiry, InpTradeComment)`.
+
+### Why the host build did not catch it
+
+The shim defined `OrderOpen` with **my** signature instead of `Trade.mqh`'s, and
+it accepted `(void)x;` because that is valid C++. The simulator was validating the
+EA against a friendlier API than the one it ships to. That is the failure mode a
+shim has, and it is now closed at both ends:
+
+* `tools/qats_sim/mql5_shim.h` — `OrderOpen` is syntax-exact with `Trade.mqh`
+  (symbol first, `limit_price` before `price`, order-type and foreign-symbol
+  checks), `ENUM_ORDER_TYPE` carries the real `ORDER_TYPE_*_STOP_LIMIT` members,
+  and a non-zero `limit_price` on a plain limit is refused — the merge-time bugs
+  now fail the build instead of reaching the terminal.
+* `tools/qats_native.py` (the MQL5-only lint, run by `test_qats_native_build.py`)
+  — three new rules, each verified to fire on the exact broken line and to stay
+  silent on the fixed one:
+  * `(void)` casts → `F7: illegal use of 'void' type`;
+  * `OrderOpen(ORDER_TYPE_…)` as the first argument;
+  * an `OrderOpen` whose symbol argument is missing, or whose 4th argument is not
+    `0.0` (a swapped `limit_price` / `price`).
+
+The lesson is recorded rather than softened: **a host build proves the logic, not
+the API.** F7 is the gate, and it earned that title here.
+
 ## 3. Compile warnings
 
-**None known, and none claimed.** The evidence is:
+**The first F7 run reported 3 errors and 1 warning; all four are fixed in section
+2b, and the fixes are covered by new lint rules.** Current evidence:
 
 * strict host build (`-Werror -Wall -Wextra -Wshadow -Wconversion`), zero
   warnings, 57/57 build-gate checks;
@@ -200,8 +257,9 @@ the setup still tradable on the next bar.
 * `tools/verify_quantum_ea.py` PASSED, `tools/test_quantum_compile_regressions.py`
   OK.
 
-This is **not** a MetaEditor compile. MetaEditor's own warning set differs, and
-only F7 can produce the "0 errors, 0 warnings" line the runbook requires.
+This is **not** a MetaEditor compile, and it was wrong once: the v1.21 merge passed
+all of the above and still failed F7 with 3 errors. Re-run F7 and paste the Errors
+tab; only that line ("0 errors, 0 warnings") closes this section.
 
 ## 4. Assumptions
 
