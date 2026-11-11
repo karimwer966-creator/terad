@@ -2,6 +2,7 @@
 ; Demo armed. REAL requires manual opt-in and exact account/server confirmation.
 ; Compile and test in Strategy Tester and demo before considering live trading.
 ; Keep stop, margin, broker and risk checks enabled.
+; v1.20: InpStrategyProfile 0=CONSERVATIVE 1=BALANCED 2=ACTIVE (core confirmation; a sweep alone never trades).
 InpSignalExecutionProfile=2
 InpEnableTrading=true
 InpDryRun=false
@@ -24,6 +25,7 @@ InpMaxDailyLossMoney=0.0
 InpMaxAccountDrawdownPct=3.00
 InpStopAfterConsecLoss=2
 InpCooldownAfterLossMin=60
+InpNeutralCloseR=0.0
 InpMaxMarginUse=0.90
 InpMaxSpreadPoints=50
 InpMaxSpreadFracOfStop=0.20
@@ -33,6 +35,9 @@ InpSessionStartHour=0
 InpSessionEndHour=0
 InpMaxDataAgeSeconds=60
 InpRequireZoneTouch=false
+InpStrategyProfile=1
+InpSetupWindowBars=6
+InpConflictMargin=10
 InpSwingLookback=120
 InpSwingK=2
 InpDisplaceATR=0.8

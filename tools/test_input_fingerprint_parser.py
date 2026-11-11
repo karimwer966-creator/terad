@@ -39,7 +39,7 @@ print('PASS comma declarations, all eight End inputs, literals, nesting, comment
 import re
 import tempfile
 entries=[entry for path in m.paths for entry in m.parse_inputs((r/path).read_text())]
-assert len(entries)==591
+assert len(entries)==599   # 591 + the eight v6.6.22 chart-profile inputs (QSMC_ChartLayers.mqh)
 identifiers=set()
 for kind,name,default in entries:
     if kind!='string':

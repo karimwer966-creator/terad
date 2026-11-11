@@ -7,7 +7,8 @@ root=Path(__file__).resolve().parents[1]
 paths=['nadir2.mq5','MQL5/Include/QSMC/QSMC_Preset.mqh',
        'MQL5/Include/QSMC/QSMC_LiquidityValue.mqh',
        'MQL5/Include/QSMC/QSMC_UnifiedDecision.mqh',
-       'MQL5/Include/QSMC/QSMC_IncidentSafety.mqh']
+       'MQL5/Include/QSMC/QSMC_IncidentSafety.mqh',
+       'MQL5/Include/QSMC/QSMC_ChartLayers.mqh']
 def _strip_comments(source):
     # Preserve quoted literals (including color C'r,g,b') and line boundaries.
     token=re.compile(r'//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')

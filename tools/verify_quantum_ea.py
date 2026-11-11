@@ -118,7 +118,7 @@ for name in sorted(used_inputs - declared_inputs):
 
 # --- 3. globals -----------------------------------------------------------
 global_decls = []
-for m in re.finditer(r'^(?:int|double|bool|datetime|string|ulong|long|uint|float|SSymbolSpec|CTrade)\b([^;{]*)', src, re.M):
+for m in re.finditer(r'^(?:int|double|bool|datetime|string|ulong|long|uint|float|SSymbolSpec|SAnalysis|CTrade)\b([^;{]*)', src, re.M):
     for name in re.findall(r'\b(g_\w+)\b', m.group(1)):
         global_decls.append(name)
 gseen = {}
@@ -208,6 +208,28 @@ for gate in ["mode == ACCOUNT_TRADE_MODE_CONTEST", "if(InpDemoOnly)",
         errors.append("account authorization gate missing: " + gate)
 if "InpEnableTrading" not in code or "EntriesAllowed" not in code:
     errors.append("master switch / entries-allowed chain missing")
+
+# --- 7b. direction policy (v1.20): both sides, one function, no free points ---
+# Structural markers only; tools/test_qats_dual_direction.py EXECUTES the logic.
+for marker in ["EvaluateSide(+1,", "EvaluateSide(-1,", "QATS_CoreGate(", "QATS_ResolveDirection(",
+               "QATS_ScoreSide(", "SweepForDirection(", "BuildLiquidityMap(", "BuildStructure("]:
+    if marker not in code:
+        errors.append(f"direction-policy marker missing: {marker}")
+for tag in ["[QATS][%s][DETECTED]", "[QATS][SIGNAL][SCORED]", "[QATS][EXECUTION][APPROVED]",
+            "[QATS][EXECUTION][REJECTED]", "[QATS][BLOCK][REASON]"]:
+    if tag not in orig:
+        errors.append(f"signal life-cycle tag missing from the journal: {tag}")
+weights = dict((m.group(1), int(m.group(2))) for m in re.finditer(r'^#define\s+(QATS_W_\w+)\s+(\d+)', orig, re.M))
+weight_sum = sum(v for k, v in weights.items() if k != "QATS_W_ZONE_PRESENT")
+if weight_sum != 100:
+    errors.append(f"confluence weights must sum to exactly 100 (zone presence excluded), got {weight_sum}")
+if weights.get("QATS_W_ZONE_PRESENT", 0) >= weights.get("QATS_W_ZONE_TOUCH", 0):
+    errors.append("QATS_W_ZONE_PRESENT must be smaller than QATS_W_ZONE_TOUCH (they are alternatives)")
+# v1.11 picked ONE direction before scoring and paid 10 points for a missing structure.
+if re.search(r'else\s+if\s*\(\s*a\.h1Struct\s*==\s*0\s*\)\s*score\s*\+=', code):
+    errors.append("absent H1 structure must score 0 (the v1.11 free-points branch is back)")
+if re.search(r'if\s*\(\s*sweepBull\s*&&\s*!sweepBear\s*\)\s*dir\s*=', code):
+    errors.append("direction must not be chosen from an exclusive sweep flag before scoring")
 
 # --- 8. forbidden constructs ----------------------------------------------
 for pat, why in [(r'\bstd::', 'C++ std:: forbidden'), (r'\bnew\s+\w+\[', 'MQL5 has no raw new[] arrays'),

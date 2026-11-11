@@ -5,6 +5,16 @@ Status key: **PASS** = verified here · **FAIL** = verified broken · **BLOCKED*
 environment (blocker named) · **NOT TESTED** = no claim.
 **Acceptance condition (compile + attach + verified BUY/SELL on MT5 DEMO) is NOT MET and is not claimed.**
 
+> **Superseded in part by v1.20 (2026-11-11).** Three rows of section 1B were judgements from reading the source
+> and were wrong once the source was executed: "BUY/SELL symmetry — PASS" (the direction was picked before
+> scoring; only one side was scored; a mirrored market did not produce mirrored trades), "Liquidity sweep"
+> (a sweep never expired and could be re-detected against any older level) and "Duplicate signals" (the same
+> setup was re-entered on the next M5 bar). Fix 3 of section 1A (losses counted per deal on `DEAL_PROFIT`) was
+> itself replaced by per-position netting. The DEMO journal of 2026-11-11 — three BUY fills, no SELL ever
+> scored for 9.5 hours — is the field evidence. See
+> [`QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md`](QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md). The acceptance condition
+> above is still NOT MET.
+
 ---
 
 ## PHASE 1 — SOURCE CODE AUDIT

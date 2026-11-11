@@ -134,8 +134,17 @@ NEEDED = (["QSMC_%s.mqh" % n for n in
             ("Types", "Structure", "EarlyBreakDetector", "MarketData", "Zones", "ZoneScorer",
              "Reaction", "Bias", "Preset", "Gates", "AlertManager", "Arbiter",
              "Stats", "Renderer", "Root", "Selftest", "Scanners", "DataProvider", "LiquidityValue", "UnifiedDecision",
-             "IncidentSafety", "InputFingerprint", "InstanceIdentity")],
+             "IncidentSafety", "InputFingerprint", "InstanceIdentity",
+             # v6.6.22 chart hygiene: one identity per setup, and the layer policy
+             # nadir2.mq5's display choke point consults
+             "SignalRegistry", "ChartLayers",
+             # v6.6.22 SMC + Volume Profile decision engine (display only): the
+             # modules of MQL5/Indicators/QSMC_SmcVpEngine.mq5. They are headers of
+             # this layer, so G4 holds them to the same rules: no trade API, and
+             # no Alert / sound / push outside the one program that owns it.
+             "SvpCore", "SvpLiquidity", "SvpZones", "SvpVolumeProfile", "SvpDecision", "SvpChart")],
           [os.path.join("MQL5", "Indicators", "QSMC_ScannerProbe.mq5"),
+           os.path.join("MQL5", "Indicators", "QSMC_SmcVpEngine.mq5"),
            os.path.join("MQL5", "Scripts", "QSMC_ArbiterTest.mq5"),
            os.path.join("MQL5", "Experts", "KLJ_DataFeeder.mq5"),
            os.path.join("MQL5", "Experts", "QSMC_AutoTrader.mq5"),
@@ -150,8 +159,8 @@ extra = sorted(set(x for x in os.listdir(INC) if x.endswith(".mqh")) - set(NEEDE
 if extra:
     warn("G2 headers present but not in the documented layout: %s" % ", ".join(extra))
 else:
-    NOTES.append("G2 layout complete: %d headers + 1 indicator + 1 probe + 1 script + 1 feeder EA "
-                 "+ 1 execution EA" % len(NEEDED[0]))
+    NOTES.append("G2 layout complete: %d headers + 1 indicator + 1 probe + 1 SMC+VP engine indicator + 1 script "
+                 "+ 1 feeder EA + 1 execution EA" % len(NEEDED[0]))
 
 # ------------------------------------------------------------- G3 inputs
 preset = read(os.path.join(INC, "QSMC_Preset.mqh"))

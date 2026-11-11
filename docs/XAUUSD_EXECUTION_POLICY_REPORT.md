@@ -1,5 +1,20 @@
 # XAUUSD execution policy — change and verification report
 
+> **Superseded in part by v1.20 (2026-11-11)** — see
+> [`QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md`](QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md). What still holds: the
+> XAUUSD symbol rule, the diagnostic-only EMA / counter-D1 / class controls on XAUUSD, the broker-specification
+> and stop-geometry checks, the atomic reservation with no automatic retry on XAUUSD, and the account policy.
+> What changed:
+>
+> | statement below | v1.20 |
+> |---|---|
+> | "The existing signal generator and its scoring weights are unchanged" | Replaced. BUY and SELL are both evaluated on every bar by one function; a core-confirmation gate (`InpStrategyProfile`) precedes the score; the weights sum to 100 with no free points. |
+> | "Same-direction decisions on a *new* M5 bar are treated as new signals even if they derive from the same persistent H1 setup" | No longer true. A setup that produced a position cannot produce another (`DUPLICATE_SETUP`). The per-bar reservation remains as the at-most-once submission guard. |
+> | "Signal journal records show bar, symbol, direction, score …" | The record is now `[QATS][SIGNAL][SCORED]` with both scores and both evidence lists, plus `[DETECTED]`, `[CONFLICT]`, `[BLOCK][REASON]`, `[EXECUTION][APPROVED\|REJECTED\|FILLED]`. |
+> | "The prior non-XAUUSD retry behavior remains outside this change" | Repaired: a queued retry keeps its plan, passes the whole guard chain, and can no longer lock entries out. |
+> | "SL/TP are rounded outwards to the price tick" | The stop is snapped away from the entry; a liquidity target is snapped toward it, an R:R target away from it. A SELL stop and a SELL liquidity target are shifted by the spread. |
+> | Offline test counts | `test_xau_execution_policy.py` now runs 24 score, 8 veto and 26 guard cases; the whole EA is additionally built and executed by `test_qats_native_build.py` and `test_qats_dual_direction.py`. |
+
 ## Scope and exact changes
 
 The deployable source is `MQL5/Experts/QuantumAutonomousTradingSystem.mq5`.

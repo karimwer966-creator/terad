@@ -92,7 +92,7 @@ python3 tools/check_scenario_geometry.py
 3. **The banner is the version check.** Compile messages lie when a stale copy wins;
    the log does not. Load the indicator and the first `[QSMC_ARB]` line must read:
    ```
-   [QSMC_ARB] v6.6.20 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ... | on XAUUSD M15
+   [QSMC_ARB] v6.6.22 arbitration layer ON | preset INTRADAY (M15-H1) | gates 10 ... | on XAUUSD M15
    ```
    Any other version → you are running a stale copy of `Include\QSMC` (or of the
    indicator). Close the terminal, re-copy, recompile. Do not continue.
@@ -113,7 +113,7 @@ Watch the Experts tab. Healthy looks like this — and only like this:
 
 | Time | Expected line | Why it is the right line |
 | --- | --- | --- |
-| attach | `[QSMC_ARB] v6.6.20 arbitration layer ON \| ... \| on XAUUSD M15` | version, preset, gate count and **the instrument the thresholds are measured against**, in one line |
+| attach | `[QSMC_ARB] v6.6.22 arbitration layer ON \| ... \| on XAUUSD M15` | version, preset, gate count and **the instrument the thresholds are measured against**, in one line |
 | attach | `[QSMC_ARB] preset INTRADAY (M15-H1): exec M15, H4 from H1, D1 from H4` | the resample map actually chosen |
 | per closed bar | *nothing at all* unless `InpArbVerboseLog=true` | silence is the designed behaviour |
 | on a published signal | `[QSMC_SIG] ...` with `(deduped n)` / `(cooldown n)` counters | the arbiter, not the raw signal source |

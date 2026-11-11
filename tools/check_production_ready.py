@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-command curated OFFLINE production-readiness gate for QSMC v6.6.20.
+"""One-command curated OFFLINE production-readiness gate for QSMC (build version read from nadir2.mq5).
 
 This is deliberately not a MetaEditor compile, not a backtest, and not a proof
 of profitability. It runs the mechanical/release/safety checks that can be
@@ -19,12 +19,30 @@ from __future__ import print_function
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "out", "production")
+
+
+def build_version():
+    """The version the indicator will print at init, read from the source.
+
+    The banner the operator is told to look for used to be a literal in this file
+    and fell two releases behind the build (it said v6.6.20 for v6.6.21 and v6.6.22).
+    """
+    try:
+        with open(os.path.join(ROOT, "nadir2.mq5"), encoding="utf-8", newline="") as fh:
+            m = re.search(r'#define\s+QSMC_VERSION_TEXT\s+"(v[0-9.]+)"', fh.read())
+        return m.group(1) if m else "v?"
+    except (IOError, OSError):
+        return "v?"
+
+
+VERSION = build_version()
 
 CHECKS = [
     ("python-parse", [sys.executable, "-m", "py_compile"] +
@@ -91,6 +109,22 @@ CHECKS = [
     ("scalper-preset", [sys.executable, "tools/test_scalper_preset.py"]),
     ("at-risk-audit", [sys.executable, "tools/test_at_risk_audit.py"]),
     ("quantum-ea-verify", [sys.executable, "tools/verify_quantum_ea.py"]),
+    # QATS v1.20: the whole EA built by the host compiler against a typed MQL5 shim
+    # (strict, zero warnings), the dual-direction engine executed in a broker
+    # simulator with every bullish scenario replayed as its bearish mirror image,
+    # and the journal report an operator reads after a DEMO run. Native: they exit
+    # 77 on a host without g++ and the verdict then says PARTIAL.
+    ("qats-native-build", [sys.executable, "tools/test_qats_native_build.py"]),
+    ("qats-dual-direction", [sys.executable, "tools/test_qats_dual_direction.py"]),
+    ("qats-journal-report", [sys.executable, "tools/test_qats_journal_report.py"]),
+    # v6.6.22 chart hygiene + the SMC / Volume Profile decision engine. The first
+    # EXECUTES the real AlertDispatcherDrawPrimary() of nadir2.mq5 against a
+    # chart-object simulator, before and after the fix (one mark per setup, not
+    # one per bar). The second builds QSMC_SmcVpEngine.mq5 and its modules for
+    # the host and runs every unit, the mirrored replay through the host, the
+    # poisoned-array build and the sanitizers. Native: 77 without g++.
+    ("qsmc-chart-hygiene", [sys.executable, "tools/test_qsmc_chart_hygiene.py"]),
+    ("qsmc-smcvp-engine", [sys.executable, "tools/test_qsmc_smcvp.py"]),
     ("release-gate", [sys.executable, "tools/check_release_gate.py"]),
 ]
 
@@ -167,7 +201,7 @@ def main():
     os.chdir(ROOT)
     results = []
     print("=" * 76)
-    print(" QSMC v6.6.20 - curated OFFLINE production-readiness gate")
+    print(" QSMC %s - curated OFFLINE production-readiness gate" % VERSION)
     print(" NOT a compile, NOT a backtest, NOT a broker-latency measurement")
     print("=" * 76)
     for name, cmd in CHECKS:
@@ -195,7 +229,7 @@ def main():
     skipped = [r for r in results if r[1] == "SKIP"]
     summary = os.path.join(OUT, "SUMMARY.txt")
     with open(summary, "w", encoding="utf-8") as f:
-        f.write("QSMC v6.6.20 curated offline production-readiness summary\n")
+        f.write("QSMC %s curated offline production-readiness summary\n" % VERSION)
         f.write("checks=%d passed=%d failed=%d skipped=%d\n"
                 % (len(results), len(results) - len(failed) - len(skipped),
                    len(failed), len(skipped)))
@@ -204,14 +238,14 @@ def main():
         if skipped:
             f.write("\nSkipped checks were NOT verified on this host "
                     "(no usable C++17 compiler / AddressSanitizer).\n")
-        f.write("\nManual gates still required: MetaEditor F7 (0 errors), banner v6.6.20,\n")
+        f.write("\nManual gates still required: MetaEditor F7 (0 errors), banner %s,\n" % VERSION)
         f.write("EA handshake OK, demo/paper observation, and the go-live runbook before real money.\n")
     code, lines = verdict(results, require_native=args.require_native)
     for line in lines:
         print(line)
     print("Summary: %s" % summary)
     if code == 0:
-        print("Still manual: F7 in MetaEditor, v6.6.20 banner, EA iCustom handshake, demo/paper run.")
+        print("Still manual: F7 in MetaEditor, %s banner, EA iCustom handshake, demo/paper run." % VERSION)
         print("Real money only after docs/QSMC_GO_LIVE_RUNBOOK.md; the EA ships ARMED ON DEMO "
               "(EXECUTION_DEMO) with REAL disarmed (InpAllowRealTrading=false, empty login/server "
               "confirmations) and refuses an unauthorized REAL account at init and at every order.")

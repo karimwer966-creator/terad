@@ -37,6 +37,11 @@ EXTRA = [
     # must be read by this checker - an unchecked trading EA is the worst place
     # in a repository to have a typo.
     os.path.join(ROOT, "MQL5", "Experts", "QSMC_AutoTrader.mq5"),
+    # v6.6.22: the SMC + Volume Profile decision engine, a display-only indicator
+    # with its own modules (QSMC_Svp*.mqh, QSMC_SignalRegistry.mqh). A new
+    # translation unit nobody has pressed F7 on yet is exactly what must be read
+    # here.
+    os.path.join(ROOT, "MQL5", "Indicators", "QSMC_SmcVpEngine.mq5"),
 ]
 EXTRA = [e for e in EXTRA if os.path.exists(e)]
 

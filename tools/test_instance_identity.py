@@ -10,7 +10,7 @@ assert 'INSTANCE MISMATCH' in (r/'MQL5/Include/QSMC/QSMC_InstanceIdentity.mqh').
 subprocess.run(['python',str(r/'tools/generate_input_fingerprint.py'),'--check'],check=True)
 print('PASS per-config diagnostics, default-instance binding and exhaustive input manifest')
 
-expected=['Root','LiquidityValue','UnifiedDecision','IncidentSafety','InstanceIdentity','InputFingerprint']
+expected=['Root','LiquidityValue','UnifiedDecision','IncidentSafety','SignalRegistry','ChartLayers','InstanceIdentity','InputFingerprint']
 assert re.findall(r'^#include <QSMC/QSMC_(\w+)\.mqh>',s,re.M)==expected,'unexpected host include topology'
 identity=(r/'MQL5/Include/QSMC/QSMC_InstanceIdentity.mqh').read_text()
 for token in ('ACCOUNT_SERVER','ACCOUNT_LOGIN','actual==defaults','now-seen<=300', 'key==own','DEFAULT_SEEN'):

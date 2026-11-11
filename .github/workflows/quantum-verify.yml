@@ -25,8 +25,19 @@ jobs:
         run: |
           python3 tools/test_xau_execution_policy.py
           python3 tools/test_quantum_account_policy.py
+      # v1.20. The three steps below compile the WHOLE .mq5 with the host g++ against
+      # a typed MQL5 API shim and run the real source in a broker simulator. A skip
+      # (exit 77: no compiler) is a failure HERE: CI exists to verify what a desktop
+      # without g++ cannot.
+      - name: Whole-file strict host build (zero errors, zero warnings, 14 injected defects rejected)
+        run: python3 tools/test_qats_native_build.py
+      - name: Dual-direction engine (unit, 45 scenarios, mirrored twins, symmetry replay, sanitizers)
+        run: python3 tools/test_qats_dual_direction.py
+      - name: Journal report (the DEMO forward-test evidence format)
+        run: python3 tools/test_qats_journal_report.py
       - name: Manual gate still required
         run: |
           echo "This job is NOT a MetaEditor compile and NOT an MT5 demo test."
+          echo "A host-compiler build of the transpiled source is evidence, not proof, of a clean F7."
           echo "F7 in MetaEditor remains the build gate; a DEMO chart attachment"
-          echo "remains the execution gate. See docs/PRODUCTION_AUDIT_2026-11-09_QUANTUM_EA.md"
+          echo "remains the execution gate. See docs/QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md"

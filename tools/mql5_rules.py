@@ -1077,6 +1077,9 @@ UNITS = [
     # the indicator must stay unable to trade, so execution lives in this file
     # and is linted as its own unit.
     ("QSMC_AutoTrader.mq5 (execution)",   "MQL5/Experts/QSMC_AutoTrader.mq5"),
+    # v6.6.22 SMC + Volume Profile decision engine (display only). Its own unit:
+    # eight sources that share nothing with nadir2.mq5 but the signal registry.
+    ("QSMC_SmcVpEngine.mq5 (SMC+VP engine)", "MQL5/Indicators/QSMC_SmcVpEngine.mq5"),
 ]
 
 

@@ -52,7 +52,7 @@ MQL5/Experts/KLJ_DataFeeder.mq5             (اختياري، يصل معطلً�
 5. في Experts/Journal يجب أن ترى:
 
 ```text
-[QSMC_ARB] v6.6.20 arbitration layer ON | preset ...
+[QSMC_ARB] v6.6.22 arbitration layer ON | preset ...
 ```
 
 إذا رأيت `v6.6.19` أو أقدم، فأنت ما زلت تشغّل نسخة قديمة. أوقف كل شيء وأعد النسخ/الترجمة.
@@ -169,16 +169,16 @@ python3 tools/check_release_gate.py
 النتيجة المتوقعة على Linux أو CI (حيث `g++` موجود):
 
 ```text
-OFFLINE GO: 46/46 curated checks passed.
+OFFLINE GO: 57/57 curated checks passed.
 GO (with 0 warning(s)) - mechanical invariants hold.
 ```
 
 ### على Windows بدون مترجم C++
 
-سبع فحوص لا تكتفي بقراءة المصدر: تُترجم مقاطع C++ حقيقية من دوال المؤشر (بعد استبدال واجهة MT5) وتُشغّلها، وتحتاج `g++`. إن لم يكن مثبتًا على الجهاز:
+اثنا عشر فحصًا لا تكتفي بقراءة المصدر: تُترجم كود MQL5 الحقيقي (دوال من المؤشر، والـ EA، ومحرّك SMC + Volume Profile، بعد استبدال واجهة MT5) بمترجم C++ وتُشغّله، وتحتاج `g++`. إن لم يكن مثبتًا على الجهاز:
 
 - تُطبع `SKIP` وتخرج الفحوص بالرمز `77` — لا `PASS` ولا `FAIL`؛
-- يصبح الحكم `OFFLINE GO (PARTIAL): 39/46 verified, 7 SKIPPED` مع أسماء الفحوص المتخطاة؛
+- يصبح الحكم `OFFLINE GO (PARTIAL): 45/57 verified, 12 SKIPPED` مع أسماء الفحوص المتخطاة؛
 - هذه الفحوص **لم تُتحقق على جهازك**، والحكم لا يغطيها؛ اقرأ نتيجة CI على Linux، أو ثبّت MSYS2/MinGW-w64 (مع AddressSanitizer) وأعد التشغيل؛
 - `--require-native` يحوّل التخطي إلى `NO-GO` صريح، وهو ما يستخدمه CI حتى لا يمر مشغّل بلا مترجم بصمت.
 
