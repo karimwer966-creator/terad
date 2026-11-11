@@ -115,7 +115,10 @@ def main():
                     result = dict(t.split("=", 1) for t in line.split()[1:])
             check(proc.returncode == 0 and result, "B1 the two-sided scenario ran and reported its own counts", proc.stdout[-200:])
             v = summarise(log)
-            check(v["versions"] == ["1.20"] and v["format"].startswith("v1.20"), "B2 the journal is recognised as v1.20", (v["versions"], v["format"]))
+            # the SCORED record format is unchanged in v1.21 (both directions per
+            # bar); the version string in the attach banner is what moved.
+            check(v["versions"] in (["1.20"], ["1.21"]) and v["format"].startswith("v1.20"),
+                  "B2 the journal is recognised as v1.20/v1.21", (v["versions"], v["format"]))
             check(v["bars_scored"] == int(result.get("scored", -1)), "B3 scored bars equal the scenario's own count (%s)" % result.get("scored"), v["bars_scored"])
             check(v["BUY"]["filled"] == int(result.get("buyFills", -1)) and v["SELL"]["filled"] == int(result.get("sellFills", -1)),
                   "B4 fills per direction equal the scenario's own counts (BUY %s, SELL %s)" % (result.get("buyFills"), result.get("sellFills")),

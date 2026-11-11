@@ -81,6 +81,11 @@ enum ENUM_SYMBOL_INFO_DOUBLE : int
 enum ENUM_SYMBOL_INFO_STRING : int { SYMBOL_CURRENCY_BASE = 22, SYMBOL_CURRENCY_PROFIT = 23, SYMBOL_CURRENCY_MARGIN = 24, SYMBOL_DESCRIPTION = 20 };
 enum ENUM_SYMBOL_TRADE_MODE : int { SYMBOL_TRADE_MODE_DISABLED = 0, SYMBOL_TRADE_MODE_LONGONLY = 1, SYMBOL_TRADE_MODE_SHORTONLY = 2, SYMBOL_TRADE_MODE_CLOSEONLY = 3, SYMBOL_TRADE_MODE_FULL = 4 };
 enum ENUM_SYMBOL_TRADE_EXECUTION : int { SYMBOL_TRADE_EXECUTION_REQUEST = 0, SYMBOL_TRADE_EXECUTION_INSTANT = 1, SYMBOL_TRADE_EXECUTION_MARKET = 2, SYMBOL_TRADE_EXECUTION_EXCHANGE = 3 };
+const long SYMBOL_EXPIRATION_GTC = 1;
+const long SYMBOL_EXPIRATION_DAY = 2;
+const long SYMBOL_EXPIRATION_SPECIFIED = 4;
+const long SYMBOL_EXPIRATION_SPECIFIED_DAY = 8;
+
 const int SYMBOL_FILLING_FOK = 1;
 const int SYMBOL_FILLING_IOC = 2;
 const int SYMBOL_FILLING_BOC = 4;
@@ -107,6 +112,10 @@ enum ENUM_ORDER_TYPE : int { ORDER_TYPE_BUY = 0, ORDER_TYPE_SELL = 1, ORDER_TYPE
 enum ENUM_ORDER_TYPE_FILLING : int { ORDER_FILLING_FOK = 0, ORDER_FILLING_IOC = 1, ORDER_FILLING_RETURN = 2, ORDER_FILLING_BOC = 3 };
 enum ENUM_ORDER_TYPE_TIME : int { ORDER_TIME_GTC = 0, ORDER_TIME_DAY, ORDER_TIME_SPECIFIED, ORDER_TIME_SPECIFIED_DAY };
 enum ENUM_ORDER_STATE : int { ORDER_STATE_STARTED = 0, ORDER_STATE_PLACED, ORDER_STATE_CANCELED, ORDER_STATE_PARTIAL, ORDER_STATE_FILLED };
+enum ENUM_ORDER_PROPERTY_INTEGER : int { ORDER_TICKET = 0, ORDER_TYPE = 1, ORDER_STATE = 2, ORDER_TIME_SETUP = 8,
+                                          ORDER_TIME_EXPIRATION = 13, ORDER_TYPE_TIME = 14, ORDER_MAGIC = 9 };
+enum ENUM_ORDER_PROPERTY_DOUBLE : int { ORDER_VOLUME_CURRENT = 27, ORDER_PRICE_OPEN = 3, ORDER_SL = 5, ORDER_TP = 6 };
+enum ENUM_ORDER_PROPERTY_STRING : int { ORDER_SYMBOL = 0, ORDER_COMMENT = 1 };
 enum ENUM_TRADE_REQUEST_ACTIONS : int { TRADE_ACTION_DEAL = 1, TRADE_ACTION_PENDING = 5, TRADE_ACTION_SLTP = 6, TRADE_ACTION_MODIFY = 7, TRADE_ACTION_REMOVE = 8, TRADE_ACTION_CLOSE_BY = 10 };
 enum ENUM_POSITION_TYPE : int { POSITION_TYPE_BUY = 0, POSITION_TYPE_SELL = 1 };
 enum ENUM_POSITION_PROPERTY_INTEGER : int { POSITION_TICKET = 17, POSITION_TIME = 1, POSITION_TIME_MSC = 14, POSITION_TIME_UPDATE = 15, POSITION_TYPE = 2, POSITION_MAGIC = 12, POSITION_IDENTIFIER = 13, POSITION_REASON = 18 };
@@ -289,6 +298,14 @@ struct Deal
    double volume, price, commission, swap, profit, fee, sl, tp; string symbol; string comment; int reason;
 };
 
+// A pending order resting at the server. MT5 keeps pending orders in a separate
+// table (OrdersTotal / OrderGetTicket / OrderSelect), never in the position list.
+struct PendingOrder
+{
+   ulong ticket; long magic; string symbol; int type; double volume; double price;
+   double sl, tp; datetime timeSetup, timeExpiration; int typeTime; string comment; int state;
+};
+
 struct SymbolSpec
 {
    string name = "XAUUSD";
@@ -326,10 +343,14 @@ struct State
    datetime lastTickTime = 0;
    double bid = 0.0, ask = 0.0;
    bool haveQuote = false;
+   // broker's ORDER_TYPE_TIME modes the symbol accepts (SYMBOL_EXPIRATION_MODE);
+   // 0 = every mode is allowed, as on the operator's broker.
+   long expirationMode = 0;
    Series series[6];               // M5 M15 H1 H4 D1 W1
    std::vector<Indicator> indicators;
    std::map<std::string, double> gv;
    std::vector<Position> positions;
+   std::vector<PendingOrder> orders;
    std::vector<Deal> deals;
    std::vector<ulong> selected;    // deal tickets visible to HistoryDealGet*
    std::vector<ulong> selectedExtra;
@@ -665,6 +686,47 @@ inline void processStops(double prevBid, double prevAsk, double bid, double ask,
    }
 }
 
+// Pending orders at the server: trigger on the quote, expire on the clock.
+// A BUY LIMIT fills when the ASK reaches its price (it is bought at the ask, so a
+// limit "at the level" fills as soon as the ask touches it); a SELL LIMIT fills
+// when the BID reaches its price. The filled order becomes a position whose open
+// price is the order price, carrying the order's own server-side SL and TP, and
+// its entry deal is queued to OnTradeTransaction exactly like a market fill.
+inline void processOrders()
+{
+   for(size_t i = S.orders.size(); i-- > 0;)
+   {
+      PendingOrder o = S.orders[i];
+      bool expired = (o.typeTime == ORDER_TIME_SPECIFIED || o.typeTime == ORDER_TIME_SPECIFIED_DAY)
+                     && o.timeExpiration > 0 && S.now >= o.timeExpiration;
+      if(expired) { S.orders.erase(S.orders.begin() + (long)i); continue; }
+      if(!S.marketOpen || !S.haveQuote) continue;
+      bool fill = false;
+      double px = o.price;
+      if(o.type == ORDER_TYPE_BUY_LIMIT && S.ask <= o.price) fill = true;
+      if(o.type == ORDER_TYPE_SELL_LIMIT && S.bid >= o.price) fill = true;
+      if(o.type == ORDER_TYPE_BUY_STOP && S.ask >= o.price) fill = true;
+      if(o.type == ORDER_TYPE_SELL_STOP && S.bid <= o.price) fill = true;
+      if(!fill) continue;
+      if(marginOf(o.volume, px) > equity() - usedMargin()) continue;  // not enough money: it stays pending
+      Position p{};
+      p.ticket = S.nextTicket++;
+      p.magic = o.magic;
+      p.symbol = o.symbol;
+      p.type = (o.type == ORDER_TYPE_BUY_LIMIT || o.type == ORDER_TYPE_BUY_STOP) ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+      p.volume = o.volume;
+      p.priceOpen = px;
+      p.sl = o.sl;
+      p.tp = o.tp;
+      p.time = S.now;
+      p.comment = o.comment;
+      S.positions.push_back(p);
+      addDeal(p, DEAL_ENTRY_IN, p.volume, px, 0.0, DEAL_REASON_EXPERT, p.magic);
+      S.orders.erase(S.orders.begin() + (long)i);
+      S.sendStats["fill:" + std::to_string((long)o.ticket)]++;
+   }
+}
+
 // Feed one quote. callEA=false warms the history without running the expert.
 inline void feedTick(datetime t, double bid, double ask, long volInc, bool gapTick, bool callEA)
 {
@@ -675,6 +737,7 @@ inline void feedTick(datetime t, double bid, double ask, long volInc, bool gapTi
    S.bid = bid;
    S.ask = ask;
    S.haveQuote = true;
+   processOrders();
    pushTickToSeries(t, bid, volInc);
    if(callEA)
    {
@@ -736,6 +799,31 @@ inline bool stopsAcceptable(int type, double sl, double tp, uint &rc)
    return true;
 }
 
+// A pending order's price must be on the correct side of the market and its
+// stops must satisfy the broker's stops level, exactly as a market order's are.
+inline bool pendingStopsAcceptable(const ENUM_ORDER_TYPE type, const double price, const double sl, const double tp, uint &rc)
+{
+   rc = 0;
+   double minDist = (double)std::max(1, S.sym.stopsLevel) * S.sym.point;
+   bool isBuy = (type == ORDER_TYPE_BUY_LIMIT || type == ORDER_TYPE_BUY_STOP);
+   if(price <= 0.0 || sl <= 0.0 || tp <= 0.0) { rc = TRADE_RETCODE_INVALID_STOPS; return false; }
+   if(type == ORDER_TYPE_BUY_LIMIT && price >= S.ask) { rc = TRADE_RETCODE_INVALID_PRICE; return false; }
+   if(type == ORDER_TYPE_SELL_LIMIT && price <= S.bid) { rc = TRADE_RETCODE_INVALID_PRICE; return false; }
+   if(type == ORDER_TYPE_BUY_STOP && price <= S.ask) { rc = TRADE_RETCODE_INVALID_PRICE; return false; }
+   if(type == ORDER_TYPE_SELL_STOP && price >= S.bid) { rc = TRADE_RETCODE_INVALID_PRICE; return false; }
+   if(isBuy)
+   {
+      if(sl >= price || tp <= price) { rc = TRADE_RETCODE_INVALID_STOPS; return false; }
+      if(price - sl < minDist || tp - price < minDist) { rc = TRADE_RETCODE_INVALID_STOPS; return false; }
+   }
+   else
+   {
+      if(sl <= price || tp >= price) { rc = TRADE_RETCODE_INVALID_STOPS; return false; }
+      if(sl - price < minDist || price - tp < minDist) { rc = TRADE_RETCODE_INVALID_STOPS; return false; }
+   }
+   return true;
+}
+
 inline bool serverSendImpl(const MqlTradeRequest &rq, MqlTradeResult &rs)
 {
    rs = MqlTradeResult{};
@@ -746,6 +834,82 @@ inline bool serverSendImpl(const MqlTradeRequest &rq, MqlTradeResult &rs)
    if(!S.terminalTradeAllowed || !S.mqlTradeAllowed) return fail(TRADE_RETCODE_CLIENT_DISABLES_AT);
    if(!S.acc.tradeAllowed) return fail(TRADE_RETCODE_TRADE_DISABLED);
    if(rq.symbol != S.sym.name) return fail(TRADE_RETCODE_INVALID);
+   // ---------------------------------------------------------- pending orders
+   if(rq.action == TRADE_ACTION_REMOVE)
+   {
+      for(size_t i = 0; i < S.orders.size(); i++)
+         if(S.orders[i].ticket == rq.order)
+         {
+            S.orders.erase(S.orders.begin() + (long)i);
+            rs.retcode = TRADE_RETCODE_DONE;
+            rs.comment = retcodeText(rs.retcode);
+            S.sendOk++;
+            return true;
+         }
+      return fail(TRADE_RETCODE_INVALID_ORDER);
+   }
+   if(rq.action == TRADE_ACTION_MODIFY)
+   {
+      for(PendingOrder &o : S.orders)
+         if(o.ticket == rq.order)
+         {
+            uint rc = 0;
+            if(!S.marketOpen) return fail(TRADE_RETCODE_MARKET_CLOSED);
+            if(!pendingStopsAcceptable((ENUM_ORDER_TYPE)o.type, rq.price, rq.sl, rq.tp, rc)) return fail(rc);
+            o.price = rq.price;
+            o.sl = rq.sl;
+            o.tp = rq.tp;
+            if(rq.type_time != ORDER_TIME_GTC) { o.typeTime = (int)rq.type_time; o.timeExpiration = rq.expiration; }
+            rs.retcode = TRADE_RETCODE_DONE;
+            rs.comment = retcodeText(rs.retcode);
+            S.sendOk++;
+            return true;
+         }
+      return fail(TRADE_RETCODE_INVALID_ORDER);
+   }
+   if(rq.action == TRADE_ACTION_PENDING)
+   {
+      if(!S.marketOpen || !S.haveQuote) return fail(TRADE_RETCODE_MARKET_CLOSED);
+      if(rq.type != ORDER_TYPE_BUY_LIMIT && rq.type != ORDER_TYPE_SELL_LIMIT &&
+         rq.type != ORDER_TYPE_BUY_STOP && rq.type != ORDER_TYPE_SELL_STOP) return fail(TRADE_RETCODE_INVALID);
+      if(S.expirationMode != 0)
+      {
+         long need = (rq.type_time == ORDER_TIME_SPECIFIED) ? (long)SYMBOL_EXPIRATION_SPECIFIED
+                   : (rq.type_time == ORDER_TIME_GTC ? 0 : 0);
+         if(need != 0 && (S.expirationMode & need) == 0) return fail(TRADE_RETCODE_INVALID_EXPIRATION);
+      }
+      if(rq.type_time == ORDER_TIME_SPECIFIED && (rq.expiration <= S.now || rq.expiration > S.now + 30 * 86400))
+         return fail(TRADE_RETCODE_INVALID_EXPIRATION);
+      long need = (rq.type_filling == ORDER_FILLING_FOK) ? SYMBOL_FILLING_FOK : (rq.type_filling == ORDER_FILLING_IOC ? SYMBOL_FILLING_IOC : 0);
+      if(need != 0 && (S.sym.fillingMode & need) == 0) return fail(TRADE_RETCODE_INVALID_FILL);
+      double steps = rq.volume / S.sym.volStep;
+      if(rq.volume < S.sym.volMin - 1e-12 || rq.volume > S.sym.volMax + 1e-12 || std::fabs(steps - std::round(steps)) > 1e-6)
+         return fail(TRADE_RETCODE_INVALID_VOLUME);
+      uint rc = 0;
+      if(!pendingStopsAcceptable(rq.type, rq.price, rq.sl, rq.tp, rc)) return fail(rc);
+      PendingOrder o{};
+      o.ticket = S.nextTicket++;
+      o.magic = (long)rq.magic;
+      o.symbol = rq.symbol;
+      o.type = (int)rq.type;
+      o.volume = rq.volume;
+      o.price = rq.price;
+      o.sl = rq.sl;
+      o.tp = rq.tp;
+      o.timeSetup = S.now;
+      o.typeTime = (int)rq.type_time;
+      o.timeExpiration = rq.expiration;
+      o.comment = rq.comment;
+      o.state = ORDER_STATE_PLACED;
+      S.orders.push_back(o);
+      rs.retcode = TRADE_RETCODE_PLACED;
+      rs.comment = retcodeText(rs.retcode);
+      rs.order = o.ticket;
+      rs.volume = o.volume;
+      rs.price = o.price;
+      S.sendOk++;
+      return true;
+   }
    if(rq.action == TRADE_ACTION_SLTP)
    {
       S.modifyCount++;
@@ -837,7 +1001,11 @@ inline bool serverSendImpl(const MqlTradeRequest &rq, MqlTradeResult &rs)
 inline bool serverSend(const MqlTradeRequest &rq, MqlTradeResult &rs)
 {
    bool ok = serverSendImpl(rq, rs);
-   const char *kind = (rq.action == TRADE_ACTION_SLTP) ? "modify" : (rq.position != 0 ? "close" : "entry");
+   const char *kind = (rq.action == TRADE_ACTION_SLTP) ? "modify"
+                    : (rq.action == TRADE_ACTION_MODIFY) ? "order_modify"
+                    : (rq.action == TRADE_ACTION_REMOVE) ? "order_remove"
+                    : (rq.action == TRADE_ACTION_PENDING) ? "pending"
+                    : (rq.position != 0 ? "close" : "entry");
    S.sendStats[std::string(kind) + ":" + std::to_string(rs.retcode)]++;
    return ok;
 }
@@ -1158,6 +1326,7 @@ inline long SymbolInfoInteger(const string name, const ENUM_SYMBOL_INFO_INTEGER 
       case SYMBOL_SPREAD: return (long)std::llround((sim::S.ask - sim::S.bid) / sim::S.sym.point);
       case SYMBOL_TRADE_STOPS_LEVEL: return sim::S.sym.stopsLevel;
       case SYMBOL_TRADE_FREEZE_LEVEL: return sim::S.sym.freezeLevel;
+      case SYMBOL_EXPIRATION_MODE: return sim::S.expirationMode;
       case SYMBOL_TRADE_MODE: return sim::S.sym.tradeMode;
       case SYMBOL_TRADE_EXEMODE: return sim::S.sym.execMode;
       case SYMBOL_FILLING_MODE: return sim::S.sym.fillingMode;
@@ -1299,6 +1468,77 @@ inline bool OrderCalcMargin(const ENUM_ORDER_TYPE action, const string symbol, c
 inline bool OrderSend(const MqlTradeRequest &request, MqlTradeResult &result) { return sim::serverSend(request, result); }
 
 namespace sim { inline long selectedPosition = -1; }
+// --- pending orders (the OrdersTotal table) ---
+namespace sim { inline long selectedOrder = -1; }
+inline int OrdersTotal() { return (int)sim::S.orders.size(); }
+inline ulong OrderGetTicket(const int index)
+{
+   if(index < 0 || (size_t)index >= sim::S.orders.size()) { sim::selectedOrder = -1; return 0; }
+   sim::selectedOrder = index;
+   return sim::S.orders[(size_t)index].ticket;
+}
+inline bool OrderSelect(const ulong ticket)
+{
+   for(size_t i = 0; i < sim::S.orders.size(); i++)
+      if(sim::S.orders[i].ticket == ticket) { sim::selectedOrder = (long)i; return true; }
+   sim::selectedOrder = -1;
+   return false;
+}
+inline sim::PendingOrder *selOrder()
+{
+   if(sim::selectedOrder < 0 || (size_t)sim::selectedOrder >= sim::S.orders.size()) return nullptr;
+   return &sim::S.orders[(size_t)sim::selectedOrder];
+}
+inline long OrderGetInteger(const ENUM_ORDER_PROPERTY_INTEGER prop)
+{
+   sim::PendingOrder *o = selOrder();
+   if(!o) { sim::apiError("OrderGetInteger with no order selected"); return 0; }
+   switch(prop)
+   {
+      case ORDER_TICKET: return (long)o->ticket;
+      case ORDER_MAGIC: return o->magic;
+      case ORDER_TYPE: return o->type;
+      case ORDER_STATE: return o->state;
+      case ORDER_TIME_SETUP: return (long)o->timeSetup;
+      case ORDER_TIME_EXPIRATION: return (long)o->timeExpiration;
+      case ORDER_TYPE_TIME: return o->typeTime;
+      default: sim::apiError("OrderGetInteger property not modelled: " + std::to_string((int)prop)); return 0;
+   }
+}
+inline double OrderGetDouble(const ENUM_ORDER_PROPERTY_DOUBLE prop)
+{
+   sim::PendingOrder *o = selOrder();
+   if(!o) { sim::apiError("OrderGetDouble with no order selected"); return 0.0; }
+   switch(prop)
+   {
+      case ORDER_VOLUME_CURRENT: return o->volume;
+      case ORDER_PRICE_OPEN: return o->price;
+      case ORDER_SL: return o->sl;
+      case ORDER_TP: return o->tp;
+      default: sim::apiError("OrderGetDouble property not modelled: " + std::to_string((int)prop)); return 0.0;
+   }
+}
+inline string OrderGetString(const ENUM_ORDER_PROPERTY_STRING prop)
+{
+   sim::PendingOrder *o = selOrder();
+   if(!o) { sim::apiError("OrderGetString with no order selected"); return ""; }
+   switch(prop)
+   {
+      case ORDER_SYMBOL: return o->symbol;
+      case ORDER_COMMENT: return o->comment;
+      default: return "";
+   }
+}
+inline bool OrderDelete(const ulong ticket)
+{
+   MqlTradeRequest rq{};
+   MqlTradeResult rs{};
+   rq.action = TRADE_ACTION_REMOVE;
+   rq.order = ticket;
+   rq.symbol = sim::S.sym.name;
+   return sim::serverSend(rq, rs);
+}
+
 inline int PositionsTotal() { return (int)sim::S.positions.size(); }
 inline ulong PositionGetTicket(const int index)
 {
@@ -1513,6 +1753,57 @@ public:
       (void)price;
       return open(ORDER_TYPE_SELL, volume, symbol.empty() ? sim::S.sym.name : symbol, sl, tp, comment);
    }
+   // CTrade::OrderOpen / OrderModify / OrderDelete, same signatures as the
+   // standard library (expiration type + datetime, then stoploss / takeprofit),
+   // so the EA source is the bytes MetaEditor compiles.
+   bool OrderOpen(const ENUM_ORDER_TYPE type, const double volume, const double price, const double limit_price = 0.0,
+                  const double sl = 0.0, const double tp = 0.0, const ENUM_ORDER_TYPE_TIME type_time = ORDER_TIME_GTC,
+                  const datetime expiration = 0, const string comment = "")
+   {
+      (void)limit_price;
+      MqlTradeRequest rq{};
+      rq.action = TRADE_ACTION_PENDING;
+      rq.symbol = sim::S.sym.name;
+      rq.magic = m_magic;
+      rq.volume = volume;
+      rq.type = type;
+      rq.price = price;
+      rq.sl = sl;
+      rq.tp = tp;
+      rq.type_time = type_time;
+      rq.expiration = expiration;
+      rq.deviation = m_deviation;
+      rq.type_filling = m_filling;
+      rq.comment = comment;
+      return sim::serverSend(rq, m_result);
+   }
+   bool OrderModify(const ulong ticket, const double price, const double sl, const double tp,
+                    const ENUM_ORDER_TYPE_TIME type_time = ORDER_TIME_GTC, const datetime expiration = 0,
+                    const double stoplimit = 0.0)
+   {
+      (void)stoplimit;
+      MqlTradeRequest rq{};
+      rq.action = TRADE_ACTION_MODIFY;
+      rq.symbol = sim::S.sym.name;
+      rq.magic = m_magic;
+      rq.order = ticket;
+      rq.price = price;
+      rq.sl = sl;
+      rq.tp = tp;
+      rq.type_time = type_time;
+      rq.expiration = expiration;
+      return sim::serverSend(rq, m_result);
+   }
+   bool OrderDelete(const ulong ticket)
+   {
+      MqlTradeRequest rq{};
+      rq.action = TRADE_ACTION_REMOVE;
+      rq.symbol = sim::S.sym.name;
+      rq.magic = m_magic;
+      rq.order = ticket;
+      return sim::serverSend(rq, m_result);
+   }
+
    bool PositionModify(const ulong ticket, const double sl, const double tp)
    {
       MqlTradeRequest rq{};
