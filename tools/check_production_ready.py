@@ -91,6 +91,14 @@ CHECKS = [
     ("scalper-preset", [sys.executable, "tools/test_scalper_preset.py"]),
     ("at-risk-audit", [sys.executable, "tools/test_at_risk_audit.py"]),
     ("quantum-ea-verify", [sys.executable, "tools/verify_quantum_ea.py"]),
+    # QATS v1.20: the whole EA built by the host compiler against a typed MQL5 shim
+    # (strict, zero warnings), the dual-direction engine executed in a broker
+    # simulator with every bullish scenario replayed as its bearish mirror image,
+    # and the journal report an operator reads after a DEMO run. Native: they exit
+    # 77 on a host without g++ and the verdict then says PARTIAL.
+    ("qats-native-build", [sys.executable, "tools/test_qats_native_build.py"]),
+    ("qats-dual-direction", [sys.executable, "tools/test_qats_dual_direction.py"]),
+    ("qats-journal-report", [sys.executable, "tools/test_qats_journal_report.py"]),
     ("release-gate", [sys.executable, "tools/check_release_gate.py"]),
 ]
 

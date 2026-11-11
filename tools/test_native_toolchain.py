@@ -54,6 +54,15 @@ NATIVE_SUITES = [
     ("resolver-runtime", "test_resolver_runtime.py", False),
 ]
 
+# QATS v1.20: three more suites that need the host compiler and follow the same
+# skip contract. The curated gate itself runs them for real (two take about a
+# minute each), so only the compiler-less half of the contract is repeated here.
+QATS_NATIVE_SUITES = [
+    ("qats-native-build", "test_qats_native_build.py", False),
+    ("qats-dual-direction", "test_qats_dual_direction.py", False),
+    ("qats-journal-report", "test_qats_journal_report.py", True),
+]
+
 
 def check(ok, name, detail=""):
     COUNT[0] += 1
@@ -151,7 +160,7 @@ NT.SKIPS[:] = saved_skips
 # ---------------------------------------------------------------------------
 # 3. the seven native suites: 77 when they cannot run, 0 when they can
 # ---------------------------------------------------------------------------
-for name, filename, has_source in NATIVE_SUITES:
+for name, filename, has_source in NATIVE_SUITES + QATS_NATIVE_SUITES:
     rc, text = run_suite(filename, force_no_native=True)
     check(rc == NT.SKIP_EXIT,
           "%s exits 77 when the toolchain is absent" % name, "rc=%s" % rc)
@@ -250,6 +259,9 @@ check("native-toolchain" in names, "this suite is part of the curated gate")
 curated_native = [n for n, _, _ in NATIVE_SUITES if n in names]
 check(len(curated_native) == len(NATIVE_SUITES),
       "all seven native suites are still in the curated gate", curated_native)
+curated_qats = [n for n, _, _ in QATS_NATIVE_SUITES if n in names]
+check(len(curated_qats) == len(QATS_NATIVE_SUITES),
+      "the three QATS native suites are in the curated gate", curated_qats)
 check(all(isinstance(cmd, list) and all(isinstance(a, str) for a in cmd)
           for _, cmd in G.CHECKS), "every curated command is a list of strings")
 print("NOTE  curated checks: %d" % len(names))

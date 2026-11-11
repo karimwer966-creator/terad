@@ -54,8 +54,22 @@ void Print(string){}
 string DoubleToString(double, int){return "value";}
 string _Symbol="XAUUSD";
 struct Spec { double point=.01, tickSize=.01, volStep=.01, volMin=.01, volMax=100, volLimit=0; int stopsLevel=20; string profitCcy="USD"; } g_spec;
-struct SAnalysis { int dir=1,score=55; datetime signalBar=1; double entry=2000.1, sl=1990, tp=2020.3, stopDist=10.1; string tpSource="RR"; };
-string g_executionReason, InpTradeComment="QATS";
+struct SAnalysis { int dir=1,score=55; datetime signalBar=1, setupTime=0; double entry=2000.1, sl=1990, tp=2020.3, stopDist=10.1; string tpSource="RR"; };
+string g_executionReason, g_executionStage, InpTradeComment="QATS";
+SAnalysis g_pendingPlan;
+int g_statApproved[2], g_statExecuted[2];
+#define TIME_DATE 1
+#define TIME_MINUTES 2
+string TimeToString(datetime, int){return "time";}
+string SetupId(int, datetime){return "setup";}
+string PriceText(double){return "price";}
+string QATS_ClassName(int){return "class";}
+int SideIndex(int dir){return dir>0?0:1;}
+bool oppositeOpen=false, setupTraded=false;
+int setupMarks=0;
+bool OppositePositionOpen(int){return oppositeOpen;}
+bool SetupAlreadyTraded(int, datetime){return setupTraded;}
+void MarkSetupTraded(int, datetime){++setupMarks;}
 int InpMinScore=55, InpMinStopPoints=20, InpMaxStopPoints=5000;
 double InpMinRR=1.5, InpMaxSpreadFracOfStop=.2, InpMaxMarginUse=.9;
 bool InpDryRun=false;
@@ -100,7 +114,7 @@ datetime TimeTradeServer(){return 1;}
         functions = '\n'.join(function(n) for n in ('QATS_DirectionVeto', 'QATS_ScoreEligible', 'QATS_StopsValid', 'ReserveSignal', 'CalcPositionVolume', 'ExecuteSignal'))
         main = r'''
 void check(bool ok,const char* message){if(!ok){std::cerr<<message<<"\n";std::exit(1);}}
-void reset(){globals.clear();globals["sig_buy"]=0;globals["sig_sell"]=0;sentCount=0;guard=true;freeMargin=10000;bid=2000;ask=2000.1;InpDryRun=false;serverRetcode=10009;sendResult=true;}
+void reset(){globals.clear();globals["sig_buy"]=0;globals["sig_sell"]=0;sentCount=0;guard=true;freeMargin=10000;bid=2000;ask=2000.1;InpDryRun=false;serverRetcode=10009;sendResult=true;oppositeOpen=false;setupTraded=false;setupMarks=0;}
 SAnalysis plan(int dir,int score){SAnalysis p;p.dir=dir;p.score=score;p.signalBar=10;p.entry=dir>0?ask:bid;p.sl=dir>0?1990:2010.1;p.tp=dir>0?2021:1979;p.stopDist=10.1;return p;}
 int main(){
  for(int dir:{1,-1}) {
@@ -121,8 +135,12 @@ int main(){
   reset();p=plan(dir,55);InpDryRun=true;check(!ExecuteSignal(p)&&sentCount==0&&globals[dir>0?"sig_buy":"sig_sell"]==0,"dry run");
   reset();p=plan(dir,55);serverRetcode=10012;sendResult=false;check(!ExecuteSignal(p)&&!ExecuteSignal(p)&&sentCount==1&&g_pendingRetryAt==0,"timeout cannot retry");
   reset();p=plan(dir,55);p.sl+=.005;check(!ExecuteSignal(p)&&sentCount==0,"tick grid");
+  reset();p=plan(dir,55);oppositeOpen=true;check(!ExecuteSignal(p)&&sentCount==0,"never both sides");
+  reset();p=plan(dir,55);setupTraded=true;check(!ExecuteSignal(p)&&sentCount==0,"setup already traded");
+  reset();p=plan(dir,55);check(ExecuteSignal(p)&&setupMarks==1,"an accepted order spends its setup");
+  reset();p=plan(dir,55);serverRetcode=10016;sendResult=false;check(!ExecuteSignal(p)&&setupMarks==0,"a refused order does not spend its setup");
  }
- std::cout<<"24 score/direction, 8 directional veto, and 18 guard/duplicate cases passed\n";
+ std::cout<<"24 score/direction, 8 directional veto, and 26 guard/duplicate cases passed\n";
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:
@@ -136,7 +154,10 @@ int main(){
 
     def test_policy_wiring(self):
         self.assertRegex(SOURCE, r'InpMinScore\s*=\s*55\s*;')
-        self.assertIn('QATS_DirectionVeto(IsXAUUSD(), dir, a.d1Bias, a.h4Bias,', SOURCE)
+        # v1.20: the directional veto is evaluated for EACH side inside EvaluateSide
+        self.assertIn('QATS_DirectionVeto(IsXAUUSD(), dir, d1Bias, h4Bias, InpUseEMAAlignmentVeto, InpAllowCounterBias)', SOURCE)
+        self.assertIn('EvaluateSide(+1, r, st, pools, a.d1Bias, a.h4Bias, a.dealPos, pxNow, a.buy);', SOURCE)
+        self.assertIn('EvaluateSide(-1, r, st, pools, a.d1Bias, a.h4Bias, a.dealPos, pxNow, a.sell);', SOURCE)
         self.assertIn('!IsXAUUSD() && !QATS_ProfileAllows(plan_cls)', SOURCE)
         self.assertIn('if(IsXAUUSD() && !ReserveSignal(plan, g_executionReason)) return false;', SOURCE)
         self.assertIn('if(IsXAUUSD() || AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_REAL)\n   {\n      g_executionReason = StringFormat("order not confirmed:', SOURCE)

@@ -8,6 +8,13 @@ Statuses used (as mandated): `PASS` = verified in this environment · `FAIL` = v
 `BLOCKED` = cannot be verified here, with the exact blocker named · `NOT TESTED` = no claim made either way.
 **Nothing in this report marks an untested feature as PASS.**
 
+> **Superseded in part by v1.20 (2026-11-11).** The statement in section 7 that "both directions are fully
+> symmetric" did not survive execution: v1.11 chose its direction before scoring and scored one side only, and a
+> price-mirrored replay did not mirror its trades. The signal engine, the weights, the trade plan and the loss
+> accounting described here were replaced. Current state, evidence and verdict:
+> [`QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md`](QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md).
+> The repository-consolidation record below is unchanged.
+
 ---
 
 ## 1. Original repository architecture (as found at commit `439420d`)

@@ -1,8 +1,13 @@
 # شجرة نظام QuantumAutonomousTradingSystem — System Architecture
 
-**النظام:** QuantumAutonomousTradingSystem (QATS) v1.10
+**النظام:** QuantumAutonomousTradingSystem (QATS) v1.20
 **نوع الملف:** خبير MQL5 واحد مستقل (Standalone Expert Advisor) — `MQL5/Experts/QuantumAutonomousTradingSystem.mq5`
-**التاريخ:** 2026-11-09 · الفرع: `arena/f83fc236-terad` · PR #56
+**التاريخ:** 2026-11-09، حُدِّث 2026-11-11 للنسخة v1.20 (محرك ثنائي الاتجاه)
+
+> **v1.20:** طبقات التحليل والتقييم والتخطيط وعدّ الخسائر استُبدلت. كان v1.11 يختار اتجاهًا واحدًا قبل التقييم
+> فيبقى ساعات يشتري دون أن يقيّم البيع. الأسباب والأدلة والحكم في
+> [`QATS_DUAL_DIRECTION_AR.md`](QATS_DUAL_DIRECTION_AR.md) و
+> [`QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md`](QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md).
 
 > قراءة سريعة: هذا المستند يشرح **شجرة النظام** — الطبقات، المكوّنات، تدفّق البيانات من الشمعة
 > المغلقة إلى الأمر الفعلي على خادم DEMO، خريطة الملفات، وجداول الحراس والحدود.
@@ -24,8 +29,9 @@ QATS (QuantumAutonomousTradingSystem.mq5)
 │
 ├─► [B] طبقة حماية رأس المال — Capital Protection (تُعاد فحوصها كل قرار)
 │     ├─ UpdateDailyGuards()   baseline يومي + HWM + قفل اليوم + وقف السحب
-│     ├─ ProcessClosedDeals()  كرة الثلج: صفقات خاسرة متتالية → تهدئة
-│     ├─ EntriesAllowed()      السلسلة الكاملة للأذون قبل أي أمر
+│     ├─ ProcessClosedDeals()  نتيجة كل مركز من سجل الصفقات (ربح + سواب + عمولة + رسوم)
+│     ├─ UpdateCooldownState() حالة التوقف: بداية / نهاية / عدد الخسائر، مع إصلاح الحالة المحفوظة
+│     ├─ GuardBlocks()         السلسلة الكاملة، وتُسمّى كل الحواجز الفعّالة لا أولها فقط
 │     └─ Persisted GVs         تبقى عبر إعادة تشغيل الشارت (لا تُصفَّر)
 │
 ├─► [C] طبقة بيانات السوق — Market Data Engine (Closed Bars Only)
@@ -34,29 +40,32 @@ QATS (QuantumAutonomousTradingSystem.mq5)
 │     ├─ SessionVWAP()             VWAP جلسة اليوم (من بداية يوم الخادم)
 │     └─ SmaVolume()               متوسط حجم التيك M5 (20 شمعة)
 │
-├─► [D] طبقة التحليل — Smart Money Concepts Engine
+├─► [D] طبقة التحليل — Smart Money Concepts Engine (للاتجاهين في كل شمعة)
 │     ├─ FindSwings()              نقاط انعكاس مؤكدة (fractal k=2)
-│     ├─ HighestHigh/LowestLow()   dealing range + أهداف السيولة
-│     ├─ BuildLiquidityPools()     PDH/PDL/PWH/PWL + equal highs/lows
-│     ├─ DetectSweep()             اكتساح السيولة ثم إغلاق داخلها
-│     ├─ DetectDisplacement()      شمعة اندفاعية (جسد ≥ 0.8×ATR)
-│     ├─ FindOrderBlock()          كتلة الأوامر = آخر شمعة معاكسة قبل الاندفاع
-│     ├─ FindFVG()                فجوات القيمة العادلة (3 شمعات)
+│     ├─ BuildStructure()          هيكل H1 سببيًا: BOS (مع الاتجاه) / CHoCH (عكسه)
+│     ├─ BuildLiquidityMap()       كل مستوى سيولة وحالته: INTACT / SWEPT / ACCEPTED / SPENT
+│     ├─ SweepForDirection()       الاكتساح القائم الذي يتغذى عليه كل اتجاه (تنتهي صلاحيته ويسقط إن فشل)
+│     ├─ DetectDisplacement()      شمعة اندفاعية (جسد ≥ 0.8×ATR) عند الاكتساح أو بعده
+│     ├─ FindOrderBlock() / FindFVG() / ZoneStillValid()   مناطق لم تُخترق بعد
 │     ├─ DealingRangePosition()    موقع السعر داخل النطاق (Premium/Discount)
-│     ├─ M15Confirms()             تأكيد الإطار M15
-│     └─ M5Trigger()               إشارة الدخول M5 (Engulfing/Pin/Marubozu)
+│     ├─ M15Confirms() / M5Trigger()   تأكيد M15 وإشارة M5
+│     └─ EvaluateSide(+1) و EvaluateSide(-1)   الدالة نفسها مرتين: أدلة الشراء وأدلة البيع
 │
-├─► [E] طبقة التسجيل — Confluence Scoring (0..100)
-│     ├─ D1 توافق 20 · H4 توافق 15 · H1 بنية 20/10
-│     ├─ اكتساح 15 · اندفاع 10 · منطقة OB/FVG 10/5
-│     ├─ Premium/Discount 5 · Volume 5 · VWAP 5 · M15 5 · M5 5
-│     ├─ Hard Veto: D1 وH4 ضدّان معاً ⇒ رفض (إن فُعِّل)
-│     └─ عتبة: InpMinScore = 65
+├─► [E] طبقة القرار — Core Gate → Score → Direction Policy
+│     ├─ QATS_CoreGate()           InpStrategyProfile: محافظ / متوازن (افتراضي) / نشِط
+│     │                            الاكتساح وحده لا يجتاز أي وضع
+│     ├─ QATS_ScoreSide()          جدول واحد للاتجاهين، مجموعه 100:
+│     │                            D1 17 · H4 13 · هيكل 17 · اكتساح 13 · اندفاع 9 · منطقة 9/4
+│     │                            موقع 4 · VWAP 4 · حجم 4 · M15 5 · M5 5
+│     ├─ عتبة: InpMinScore = 55 (بعد اجتياز البوابة فقط)
+│     ├─ QATS_ResolveDirection()   عند تأهل الطرفين: فارق النقاط ← هيكل H1 ← D1 ← H4 ← لا صفقة
+│     └─ على غير XAUUSD فقط: فيتو D1/H4 (إن فُعِّل)
 │
 ├─► [F] طبقة التخطيط — Trade Plan (Entry/SL/TP)
-│     ├─ BuildTradePlan()     SL = max(ATR×1.5, مدى M5×3) + هامش الوسيط
+│     ├─ BuildTradePlan()     SL = max(ATR×1.5, مدى M5×3) + هامش الوسيط؛ وقف البيع يُزاح بالسبريد
 │     ├─ صيغة التحقق: stopsLevel / freezeLevel / InpMin|MaxStopPoints
-│     └─ TP: أقرب سيولة معاكسة إن حققت RR ≥ InpMinRR، وإلا RR×2.0
+│     ├─ TP: أقرب سيولة سليمة (INTACT) إن حققت RR ≥ InpMinRR، وإلا RR×2.0
+│     └─ SetupAlreadyTraded()  دخول واحد لكل إعداد (هوية الإعداد = شمعة H1 للكسر أو الارتداد)
 │
 ├─► [G] طبقة المخاطر — Dynamic Position Sizing
 │     ├─ EffectiveRiskPercent()   Equity × pct، سقف إدخال ثم سقف صلب 2.0%
@@ -79,8 +88,10 @@ QATS (QuantumAutonomousTradingSystem.mq5)
 └─► [J] طبقة التشخيص — Diagnostics
       ├─ Heartbeat()         "[QATS][HB]" كل InpHeartbeatSeconds
       ├─ DrawPanel()          لوحة Comment() على الشارت
-      ├─ OnTradeTransaction() سجل كل صفقة بختم الأداة
-      └─ [QATS][SKIP/ORDER/VERIFY]  كل قرار مع سببه الكامل
+      ├─ OnTradeTransaction() سجل كل صفقة، وتحديث سلسلة الخسائر فور صفقة الإغلاق
+      ├─ دورة حياة الإشارة: [DETECTED] ← [SIGNAL][SCORED] ← [BLOCK][REASON] / [EXECUTION][REJECTED]
+      │                      ← [EXECUTION][APPROVED] ← [EXECUTION][FILLED]
+      └─ [QATS][STATS]        عدّادات الشراء والبيع يوميًا وعند الإزالة
 ```
 
 ---
@@ -99,26 +110,28 @@ OnTick()
   │                                        نعم
   ▼                                        ▼
 ProcessClosedDeals()                 AnalyzeMarket()
-(كرة-الخسارة ← watermark)            D1 → H4 → H1(SWING) → LIQUIDITY
-                                     → SWEEP → DISPLACE → MSS/BOS
-                                     → OB / FVG → PREMIUM/DISCOUNT
-                                     → M15 → M5
+(نتيجة كل مركز ← سلسلة الخسائر)      D1 → H4 → H1 (BOS/CHoCH) → خريطة السيولة
+                                     ثم EvaluateSide(BUY) و EvaluateSide(SELL):
+                                     اكتساح → اندفاع → هيكل → OB/FVG → موقع → VWAP → M15 → M5
                                           │
-                              Score < 65? ── نعم ──► [SKIP] + السبب
-                                          │ لا
-                              EntriesAllowed()? ── لا ──► [SKIP] + الحارس
-                                          │ نعم
-                              require zoneTouch & غير ملموسة؟ ──► [SKIP]
+                              [BUY][DETECTED] / [SELL][DETECTED]  (مرة لكل إعداد اجتاز البوابة)
                                           │
-                              BuildTradePlan() ── SL غير صالح؟ ──► [SKIP]
-                                          │ صالح
-                              CalcPositionVolume() ── الحجم < broker min؟ ──► [SIZE] refusal
+                              لا طرف مؤهل؟ ── ► [SIGNAL][SCORED] outcome=NO_SETUP / BELOW_MINIMUM
+                              الطرفان مؤهلان؟ ──► [SIGNAL][CONFLICT] ثم القاعدة تحسم أو لا صفقة
+                                          │ اتجاه واحد
+                              ClosePositionOnOpposite()  (إن وُجد مركز معاكس والخيار مفعّل)
                                           │
-                              ExecuteSignal() → CTrade.Buy/Sell(SL,TP)
+                              CollectEntryBlocks() > 0؟ ──► [BLOCK][REASON] بكل الرموز + outcome=BLOCKED
+                                          │ لا حواجز
+                              BuildTradePlan() ── فشل؟ ──► [EXECUTION][REJECTED] stage=PLAN
                                           │
-                              retcode ∈ {10009,10010}? ── لا ──► transient? → retry≤3 : abandon
-                                          │ نعم
-                              VerifyPositionOpened() → [VERIFY] POSITION CONFIRMED
+                              ExecuteSignal(): إعادة فحص حيّة ← الحجم ← السبريد مقابل الوقف
+                                          │            فشل؟ ──► [EXECUTION][REJECTED] stage=…
+                              [EXECUTION][APPROVED] → CTrade.Buy/Sell(SL,TP)
+                                          │
+                              retcode ∈ {10009,10010}? ── لا ──► [EXECUTION][REJECTED] stage=BROKER
+                                          │ نعم                 (XAUUSD: بلا إعادة تلقائية)
+                              VerifyPositionOpened() → [EXECUTION][FILLED] position=verified
                               (+طباعة SL/TP كما يراه الخادم فعلياً)
 ```
 
@@ -128,13 +141,18 @@ ProcessClosedDeals()                 AnalyzeMarket()
 
 ```
 terad/
-├── MQL5/Experts/QuantumAutonomousTradingSystem.mq5   ← ملف النشر الوحيد (v1.10)
+├── MQL5/Experts/QuantumAutonomousTradingSystem.mq5   ← ملف النشر الوحيد (v1.20)
+├── presets/Quantum_XAUUSD_PRODUCTION.set             ← ملف الإعدادات الوحيد
 ├── tools/verify_quantum_ea.py                        ← فحص بنيوي offline (ليس مترجم)
+├── tools/qats_native.py + tools/qats_sim/            ← بناء الملف بمترجم صارم + محاكي وسيط
+├── tools/qats_backtest.py                            ← محاكاة تاريخية وإثبات التماثل
+├── tools/qats_journal_report.py                      ← تقرير شراء/بيع من سجل MT5
+├── docs/QATS_DUAL_DIRECTION_AR.md                    ← شرح v1.20 وخطوات التحقق
 ├── docs/SYSTEM_ARCHITECTURE.md                       ← هذا المستند
 ├── docs/PRODUCTION_AUDIT_2026-11-09_QUANTUM_EA.md    ← تقرير التدقيق والتنظيف
 ├── docs/PRODUCTION_VERIFICATION_2026-11-09_QUANTUM_EA.md  ← تقرير التحقق (Phases 1–7)
 ├── docs/incident-20261101/                           ← سجل حادثة سابق (محفوظ كما هو)
-└── .github/workflows/quantum-verify.yml              ← CI: الفحص البنيوي فقط
+└── .github/workflows/quantum-verify.yml              ← CI: الفحص البنيوي + البناء + المحاكي
 ```
 
 **شجرة النشر على جهاز Windows + MT5:** انقل ملف `.mq5` واحداً إلى `MQL5\Experts\` ثم F7. لا شيء آخر.
@@ -145,14 +163,16 @@ terad/
 
 | الحارس | المصدر | القيمة الافتراضية |
 |---|---|---|
-| حساب DEMO فقط | `ACCOUNT_TRADE_MODE==DEMO` عند الإقلاع **وعند كل قرار دخول** | إلزامي، لا يوجد مدخل لإلغاءه |
+| تفويض الحساب | DEMO مسموح افتراضيًا؛ REAL يحتاج `InpDemoOnly=false` و`InpAllowRealTrading=true` ورقم الحساب واسم الخادم مطابقين؛ CONTEST مرفوض — عند الإقلاع **وعند كل قرار دخول** | DEMO فقط |
 | صلاحية الطرفية/الخبير/الرمز | `TERMINAL_TRADE_ALLOWED` + `MQL_TRADE_ALLOWED` + `ACCOUNT_TRADE_ALLOWED` + `SYMBOL_TRADE_MODE_FULL` | تُعاد فحوصها كل قرار |
 | مخاطرة/صفقة | `Equity × EffectiveRiskPercent()` | 0.50% (إدخال ≤ ceiling ≤ سقف صلب 2.0%) |
 | وقف الخسارة | max(ATR×1.5, 3×M5 bars) + broker buffer | **لا توجد صفقة بلا SL** |
 | هدف الربح | سيولة معاكسة (RR≥1.5) أو 2.0R | لا يُقصَّر عن RR 1.5 |
 | خسارة يومية | Equity-baseline مثبّت يومياً (GV بتاريخ اليوم) | 2.0% أو `InpMaxDailyLossMoney` |
 | سحب الحساب | HWM مثبّت (GV `…_hwm`) — v1.10: يُحفظ عند أول رؤية | 8.0% من القمة |
-| خسائر متتالية | 3 × `DEAL_PROFIT<0` ⇒ تهدئة 60 دقيقة (تُصفَّر بربح) | 3 / 60min |
+| خسائر متتالية | 3 مراكز خاسرة صافيًا (بعد العمولة والسواب) ⇒ تهدئة 60 دقيقة؛ تُصفَّر بربح؛ `InpNeutralCloseR` نطاق التعادل | 3 / 60min / 0.0R |
+| تأكيد الإعداد | `InpStrategyProfile` — الاكتساح وحده لا يكفي في أي وضع | BALANCED |
+| دخول واحد لكل إعداد | هوية الإعداد محفوظة لكل اتجاه (GV) | دائمًا |
 | صفقات/يوم | عدّاد GV بتاريخ اليوم | 4 |
 | مراكز متزامنة | magic+symbol | 1 |
 | سبريد / كلغة / بيانات قديمة | pts + frak<stop | 50pts (20% من المسافة) |
@@ -169,27 +189,41 @@ terad/
 3. **netting = hedging** — الإغلاق الجزئي والحماية تعملان في النمطين (`ACCOUNT_MARGIN_MODE` يتفرع صراحة).
 4. **الحراس مثبّتون في GlobalVariables** — إعادة تشغيل الشارت لا تُصفّر baseline اليوم ولا HWM ولا عدّاد اليوم.
 5. **Retcode ≠ تنفيذ** — يُكتشف المركز فعلياً من الخادم قبل اعتبار الأمر "تم".
-6. **DEMO فقط، دائماً** — لا يوجد مسار كودي إلى حساب حقيقي؛ الفشل في إثبات نمط الحساب = حظر كامل.
+6. **DEMO افتراضيًا** — الحساب الحقيقي يحتاج تفويضًا صريحًا ومطابقة رقم الحساب والخادم؛ الفشل في إثبات نمط الحساب = حظر كامل.
+7. **لا اتجاه افتراضي (v1.20)** — الشراء والبيع يُبنيان بالدالة نفسها؛ سوق معكوس السعر يُنتج الصفقات المعكوسة تمامًا (مُثبت بالمحاكاة).
 
 ---
 
 ## 6. كيف تقرأ سجلّ `[QATS]` (Journal)
 
 ```
-[QATS][PROTECTION] PASS: ... DEMO confirmed ...     ← الشرط الأول للتداول
+[QATS][PROTECTION] PASS: DEMO account authorized ...  ← الشرط الأول للتداول
+[QATS][POLICY] direction: BUY and SELL are scored independently ... profile=BALANCED ...
 [QATS][RISK] per-trade risk = 0.50% ...              ← المخاطرة الفعلية بعد الأقفال
+[QATS][COOLDOWN] state=IDLE at attach ...            ← حالة التوقف عند الربط
 [QATS] data pipeline OK | ATR(H1)=... VWAP=...       ← البيانات تتدفق
-[QATS][HB] equity=... dayPnL=... DD=...              ← نبض كل 5 دقائق
-[QATS][SKIP] score 55 < minimum 65 | D1=+1 ...       ← لماذا لم تُفتح صفقة (مع التفصيل)
-[QATS][ORDER] BUY 0.02 lots XAUUSD @ ... SL ... TP ... score 78
-[QATS][EXEC] retcode=10009 (Done) deal=...
-[QATS][VERIFY] POSITION CONFIRMED on server: ticket=... server-side SL=... TP=...
-[QATS][GUARD] DAILY LOSS LIMIT HIT ... LOCKED for 20261109
+[QATS][HB] equity=... dayPnL=... DD=... cooldown=YES(trigger=3 losses,start=...,until=...,remaining=...s) lastBUY=.. lastSELL=..
+[QATS][SELL][DETECTED] ... setup=S-20261112-0900 score=62/100 ... core=PASS 2/3 | sweep=... displacement=... structure=CHOCH@...
+[QATS][SIGNAL][SCORED] ... BUY=31/100 SELL=62/100 ... candidate=SELL eligible=yes outcome=EXECUTED reason=ORDER_FILLED | ... | BUY core=FAIL(...) [...] | SELL core=PASS 2/3 [...]
+[QATS][BLOCK][REASON] ... direction=SELL ... reasons=LOSS_COOLDOWN,DAILY_TRADE_CAP detail=...
+[QATS][EXECUTION][REJECTED] ... stage=SPREAD_VS_STOP reason=spread 31.00 pts exceeds 20.00% of stop distance
+[QATS][EXECUTION][APPROVED] ... direction=SELL ... entry=... sl=... tp=... tpSource=LIQUIDITY:PDL rr=2.40 lots=0.02 risk=...
+[QATS][EXECUTION][FILLED] ... direction=SELL ... retcode=10009 ... position=verified ticket=...
+[QATS][VERIFY] server-side SL=... TP=... | openPrice=... volume=...
+[QATS][GUARD] position ... SELL closed WIN net=+41.20 USD (neutral band 0.00) -> lossStreak=0/3
+[QATS][COOLDOWN] state=STARTED trigger=3 losses start=... until=... remaining=3600s lossStreak restarts at 0
 [QATS][MANAGE] ticket=... SL -> BREAK-EVEN @ ... (+1.02R)
+[QATS][STATS] scope=session BUY detected=.. executed=.. closed=W./L./N. net=.. | SELL detected=.. executed=.. ...
+```
+
+الأسطر أعلاه أمثلة على الشكل لا نتائج تداول. لتحويل سجل حقيقي إلى جدول شراء/بيع:
+
+```
+python3 tools/qats_journal_report.py MQL5/Logs/YYYYMMDD.log
 ```
 
 ## 7. حدود صريحة (مهما قال التسويق)
 
-- الاستراتيجية نفسها (edge) غير مُثبتة تاريخياً — الاختبار الأمامي على DEMO هو البوابة.
+- الاستراتيجية نفسها (edge) **غير مُثبتة، والمحاكاة التاريخية تُظهر توقعًا سالبًا** داخل العيّنة للنسختين v1.11 وv1.20 — انظر `QATS_BACKTEST_STUDY_2026-11-11.md`.
 - نتيجة DEMO ≠ تنبؤ بالربح المستقبلي.
-- هذا البناء **لم يُجمَّع بعد** (MetaEditor غير متوفر في بيئة التطوير الحالية) ولا توجد صفقة تنفيذ فعلي بعد — انظر `PRODUCTION_VERIFICATION_2026-11-09_QUANTUM_EA.md` للحالات والحواجز.
+- v1.20 **لم يُجمَّع بعد في MetaEditor** (غير متوفر في بيئة التطوير) ولم يُشغَّل في Strategy Tester ولا على الديمو. الدليل الميداني الوحيد هو سجل v1.11: ثلاث صفقات شراء وصفر بيع. الخطوات ومعايير القبول في `QATS_DUAL_DIRECTION_AR.md`.

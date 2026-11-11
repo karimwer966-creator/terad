@@ -4,12 +4,22 @@
 
 `presets/Quantum_XAUUSD_PRODUCTION.set` خاص بالروبوت `MQL5/Experts/QuantumAutonomousTradingSystem.mq5` فقط، وليس لمؤشر `nadir2` أو لروبوت `QSMC_AutoTrader`. اسم الملف لا يعني أن الاختبارات الميدانية اكتملت. حُذفت ملفات الإعدادات الأخرى من `presets/`. احتُفظ بثمانية نماذج تاريخية بصيغة نصية داخل `tools/fixtures/legacy_presets/` لأنها مدخلات لاختبارات وأداة حزم QSMC القديمة؛ ليست إعدادات Quantum للتشغيل. أدوات QSMC القديمة تستطيع إنشاء إعداداتها عند بناء حزمة منفصلة. بقية الشيفرة والاختبارات والوثائق أُبقيت لعدم وجود دليل كافٍ أنها غير مستخدمة.
 
+## v1.20 (2026-11-11)
+
+الروبوت الآن يقيّم الشراء والبيع معًا في كل شمعة M5 مغلقة، ولا يفتح صفقة قبل اجتياز بوابة التأكيد الأساسي
+(`InpStrategyProfile`: 0 محافظ، 1 متوازن وهو الافتراضي، 2 نشِط). الملف يحمل أربعة مدخلات جديدة:
+`InpStrategyProfile=1`، `InpSetupWindowBars=6`، `InpConflictMargin=10`، `InpNeutralCloseR=0.0`.
+سبب التغيير، وطريقة قراءة السجل الجديد، وخطوات التحقق على الديمو ومعايير القبول في
+[`QATS_DUAL_DIRECTION_AR.md`](QATS_DUAL_DIRECTION_AR.md). المحاكاة لا تُظهر ربحية للاستراتيجية؛ الروبوت غير جاهز
+للإنتاج.
+
 ## الديمو
 
 1. انسخ ملف الروبوت إلى مجلد `MQL5/Experts` في منصة MT5 وافتحه في MetaEditor واضغط F7. لم يُنفّذ التجميع هنا؛ لا يمكن الجزم بعدد الأخطاء أو التحذيرات.
 2. اختبره في Strategy Tester ثم على حساب ديمو وعلى رمز الوسيط الذي يبدأ بـ `XAUUSD`. حمّل ملف الإعدادات من نافذة Inputs، وفعّل Algo Trading وأذونات الروبوت.
 3. الملف يضبط `InpEnableTrading=true` و`InpDryRun=false`: قد يرسل أوامر فعلية إلى حساب الديمو إذا اجتازت الإشارة والصفقة كل الضوابط. `InpMinScore=55`، والمخاطرة المستهدفة 0.10% للصفقة، والحد اليومي 0.50%، وحد التراجع 3%، والحد الأقصى صفقة مفتوحة واحدة و3 دخولات يوميًا. هذه نسب وليست ضمانات ضد الانزلاق أو الخسارة.
 4. اقرأ سجل Experts: تحقق من رسالة `[QATS][PROTECTION] PASS: DEMO account authorized` ومن السبريد وحجم العقد والوقف والهدف، وراقب أي سبب رفض. توجد ضوابط وقف وخسارة وحجم وهامش ومسافة وسيط وأذونات وحماية تكرار.
+5. حوّل السجل إلى جدول شراء/بيع: `python3 tools/qats_journal_report.py MQL5/Logs/YYYYMMDD.log`. كل شمعة في v1.20 تطبع `BUY=x/100 SELL=y/100` مع النتيجة وسببها.
 
 ## الحقيقي: تفويض يدوي، وليس تلقائيًا
 
@@ -24,4 +34,4 @@
 
 ## فحوص محلية
 
-`python3 tools/test_quantum_account_policy.py` يختبر بوابة الحساب بواجهات MT5 وهمية، و`python3 tools/test_xau_execution_policy.py` يختبر منطق القرار والحجم بواجهات وهمية. هذه ليست بديلًا عن MetaEditor أو Strategy Tester أو تجربة الديمو.
+`python3 tools/test_quantum_account_policy.py` يختبر بوابة الحساب بواجهات MT5 وهمية، و`python3 tools/test_xau_execution_policy.py` يختبر منطق القرار والحجم بواجهات وهمية. `python3 tools/test_qats_native_build.py` يبني ملف الروبوت كاملًا بمترجم صارم مقابل نموذج لواجهات MQL5، و`python3 tools/test_qats_dual_direction.py` يشغّل الكود نفسه في محاكي وسيط ويثبت تماثل الشراء والبيع. هذه ليست بديلًا عن MetaEditor أو Strategy Tester أو تجربة الديمو.
