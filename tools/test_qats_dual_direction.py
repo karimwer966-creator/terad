@@ -60,6 +60,8 @@ MIRROR_PAIRS = [
     ("strong_buy", "strong_sell"),
     ("strong_buy_conservative", "strong_sell_conservative"),
     ("strong_buy_active", "strong_sell_active"),
+    ("strong_m15_buy_active", "strong_m15_sell_active"),
+    ("sweep_only_m15_buy_active", "sweep_only_m15_sell_active"),
     ("sweep_only_buy_conservative", "sweep_only_sell_conservative"),
     ("sweep_only_buy_balanced", "sweep_only_sell_balanced"),
     ("sweep_only_buy_active", "sweep_only_sell_active"),

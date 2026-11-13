@@ -42,6 +42,8 @@ InpSwingLookback=120
 InpSwingK=2
 InpDisplaceATR=0.8
 InpDisplaceBodyRatio=0.65
+; v1.23: allow displacement to confirm on M15 when H1 shows none (ATR(M15)). H1 is checked first.
+InpDisplaceM15=true
 InpLiquidityToleranceATR=0.10
 InpMinScore=55
 InpUseEMAAlignmentVeto=true

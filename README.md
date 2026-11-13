@@ -14,6 +14,16 @@ MT5's standard `Trade/Trade.mqh`. The single optional preset is
 `presets/Quantum_XAUUSD_PRODUCTION.set`; it is configured for DEMO, not a
 claim of production readiness.
 
+> **v1.23 (2026-11-13): displacement may now confirm on M15.** When H1 shows no
+> impulse, the EA scans M15 with the M15 ATR (`InpDisplaceM15=true`, the new default;
+> H1 is always checked first). An M15 displacement never borrows the H1 bar clock:
+> OB/FVG zone work stays on H1 bars. Score, thresholds, the sweep requirement and
+> every other guard are unchanged — in particular BALANCED still requires BOS/CHoCH.
+> The new path is covered by the `m15_*` scenarios in `tools/test_qats_dual_direction.py`;
+> `InpDisplaceM15=false` reproduces v1.22 exactly. See
+> [`docs/QATS_M15_DISPLACEMENT_V123.md`](docs/QATS_M15_DISPLACEMENT_V123.md) — and note
+> this loosens the entry gate: re-run the Strategy Tester on DEMO before relying on it.
+
 > **Status, v1.22 (2026-11-11): not production-ready.** The F7 run of v1.21 failed with 3 errors
 > (fixed in v1.22, see [`docs/QATS_LIMIT_ENTRY_V121.md`](docs/QATS_LIMIT_ENTRY_V121.md) 2b) and the EA has not yet passed a clean compile in
 > MetaEditor, run in the MT5 Strategy Tester or forward-tested on DEMO in this work, and an
@@ -127,14 +137,14 @@ headless Linux CI box.
    This arms order submission on DEMO. The risk in this preset is 0.10% per trade;
    the compiled defaults without the preset differ.
 4. Read the attach banner in the Experts journal:
-   - `[QATS] QuantumAutonomousTradingSystem v1.22 attaching to ...`
+   - `[QATS] QuantumAutonomousTradingSystem v1.23 attaching to ...`
    - `[QATS][POLICY] direction: BUY and SELL are scored independently ...
      profile=BALANCED ...` — the strategy profile in force.
    - `[QATS][PROTECTION] PASS: DEMO account authorized ...` —
      anything else means **the EA will not trade**.
    - `[QATS][RISK] per-trade risk = ...` — the effective risk after caps.
    - `[QATS][COOLDOWN] state=IDLE at attach ...` — or the stand-down it resumed.
-   - `[QATS] data pipeline OK | ATR(H1)=... VWAP=...` — market data flowing.
+   - `[QATS] data pipeline OK | ATR(H1)=... ATR(M15)=... ATR(M5)=... VWAP=...` — market data flowing.
 5. `InpHeartbeatSeconds=300` prints a status heartbeat every 5 minutes
    (equity, day P/L, drawdown, guards, spread, last BUY and SELL score).
 6. After a session: Experts tab → right-click → Open → `MQL5\Logs\YYYYMMDD.log`,
@@ -223,14 +233,15 @@ python3 tools/check_production_ready.py      # the whole offline gate (57 checks
 ## Repository layout
 
 ```
-MQL5/Experts/QuantumAutonomousTradingSystem.mq5   the EA (v1.22)
+MQL5/Experts/QuantumAutonomousTradingSystem.mq5   the EA (v1.23)
 presets/Quantum_XAUUSD_PRODUCTION.set               the only deployment preset
 tools/verify_quantum_ea.py                        offline structural verifier
 tools/qats_native.py                              .mq5 -> C++ rewrite, strict build, MQL5 lint
 tools/qats_sim/                                   typed MQL5 shim, broker simulator, scenarios
 tools/qats_backtest.py                            fetch / run / study / mirror / report
 tools/qats_journal_report.py                      BUY-vs-SELL report from an MT5 journal
-tools/test_qats_*.py                              the v1.20 / v1.21 / v1.22 suites
+tools/test_qats_*.py                              the v1.20 / v1.21 / v1.22 / v1.23 suites
+docs/QATS_M15_DISPLACEMENT_V123.md               v1.23: M15 displacement fallback, semantics and safeguards
 docs/QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md      v1.20 audit, evidence, verdict
 docs/QATS_DUAL_DIRECTION_AR.md                    the same for the operator, in Arabic
 docs/QATS_BACKTEST_STUDY_2026-11-11.md            simulation study, full tables

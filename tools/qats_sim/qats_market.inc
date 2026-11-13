@@ -211,13 +211,22 @@ static Marks patternCounterTrend(Scn &sc)
 // InpUseLimitEntry=false explicitly, so it measures exactly the code it was
 // written for. The limit entry has its own scenarios (limit_*), which set it back
 // to true. A scenario that names the switch itself is not overridden.
+// v1.23 added the same freeze for the M15 displacement fallback: every scenario
+// that predates v1.23 reproduces the H1-only displacement timing exactly
+// (InpDisplaceM15=false). The m15_* scenarios name InpDisplaceM15=true to
+// exercise the v1.23 default path. A scenario that names the switch itself is
+// not overridden.
 static void setInputs(const std::vector<std::pair<std::string, std::string>> &sets)
 {
    QATS_SetInput("InpHeartbeatSeconds", "0");
-   bool limitNamed = false;
+   bool limitNamed = false, m15Named = false;
    for(const auto &kv : sets)
+   {
       if(kv.first == "InpUseLimitEntry") limitNamed = true;
+      if(kv.first == "InpDisplaceM15") m15Named = true;
+   }
    if(!limitNamed) QATS_SetInput("InpUseLimitEntry", "false");
+   if(!m15Named) QATS_SetInput("InpDisplaceM15", "false");
    for(const auto &kv : sets)
       if(!QATS_SetInput(kv.first, kv.second)) { printf("unknown input %s\n", kv.first.c_str()); exit(2); }
 }
