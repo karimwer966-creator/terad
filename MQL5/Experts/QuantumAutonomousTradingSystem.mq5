@@ -68,9 +68,16 @@
 //|          execution price (v1.21 built a StopLimit request); the  |
 //|          C-only `(void)x;` silencing idiom is gone. No behaviour |
 //|          change on the limit path, only a build that compiles.   |
+//|  v1.23 - displacement may also confirm on M15. H1 is checked     |
+//|          first, exactly as before; only when H1 shows no impulse |
+//|          is M15 scanned with the M15 ATR. The M15 result never   |
+//|          borrows the H1 clock: OB/FVG zone work stays on H1      |
+//|          bars, anchored at the closed H1 bar containing the M15  |
+//|          impulse. Score, thresholds, sweep requirement and every |
+//|          other guard are unchanged.                              |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / Quantum"
-#property version   "1.22"
+#property version   "1.23"
 #property description "Autonomous SMC trading EA. REAL requires explicit account and server authorization."
 #property description "Scores BUY and SELL independently on every bar; dynamic equity-risk sizing and full protection guards."
 
@@ -83,7 +90,7 @@
 #define QATS_HARD_CAP_RISK_PCT   2.0    // absolute per-trade risk ceiling, % of equity
 #define QATS_HARD_CAP_DAILY_PCT  5.0    // absolute daily-loss ceiling, % of baseline
 #define QATS_HARD_CAP_DD_PCT     15.0   // absolute drawdown ceiling, % from high-water mark
-#define QATS_VERSION            "1.22"
+#define QATS_VERSION            "1.23"
 
 // Confluence weights. They sum to exactly 100 and absent evidence scores 0, so a
 // score is a plain percentage of the evidence present. BUY and SELL use the SAME
@@ -177,13 +184,14 @@ input int      InpSetupWindowBars      = 6;       // H1 bars a sweep / displacem
 input int      InpConflictMargin       = 10;      // both sides eligible: the higher score must lead by this many points
 input int      InpSwingLookback        = 120;     // H1 bars scanned for swings / dealing range
 input int      InpSwingK               = 2;       // fractal wing (bars each side), closed bars only
-input double   InpDisplaceATR          = 0.8;     // displacement: body >= this x H1 ATR
+input double   InpDisplaceATR          = 0.8;     // displacement: body >= this x ATR of the timeframe scanned
 input double   InpDisplaceBodyRatio    = 0.65;    // ... or body/range >= this with range >= 1.3 x ATR
+input bool     InpDisplaceM15          = true;    // v1.23: when H1 shows no displacement, scan M15 with the M15 ATR
 input double   InpLiquidityToleranceATR= 0.10;    // equal-level tolerance as fraction of H1 ATR
 input int      InpMinScore             = 55;      // minimum confluence score (0-100) to take a trade
 input bool     InpUseEMAAlignmentVeto  = true;    // non-XAUUSD: block when D1 and H4 both oppose
 input bool     InpAllowCounterBias     = false;   // non-XAUUSD: permit counter-D1 direction
-input int      InpATRPeriod            = 14;      // ATR period (H1 for structure/stops context, M5 for stop distance)
+input int      InpATRPeriod            = 14;      // ATR period (H1 for structure/stops context, M15 for the v1.23 fallback, M5 for stop distance)
 
 //--- 5. position management ---------------------------------------------
 input double   InpBreakEvenAtR         = 1.0;     // move SL to entry after +1R (0 = off); one direction only
@@ -263,7 +271,7 @@ struct SReading        // one indicator snapshot used by the scoring engine
    double h4Fast, h4Slow, h4Close;
    double h1Fast, h1Slow, h1Close;
    double m15Fast, m15Close, m15Open;
-   double atrH1, atrM5;
+   double atrH1, atrM15, atrM5;
    double vwap;
    double volM5Last, volM5Avg;
    bool   ready;
@@ -298,8 +306,9 @@ struct SSide           // the complete evidence for ONE direction
    int      structBar;      // H1 shift of the break bar (-1 none)
    double   structLevel;    // broken swing price
    SSweep   sweep;          // opposing liquidity swept and rejected
-   bool     displaced;      // impulsive H1 candle in this direction
-   int      dispBar;        // H1 shift of that candle (-1 none)
+   bool     displaced;      // impulsive candle in this direction (H1, else M15)
+   int      dispBar;        // shift of the displacement candle in dispTF (-1 none)
+   ENUM_TIMEFRAMES dispTF;  // timeframe that confirmed the displacement (PERIOD_CURRENT = none)
    bool     hasOB;
    bool     hasFVG;
    SZone    ob;
@@ -433,7 +442,7 @@ int         g_hD1Fast = INVALID_HANDLE, g_hD1Slow = INVALID_HANDLE;
 int         g_hH4Fast = INVALID_HANDLE, g_hH4Slow = INVALID_HANDLE;
 int         g_hH1Fast = INVALID_HANDLE, g_hH1Slow = INVALID_HANDLE;
 int         g_hM15Fast= INVALID_HANDLE;
-int         g_hATRH1  = INVALID_HANDLE, g_hATRM5  = INVALID_HANDLE;
+int         g_hATRH1  = INVALID_HANDLE, g_hATRM15 = INVALID_HANDLE, g_hATRM5  = INVALID_HANDLE;
 
 //+------------------------------------------------------------------+
 //| SECTION 7 - PERSISTED GUARD STATE (terminal global variables)    |
@@ -689,6 +698,7 @@ bool LoadReading(SReading &r)
    ok = BufValue(g_hH1Slow, 1, r.h1Slow)  && ok;
    ok = BufValue(g_hM15Fast, 1, r.m15Fast)&& ok;
    ok = BufValue(g_hATRH1, 1, r.atrH1)    && ok;
+   ok = BufValue(g_hATRM15, 1, r.atrM15)  && ok;
    ok = BufValue(g_hATRM5, 1, r.atrM5)    && ok;
    r.d1Close = iClose(_Symbol, PERIOD_D1, 1);
    r.h4Close = iClose(_Symbol, PERIOD_H4, 1);
@@ -698,7 +708,7 @@ bool LoadReading(SReading &r)
    r.vwap    = SessionVWAP(_Symbol);
    r.volM5Last = (double)iVolume(_Symbol, PERIOD_M5, 1);
    r.volM5Avg  = SmaVolume(_Symbol, PERIOD_M5, 1, 20);
-   r.ready = ok && r.atrH1 > 0.0 && r.atrM5 > 0.0 && iBars(_Symbol, PERIOD_M5) > 30;
+   r.ready = ok && r.atrH1 > 0.0 && r.atrM15 > 0.0 && r.atrM5 > 0.0 && iBars(_Symbol, PERIOD_M5) > 30;
    return r.ready;
 }
 
@@ -1049,6 +1059,23 @@ bool NearestLiquidityTarget(const SLiquidityPool &pools[], const int dir, const 
       }
    }
    return have;
+}
+
+// Shift of the newest CLOSED bar (shift >= 1) whose open time is at or before t.
+// Bars with missing timestamps (weekends, holidays) are skipped naturally because
+// the loop reads actual bar times. Returns -1 when t is older than maxShift.
+// Replaces iBarShift so the closed-bar clock stays explicit (and the offline
+// host build does not need a bar-shift primitive).
+int ShiftOfTime(const string symbol, const ENUM_TIMEFRAMES tf, const datetime t, const int maxShift)
+{
+   if(t <= 0 || maxShift < 1) return -1;
+   for(int s = 1; s <= maxShift; s++)
+   {
+      datetime bt = iTime(symbol, tf, s);
+      if(bt == 0) return -1;
+      if(bt <= t) return s;
+   }
+   return -1;
 }
 
 // displacement = a strong directional closed bar (impulse), searched from the newest
@@ -1406,10 +1433,15 @@ string PriceText(const double price)
    return DoubleToString(price, g_spec.digits);
 }
 
-string H1BarText(const int shift)
+string BarText(const ENUM_TIMEFRAMES tf, const int shift)
 {
    if(shift < 1) return "none";
-   return TimeToString(iTime(_Symbol, PERIOD_H1, shift), TIME_DATE | TIME_MINUTES);
+   return TimeToString(iTime(_Symbol, tf, shift), TIME_DATE | TIME_MINUTES);
+}
+
+string H1BarText(const int shift)
+{
+   return BarText(PERIOD_H1, shift);
 }
 
 void ResetSide(SSide &e, const int dir)
@@ -1419,7 +1451,7 @@ void ResetSide(SSide &e, const int dir)
    e.structure = false; e.structChoch = false; e.structBar = -1; e.structLevel = 0.0;
    e.sweep.found = false; e.sweep.bar = -1; e.sweep.level = 0.0; e.sweep.extreme = 0.0;
    e.sweep.pool = ""; e.sweep.breakout = false;
-   e.displaced = false; e.dispBar = -1;
+   e.displaced = false; e.dispBar = -1; e.dispTF = PERIOD_CURRENT;
    e.hasOB = false; e.hasFVG = false;
    e.ob.top = 0.0; e.ob.bottom = 0.0; e.ob.shift = 0; e.ob.isFVG = false; e.ob.found = false;
    e.fvg.top = 0.0; e.fvg.bottom = 0.0; e.fvg.shift = 0; e.fvg.isFVG = true; e.fvg.found = false;
@@ -1464,15 +1496,56 @@ void EvaluateSide(const int dir, const SReading &r, const SStructure &st, const 
    // core: opposing liquidity run and rejected
    SweepForDirection(pools, dir, e.sweep);
 
-   // core: displacement - at or after the sweep when there is one, else inside the window
+   // core: displacement - at or after the sweep when there is one, else inside the window.
+   // H1 is checked first, exactly as before. Only when H1 shows no impulse is M15
+   // scanned, with the M15 ATR. An M15 displacement is reported as its own timeframe
+   // (e.dispTF/e.dispBar) and is NEVER used as if it were an H1 bar index.
    int dispBar = -1;
    int dispFrom = (e.sweep.found ? e.sweep.bar : window);
    e.displaced = DetectDisplacement(_Symbol, PERIOD_H1, bull, r.atrH1, dispFrom, dispBar);
-   e.dispBar = (e.displaced ? dispBar : -1);
+   e.dispTF = PERIOD_CURRENT;
 
-   // optional confluence: order block / fair value gap left by the impulse, still unmitigated
+   if(e.displaced)
+   {
+      e.dispTF = PERIOD_H1;
+      e.dispBar = dispBar;
+   }
+   else if(InpDisplaceM15)
+   {
+      // M15 fallback (v1.23, switchable with InpDisplaceM15). The search starts at
+      // the M15 bar that CONTAINS the sweep rejection H1 bar's open, so an impulse
+      // strictly before the sweep is never counted - the same "at or after the
+      // sweep" rule the H1 path enforces.
+      int dispFromM15 = window * 4;
+      if(e.sweep.found)
+      {
+         datetime sweepOpen = iTime(_Symbol, PERIOD_H1, e.sweep.bar);
+         int m15From = ShiftOfTime(_Symbol, PERIOD_M15, sweepOpen, window * 4 + 16);
+         if(m15From >= 1) dispFromM15 = m15From;
+      }
+      int m15Bar = -1;
+      e.displaced = DetectDisplacement(_Symbol, PERIOD_M15, bull, r.atrM15, dispFromM15, m15Bar);
+      if(e.displaced)
+      {
+         e.dispTF = PERIOD_M15;
+         e.dispBar = m15Bar;
+      }
+   }
+   if(!e.displaced) e.dispBar = -1;
+
+   // optional confluence: order block / fair value gap left by the impulse, still unmitigated.
+   // Zone work runs on H1 bars only: an H1 displacement anchors at its own bar; an
+   // M15 displacement anchors at the closed H1 bar containing it (falling back to
+   // the sweep bar), never at the raw M15 index.
    int impulse = 0;
-   if(e.displaced)        impulse = e.dispBar;
+   if(e.displaced && e.dispTF == PERIOD_H1) impulse = e.dispBar;
+   else if(e.displaced && e.dispTF == PERIOD_M15)
+   {
+      datetime impTime = iTime(_Symbol, PERIOD_M15, e.dispBar);
+      int h1 = ShiftOfTime(_Symbol, PERIOD_H1, impTime, window + 4);
+      if(h1 >= 1)             impulse = h1;
+      else if(e.sweep.found)  impulse = e.sweep.bar;
+   }
    else if(e.sweep.found) impulse = e.sweep.bar;
    if(impulse > 0)
    {
@@ -1517,12 +1590,14 @@ void EvaluateSide(const int dir, const SReading &r, const SStructure &st, const 
    // BOS / CHoCH when there is one, otherwise the bar that rejected the sweep.
    // Displacement confirms a setup but does not define it, so a run of impulsive
    // candles after one break of structure is still one setup, traded once.
-   int anchor = 0;
-   if(e.structure)        anchor = e.structBar;
-   else if(e.sweep.found) anchor = e.sweep.bar;
-   else if(e.displaced)   anchor = e.dispBar;
-   e.setupTime = 0;
-   if(anchor > 0) e.setupTime = iTime(_Symbol, PERIOD_H1, anchor);
+   // The displacement anchor only applies when there is no structure and no sweep;
+   // it is read from the timeframe that confirmed the displacement, never from
+   // the wrong clock.
+   datetime anchorTime = 0;
+   if(e.structure)        anchorTime = iTime(_Symbol, PERIOD_H1, e.structBar);
+   else if(e.sweep.found) anchorTime = iTime(_Symbol, PERIOD_H1, e.sweep.bar);
+   else if(e.displaced)   anchorTime = iTime(_Symbol, e.dispTF, e.dispBar);
+   e.setupTime = anchorTime;
 }
 
 // One side as text: the core verdict, then every weight with the points it earned.
@@ -1561,7 +1636,11 @@ string ChainText(const SSide &e)
                         PriceText(e.sweep.level), H1BarText(e.sweep.bar), PriceText(e.sweep.extreme));
    else
       s += "sweep=none";
-   if(e.displaced) s += " displacement=bar " + H1BarText(e.dispBar);
+   if(e.displaced)
+   {
+      if(e.dispTF == PERIOD_M15) s += " displacement=bar " + BarText(PERIOD_M15, e.dispBar) + " (M15)";
+      else                       s += " displacement=bar " + H1BarText(e.dispBar);
+   }
    else            s += " displacement=none";
    if(e.structure)
       s += StringFormat(" structure=%s@%s(bar %s)", (e.structChoch ? "CHOCH" : "BOS"),
@@ -3672,12 +3751,13 @@ int OnInit()
    g_hH1Slow  = iMA(_Symbol, PERIOD_H1, 50, 0, MODE_EMA, PRICE_CLOSE);
    g_hM15Fast = iMA(_Symbol, PERIOD_M15, 20, 0, MODE_EMA, PRICE_CLOSE);
    g_hATRH1   = iATR(_Symbol, PERIOD_H1, InpATRPeriod);
+   g_hATRM15  = iATR(_Symbol, PERIOD_M15, InpATRPeriod);
    g_hATRM5   = iATR(_Symbol, PERIOD_M5, InpATRPeriod);
 
    if(g_hD1Fast == INVALID_HANDLE || g_hD1Slow == INVALID_HANDLE ||
       g_hH4Fast == INVALID_HANDLE || g_hH4Slow == INVALID_HANDLE ||
       g_hH1Fast == INVALID_HANDLE || g_hH1Slow == INVALID_HANDLE ||
-      g_hM15Fast == INVALID_HANDLE || g_hATRH1 == INVALID_HANDLE || g_hATRM5 == INVALID_HANDLE)
+      g_hM15Fast == INVALID_HANDLE || g_hATRH1 == INVALID_HANDLE || g_hATRM15 == INVALID_HANDLE || g_hATRM5 == INVALID_HANDLE)
    {
       PrintFormat("[QATS][FATAL] Failed to create indicator handles, error=%d", GetLastError());
       ReleaseHandles();
@@ -3699,7 +3779,7 @@ int OnInit()
    //--- 7. sanity: probe the data pipeline once (non-fatal if not ready yet)
    SReading r;
    if(LoadReading(r))
-      PrintFormat("[QATS] data pipeline OK | ATR(H1)=%.5f ATR(M5)=%.5f VWAP=%.5f", r.atrH1, r.atrM5, r.vwap);
+      PrintFormat("[QATS] data pipeline OK | ATR(H1)=%.5f ATR(M15)=%.5f ATR(M5)=%.5f VWAP=%.5f", r.atrH1, r.atrM15, r.atrM5, r.vwap);
    else
       PrintFormat("[QATS] data pipeline not ready yet (normal on a cold start); entries wait for closed bars");
    double spreadNow = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) / g_spec.point;
@@ -3721,9 +3801,10 @@ void ReleaseHandles()
    if(g_hH1Slow != INVALID_HANDLE) IndicatorRelease(g_hH1Slow);
    if(g_hM15Fast != INVALID_HANDLE) IndicatorRelease(g_hM15Fast);
    if(g_hATRH1  != INVALID_HANDLE) IndicatorRelease(g_hATRH1);
+   if(g_hATRM15 != INVALID_HANDLE) IndicatorRelease(g_hATRM15);
    if(g_hATRM5  != INVALID_HANDLE) IndicatorRelease(g_hATRM5);
    g_hD1Fast = g_hD1Slow = g_hH4Fast = g_hH4Slow = g_hH1Fast = g_hH1Slow = INVALID_HANDLE;
-   g_hM15Fast = g_hATRH1 = g_hATRM5 = INVALID_HANDLE;
+   g_hM15Fast = g_hATRH1 = g_hATRM15 = g_hATRM5 = INVALID_HANDLE;
 }
 
 void OnDeinit(const int reason)

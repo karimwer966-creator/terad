@@ -21,6 +21,9 @@ static void scnStrong(bool mirror, const std::string &profile)
 {
    resetSimOnly();
    captureJournal();
+   // v1.23: the pre-v1.23 H1-only displacement timing is frozen for this
+   // scenario by setInputs() (InpDisplaceM15=false); the v1.23 default path
+   // (fallback on) is covered by the m15_* scenarios.
    setInputs({{"InpStrategyProfile", profile}});
    Scn sc(1500.0);
    Marks m = patternFullChain(sc, true);
@@ -88,11 +91,96 @@ static void scnStrong(bool mirror, const std::string &profile)
    printResult("strong", mirror);
 }
 
+// v1.23: the v1.23 DEFAULT path (M15 displacement fallback ON) on the strong
+// chain, profile ACTIVE. The M15 rejection impulse inside the sweep bar now
+// counts as the displacement, so the ACTIVE core (any two of three) passes at
+// the sweep bar's CLOSE - before the H1 BOS prints. The pre-v1.23 H1-only
+// timing is covered by strong_buy_active / strong_sell_active (InpDisplaceM15=false).
+static void scnStrongM15(bool mirror)
+{
+   resetSimOnly();
+   captureJournal();
+   setInputs({{"InpStrategyProfile", "2"}, {"InpDisplaceM15", "true"}});   // ACTIVE, v1.23 fallback ON
+   Scn sc(1500.0);
+   Marks m = patternFullChain(sc, true);
+   Player pl;
+   pl.feed.mirror = mirror;
+   pl.feed.mirrorK = 400000;
+   const char *side = mirror ? "SELL" : "BUY";
+   const char *other = mirror ? "BUY" : "SELL";
+   std::string detTag = std::string("[QATS][") + side + "][DETECTED]";
+   pl.play(sc, m.attachAt);
+   QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds");
+   pl.play(sc, m.entryAt);   // the H1 break bar has NOT closed yet
+   QEQ(entryCount(), 1L, "ACTIVE enters at the sweep bar's close on the M15 rejection impulse, ahead of the H1 break");
+   std::string det = lastWith(detTag);
+   QCHECK(det.find("sweep=") != std::string::npos && det.find(mirror ? "BSL:" : "SSL:") != std::string::npos, "DETECTED names the swept liquidity: " + det);
+   QCHECK(det.find("displacement=bar ") != std::string::npos && det.find("(M15)") != std::string::npos, "DETECTED names the (M15) displacement bar: " + det);
+   QCHECK(det.find("structure=none") != std::string::npos, "the H1 BOS/CHoCH has not printed yet: " + det);
+   QCHECK(det.find("core=PASS 2/3") != std::string::npos, "ACTIVE core passes on sweep + M15 displacement alone: " + det);
+   std::string early = firstWith("[QATS][SIGNAL][SCORED]", "outcome=EXECUTED");
+   QCHECK(!early.empty(), "the early ACTIVE entry is scored EXECUTED");
+   QCHECK(early.find("eligible=yes") != std::string::npos, "the early ACTIVE entry is eligible: " + early);
+   int mine = atoi(Journal::field(early, mirror ? "SELL=" : "BUY=").c_str());
+   QCHECK(mine >= InpMinScore, "the early ACTIVE entry scores at least the minimum, got " + std::to_string(mine));
+   pl.play(sc, m.entryAt + 5);   // the H1 break bar closes: the BOS setup fires as a NEW setup
+   QEQ(entryCount(), 2L, "the H1 BOS setup fires as a second, separate setup (new identity, not DUPLICATE_SETUP)");
+   std::string late = lastWith("[QATS][SIGNAL][SCORED]", "outcome=EXECUTED");
+   int lateScore = atoi(Journal::field(late, mirror ? "SELL=" : "BUY=").c_str());
+   QCHECK(lateScore >= 75, "the H1-BOS setup quotes STRONG (>= 75), got " + std::to_string(lateScore));
+   std::string ap = lastWith("[QATS][EXECUTION][APPROVED]", std::string("direction=") + side);
+   QCHECK(ap.find("class=STRONG_VALID") != std::string::npos, "the H1-BOS entry is classified STRONG_VALID: " + ap);
+   QEQ(linesWith("[QATS][EXECUTION][FILLED]", std::string("direction=") + side), 2, "two FILLED records, one per setup identity");
+   QEQ(linesWith("[QATS][EXECUTION][APPROVED]", std::string("direction=") + other), 0, "nothing approved on the other side");
+   pl.play(sc, m.endAt);
+   std::vector<Trade> trades = buildTrades();
+   QCHECK(!trades.empty() && trades[0].closed, "the position was closed by its server-side stop or target");
+   if(!trades.empty()) QCHECK(trades[0].net > 0.0, "follow-through in the trade direction ends in profit");
+   simDiagnosticsClean();
+   printResult("strong_m15", mirror);
+}
+
+// v1.23: the v1.23 DEFAULT path (M15 displacement fallback ON) on the sweep-only
+// market, profile ACTIVE. The V-shaped sweep bar IS an impulsive M15 rejection, so
+// the ACTIVE core (any two of three) now passes - this scenario documents that
+// deliberate semantic change. BALANCED would still refuse (no BOS/CHoCH), and
+// InpDisplaceM15=false reproduces the pre-v1.23 refusal (see sweep_only_*_active).
+static void scnSweepOnlyM15(bool mirror)
+{
+   resetSimOnly();
+   captureJournal();
+   setInputs({{"InpStrategyProfile", "2"}, {"InpDisplaceM15", "true"}});   // ACTIVE, v1.23 fallback ON
+   Scn sc(1500.0);
+   Marks m = patternSweepOnly(sc);
+   Player pl;
+   pl.feed.mirror = mirror;
+   pl.feed.mirrorK = 400000;
+   const char *side = mirror ? "SELL" : "BUY";
+   std::string detTag = std::string("[QATS][") + side + "][DETECTED]";
+   pl.play(sc, m.attachAt);
+   QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds");
+   pl.play(sc, m.endAt);
+   QEQ(entryCount(), 1L, "ACTIVE passes on the sweep + the M15 impulse inside the sweep bar (v1.23)");
+   std::string det = lastWith(detTag);
+   QCHECK(det.find("displacement=bar ") != std::string::npos && det.find("(M15)") != std::string::npos, "DETECTED names the (M15) displacement bar: " + det);
+   QCHECK(det.find("structure=none") != std::string::npos, "no BOS/CHoCH: the M15 rejection impulse is the new evidence: " + det);
+   std::string exec = firstWith("[QATS][SIGNAL][SCORED]", "outcome=EXECUTED");
+   QCHECK(!exec.empty(), "the sweep + M15 rejection impulse setup is scored EXECUTED");
+   QCHECK(exec.find("SWEEP:13") != std::string::npos && exec.find("DISP:9") != std::string::npos,
+          "the EXECUTED record carries the evidence (SWEEP:13, DISP:9): " + exec);
+   QEQ(linesWith("[QATS][EXECUTION][FILLED]", std::string("direction=") + side), 1, "exactly one fill (the setup fires once, DUPLICATE_SETUP afterwards)");
+   simDiagnosticsClean();
+   printResult("sweep_only_m15", mirror);
+}
+
 // the core gate, per profile, on three kinds of evidence
 static void scnCoreGate(const std::string &pattern, const std::string &profile, bool mirror)
 {
    resetSimOnly();
    captureJournal();
+   // v1.23: the pre-v1.23 H1-only displacement timing is frozen for this
+   // scenario by setInputs() (InpDisplaceM15=false); the v1.23 default path
+   // (fallback on) is covered by the m15_* scenarios.
    setInputs({{"InpStrategyProfile", profile}});
    Scn sc(1500.0);
    Marks m = (pattern == "sweep_only") ? patternSweepOnly(sc) : patternBosOnly(sc);
@@ -938,6 +1026,10 @@ static std::vector<ScnEntry> scenarioTable()
       {"strong_sell_conservative", [] { scnStrong(true, "0"); }},
       {"strong_buy_active", [] { scnStrong(false, "2"); }},
       {"strong_sell_active", [] { scnStrong(true, "2"); }},
+      {"strong_m15_buy_active", [] { scnStrongM15(false); }},
+      {"strong_m15_sell_active", [] { scnStrongM15(true); }},
+      {"sweep_only_m15_buy_active", [] { scnSweepOnlyM15(false); }},
+      {"sweep_only_m15_sell_active", [] { scnSweepOnlyM15(true); }},
       {"sweep_only_buy_conservative", [] { scnCoreGate("sweep_only", "0", false); }},
       {"sweep_only_buy_balanced", [] { scnCoreGate("sweep_only", "1", false); }},
       {"sweep_only_buy_active", [] { scnCoreGate("sweep_only", "2", false); }},

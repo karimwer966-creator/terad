@@ -117,7 +117,7 @@ def main():
             v = summarise(log)
             # the SCORED record format is unchanged since v1.20 (both directions per
             # bar); only the version string in the attach banner moved.
-            check(len(v["versions"]) == 1 and v["versions"][0] in ("1.20", "1.21", "1.22")
+            check(len(v["versions"]) == 1 and v["versions"][0] in ("1.20", "1.21", "1.22", "1.23")
                   and v["format"].startswith("v1.20"),
                   "B2 the journal is recognised as v1.20+", (v["versions"], v["format"]))
             check(v["bars_scored"] == int(result.get("scored", -1)), "B3 scored bars equal the scenario's own count (%s)" % result.get("scored"), v["bars_scored"])
