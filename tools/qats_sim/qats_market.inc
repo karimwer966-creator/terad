@@ -19,6 +19,10 @@ static void resetSimOnly()
    g_spec.digits = sim::S.sym.digits;
    g_spec.point = sim::S.sym.point;
    g_spec.tickSize = sim::S.sym.tickSize;
+   // NC-2: the harness swaps tapes freely; closed-bar content changes under the same
+   // H1 bar times, so the EA's per-bar cache must never survive a tape swap.
+   g_mHighs.v.clear(); g_mLows.v.clear(); g_mPools.v.clear();
+   g_mH1Bar = 0; g_mH1Bars = 0; g_mH1Close = 0.0; g_mH1High = 0.0; g_mH1Low = 0.0;
 }
 
 // --------------------------------------------------------- journal capture
@@ -219,14 +223,19 @@ static Marks patternCounterTrend(Scn &sc)
 static void setInputs(const std::vector<std::pair<std::string, std::string>> &sets)
 {
    QATS_SetInput("InpHeartbeatSeconds", "0");
-   bool limitNamed = false, m15Named = false;
+   bool limitNamed = false, m15Named = false, pdNamed = false;
    for(const auto &kv : sets)
    {
       if(kv.first == "InpUseLimitEntry") limitNamed = true;
       if(kv.first == "InpDisplaceM15") m15Named = true;
+      if(kv.first == "InpPDEnforceMarket") pdNamed = true;
    }
    if(!limitNamed) QATS_SetInput("InpUseLimitEntry", "false");
    if(!m15Named) QATS_SetInput("InpDisplaceM15", "false");
+   // legacy freeze, exactly like InpDisplaceM15=false: scenarios that expect v1.23
+   // market entries are not re-judged by the v1.24 premium/discount gate. The gate
+   // is exercised by its own scenarios (InpPDEnforceMarket=true overrides).
+   if(!pdNamed) QATS_SetInput("InpPDEnforceMarket", "false");
    for(const auto &kv : sets)
       if(!QATS_SetInput(kv.first, kv.second)) { printf("unknown input %s\n", kv.first.c_str()); exit(2); }
 }

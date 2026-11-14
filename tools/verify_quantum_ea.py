@@ -118,7 +118,7 @@ for name in sorted(used_inputs - declared_inputs):
 
 # --- 3. globals -----------------------------------------------------------
 global_decls = []
-for m in re.finditer(r'^(?:int|double|bool|datetime|string|ulong|long|uint|float|SSymbolSpec|SAnalysis|CTrade)\b([^;{]*)', src, re.M):
+for m in re.finditer(r'^(?:int|double|bool|datetime|string|ulong|long|uint|float|SSymbolSpec|SAnalysis|SLiquidityPool|SSwing|CTrade)\b([^;{]*)', src, re.M):
     for name in re.findall(r'\b(g_\w+)\b', m.group(1)):
         global_decls.append(name)
 gseen = {}
@@ -149,6 +149,7 @@ IndicatorRelease IndicatorSetInteger IndicatorSetDouble
 AccountInfoDouble AccountInfoInteger AccountInfoString
 SymbolInfoDouble SymbolInfoInteger SymbolInfoString SymbolSelect SymbolName
 TerminalInfoInteger TerminalInfoDouble MQLInfoInteger
+CalendarValueHistory
 OrderSend OrderCalcMargin OrderCalcProfit
 PositionsTotal PositionSelect PositionSelectByTicket PositionGetTicket PositionGetDouble PositionGetInteger PositionGetString
 OrdersTotal OrderSelect OrderGetTicket OrderGetDouble OrderGetInteger OrderGetString OrderDelete

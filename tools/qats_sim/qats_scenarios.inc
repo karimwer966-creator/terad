@@ -205,6 +205,23 @@ static void scnCoreGate(const std::string &pattern, const std::string &profile, 
          if(s.find("[QATS][SIGNAL][SCORED]") != std::string::npos && s.find(mirror ? "SWEEP:13(BSL" : "SWEEP:13(SSL") != std::string::npos)
             best = std::max(best, atoi(Journal::field(s, mirror ? "SELL=" : "BUY=").c_str()));
       QCHECK(best >= InpMinScore, "with the sweep the score reached " + std::to_string(best) + " >= minimum, yet no trade was taken");
+      // v1.24 mandated: a gap that did not form around an impulse is not
+      // displacement-validated and is never scored - the SWEPT side has no
+      // displacement on this pattern, so ITS zone confluence must be zero (the
+      // other side of the synthetic tape may have its own impulse and is not
+      // constrained by this scenario).
+      const std::string sideMark = std::string("| ") + side + " core=";
+      bool zoneScored = false;
+      for(const std::string &s2 : JR.keep)
+      {
+         if(s2.find("[QATS][SIGNAL][SCORED]") == std::string::npos) continue;
+         size_t seg = s2.find(sideMark);
+         if(seg == std::string::npos) continue;
+         size_t zn = s2.find("ZONE:", seg);
+         if(zn == std::string::npos) continue;
+         if(atoi(s2.c_str() + zn + 5) != 0) { zoneScored = true; break; }
+      }
+      QCHECK(!zoneScored, "the swept side with no displacement yields NO zone confluence (displacement-validated zones only)");
    }
    else
    {
@@ -852,6 +869,143 @@ static void scnMiscPaths()
 //+------------------------------------------------------------------+
 static long pendingCount() { return (long)sim::S.orders.size(); }
 
+// the news blackout blocks what would otherwise be a trade, names the reason,
+// and the same tape trades with the filter off (proves the block came from the calendar)
+static void scnNewsBlackout(bool mirror)
+{
+   const char *side = mirror ? "SELL" : "BUY";
+   // --- phase 1: filter armed, one high-impact USD event; the block window is
+   //     enlarged so the event is inside it at every evaluation of the tape
+   resetSimOnly();
+   captureJournal();
+   setInputs({{"InpNewsFilterEnable", "true"}, {"InpNewsBlockBeforeMin", "1440000"}, {"InpNewsBlockAfterMin", "1440000"}});
+   sim::S.calMode = 0;
+   sim::S.calEvents.clear();
+   sim::S.calEvents.push_back({kMonday + 2 * 86400, 3, "USD"});
+   {
+      Scn sc(1500.0);
+      Marks m = patternFullChain(sc, true);
+      Player pl;
+      pl.feed.mirror = mirror;
+      pl.feed.mirrorK = 400000;
+      pl.play(sc, m.attachAt);
+      QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds with the news filter armed and the calendar reachable");
+      pl.play(sc, m.endAt);
+      QEQ(entryCount(), 0L, "the high-impact USD event inside the block window blocks every entry");
+      QCHECK(linesWith("[QATS][BLOCK][REASON]", "NEWS_BLACKOUT") >= 1, "the journal names NEWS_BLACKOUT as a blocking reason");
+      QCHECK(linesWith("[QATS][NEWS] CALENDAR_UNAVAILABLE") == 0, "a reachable calendar logs no miss");
+   }
+   // --- phase 2: same tape, filter OFF (the default): the trade must happen
+   resetSimOnly();
+   captureJournal();
+   setInputs({{"InpNewsFilterEnable", "false"}});
+   sim::S.calMode = 0;
+   sim::S.calEvents.clear();
+   sim::S.calEvents.push_back({kMonday + 2 * 86400, 3, "USD"});
+   {
+      Scn sc(1500.0);
+      Marks m = patternFullChain(sc, true);
+      Player pl;
+      pl.feed.mirror = mirror;
+      pl.feed.mirrorK = 400000;
+      pl.play(sc, m.attachAt);
+      QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds with the filter disarmed");
+      pl.play(sc, m.endAt);
+      QCHECK(entryCount() >= 1, "with the filter off the same tape trades (the block came from the calendar, not the tape)");
+   }
+   // --- phase 3: the calendar unreachable, filter armed: entries NOT blocked, miss journalled once
+   resetSimOnly();
+   captureJournal();
+   setInputs({{"InpNewsFilterEnable", "true"}, {"InpNewsBlockBeforeMin", "1440000"}, {"InpNewsBlockAfterMin", "1440000"}});
+   sim::S.calMode = 1;
+   sim::S.calEvents.clear();
+   {
+      Scn sc(1500.0);
+      Marks m = patternFullChain(sc, true);
+      Player pl;
+      pl.feed.mirror = mirror;
+      pl.feed.mirrorK = 400000;
+      pl.play(sc, m.attachAt);
+      QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds with the calendar unreachable");
+      pl.play(sc, m.endAt);
+      QCHECK(entryCount() >= 1, "an unverifiable calendar blocks NOTHING (never fabricate events)");
+      QEQ(linesWith("CALENDAR_UNAVAILABLE"), 1, "the miss is journalled exactly once");
+      QEQ(linesWith("NEWS_BLACKOUT"), 0, "no blackout is raised from unverifiable data");
+   }
+   sim::S.calMode = 0;
+   simDiagnosticsClean();
+   printf("RESULT scenario=news_blackout mirror=%d side=%s\n", mirror ? 1 : 0, side);
+}
+
+// The single-record journal contract (Phase 9): a blocked high-scoring setup
+// explains itself in [QATS][ANALYSIS] / [QATS][FINAL] / [QATS][GUARD], the records
+// are deduplicated once per setup per outcome, and an executed trade prints
+// FINAL_DECISION=ENTER_MARKET with no rejection line.
+static void scnDiagnosticsRecord(bool mirror)
+{
+   const char *side = mirror ? "SELL" : "BUY";
+   // --- phase 1: the chain completes but the daily-loss lock blocks the order;
+   //     the high-scoring setup must explain itself once per outcome, never twice
+   resetSimOnly();
+   captureJournal();
+   setInputs({});
+   {
+      Scn sc(1500.0);
+      Marks m = patternFullChain(sc, true);
+      Player pl;
+      pl.feed.mirror = mirror;
+      pl.feed.mirrorK = 400000;
+      pl.play(sc, m.attachAt);
+      QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds");
+      // arm the daily-loss lock only once the clock sits on the tape's day,
+      // so the baseline key matches what UpdateDailyGuards reads
+      GVSet(GVKey("daybase_" + TodayKey()), 11000.0);
+      pl.play(sc, m.endAt);
+      QEQ(entryCount(), 0L, "the daily-loss lock blocks the order");
+      std::string an = firstWith("[QATS][ANALYSIS]", std::string("side=") + side, "EXECUTION_STATUS=BLOCKED");
+      QCHECK(!an.empty(), "the blocked setup produces a [QATS][ANALYSIS] single record");
+      QCHECK(an.find("FINAL_DECISION=BLOCKED") != std::string::npos, "the record carries FINAL_DECISION=BLOCKED: " + an);
+      QCHECK(an.find("REASON=DAILY_LOSS_LOCK") != std::string::npos, "the record names the blocking guard: " + an);
+      QCHECK(an.find("CORE_STATUS=PASS") != std::string::npos, "CORE_STATUS is carried: " + an);
+      QCHECK(an.find("RISK equity=") != std::string::npos && an.find("dayLocked=yes") != std::string::npos,
+             "the RISK_STATUS exposure is folded into the record (and shows the armed lock): " + an);
+      QCHECK(an.find("DISPLACEMENT_STATUS=TF=") != std::string::npos && an.find("STATUS=OK") != std::string::npos,
+             "the displacement status is carried: " + an);
+      QCHECK(an.find("BUY_SCORE=") != std::string::npos && an.find("SELL_SCORE=") != std::string::npos,
+             "both scores are carried: " + an);
+      std::string fin = firstWith("[QATS][FINAL]", std::string("side=") + side, "REASON=DAILY_LOSS_LOCK");
+      QCHECK(!fin.empty(), "a matching [QATS][FINAL] record is journalled");
+      QEQ(linesWith("[QATS][FINAL]", std::string("side=") + side, "REASON=DAILY_LOSS_LOCK"), 1,
+          "FINAL is printed once per setup per outcome, never per bar");
+      QCHECK(!firstWith("[QATS][GUARD]", std::string("side=") + side, "REJECTED AT=RISK_GUARD REASON=DAILY_LOSS_LOCK").empty(),
+             "a high-scoring blocked setup explains itself: SCORE=.. REJECTED AT=RISK_GUARD REASON=DAILY_LOSS_LOCK");
+   }
+   // --- phase 2: identical tape, no lock; the setup executes and the contract follows
+   resetSimOnly();
+   captureJournal();
+   setInputs({});
+   {
+      Scn sc(1500.0);
+      Marks m = patternFullChain(sc, true);
+      Player pl;
+      pl.feed.mirror = mirror;
+      pl.feed.mirrorK = 400000;
+      pl.play(sc, m.attachAt);
+      QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds on the clean tape");
+      pl.play(sc, m.endAt);
+      QCHECK(entryCount() >= 1L, "without the lock the same tape trades");
+      std::string an = firstWith("[QATS][ANALYSIS]", std::string("side=") + side, "EXECUTION_STATUS=EXECUTED");
+      QCHECK(!an.empty(), "the executed setup produces a [QATS][ANALYSIS] record");
+      QCHECK(an.find("FINAL_DECISION=ENTER_MARKET") != std::string::npos, "an executed trade maps to ENTER_MARKET: " + an);
+      QEQ(linesWith("[QATS][GUARD]", std::string("side=") + side, "REASON=ORDER_FILLED"), 0,
+          "an executed outcome never prints a rejection explanation");
+      std::string fin = firstWith("[QATS][FINAL]", std::string("side=") + side, "DECISION=ENTER_MARKET");
+      QCHECK(!fin.empty(), "the FINAL record carries DECISION=ENTER_MARKET");
+   }
+   simDiagnosticsClean();
+   printf("RESULT scenario=diagnostics_record mirror=%d side=%s\n", mirror ? 1 : 0, side);
+}
+
 static long pendingTypeOf()
 {
    return sim::S.orders.empty() ? -1 : (long)sim::S.orders[0].type;
@@ -1016,6 +1170,51 @@ static void scnLimitFill(bool mirror)
           mirror ? 1 : 0, g_tradesToday, sim::S.positions.size(), linesWith("[QATS][LIMIT] FILLED"), price, sl, tp);
 }
 
+
+// v1.24: the premium/discount HARD gate on MARKET entries (InpPDEnforceMarket=true).
+// The same strong chain and the same scores as scnStrong - but a BUY only fires in
+// discount / at the equilibrium of the SELECTED adaptive range, a SELL only in
+// premium. This scenario asserts the gate CONSISTENCY against the journal's own
+// [QATS][PD] line, whatever the outcome: an EXECUTED trade must sit on the allowed
+// side of the selected equilibrium, and a PD_MARKET block must correspond to a
+// SCORED outcome=BLOCKED reason=PD_MARKET on the same side.
+static void scnPDGate(bool mirror)
+{
+   resetSimOnly();
+   captureJournal();
+   setInputs({{"InpStrategyProfile", "2"}, {"InpPDEnforceMarket", "true"}, {"InpUseLimitEntry", "false"}});
+   Scn sc(1500.0);
+   Marks m = patternFullChain(sc, true);
+   Player pl;
+   pl.feed.mirror = mirror;
+   pl.feed.mirrorK = 400000;
+   pl.play(sc, m.attachAt);
+   QEQ(pl.attach(sc), (int)INIT_SUCCEEDED, "OnInit succeeds");
+   pl.play(sc, m.endAt);
+   const char *side = mirror ? "SELL" : "BUY";
+   int pdLines = linesWith("[QATS][PD] LONG_EQ=");
+   QCHECK(pdLines >= 1, "the [QATS][PD] comparison line is journalled (" + std::to_string(pdLines) + " evaluations)");
+   std::string pdFirst = firstWith("[QATS][PD] LONG_EQ=");
+   QCHECK(pdFirst.find("SHORT_EQ=") != std::string::npos && pdFirst.find("SWING_EQ=") != std::string::npos,
+          "the PD line carries all THREE equilibriums: " + pdFirst);
+   QCHECK(pdFirst.find("SELECTED=") != std::string::npos && pdFirst.find("STATUS=") != std::string::npos,
+          "the PD line carries the selection and the status: " + pdFirst);
+   int blocked = linesWith("[QATS][PD] MARKET_BLOCKED", std::string("direction=") + side);
+   int pdBlocks = linesWith("[QATS][SIGNAL][SCORED]", "outcome=BLOCKED", "reason=PD_MARKET");
+   QEQ(blocked, pdBlocks, "every PD_MARKET block ends in a SCORED outcome=BLOCKED reason=PD_MARKET record");
+   int filled = linesWith("[QATS][EXECUTION][FILLED]", std::string("direction=") + side);
+   QCHECK(blocked + filled >= 1, "the setup was either gated by premium/discount or executed (gate exercised on this market)");
+   if(filled > 0)
+      QEQ(blocked, 0, "no PD block was journalled for a side that executed");
+   if(blocked > 0)
+   {
+      QEQ(filled, 0, "nothing executed after the premium/discount gate refused it");
+      QCHECK(linesWith("[QATS][SIGNAL][SCORED]", "outcome=EXECUTED") == 0, "no EXECUTED record exists in this premium (disallowed) market leg");
+   }
+   simDiagnosticsClean();
+   printf("RESULT scenario=pd_gate mirror=%d blocked=%d filled=%d\n", mirror ? 1 : 0, blocked, filled);
+}
+
 struct ScnEntry { const char *name; std::function<void()> fn; };
 static std::vector<ScnEntry> scenarioTable()
 {
@@ -1026,6 +1225,8 @@ static std::vector<ScnEntry> scenarioTable()
       {"strong_sell_conservative", [] { scnStrong(true, "0"); }},
       {"strong_buy_active", [] { scnStrong(false, "2"); }},
       {"strong_sell_active", [] { scnStrong(true, "2"); }},
+      {"pd_gate_buy", [] { scnPDGate(false); }},
+      {"pd_gate_sell", [] { scnPDGate(true); }},
       {"strong_m15_buy_active", [] { scnStrongM15(false); }},
       {"strong_m15_sell_active", [] { scnStrongM15(true); }},
       {"sweep_only_m15_buy_active", [] { scnSweepOnlyM15(false); }},
@@ -1076,6 +1277,10 @@ static std::vector<ScnEntry> scenarioTable()
       {"limit_cancel_sell", [] { scnLimitCancel(true); }},
       {"limit_fill_buy", [] { scnLimitFill(false); }},
       {"limit_fill_sell", [] { scnLimitFill(true); }},
+      {"news_blackout_buy", [] { scnNewsBlackout(false); }},
+      {"news_blackout_sell", [] { scnNewsBlackout(true); }},
+      {"diagnostics_record_buy", [] { scnDiagnosticsRecord(false); }},
+      {"diagnostics_record_sell", [] { scnDiagnosticsRecord(true); }},
    };
 }
 

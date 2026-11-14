@@ -371,6 +371,10 @@ struct State
    // diagnostics that tests assert to be empty
    std::vector<std::string> fmtErrors;
    std::vector<std::string> apiErrors;
+   // economic calendar, seeded by tests: calMode 0 = reachable, 1 = unreachable
+   int calMode = 0;
+   struct CalEvent { datetime time; long importance; std::string currency; };
+   std::vector<CalEvent> calEvents;
    std::string lastComment;
    std::function<void(const std::string &)> onPrint;
    FILE *logFile = nullptr;
@@ -1210,6 +1214,37 @@ inline int StringReplace(string &s, const string &find, const string &repl)
 }
 inline long   StringToInteger(const string &s) { return atol(s.c_str()); }
 inline double StringToDouble(const string &s) { return atof(s.c_str()); }
+
+// --- economic calendar -------------------------------------------------
+// Real MQL5 exposes MqlCalendarValue to the EA; the simulator models only the
+// two fields the EA is allowed to read (time, importance). calMode != 0 makes
+// every call fail the way a missing terminal calendar does (entries NOT
+// blocked by unverifiable data); calEvents seeds what the "terminal" knows.
+struct MqlCalendarValue
+{
+   datetime time;
+   long     importance;
+};
+
+inline int CalendarValueHistory(MqlArray<MqlCalendarValue> &values, const datetime from, const datetime to, const string &currency)
+{
+   values.v.clear();
+   if(sim::S.calMode != 0)
+   {
+      sim::S.lastError = 4806;           // unreachable calendar (the EA treats <0 as "not verifiable")
+      return -1;
+   }
+   for(const sim::State::CalEvent &e : sim::S.calEvents)
+   {
+      if(e.time < from || e.time > to) continue;
+      if(!currency.empty() && e.currency != currency) continue;
+      MqlCalendarValue v{};
+      v.time = e.time;
+      v.importance = e.importance;
+      values.v.push_back(v);
+   }
+   return (int)values.v.size();
+}
 
 inline datetime TimeCurrent() { return sim::S.lastTickTime; }
 inline datetime TimeTradeServer() { return sim::S.now; }
