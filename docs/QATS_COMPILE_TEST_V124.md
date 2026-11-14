@@ -35,7 +35,7 @@ permits. What closed and what did not is listed exactly; nothing is dressed up.
   | `test_qats_limit_entry.py` | **98/98** |
   | `test_qats_journal_report.py` | **33/33** |
   | `test_qats_native_build.py` + qats-backtest study (2026-11-11, prior) | study figures unchanged; no demonstrated edge |
-  | `check_production_ready.py` (57 curated checks) | **57/57 OFFLINE GO** |
+  | `check_production_ready.py` (61 curated checks) | **61/61 OFFLINE GO** (57/57 at first Phase-10 run; extended in the 2026-11-14 PR-68 close-out) |
 
 - Changelog entry **2026-11-14, Phase 10**; audit addendum updated (phases
   2..9 → 2..10); README status block extended.

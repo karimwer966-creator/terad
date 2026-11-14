@@ -4,7 +4,7 @@ All changes are made on top of v1.23 (merged to `main` in `db025e9`, 2026-11-13)
 Rollback copies live in `MQL5/Experts/rollback/` (gitignored, untracked).
 No MetaEditor/F7 compile has been run at any point; "offline" = host C++ transpile
 + g++ shim simulation (`tools/qats_native.py`), which is NOT a MetaEditor compile.
-Offline gate: `python3 tools/check_production_ready.py` → 57/57 OFFLINE GO throughout.
+Offline gate: `python3 tools/check_production_ready.py` → 57/57 OFFLINE GO throughout (61/61 since the 2026-11-14 PR-68 close-out, which added the four suites the CI structural job runs but the gate did not).
 
 ## 2026-11-13 — Phase 2: critical bug fixes (branch arena/8397a41f-terad)
 
@@ -391,3 +391,27 @@ F7 compile; Strategy Tester matrix; tester journal review; ≥ 4 weeks DEMO
 forward test; explicit written REAL authorization. Until all above: MODIFIED,
 DEMO-only, REAL disarmed.
 
+## 2026-11-14 — PR #68 close-out: CI failure fixed; offline gate 57 → 61
+
+CI job `verify QuantumAutonomousTradingSystem (offline, NOT a compile)` failed in
+8s on PR #68 at step "XAUUSD execution and account authorization harnesses
+(offline)". Reproduced locally and fixed at the assertion sites — never loosened:
+
+- `tools/test_xau_execution_policy.py` — the native harness now extracts
+  `QATS_FillShort` (added by the Phase 8 partial-fill accounting and already
+  called inside `ExecuteSignal`); the XAUUSD-gated reservation expectation was
+  pinned to pre-Phase-8 source text. CR-3 made the reservation symbol-agnostic
+  deliberately, so the assertion now pins the opposite: the XAUUSD-only gate
+  must NOT exist (`assertNotIn 'if(IsXAUUSD() && !ReserveSignal'`) and the
+  reservation must be wired into exactly the two send paths (market + LIMIT,
+  `count == 2`). The veto/score/stop/duplicate guard matrix in the same suite
+  passes unchanged (26 guard/duplicate + 24 score/direction + 8 veto cases).
+- Root cause of the CI/gate divergence: the curated gate never ran
+  `test_quantum_compile_regressions.py`, `test_xau_execution_policy.py`,
+  `test_quantum_account_policy.py` or `test_qats_limit_entry.py` — four suites
+  the CI job runs. All four added to `tools/check_production_ready.py`;
+  header counts in this changelog updated; dated historical entries unchanged.
+- Post-fix: policy suite 2/2 OK; compile-regressions 4/4 OK; account-policy
+  16/16 OK; **production gate re-run: 61/61 curated checks passed**.
+
+No EA source touched. QATS_VERSION remains 1.23. Readiness unchanged (MODIFIED).
