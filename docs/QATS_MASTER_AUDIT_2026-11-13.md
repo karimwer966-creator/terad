@@ -192,6 +192,15 @@ summary against this document's findings:
   on every symbol with GV-flush verification (fail closed), watermark-bounded
   deal scan, per-bar memoized liquidity context; partial-fill accounting and
   the RISK_STATUS exposure map added. Offline gate 57/57.
+- Operator F7 attempt #1 (2026-11-14, on `d3df3f6`, the PR-#68 merge):
+  **1 error — `undeclared identifier 'importance'`** (the EA read importance
+  off `MqlCalendarValue`; that struct carries only time + event_id). Fixed to
+  the event-join pattern proven by nadir2 (History NULL/NULL → CalendarEventById
+  → ev.importance) plus `CalendarEventByCurrency` for the watched-currency
+  filter (name flagged as unverifiable offline; documented fallback = block on
+  any high-importance event + explicit journal). F7 attempt #2 pending.
+  Offline: build clean, unit 558/558, news scenarios 12/12, news_blackout
+  pair green.
 - Phase 10 — Compile & test — documentation scope closed offline, honestly:
   F7 compile NOT available on this environment (probe 2026-11-14: no
   MetaEditor/terminal/Wine; offline suites ≠ compile); offline battery re-run

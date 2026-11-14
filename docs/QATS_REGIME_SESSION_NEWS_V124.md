@@ -85,26 +85,35 @@ verification limitation is documented in code and here.
 - Block code `NEWS_BLACKOUT` via `AddBlock` (after the session block); the
   `[QATS][BLOCK][REASON]` journal line names it, with event count, threshold
   and watched currencies.
-- **An unreachable calendar blocks NOTHING.** `NewsHighImpactInWindow` makes one
-  `CalendarValueHistory` call per watched currency. If **every** call fails,
-  the calendar is unreachable: entries are allowed, `[QATS][NEWS]
-  CALENDAR_UNAVAILABLE …` is printed **once per attach** (never per bar), and
-  no event is ever invented. If only some currencies fail, the reachable
-  currencies are still honored (partial reachability is reported by the
-  counts, not silently swallowed) — a partially visible calendar is real data
-  and is enforced.
+- **An unreachable calendar blocks NOTHING.** `NewsHighImpactInWindow` reads the
+  window once (`CalendarValueHistory` 3-arg) and joins values to the event
+  library by `event_id` — `MqlCalendarValue` carries NO importance/currency of
+  its own (importance lives on the event; the terminal-proven join used by
+  nadir2 is the pattern). Each watched currency is matched via
+  `CalendarEventByCurrency`; a currency lookup that fails is unverifiable for
+  **that currency only** (fail-open — never fabricated). If the calendar read
+  itself fails, or no watched currency verifies, entries are allowed and
+  `[QATS][NEWS] CALENDAR_UNAVAILABLE …` is printed **once per attach** (never
+  per bar). Partial reachability still enforces the reachable currencies.
 - `NewsEntriesAllowed` also prints a one-time armed-line at first reachability
   (`[QATS][NEWS] enabled: importance>=… around …, window …`) so the operator
   can see the guard is actually reading the calendar, not merely switched on.
 
 **The verification limitation is real and standing.** Whether MetaQuotes'
 economic calendar is populated on the operator's terminal can only be verified
-in MetaEditor on that platform (Phase 10). Until then: the filter ships
-default-false, and no production claim may cite it as active protection. If
-the terminal's calendar turns out to be dead, the honest outcome (b) applies:
-keep `InpNewsFilterEnable=false` and treat news risk as a documented operator
-responsibility (the demo forward test, Phase 10, is where calendar liveness
-will be observed).
+in MetaEditor on that platform — **F7 attempt #1 (2026-11-14, `d3df3f6`) failed with
+one error: `undeclared identifier 'importance'` (the EA read importance off
+`MqlCalendarValue`, which has none)** — and it was fixed to the event-join
+pattern (see changelog 2026-11-14-F7-1). Two names used by the fixed join
+could not be verified offline and are called out explicitly: `CalendarEventByCurrency`
+and `MqlCalendarEvent.id`. If F7 attempt #2 reports either, the implemented
+fallback is documented there (block on any high-importance event in the
+window + explicit journal line; entries never blocked by unverifiable data,
+never fabricated). Until a clean F7: the filter ships default-false, and no
+production claim may cite it as active protection. If the terminal's calendar
+turns out to be dead, keep `InpNewsFilterEnable=false` and treat news risk as
+a documented operator responsibility (the demo forward test is where calendar
+liveness will be observed).
 
 **Offline exercisability.** The shim (`tools/qats_sim/mql5_shim.h`) now models
 the calendar: `sim::State::calMode` (0 = reachable, 1 = unreachable; non-zero

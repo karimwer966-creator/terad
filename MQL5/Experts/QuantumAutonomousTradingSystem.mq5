@@ -2888,13 +2888,22 @@ string NewsTrimToken(const string text)
    return (a > b) ? "" : StringSubstr(text, a, b - a + 1);
 }
 
-// one CalendarValueHistory call per watched currency; returns the number of
-// HIGH-IMPACT events in [from, to]. Returns -1 when EVERY call fails (calendar
-// unreachable); partial reachability reports the reachable calls' events.
+// One unfiltered CalendarValueHistory read of the window, joined to the event
+// library by event_id - MqlCalendarValue carries no importance/currency of its
+// own (importance lives on MqlCalendarEvent; the terminal's own calendar
+// consumer in this codebase uses the same History -> CalendarEventById -> join,
+// verified when nadir2 compiled). Each watched currency is matched against
+// CalendarEventByCurrency; a currency lookup that fails is treated as
+// unverifiable for THAT currency only (fail-open, never fabricated). Returns
+// -1 when the calendar itself is unreachable or when no watched currency can
+// be verified; partial reachability enforces the reachable currencies.
 int NewsHighImpactInWindow(const datetime from, const datetime to, string &why)
 {
    int events = 0;
    int calls = 0, ok = 0;
+   MqlCalendarValue vals[];
+   int total = CalendarValueHistory(vals, from, to);
+   if(total < 0) return -1;                      // terminal calendar unreachable: never block
    string list = InpNewsCurrencies;
    while(StringLen(list) > 0)
    {
@@ -2903,16 +2912,25 @@ int NewsHighImpactInWindow(const datetime from, const datetime to, string &why)
       list = (comma >= 0) ? StringSubstr(list, comma + 1) : "";
       if(StringLen(cur) == 0) continue;
       calls++;
-      MqlCalendarValue vals[];
-      int cnt = CalendarValueHistory(vals, from, to, cur);
-      if(cnt < 0) continue;                      // this currency unreachable
+      MqlCalendarEvent evs[];
+      int evN = CalendarEventByCurrency(cur, evs);
+      if(evN < 0) continue;                      // this currency cannot be verified -> fail-open for it
       ok++;
-      for(int i = 0; i < cnt; i++)
-         if(vals[i].importance >= InpNewsMinImportance) events++;
+      for(int j = 0; j < evN; j++)
+      {
+         if((long)evs[j].importance < InpNewsMinImportance) continue;
+         ulong evId = (ulong)evs[j].id;
+         for(int i = 0; i < total; i++)
+            if((ulong)vals[i].event_id == evId)
+            {
+               events++;   // one count per (event, window); a currency never shares an event with another
+               break;
+            }
+      }
    }
    why = "";
    if(calls == 0) return 0;                      // nothing watched -> nothing to block
-   if(ok == 0) return -1;                        // every call failed
+   if(ok == 0) return -1;                        // no watched currency could be verified
    return events;
 }
 
