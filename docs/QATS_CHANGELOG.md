@@ -415,3 +415,36 @@ CI job `verify QuantumAutonomousTradingSystem (offline, NOT a compile)` failed i
   16/16 OK; **production gate re-run: 61/61 curated checks passed**.
 
 No EA source touched. QATS_VERSION remains 1.23. Readiness unchanged (MODIFIED).
+## 2026-11-14 — F7 attempt #1: one error, fixed (`d3df3f6`, branch arena/7c5c992a-terad)
+
+The operator ran F7 in MetaEditor on the PR-#68 merge (`d3df3f6`). Result:
+**1 error, 0 warnings** —
+`undeclared identifier 'importance'` — QuantumAutonomousTradingSystem.mq5:2911
+(the news guard read importance off `MqlCalendarValue`).
+
+MQL5 ground truth (MqlCalendarValue carries only `time` + `event_id`;
+importance lives on `MqlCalendarEvent`). The fix rewrites
+`NewsHighImpactInWindow` to the event-join pattern already proven in this repo
+(nadir2's `MTF_SniperIsNewsBlackout` compiled it): one unfiltered
+`CalendarValueHistory` read, joined to the event library by `event_id`; each
+watched currency is matched with `CalendarEventByCurrency` (flagged as the one
+unverifiable-offline name; fallback if F7 rejects it = block on any
+high-importance event in the window with an explicit `[QATS][NEWS] currency
+filter UNVERIFIED …` journal line). Partial reachability semantics preserved:
+a currency whose lookup fails is unverifiable for THAT currency only — entries
+are never blocked by unverifiable data, never fabricated.
+
+Two names could not be verified offline and are called out for the next F7:
+`CalendarEventByCurrency` and `MqlCalendarEvent.id`. If F7 attempt #2 fails on
+either, apply the documented fallback (History + CalendarEventById, block on
+any high-importance event + explicit journal) — do NOT improvise.
+
+Offline re-verified after the fix: host build clean (0 errors); unit 558/558;
+`news_blackout_buy/sell` 12/12; `diagnostics_record_*` unaffected; regression
+suite green. The simulator now models the real struct shapes (`MqlCalendarValue
+{time, event_id}`, `MqlCalendarEvent {id, importance}`), so a repeat of this
+divergence class is caught by the host build, not by the next F7.
+
+Honest status: NOT compile-verified yet — F7 attempt #2 is pending. Readiness
+unchanged (MODIFIED). QATS_VERSION remains 1.23. REAL remains disarmed.
+

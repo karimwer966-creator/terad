@@ -63,6 +63,13 @@ remains the gate that only a human with a terminal can open. Until it reads
 `0 errors, 0 warnings`, the binary nobody has built is "the same source text",
 nothing more.
 
+## 2a. F7 attempts (operator-side, this checkout)
+
+| # | Date | Tree | Result |
+|---|---|---|---|
+| 1 | 2026-11-14 | `d3df3f6` (PR-#68 merge) | **1 error** — `undeclared identifier 'importance'` (QuantumAutonomousTradingSystem.mq5:2911; the news guard read importance off `MqlCalendarValue`). **FIXED** on branch `arena/7c5c992a-terad` to the event-join pattern proven by nadir2 (History NULL → join by `event_id`); changelog 2026-11-14-F7-1. Note: the Phase-10 wording below ("no F7 performed") is superseded by this table. |
+| 2 | pending | `arena/7c5c992a-terad` | awaits the operator's F7 — specifically to verify `CalendarEventByCurrency` and `MqlCalendarEvent.id` (both unverifiable offline; documented fallback if either fails) |
+
 ## 3. Readiness classification (unchanged, deliberately)
 
 **MODIFIED — not compile-verified, not backtested in the terminal, not
