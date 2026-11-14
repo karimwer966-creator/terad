@@ -92,6 +92,12 @@
 #define QATS_HARD_CAP_DD_PCT     15.0   // absolute drawdown ceiling, % from high-water mark
 #define QATS_VERSION            "1.23"
 
+// PD engine range selection codes (v1.24 adaptive premium/discount)
+#define QATS_PD_NONE  -1     // every range rejected: fail closed, never trade a gate bypass
+#define QATS_PD_A      0     // long-term range (InpSwingLookback closed H1 bars)
+#define QATS_PD_B      1     // short-term range (InpPdShortLookback closed H1 bars)
+#define QATS_PD_C      2     // confirmed swing range (fresh, validated swings)
+
 // Confluence weights. They sum to exactly 100 and absent evidence scores 0, so a
 // score is a plain percentage of the evidence present. BUY and SELL use the SAME
 // table. The zone weights are alternatives (touched OR merely present), never added.
@@ -107,6 +113,14 @@
 #define QATS_W_VOLUME         4     // optional confluence: above-average M5 bar closing our way
 #define QATS_W_M15            5     // optional confluence (core in CONSERVATIVE): M15 confirmation
 #define QATS_W_M5             5     // optional confluence (core in CONSERVATIVE): M5 trigger candle
+
+// market regime classification (v1.24, Phase 7  -  REPORT-ONLY: never a veto)
+#define QATS_REGIME_UNCLEAR    0
+#define QATS_REGIME_TREND_BULL 1
+#define QATS_REGIME_TREND_BEAR 2
+#define QATS_REGIME_RANGE      3
+#define QATS_REGIME_HIGH_VOL   4
+#define QATS_REGIME_LOW_VOL    5
 
 // liquidity pool life cycle
 #define QATS_POOL_INTACT   0       // never traded through: a liquidity TARGET
@@ -211,6 +225,39 @@ input double   InpLimitSLBufferATR     = 0.30;    // stop beyond the zone, x H1 
 input double   InpLimitMinRR           = 2.0;     // min RR measured from the LIMIT price
 input bool     InpLimitNeedPD          = true;    // SELL only in premium, BUY only in discount
 
+//--- 5c. adaptive premium / discount (v1.24) ------------------------------
+// Three H1 dealing ranges, closed bars only, compared on every evaluation:
+//   A long-term  = InpSwingLookback closed H1 bars (default 120)
+//   B short-term = InpPdShortLookback closed H1 bars (default 48)
+//   C swing      = most recent confirmed swing high -> most recent confirmed
+//                  swing low, both no older than InpPdSwingMaxAge bars
+// The EQ of A/B/C are always journalled; the SELECTED range gates direction
+// (SELL in premium / BUY in discount) on BOTH entry paths. Never relaxed.
+input bool     InpPDEnforceMarket      = true;    // hard premium/discount gate on MARKET entries (limit path keeps InpLimitNeedPD)
+input int      InpPdShortLookback      = 48;      // range B: short-term H1 bars (range A = InpSwingLookback)
+input int      InpPdSwingMaxAge        = 60;      // range C: most recent of the two defining confirmed swings, max age in H1 bars (0 = no age limit)
+
+//--- 5d. regime + sessions + calendar (v1.24, Phase 7) ---------------------
+// REGIME IS REPORT-ONLY: it is computed every evaluation and journalled, never
+// used to veto an entry. Sessions stay BROKER-SERVER hours; the offset input is
+// advisory (journal + operator documentation), the guard itself is unchanged.
+// The news filter is OPT-IN (default false): a high-impact event inside the
+// window blocks entries; an UNREACHABLE calendar blocks NOTHING (fail open for
+// trading, never fabricate events, log once per attach).
+input bool     InpRegimeEnable         = true;    // compute + journal the regime line (report-only)
+input int      InpRegimeAtrWindow      = 100;     // H1 ATR percentile window (its own median, closed bars)
+input double   InpRegimeHighVolMult    = 1.5;     // ATR >= this x median -> HIGH_VOL
+input double   InpRegimeLowVolMult     = 0.5;     // ATR <= this x median -> LOW_VOL
+input int      InpBrokerUtcOffsetMinutes = 0;     // broker server -> UTC offset in minutes (advisory; e.g. +120/+180 for NY-close brokers, DST follows the broker's server clock)
+input bool     InpNewsFilterEnable     = false;   // block entries around high-impact calendar events (opt-in)
+input int      InpNewsBlockBeforeMin   = 30;      // block this many minutes BEFORE the event
+input int      InpNewsBlockAfterMin    = 30;      // ... and AFTER it
+input string   InpNewsCurrencies       = "USD,XAU";// comma-separated currencies to watch
+input long     InpNewsMinImportance    = 3;       // 3 = CALENDAR_IMPORTANCE_HIGH, 2 = moderate too (0 none .. 3 high)
+input double   InpPdSwingMinATR        = 0.5;     // range C: minimum width in H1 ATRs
+input double   InpPdStaleBufferATR     = 0.5;     // a range whose extreme is older than InpPdSwingMaxAge AND is more than this x ATR from price is rejected (stale extremes dominating)
+input double   InpPdHysteresisATR      = 0.25;    // keep the previously selected range while its EQ is within this x ATR of the preferred EQ (0 = always switch)
+
 //--- 6. diagnostics -----------------------------------------------------
 input int      InpHeartbeatSeconds     = 300;     // diagnostic journal line every N seconds (0 = off)
 input bool     InpVerbose              = true;    // true = one scored line per bar; false = only when the outcome changes
@@ -235,6 +282,14 @@ bool IsTransientRetcode(const uint rc)
 bool IsSuccessRetcode(const uint rc)
 {
    return (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL);
+}
+
+// Filled-with-report accounting (Phase 8, market path): a DONE_PARTIAL (or a
+// DONE whose reported volume is short of the request) is a FILL, and it must be
+// journalled as such - never silently treated as the full requested size.
+bool QATS_FillShort(const double requested, const double filled)
+{
+   return filled < requested - 1e-8;
 }
 
 //--- internal structures -------------------------------------------------
@@ -269,7 +324,7 @@ struct SReading        // one indicator snapshot used by the scoring engine
 {
    double d1Fast, d1Slow, d1Close;
    double h4Fast, h4Slow, h4Close;
-   double h1Fast, h1Slow, h1Close;
+   double h1Fast, h1Slow, h1Close, h1Slow200;
    double m15Fast, m15Close, m15Open;
    double atrH1, atrM15, atrM5;
    double vwap;
@@ -290,10 +345,20 @@ struct SSweep          // liquidity run that was rejected (the stop hunt a rever
 {
    bool   found;
    int    bar;            // H1 shift of the rejection bar (closed back inside the level)
+   ENUM_TIMEFRAMES tf;    // timeframe the run was detected on (PERIOD_H1 today; stored like dispTF)
+   int    poolShift;      // shift of the pool's formation bar (SWING/EQ*: H1 shift; PDH/PDL/PWH/PWL: 0 = day/week boundary)
+   datetime eventTime;    // server time of the rejection bar, frozen at detection (never re-read)
    double level;          // price of the swept pool
    double extreme;        // furthest price reached beyond the pool
    string pool;           // kind of the pool that was run
    bool   breakout;       // a pool on this side was ACCEPTED through instead (informational)
+};
+
+struct SRegime         // report-only market regime (Phase 7)
+{
+   int    kind;            // QATS_REGIME_*
+   double volRatio;        // ATR(1) / median ATR(1..window)
+   double rangeRatio;      // (HH20-LL20) / (HH100-LL100), closed H1 bars
 };
 
 struct SSide           // the complete evidence for ONE direction
@@ -338,7 +403,19 @@ struct SAnalysis       // complete result of one analysis pass
    int      d1Bias;         // +1/-1/0
    int      h4Bias;         // +1/-1/0
    int      h1Struct;       // H1 structure trend: +1 bullish / -1 bearish / 0 undefined
-   double   dealPos;        // 0..1 location inside the dealing range (0 = range low)
+   double   dealPos;        // 0..1 location inside the SELECTED adaptive dealing range (0 = range low)
+   double   pdEq;           // equilibrium of the SELECTED range (0 when no valid range)
+   double   pdLongEq;       // equilibrium of range A (LONG, 120 closed H1 bars); 0 when invalid
+   double   pdShortEq;      // equilibrium of range B (SHORT, 48 closed H1 bars); 0 when invalid
+   double   pdSwingEq;      // equilibrium of range C (confirmed swings); 0 when invalid
+   bool     pdLongValid;    // range A usable (enough bars, non-flat, no dominating stale extreme)
+   bool     pdShortValid;   // range B usable
+   bool     pdSwingValid;   // range C usable (fresh, relevant, confirmed swings)
+   int      pdSelected;     // QATS_PD_A / QATS_PD_B / QATS_PD_C, or QATS_PD_NONE when everything rejected
+   string   pdStatus;       // OK | OK (hysteresis ...) | REJECTED: ...  (never silent)
+   string   regime;         // QATS_REGIME_* label  -  report only, never a veto
+   double   regimeVolRatio;   // H1 ATR(1) / median H1 ATR(1..InpRegimeAtrWindow)  -  >1 expansion, <1 compression
+   double   regimeRangeRatio; // (HH20-LL20) / (HH100-LL100), closed H1 bars  -  share of the 100-bar range the last 20 bars span
    double   vwap;
    SSide    buy;            // BUY evidence and score
    SSide    sell;           // SELL evidence and score
@@ -349,7 +426,8 @@ struct SAnalysis       // complete result of one analysis pass
    double   sl;
    double   tp;
    double   stopDist;
-   string   tpSource;       // "LIQUIDITY:<pool>","RR"
+   string   tpSource;       // "LIQUIDITY:<pool>@<level>" or "RR"
+   double   tpLevel;        // the liquidity pool level the TP is anchored to (0 = RR fallback)
    string   reason;         // human readable context for the heartbeat / panel
 };
 
@@ -362,6 +440,28 @@ struct SClosedPos      // one position reconstructed from the deal history
    bool     ours;           // the entry deal (or a closing deal) carries this magic
    bool     hasOut;
    int      dir;            // +1 buy, -1 sell, 0 unknown (entry older than the history window)
+};
+
+struct SRiskStatus     // RISK_STATUS exposure map (Phase 8): account-side risk posture (read-only)
+{
+   double equity;
+   double dayPnl;           // money vs the server-day baseline
+   double dayPnlPct;        // vs the baseline, percent
+   double hwm;              // equity high-water mark (persisted)
+   double ddPct;            // current drawdown from the HWM, percent
+   double ddCapPct;         // effective drawdown cap, percent (0 = disabled)
+   double ddUsedPct;        // ddPct as a percent of the cap (0 when no cap)
+   int    consecLosses;
+   int    streakMax;        // InpStopAfterConsecLoss
+   int    tradesToday;      // fills counted against the daily cap
+   int    tradesMax;        // InpMaxTradesPerDay (0 = no cap)
+   double dailyLossPct;     // day loss as a percent of the baseline (0 when flat/green)
+   double dailyLossCapPct;  // effective daily loss cap, percent
+   bool   dayLocked;
+   bool   ddHalted;
+   bool   cooldownActive;
+   datetime cooldownUntil;
+   double marginUsedPct;    // used / (used + free) * 100
 };
 
 struct SSymbolSpec
@@ -408,6 +508,19 @@ string      g_blockReason      = "";
 int         g_lastScore        = 0;
 int         g_lastScoreBuy     = 0;
 int         g_lastScoreSell    = 0;
+// NC-2 per-bar memoization: swings + the liquidity map are pure functions of the
+// closed H1 series (shift >= 1) with constant inputs; the analysis, the trade plan
+// and the limit plan consume them on the same bar. Keyed on the newest closed H1
+// bar's time; a new H1 bar rebuilds. Closed bars never change, so the cache is
+// exact, not approximate.
+SSwing         g_mHighs[];
+SSwing         g_mLows[];
+SLiquidityPool g_mPools[];
+datetime       g_mH1Bar = 0;
+int            g_mH1Bars = 0;
+double         g_mH1Close = 0.0;
+double         g_mH1High = 0.0;
+double         g_mH1Low = 0.0;
 int         g_lastDir          = 0;
 string      g_lastReason       = "";
 string      g_executionReason  = "";
@@ -419,10 +532,21 @@ ulong       g_pendingRetryAt   = 0;        // 0 = no pending retry
 int         g_pendingRetries   = 0;
 SAnalysis   g_pendingPlan;                 // the plan a queued retry re-submits
 ulong       g_lastLoggedDeal   = 0;
-datetime    g_lastManageFail   = 0;
+// Per-ticket throttle for refused break-even modifications (CR-4). A refused modify
+// used to throttle EVERY position for 10s via one global; now only the refused ticket waits.
+#define QATS_MANAGE_FAIL_MAX 32
+datetime    g_manageFailAt[QATS_MANAGE_FAIL_MAX];
+ulong       g_manageFailTicket[QATS_MANAGE_FAIL_MAX];
+// audit log-once flags (each critical silence prints at most one line per attach)
+bool        g_loggedZoneHistoryFail = false;
+bool        g_newsUnavailableLogged = false;
+bool        g_newsReadyLogged       = false;
+bool        g_loggedDoubleBreak     = false;
 string      g_lastBlockKey     = "";
 string      g_lastRejectKey    = "";
 string      g_lastScoredKey    = "";
+string      g_lastAnalysisKey[2];  // Phase 9 single-record dedup: setup|outcome|reason per side
+string      g_lastGuardKey[2];     // Phase 9 high-score rejection record dedup
 string      g_lastConflictKey  = "";
 string      g_statsDay         = "";
 datetime    g_announcedSetup[2];           // newest setup announced per side (0 = BUY, 1 = SELL)
@@ -443,6 +567,7 @@ int         g_hH4Fast = INVALID_HANDLE, g_hH4Slow = INVALID_HANDLE;
 int         g_hH1Fast = INVALID_HANDLE, g_hH1Slow = INVALID_HANDLE;
 int         g_hM15Fast= INVALID_HANDLE;
 int         g_hATRH1  = INVALID_HANDLE, g_hATRM15 = INVALID_HANDLE, g_hATRM5  = INVALID_HANDLE;
+int         g_hH1Slow200 = INVALID_HANDLE;
 
 //+------------------------------------------------------------------+
 //| SECTION 7 - PERSISTED GUARD STATE (terminal global variables)    |
@@ -696,6 +821,7 @@ bool LoadReading(SReading &r)
    ok = BufValue(g_hH4Slow, 1, r.h4Slow)  && ok;
    ok = BufValue(g_hH1Fast, 1, r.h1Fast)  && ok;
    ok = BufValue(g_hH1Slow, 1, r.h1Slow)  && ok;
+   ok = BufValue(g_hH1Slow200, 1, r.h1Slow200) && ok;
    ok = BufValue(g_hM15Fast, 1, r.m15Fast)&& ok;
    ok = BufValue(g_hATRH1, 1, r.atrH1)    && ok;
    ok = BufValue(g_hATRM15, 1, r.atrM15)  && ok;
@@ -717,6 +843,92 @@ int BiasFrom(const double close, const double fast, const double slow)
    if(close > fast && fast > slow) return +1;
    if(close < fast && fast < slow) return -1;
    return 0;
+}
+
+//+------------------------------------------------------------------+
+//| REGIME (v1.24, Phase 7)  -  REPORT-ONLY                            |
+//| Class: HIGH_VOL / LOW_VOL (ATR percentile vs its own median),      |
+//| TREND_BULL / TREND_BEAR (EMA20>EMA50>EMA200 ordered structure),    |
+//| RANGE (fast/slow pair flat vs ATR), else UNCLEAR.                  |
+//| The class NEVER changes an entry decision; it is journalled so a   |
+//| future phase can gather evidence before any gate is considered.    |
+//+------------------------------------------------------------------+
+string RegimeName(const int kind)
+{
+   switch(kind)
+   {
+      case QATS_REGIME_TREND_BULL: return "TREND_BULL";
+      case QATS_REGIME_TREND_BEAR: return "TREND_BEAR";
+      case QATS_REGIME_RANGE:      return "RANGE";
+      case QATS_REGIME_HIGH_VOL:   return "HIGH_VOL";
+      case QATS_REGIME_LOW_VOL:    return "LOW_VOL";
+      default:                     return "UNCLEAR";
+   }
+}
+
+// pure classification  -  unit-tested without handles
+int ClassifyRegime(const double atrNow, const double atrMedian,
+                   const double h1Close, const double emaFast, const double emaMid,
+                   const double emaSlow200, const double atr,
+                   double &volRatio)
+{
+   volRatio = (atrMedian > 0.0) ? atrNow / atrMedian : 0.0;
+   if(atrMedian <= 0.0 || atrNow <= 0.0) return QATS_REGIME_UNCLEAR;   // fail closed: unverifiable -> UNCLEAR
+   if(volRatio >= InpRegimeHighVolMult) return QATS_REGIME_HIGH_VOL;
+   if(volRatio <= InpRegimeLowVolMult)  return QATS_REGIME_LOW_VOL;
+   if(h1Close > emaFast && emaFast > emaMid && emaMid > emaSlow200 && emaSlow200 > 0.0) return QATS_REGIME_TREND_BULL;
+   if(h1Close < emaFast && emaFast < emaMid && emaMid < emaSlow200) return QATS_REGIME_TREND_BEAR;
+   if(MathAbs(emaFast - emaMid) <= 0.5 * atr) return QATS_REGIME_RANGE;   // fast/slow pair flat vs one ATR
+   return QATS_REGIME_UNCLEAR;
+}
+
+// breadth of the last fastBars vs the last slowBars, closed H1 bars (1 = newest).
+// report-only context, never a classifier input
+double RangeRatio(const string symbol, const int fastBars, const int slowBars)
+{
+   int bars = iBars(symbol, PERIOD_H1) - 1;              // closed bars only
+   int fb = MathMin(MathMax(2, fastBars), bars);
+   int sb = MathMin(MathMax(2, slowBars), bars);
+   if(fb < 2 || sb < 2) return 0.0;
+   double hhf = iHigh(symbol, PERIOD_H1, 1), llf = iLow(symbol, PERIOD_H1, 1);
+   double hhs = hhf, lls = llf;
+   for(int s = 2; s <= sb; s++)
+   {
+      double h = iHigh(symbol, PERIOD_H1, s), l = iLow(symbol, PERIOD_H1, s);
+      if(s <= fb) { if(h > hhf) hhf = h; if(l < llf) llf = l; }
+      if(h > hhs) hhs = h;
+      if(l < lls) lls = l;
+   }
+   double span = hhs - lls;
+   return (span > 0.0) ? (hhf - llf) / span : 0.0;
+}
+
+void ComputeRegime(const string symbol, const double atrH1, const double h1Close,
+                   const double h1Fast, const double h1Slow, const double h1Slow200, SRegime &out)
+{
+   out.kind = QATS_REGIME_UNCLEAR; out.volRatio = 0.0; out.rangeRatio = 0.0;
+   int want = MathMax(10, InpRegimeAtrWindow);
+   double atrBuf[];
+   if(CopyBuffer(g_hATRH1, 0, 1, want, atrBuf) != want)
+   {
+      if(CopyBuffer(g_hATRH1, 0, 1, iBars(symbol, PERIOD_H1) - 1, atrBuf) <= 0) return;   // fail closed: UNCLEAR
+   }
+   int n = ArraySize(atrBuf);
+   if(n < 2) return;
+   // insertion sort on a copy (n <= InpRegimeAtrWindow, once per evaluation)
+   double atrSorted[];
+   ArrayResize(atrSorted, n);
+   for(int i = 0; i < n; i++) atrSorted[i] = atrBuf[i];
+   for(int i = 1; i < n; i++)
+   {
+      double keyV = atrSorted[i];
+      int j = i - 1;
+      while(j >= 0 && atrSorted[j] > keyV) { atrSorted[j + 1] = atrSorted[j]; j--; }
+      atrSorted[j + 1] = keyV;
+   }
+   double med = (n % 2 == 1) ? atrSorted[n / 2] : 0.5 * (atrSorted[n / 2 - 1] + atrSorted[n / 2]);
+   out.kind = ClassifyRegime(atrH1, med, h1Close, h1Fast, h1Slow, h1Slow200, atrH1, out.volRatio);
+   out.rangeRatio = RangeRatio(symbol, 20, 100);
 }
 
 //+------------------------------------------------------------------+
@@ -786,6 +998,12 @@ void BuildStructure(const string symbol, const ENUM_TIMEFRAMES tf, const int loo
       {
          hasHigh = false; hasLow = false;
          st.trend = 0; st.breakDir = 0; st.breakBar = -1; st.breakIsChoch = false; st.breakLevel = 0.0;
+         if(!g_loggedDoubleBreak)
+         {
+            g_loggedDoubleBreak = true;
+            PrintFormat("[QATS][STRUCTURE] same closed bar %s satisfies BOTH break branches - contradictory data, neither side credited (trend reset)",
+                        TimeToString(iTime(symbol, tf, s), TIME_DATE | TIME_MINUTES));
+         }
       }
       else if(upBreak)
       {
@@ -832,19 +1050,260 @@ bool LowestLow(const string symbol, const ENUM_TIMEFRAMES tf, const int fromShif
    return true;
 }
 
-// dealing range position for the last CLOSED price: 0 = range low, 1 = range high
-double DealingRangePosition(const string symbol, const ENUM_TIMEFRAMES tf, const int lookback)
+//+------------------------------------------------------------------+
+//| Adaptive premium / discount engine (QATS_PD_ADAPTIVE, v1.24)      |
+//|                                                                  |
+//| Three H1 dealing ranges, CLOSED bars only, compared on every      |
+//| evaluation:                                                       |
+//|   A long-term  - highest high / lowest low of InpSwingLookback    |
+//|                  closed H1 bars (default 120)                     |
+//|   B short-term - the same over InpPdShortLookback closed H1 bars  |
+//|                  (default 48)                                     |
+//|   C swing      - most recent CONFIRMED swing high down to the     |
+//|                  most recent CONFIRMED swing low; the defining    |
+//|                  swings must be no older than InpPdSwingMaxAge    |
+//|                  and the range must be at least InpPdSwingMinATR  |
+//|                  x ATR(H1) wide                                   |
+//| A range is REJECTED (never silently patched) when:                |
+//|   * the closed H1 history cannot cover the full window (incomplete)|
+//|   * it is flat (high <= low, or narrower than 0.25 x ATR)          |
+//|   * an extreme older than InpPdSwingMaxAge anchors the equilibrium |
+//|     more than InpPdStaleBufferATR x ATR away from price            |
+//|     (a stale extreme dominating the range)                        |
+//| Range C additionally requires the NEWER of its two defining        |
+//| swings to be no older than InpPdSwingMaxAge (freshness).           |
+//|                                                                  |
+//| Selection is deterministic: fresh valid C > valid B > valid A.     |
+//| Hysteresis keeps the previously selected range while it stays      |
+//| valid and its equilibrium is within InpPdHysteresisATR x ATR of    |
+//| the preferred equilibrium - adjacent bars cannot flip the regime.  |
+//| If NOTHING is valid the direction is refused (fail closed): the    |
+//| premium/discount protection is never silently bypassed.            |
+//+------------------------------------------------------------------+
+int g_pdLastSelected = QATS_PD_NONE;   // previous selection (hysteresis anchor), per attach
+
+struct SPdRange
 {
-   double hh = 0.0, ll = 0.0;
-   if(!HighestHigh(symbol, tf, 1, lookback, hh)) return 0.5;
-   if(!LowestLow(symbol, tf, 1, lookback, ll))   return 0.5;
-   double range = hh - ll;
-   if(range <= 0.0) return 0.5;
-   double close1 = iClose(symbol, tf, 1);
-   double pos = (close1 - ll) / range;
-   if(pos < 0.0) pos = 0.0;
-   if(pos > 1.0) pos = 1.0;
-   return pos;
+   bool   valid;
+   double high, low, eq;
+   int    highShift, lowShift;
+};
+
+struct SPdAdaptive
+{
+   SPdRange a, b, c;
+   int      selected;    // QATS_PD_A / B / C, or QATS_PD_NONE (everything rejected)
+   double   eq;          // equilibrium of the SELECTED range (0 when none)
+   double   position;    // (close - low) / (high - low) of the SELECTED range, 0..1 (0.5 when none)
+   string   status;      // OK | OK (hysteresis: ...) | OK (switch: ...) | REJECTED: ...
+};
+
+void PdResetRange(SPdRange &r)
+{
+   r.valid = false; r.high = 0.0; r.low = 0.0; r.eq = 0.0; r.highShift = -1; r.lowShift = -1;
+}
+
+// window extremes + the shift they were made on; requires the FULL window of closed bars
+bool HighestHighShift(const string symbol, const ENUM_TIMEFRAMES tf, const int fromShift, const int count, double &hh, int &hhShift)
+{
+   int bars = iBars(symbol, tf);
+   if(fromShift < 1 || count <= 0) return false;
+   if(bars - fromShift < count) return false;      // incomplete coverage: rejected
+   hh = iHigh(symbol, tf, fromShift);
+   hhShift = fromShift;
+   for(int i = fromShift + 1; i < fromShift + count; i++)
+   {
+      double v = iHigh(symbol, tf, i);
+      if(v > hh) { hh = v; hhShift = i; }
+   }
+   return (MathIsValidNumber(hh) && hh > 0.0);
+}
+
+bool LowestLowShift(const string symbol, const ENUM_TIMEFRAMES tf, const int fromShift, const int count, double &ll, int &llShift)
+{
+   int bars = iBars(symbol, tf);
+   if(fromShift < 1 || count <= 0) return false;
+   if(bars - fromShift < count) return false;      // incomplete coverage: rejected
+   ll = iLow(symbol, tf, fromShift);
+   llShift = fromShift;
+   for(int i = fromShift + 1; i < fromShift + count; i++)
+   {
+      double v = iLow(symbol, tf, i);
+      if(v < ll) { ll = v; llShift = i; }
+   }
+   return (MathIsValidNumber(ll) && ll > 0.0);
+}
+
+// A range is STALE when an extreme older than InpPdSwingMaxAge pins the equilibrium
+// far away from price: the range no longer describes where the market is trading.
+bool PdStaleExtreme(const SPdRange &r, const double close1, const double atr)
+{
+   if(atr <= 0.0 || InpPdStaleBufferATR <= 0.0 || InpPdSwingMaxAge <= 0) return false;
+   if(r.highShift > InpPdSwingMaxAge && (r.high - close1) > InpPdStaleBufferATR * atr) return true;
+   if(r.lowShift  > InpPdSwingMaxAge && (close1 - r.low)  > InpPdStaleBufferATR * atr) return true;
+   return false;
+}
+
+bool PdRangeFromWindow(const string symbol, const int count, const double atr, SPdRange &r)
+{
+   PdResetRange(r);
+   double close1 = iClose(symbol, PERIOD_H1, 1);
+   if(!MathIsValidNumber(close1) || close1 <= 0.0) return false;
+   if(count < 2) return false;
+   if(!HighestHighShift(symbol, PERIOD_H1, 1, count, r.high, r.highShift)) return false;
+   if(!LowestLowShift(symbol, PERIOD_H1, 1, count, r.low, r.lowShift))     return false;
+   double width = r.high - r.low;
+   if(width <= 0.0) return false;                          // flat / degenerate
+   if(atr > 0.0 && width < 0.25 * atr) return false;       // flat in ATR terms
+   r.eq = (r.high + r.low) * 0.5;
+   if(PdStaleExtreme(r, close1, atr)) return false;        // stale extreme dominating
+   r.valid = true;
+   return true;
+}
+
+bool PdSwingRange(const string symbol, const int lookback, const int k, const double atr, SPdRange &r)
+{
+   PdResetRange(r);
+   double close1 = iClose(symbol, PERIOD_H1, 1);
+   if(!MathIsValidNumber(close1) || close1 <= 0.0) return false;
+   SSwing highs[], lows[];
+   int nh = FindSwings(symbol, PERIOD_H1, lookback, k, highs, true);
+   int nl = FindSwings(symbol, PERIOD_H1, lookback, k, lows, false);
+   if(nh < 1 || nl < 1) return false;
+   // FindSwings scans from the newest closed bar backwards: swings[0] is the newest
+   r.high = highs[0].price;  r.highShift = highs[0].shift;
+   r.low  = lows[0].price;   r.lowShift  = lows[0].shift;
+   if(!MathIsValidNumber(r.high) || !MathIsValidNumber(r.low)) return false;
+   if(r.high <= r.low) return false;                       // degenerate overlay range
+   double width = r.high - r.low;
+   if(atr > 0.0 && width < InpPdSwingMinATR * atr) return false;   // too narrow to be a range
+   // freshness: even the NEWER of the two defining swings must not be ancient
+   int newest = MathMin(r.highShift, r.lowShift);
+   if(InpPdSwingMaxAge > 0 && newest > InpPdSwingMaxAge) return false;
+   r.eq = (r.high + r.low) * 0.5;
+   if(PdStaleExtreme(r, close1, atr)) return false;        // stale extreme dominating
+   r.valid = true;
+   return true;
+}
+
+string PdLetter(const int sel)
+{
+   if(sel == QATS_PD_A) return "A";
+   if(sel == QATS_PD_B) return "B";
+   if(sel == QATS_PD_C) return "C";
+   return "NONE";
+}
+
+// One evaluation of the three ranges + the deterministic selection. Resets nothing;
+// pure READ of closed bars plus the hysteresis anchor g_pdLastSelected.
+void ComputePdAdaptive(const string symbol, const double atrH1, SPdAdaptive &pd)
+{
+   double close1 = iClose(symbol, PERIOD_H1, 1);
+   PdRangeFromWindow(symbol, InpSwingLookback,   atrH1, pd.a);
+   PdRangeFromWindow(symbol, InpPdShortLookback, atrH1, pd.b);
+   PdSwingRange(symbol, InpSwingLookback, InpSwingK, atrH1, pd.c);
+
+   int preferred = QATS_PD_NONE;
+   if(pd.c.valid)      preferred = QATS_PD_C;
+   else if(pd.b.valid) preferred = QATS_PD_B;
+   else if(pd.a.valid) preferred = QATS_PD_A;
+
+   int sel = preferred;
+   string note = "";
+   int prev = g_pdLastSelected;
+   if(prev != preferred)
+   {
+      bool prevValid = (prev == QATS_PD_A && pd.a.valid) ||
+                       (prev == QATS_PD_B && pd.b.valid) ||
+                       (prev == QATS_PD_C && pd.c.valid);
+      double prevEq = (prev == QATS_PD_A) ? pd.a.eq : ((prev == QATS_PD_B) ? pd.b.eq : pd.c.eq);
+      double prefEq = (preferred == QATS_PD_A) ? pd.a.eq : ((preferred == QATS_PD_B) ? pd.b.eq : ((preferred == QATS_PD_C) ? pd.c.eq : 0.0));
+      if(prev != QATS_PD_NONE && prevValid && preferred != QATS_PD_NONE && atrH1 > 0.0 &&
+         InpPdHysteresisATR > 0.0 && MathAbs(prevEq - prefEq) <= InpPdHysteresisATR * atrH1)
+      {
+         sel = prev;   // keep the old regime while the EQs have not materially moved
+         note = StringFormat("hysteresis: kept %s (EQ %s) over preferred %s (EQ %s), delta %.2f ATR",
+                             PdLetter(prev), PriceText(prevEq), PdLetter(preferred), PriceText(prefEq),
+                             MathAbs(prevEq - prefEq) / atrH1);
+      }
+      else if(prev != QATS_PD_NONE)
+      {
+         if(preferred == QATS_PD_NONE)
+            note = StringFormat("switch: %s -> NONE (previous range still %s, nothing else valid)",
+                                PdLetter(prev), (prevValid ? "valid but superseded" : "no longer valid"));
+         else if(!prevValid)
+            note = StringFormat("switch: %s -> %s (previous range no longer valid)", PdLetter(prev), PdLetter(preferred));
+         else if(atrH1 > 0.0)
+            note = StringFormat("switch: %s -> %s (EQ delta %.2f ATR)", PdLetter(prev), PdLetter(preferred),
+                                MathAbs(prevEq - prefEq) / atrH1);
+      }
+   }
+
+   pd.selected = sel;
+   if(sel == QATS_PD_NONE)
+   {
+      pd.eq = 0.0;
+      pd.position = 0.5;
+      pd.status = StringFormat("REJECTED: no valid H1 dealing range (A %s, B %s, C %s)",
+                               (pd.a.valid ? "ok" : "rejected"), (pd.b.valid ? "ok" : "rejected"), (pd.c.valid ? "ok" : "rejected"));
+   }
+   else
+   {
+      SPdRange r = (sel == QATS_PD_A) ? pd.a : ((sel == QATS_PD_B) ? pd.b : pd.c);
+      pd.eq = r.eq;
+      double width = r.high - r.low;
+      double pos = (close1 - r.low) / width;
+      if(!MathIsValidNumber(pos)) pos = 0.5;
+      if(pos < 0.0) pos = 0.0;
+      if(pos > 1.0) pos = 1.0;
+      pd.position = pos;
+      pd.status = (note == "" ? "OK" : "OK (" + note + ")");
+   }
+   g_pdLastSelected = sel;
+}
+
+// one comparison line per evaluation: all THREE equilibriums, the selection, the
+// position and the reason - the journal always shows the comparison, never just the verdict
+string PdLine(const SPdAdaptive &pd)
+{
+   string eqA = pd.a.valid ? PriceText(pd.a.eq) : "n/a";
+   string eqB = pd.b.valid ? PriceText(pd.b.eq) : "n/a";
+   string eqC = pd.c.valid ? PriceText(pd.c.eq) : "n/a";
+   return StringFormat("LONG_EQ=%s SHORT_EQ=%s SWING_EQ=%s SELECTED=%s POS=%.2f STATUS=%s",
+                       eqA, eqB, eqC, PdLetter(pd.selected), pd.position, pd.status);
+}
+
+// Shared side check for BOTH entry paths: is `price` on the allowed side of the
+// SELECTED range's equilibrium? Fails closed when no range is valid (protection
+// is never silently bypassed); exact equality of price and EQ allows both sides.
+bool PdPriceOnSide(const int pdSelected, const double pdEq, const string pdStatus,
+                   const int dir, const double price, const string tag, string &why)
+{
+   if(pdSelected == QATS_PD_NONE)
+   {
+      why = tag + ": no valid H1 dealing range (A/B/C all rejected) - premium/discount cannot be verified (" + pdStatus + ")";
+      return false;
+   }
+   if(!MathIsValidNumber(price) || price <= 0.0)
+   {
+      why = tag + ": invalid price for the premium/discount check";
+      return false;
+   }
+   const double eps = pdEq * 1e-9;
+   if(dir < 0 && price < pdEq - eps)
+   {
+      why = StringFormat("%s: SELL at %s is below the selected (%s) equilibrium %s (needs premium) [%s]",
+                         tag, PriceText(price), PdLetter(pdSelected), PriceText(pdEq), pdStatus);
+      return false;
+   }
+   if(dir > 0 && price > pdEq + eps)
+   {
+      why = StringFormat("%s: BUY at %s is above the selected (%s) equilibrium %s (needs discount) [%s]",
+                         tag, PriceText(price), PdLetter(pdSelected), PriceText(pdEq), pdStatus);
+      return false;
+   }
+   why = "";
+   return true;
 }
 
 //+------------------------------------------------------------------+
@@ -950,6 +1409,100 @@ void AddPool(SLiquidityPool &pools[], const string symbol, const ENUM_TIMEFRAMES
    else                   pools[n].state = QATS_POOL_SPENT;
 }
 
+// duplicate resolution for pools at the same level: stronger kind wins; on equal
+// rank keep the newer formation (shift 0 = day/week boundary counts as newest);
+// fully equal = keep the first.
+bool PoolBetter(const SLiquidityPool &a, const SLiquidityPool &b)
+{
+   int ra = PoolRank(a.kind), rb = PoolRank(b.kind);
+   if(ra != rb) return ra > rb;
+   if(a.shift == b.shift) return false;
+   if(a.shift == 0) return true;
+   if(b.shift == 0) return false;
+   return a.shift < b.shift;
+}
+
+// how decisive a pool state is, for folding merged duplicates: a consumed level
+// must never read INTACT just because the twin that got run had the weaker kind.
+// ACCEPTED (breakout accepted) > SWEPT (sweep confirmed) > SPENT (pierced, evidence
+// unusable) > INTACT (never touched).
+int PoolStateDecision(const int state)
+{
+   if(state == QATS_POOL_ACCEPTED) return 3;
+   if(state == QATS_POOL_SWEPT)    return 2;
+   if(state == QATS_POOL_SPENT)    return 1;
+   return 0;
+}
+
+// fold a removed member's evidence into the survivor: the most decided state wins
+// (with that member's event bar); on equal conviction keep the further reach and the
+// later (nearest) event bar. Kind, price and shift stay the winner's identity.
+void PoolFoldState(SLiquidityPool &into, const SLiquidityPool &from)
+{
+   int di = PoolStateDecision(into.state), df = PoolStateDecision(from.state);
+   if(df > di)
+   {
+      into.state    = from.state;
+      into.eventBar = from.eventBar;
+   }
+   else if(df == di && di >= 2 && from.eventBar >= 1)
+   {
+      if(into.eventBar < 1 || from.eventBar > into.eventBar) into.eventBar = from.eventBar;
+   }
+   if(from.buySide) into.extreme = MathMax(into.extreme, from.extreme);
+   else             into.extreme = MathMin(into.extreme, from.extreme);
+}
+
+// merge ONE side in-place; every group is anchored at its first (oldest-in-creation)
+// member and everything within tolerance of the ANCHOR level is removed except the
+// winner. Deterministic, side-local and replay-symmetric. The survivor carries the
+// most DECIDED state of the group (see PoolFoldState), so a consumed level can never
+// re-enter the map as INTACT.
+void MergeSideDuplicates(SLiquidityPool &pools[], const double tol, int &merged)
+{
+   for(int i = 0; i < ArraySize(pools);)
+   {
+      int winner = i;
+      bool hasDup = false;
+      for(int j = i + 1; j < ArraySize(pools); j++)
+         if(MathAbs(pools[j].price - pools[i].price) <= tol)
+         { hasDup = true; if(PoolBetter(pools[j], pools[winner])) winner = j; }
+      if(!hasDup) { i++; continue; }
+      double refPrice = pools[i].price;             // the anchor's level defines the group
+      if(winner != i)
+      {
+         // promote the winner to the anchor; the anchor (now at winner's slot) is
+         // removed by the erase below because it is within tolerance of itself
+         SLiquidityPool win = pools[winner];
+         pools[winner] = pools[i];
+         pools[i] = win;
+      }
+      int j = ArraySize(pools) - 1;
+      while(j > i)
+      {
+         if(MathAbs(pools[j].price - refPrice) <= tol)
+         {
+            merged++;
+            PoolFoldState(pools[i], pools[j]);
+            pools[j] = pools[ArraySize(pools) - 1];
+            ArrayResize(pools, ArraySize(pools) - 1);
+            j = MathMin(j, ArraySize(pools) - 1);
+         }
+         else j--;
+      }
+      i++;
+   }
+}
+
+string PoolStateName(const int state)
+{
+   if(state == QATS_POOL_INTACT)   return "INTACT";
+   if(state == QATS_POOL_SWEPT)    return "SWEPT";
+   if(state == QATS_POOL_ACCEPTED) return "ACCEPTED";
+   if(state == QATS_POOL_SPENT)    return "SPENT";
+   return "UNKNOWN";
+}
+
 int BuildLiquidityMap(const string symbol, const ENUM_TIMEFRAMES tf, const SSwing &highs[], const SSwing &lows[],
                       const double tol, const int window, SLiquidityPool &pools[])
 {
@@ -986,7 +1539,74 @@ int BuildLiquidityMap(const string symbol, const ENUM_TIMEFRAMES tf, const SSwin
          AddPool(pools, symbol, tf, pw, (buySide ? "PWH" : "PWL"), buySide, 0,
                  FirstPierceSince(symbol, tf, weekSince, pw, !buySide), window);
    }
+   // v1.24: merge duplicate pools on the same side inside the tolerance - one level,
+   // one identity (PDH/PWH may coincide with a swing or an equal-high). Keep the
+   // stronger kind, then the NEWER level (shift 0 = the day/week boundary counts
+   // as newest). Each side is merged INDEPENDENTLY (the shared array's BSL block
+   // comes first, so a cross-side swap-with-last here would reorder the SSL block
+   // and break replay symmetry); the two blocks are recombined afterwards in their
+   // original order. Scoring and target selection are boolean/nearest, so behaviour
+   // is unchanged apart from the de-duplication itself.
+   SLiquidityPool buyPools[], sellPools[];
+   for(int i = 0; i < ArraySize(pools); i++)
+   {
+      int n = 0;
+      if(pools[i].buySide)
+      {
+         n = ArraySize(buyPools);
+         ArrayResize(buyPools, n + 1);
+         buyPools[n] = pools[i];
+      }
+      else
+      {
+         n = ArraySize(sellPools);
+         ArrayResize(sellPools, n + 1);
+         sellPools[n] = pools[i];
+      }
+   }
+   int merged = 0;
+   MergeSideDuplicates(buyPools, tol, merged);
+   MergeSideDuplicates(sellPools, tol, merged);
+   int idx = 0;
+   ArrayResize(pools, ArraySize(buyPools) + ArraySize(sellPools));
+   for(int i = 0; i < ArraySize(buyPools); i++, idx++) pools[idx] = buyPools[i];
+   for(int i = 0; i < ArraySize(sellPools); i++, idx++) pools[idx] = sellPools[i];
+   if(merged > 0)
+      PrintFormat("[QATS][LIQUIDITY] merged %d duplicate level(s) within tolerance (one level = one identity)", merged);
    return ArraySize(pools);
+}
+
+// Transition memory for the liquidity journal (per attach). Pools are rebuilt from
+// closed bars every evaluation, so a verdict change is visible exactly once - when
+// the new bar changes it. One line per transition, with the bar and the level.
+SLiquidityPool g_prevPools[];
+int            g_prevPoolCount = 0;
+
+void JournalLiquidityTransitions(const SLiquidityPool &pools[], const int n, const double tol)
+{
+   for(int i = 0; i < n; i++)
+   {
+      int prev = -1;
+      for(int j = 0; j < g_prevPoolCount && j < ArraySize(g_prevPools); j++)
+      {
+         if(g_prevPools[j].buySide == pools[i].buySide &&
+            MathAbs(g_prevPools[j].price - pools[i].price) <= MathMax(tol, _Point))
+         { prev = j; break; }
+      }
+      if(prev < 0) continue;                          // a new pool appearance is not a transition
+      int prevState = g_prevPools[prev].state;
+      if(prevState == pools[i].state) continue;
+      PrintFormat("[QATS][LIQUIDITY] TRANSITION side=%s kind=%s level=%s state=%s->%s %s extreme=%s",
+                  (pools[i].buySide ? "BSL" : "SSL"), pools[i].kind, PriceText(pools[i].price),
+                  PoolStateName(prevState), PoolStateName(pools[i].state),
+                  (pools[i].eventBar >= 1
+                     ? ("bar=" + TimeToString(iTime(_Symbol, PERIOD_H1, pools[i].eventBar), TIME_DATE | TIME_MINUTES))
+                     : "bar=-"),
+                  PriceText(pools[i].extreme));
+   }
+   ArrayResize(g_prevPools, n);
+   for(int i = 0; i < n; i++) g_prevPools[i] = pools[i];
+   g_prevPoolCount = n;
 }
 
 int PoolRank(const string kind)
@@ -1002,7 +1622,8 @@ int PoolRank(const string kind)
 // a BUY needs SELL-side liquidity run and rejected, a SELL needs BUY-side.
 void SweepForDirection(const SLiquidityPool &pools[], const int dir, SSweep &out)
 {
-   out.found = false; out.bar = -1; out.level = 0.0; out.extreme = 0.0; out.pool = ""; out.breakout = false;
+   out.found = false; out.bar = -1; out.tf = PERIOD_CURRENT; out.poolShift = -1; out.eventTime = 0;
+   out.level = 0.0; out.extreme = 0.0; out.pool = ""; out.breakout = false;
    bool wantBuySide = (dir < 0);
    int n = ArraySize(pools);
    for(int i = 0; i < n; i++)
@@ -1014,6 +1635,9 @@ void SweepForDirection(const SLiquidityPool &pools[], const int dir, SSweep &out
       {
          out.found = true;
          out.bar = pools[i].eventBar;
+         out.tf = PERIOD_H1;                       // the map is H1-built; stored explicitly like dispTF
+         out.poolShift = pools[i].shift;
+         out.eventTime = iTime(_Symbol, PERIOD_H1, pools[i].eventBar);
          out.level = pools[i].price;
          out.extreme = pools[i].extreme;
          out.pool = pools[i].kind;
@@ -1023,7 +1647,7 @@ void SweepForDirection(const SLiquidityPool &pools[], const int dir, SSweep &out
          // one bar ran several pools: keep the deepest extreme and the strongest label
          if(wantBuySide) { if(pools[i].extreme > out.extreme) out.extreme = pools[i].extreme; }
          else            { if(pools[i].extreme < out.extreme) out.extreme = pools[i].extreme; }
-         if(PoolRank(pools[i].kind) > PoolRank(out.pool)) { out.pool = pools[i].kind; out.level = pools[i].price; }
+         if(PoolRank(pools[i].kind) > PoolRank(out.pool)) { out.pool = pools[i].kind; out.level = pools[i].price; out.poolShift = pools[i].shift; }
       }
    }
 }
@@ -1035,10 +1659,11 @@ void SweepForDirection(const SLiquidityPool &pools[], const int dir, SSweep &out
 // later, so its target is the level plus the spread. Both then fill on the same touch.
 bool NearestLiquidityTarget(const SLiquidityPool &pools[], const int dir, const double entry,
                             const double stopDist, const double minRR, const double spread,
-                            double &target, string &kind)
+                            double &target, string &kind, double &poolLevel)
 {
    target = 0.0;
    kind = "";
+   poolLevel = 0.0;
    if(stopDist <= 0.0) return false;
    bool wantBuySide = (dir > 0);
    bool have = false;
@@ -1056,6 +1681,7 @@ bool NearestLiquidityTarget(const SLiquidityPool &pools[], const int dir, const 
          bestReward = reward;
          target = tpPrice;
          kind = pools[i].kind;
+         poolLevel = pools[i].price;   // the POOL's own level, not the spread-shifted tpPrice
       }
    }
    return have;
@@ -1185,13 +1811,46 @@ bool PriceNearZone(const string symbol, const SZone &zone, const double atr, con
 
 // A demand zone is spent once a later bar CLOSES below it, a supply zone once one
 // closes above it. fromShift = the first bar after the zone's impulse.
+// CR-7: never trust a zone whose post-formation bars cannot be verified. A close
+// beyond the zone used to read as 0.0 on missing history and therefore PASS.
+// Now the check fails closed (the zone is rejected) and journals once per attach.
 bool ZoneStillValid(const string symbol, const ENUM_TIMEFRAMES tf, const bool wantBull,
                     const SZone &zone, const int fromShift)
 {
    if(!zone.found) return false;
+   if(!MathIsValidNumber(zone.bottom) || !MathIsValidNumber(zone.top) ||
+      zone.top <= 0.0 || zone.bottom <= 0.0 || zone.bottom > zone.top)
+   {
+      if(!g_loggedZoneHistoryFail)
+      {
+         g_loggedZoneHistoryFail = true;
+         Print("[QATS][ZONE] invalid zone numbers - zone rejected (fail closed)");
+      }
+      return false;
+   }
+   if(fromShift < 1) return true;   // nothing closed after the zone yet: it just formed
+   int bars = iBars(symbol, tf);
+   if(bars < 2 || fromShift >= bars)
+   {
+      if(!g_loggedZoneHistoryFail)
+      {
+         g_loggedZoneHistoryFail = true;
+         Print("[QATS][ZONE] insufficient closed-bar history to verify zone survival - zone rejected (fail closed)");
+      }
+      return false;
+   }
    for(int t = fromShift; t >= 1; t--)
    {
       double c = iClose(symbol, tf, t);
+      if(c <= 0.0 || !MathIsValidNumber(c))
+      {
+         if(!g_loggedZoneHistoryFail)
+         {
+            g_loggedZoneHistoryFail = true;
+            Print("[QATS][ZONE] unreadable closed bar at shift " + IntegerToString(t) + " - zone rejected (fail closed)");
+         }
+         return false;
+      }
       if(wantBull) { if(c < zone.bottom) return false; }
       else         { if(c > zone.top) return false; }
    }
@@ -1433,6 +2092,22 @@ string PriceText(const double price)
    return DoubleToString(price, g_spec.digits);
 }
 
+// Short timeframe name for journal lines (the offline shim has no TimeframeToString).
+string TFName(const ENUM_TIMEFRAMES tf)
+{
+   switch(tf)
+   {
+      case PERIOD_M1:  return "M1";
+      case PERIOD_M5:  return "M5";
+      case PERIOD_M15: return "M15";
+      case PERIOD_H1:  return "H1";
+      case PERIOD_H4:  return "H4";
+      case PERIOD_D1:  return "D1";
+      case PERIOD_W1:  return "W1";
+      default:         return "TF?";
+   }
+}
+
 string BarText(const ENUM_TIMEFRAMES tf, const int shift)
 {
    if(shift < 1) return "none";
@@ -1449,7 +2124,8 @@ void ResetSide(SSide &e, const int dir)
    e.dir = dir;
    e.biasD1 = false; e.biasH4 = false;
    e.structure = false; e.structChoch = false; e.structBar = -1; e.structLevel = 0.0;
-   e.sweep.found = false; e.sweep.bar = -1; e.sweep.level = 0.0; e.sweep.extreme = 0.0;
+   e.sweep.found = false; e.sweep.bar = -1; e.sweep.tf = PERIOD_CURRENT; e.sweep.poolShift = -1;
+   e.sweep.eventTime = 0; e.sweep.level = 0.0; e.sweep.extreme = 0.0;
    e.sweep.pool = ""; e.sweep.breakout = false;
    e.displaced = false; e.dispBar = -1; e.dispTF = PERIOD_CURRENT;
    e.hasOB = false; e.hasFVG = false;
@@ -1466,12 +2142,17 @@ void ResetAnalysis(SAnalysis &a)
    a.signalBar = 0; a.dataReady = false;
    a.dir = 0; a.candidate = 0; a.score = 0;
    a.d1Bias = 0; a.h4Bias = 0; a.h1Struct = 0;
-   a.dealPos = 0.5; a.vwap = 0.0;
+   a.dealPos = 0.5;
+   a.regime = "UNCLEAR"; a.regimeVolRatio = 0.0; a.regimeRangeRatio = 0.0;
+   a.pdEq = 0.0; a.pdLongEq = 0.0; a.pdShortEq = 0.0; a.pdSwingEq = 0.0;
+   a.pdLongValid = false; a.pdShortValid = false; a.pdSwingValid = false;
+   a.pdSelected = QATS_PD_NONE; a.pdStatus = "UNCOMPUTED";
+   a.vwap = 0.0;
    ResetSide(a.buy, +1);
    ResetSide(a.sell, -1);
    a.conflict = false; a.resolution = ""; a.setupTime = 0;
    a.entry = 0.0; a.sl = 0.0; a.tp = 0.0; a.stopDist = 0.0;
-   a.tpSource = ""; a.reason = "";
+   a.tpSource = ""; a.tpLevel = 0.0; a.reason = "";
 }
 
 // Evidence for ONE direction. BUY and SELL are both produced by this function;
@@ -1533,20 +2214,21 @@ void EvaluateSide(const int dir, const SReading &r, const SStructure &st, const 
    }
    if(!e.displaced) e.dispBar = -1;
 
-   // optional confluence: order block / fair value gap left by the impulse, still unmitigated.
-   // Zone work runs on H1 bars only: an H1 displacement anchors at its own bar; an
-   // M15 displacement anchors at the closed H1 bar containing it (falling back to
-   // the sweep bar), never at the raw M15 index.
+   // optional confluence: order block / fair value gap LEFT BY THE IMPULSE, still
+   // unmitigated. Zone work runs on H1 bars only: an H1 displacement anchors at its
+   // own bar; an M15 displacement anchors at the closed H1 bar containing it, never
+   // at the raw M15 index. A setup WITHOUT a displacement (sweep-only or
+   // structure-only) yields NO zones: a gap that did not form around an impulse is
+   // not displacement-validated and is never scored (mandate: FVG must be
+   // displacement-validated). Mitigated zones are rejected by ZoneStillValid.
    int impulse = 0;
    if(e.displaced && e.dispTF == PERIOD_H1) impulse = e.dispBar;
    else if(e.displaced && e.dispTF == PERIOD_M15)
    {
       datetime impTime = iTime(_Symbol, PERIOD_M15, e.dispBar);
       int h1 = ShiftOfTime(_Symbol, PERIOD_H1, impTime, window + 4);
-      if(h1 >= 1)             impulse = h1;
-      else if(e.sweep.found)  impulse = e.sweep.bar;
+      if(h1 >= 1) impulse = h1;               // without the containing H1 bar there is no anchor and no zone
    }
-   else if(e.sweep.found) impulse = e.sweep.bar;
    if(impulse > 0)
    {
       e.hasOB = FindOrderBlock(_Symbol, PERIOD_H1, bull, impulse, 12, e.ob);
@@ -1632,8 +2314,12 @@ string ChainText(const SSide &e)
 {
    string s = "";
    if(e.sweep.found)
-      s += StringFormat("sweep=%s:%s@%s(bar %s, extreme %s)", (e.dir > 0 ? "SSL" : "BSL"), e.sweep.pool,
-                        PriceText(e.sweep.level), H1BarText(e.sweep.bar), PriceText(e.sweep.extreme));
+      s += StringFormat("sweep=%s:%s@%s(detected %s shift %d @ %s; level formed shift %d; extreme %s)",
+                        (e.dir > 0 ? "SSL" : "BSL"), e.sweep.pool,
+                        PriceText(e.sweep.level),
+                        TFName(e.sweep.tf), e.sweep.bar,
+                        TimeToString(e.sweep.eventTime, TIME_DATE | TIME_MINUTES),
+                        e.sweep.poolShift, PriceText(e.sweep.extreme));
    else
       s += "sweep=none";
    if(e.displaced)
@@ -1666,15 +2352,18 @@ void LogSignal(const SAnalysis &signal, const string outcome, const string reaso
    datetime setup = 0;
    if(cand > 0) setup = signal.buy.setupTime;
    if(cand < 0) setup = signal.sell.setupTime;
+   // Phase 9: the single-record ANALYSIS/FINAL (own per-setup per-outcome dedup)
+   JournalSetupRecord(signal, outcome, reason);
    string key = SideName(cand) + "|" + outcome + "|" + reason;
    if(!InpVerbose && key == g_lastScoredKey) return;
    g_lastScoredKey = key;
-   PrintFormat("[QATS][SIGNAL][SCORED] symbol=%s bar=%s BUY=%d/100 SELL=%d/100 minimum=%d profile=%s candidate=%s eligible=%s outcome=%s reason=%s setup=%s | D1=%+d H4=%+d H1trend=%+d P/D=%.2f VWAP=%.5f | %s | %s",
+   PrintFormat("[QATS][SIGNAL][SCORED] symbol=%s bar=%s BUY=%d/100 SELL=%d/100 minimum=%d profile=%s candidate=%s eligible=%s outcome=%s reason=%s setup=%s | D1=%+d H4=%+d H1trend=%+d P/D=%.2f VWAP=%.5f REGIME=%s volRatio=%.2f rangeRatio=%.2f | %s | %s",
                _Symbol, TimeToString(signal.signalBar, TIME_DATE | TIME_MINUTES),
                signal.buy.score, signal.sell.score, InpMinScore,
                QATS_StrategyProfileName((int)InpStrategyProfile),
                SideName(cand), (eligible ? "yes" : "no"), outcome, reason, SetupId(cand, setup),
                signal.d1Bias, signal.h4Bias, signal.h1Struct, signal.dealPos, signal.vwap,
+               signal.regime, signal.regimeVolRatio, signal.regimeRangeRatio,
                SideTrace(signal.buy), SideTrace(signal.sell));
 }
 
@@ -1694,6 +2383,98 @@ void AnnounceSide(const SAnalysis &a, const SSide &e)
                a.d1Bias, a.h4Bias, a.h1Struct, (e.confirmM15 ? "yes" : "no"), (e.triggerM5 ? "yes" : "no"));
 }
 
+// v1.24 Phase 9 diagnostics: the outcome -> terminal decision vocabulary.
+string QATS_DecisionName(const string outcome)
+{
+   if(outcome == "EXECUTED")      return "ENTER_MARKET";
+   if(outcome == "LIMIT_PLACED")  return "ENTER_LIMIT";
+   if(outcome == "DRY_RUN")       return "NO_ORDER";
+   return outcome;
+}
+
+// which layer refused the setup, for the high-score explanation record
+string QATS_RejectAt(const string outcome, const string reason)
+{
+   if(outcome == "BLOCKED")       return (reason == "PD_MARKET") ? "PD_GATE" : "RISK_GUARD";
+   if(outcome == "REJECTED")      return reason;    // PLAN / SIZE / SPREAD_VS_STOP / RESERVE / BROKER / ...
+   if(outcome == "NOT_PLACED")    return (reason == "LIMIT") ? "LIMIT_GATE" : reason;
+   if(outcome == "BELOW_MINIMUM") return "SCORE_GATE";
+   if(outcome == "VETOED")        return "VETO";
+   if(outcome == "CONFLICT")      return "CONFLICT";
+   if(outcome == "DRY_RUN")       return "DRY_RUN";
+   return outcome;
+}
+
+string QATS_CoreText(const SSide &e)
+{
+   return StringFormat("%s %d/3", (e.corePass ? "PASS" : "FAIL"), e.coreCount);
+}
+
+string QATS_StructureText(const SSide &e)
+{
+   if(!e.structure) return "none";
+   return StringFormat("%s@%s(shift %d)", (e.structChoch ? "CHOCH" : "BOS"),
+                       PriceText(e.structLevel), e.structBar);
+}
+
+string QATS_SweepText(const SSide &e)
+{
+   if(!e.sweep.found) return "sweep=none";
+   return StringFormat("sweep=%s:%s@%s(shift %d)", (e.dir > 0 ? "SSL" : "BSL"),
+                       e.sweep.pool, PriceText(e.sweep.level), e.sweep.bar);
+}
+
+string QATS_DisplacementText(const SSide &e)
+{
+   if(!e.displaced) return "TF=none shift=-1 STATUS=NONE";
+   return StringFormat("TF=%s shift=%d STATUS=OK", TFName(e.dispTF), e.dispBar);
+}
+
+// [QATS][ANALYSIS] single record + [QATS][FINAL], once per setup per outcome.
+// Emitted for every side whose core chain passed; a refused setup that still
+// scored >= InpMinScore is additionally explained by a [QATS][GUARD] line.
+// Field order follows the mandated contract (master audit Phase 9):
+//   bar side BUY_SCORE SELL_SCORE CORE_STATUS STRUCTURE_STATUS LIQUIDITY_STATUS
+//   DISPLACEMENT_STATUS=TF=.. STATUS=.. PD_STATUS EXECUTION_STATUS FINAL_DECISION REASON
+void JournalSetupRecord(const SAnalysis &signal, const string outcome, const string reason)
+{
+   for(int dir = -1; dir <= 1; dir += 2)
+   {
+      SSide e = (dir > 0) ? signal.buy : signal.sell;   // MQL5 has no reference locals
+      if(!e.corePass || e.setupTime <= 0) continue;      // no setup, no single record
+      int i = SideIndex(dir);
+      string key = SetupId(dir, e.setupTime) + "|" + outcome + "|" + reason;
+      if(key == g_lastAnalysisKey[i]) continue;          // dedup: once per setup per outcome
+      g_lastAnalysisKey[i] = key;
+      SRiskStatus risk;
+      BuildRiskStatus(risk);
+      string cooldown = (risk.cooldownActive && risk.cooldownUntil > 0)
+                        ? ("until " + TimeToString(risk.cooldownUntil, TIME_DATE | TIME_MINUTES))
+                        : (risk.cooldownActive ? "active" : "no");
+      PrintFormat("[QATS][ANALYSIS] bar=%s side=%s BUY_SCORE=%d SELL_SCORE=%d SCORE=%d CORE_STATUS=%s STRUCTURE_STATUS=%s LIQUIDITY_STATUS=%s DISPLACEMENT_STATUS=%s PD_STATUS=%s EXECUTION_STATUS=%s FINAL_DECISION=%s REASON=%s | RISK equity=%.2f dayPnL=%+.2f(%+.1f%%) DD=%.2f%% streak=%d/%d cap=%d/%d dayLocked=%s ddHalted=%s cooldown=%s",
+                  TimeToString(signal.signalBar, TIME_DATE | TIME_MINUTES), SideName(dir),
+                  signal.buy.score, signal.sell.score, e.score,
+                  QATS_CoreText(e), QATS_StructureText(e), QATS_SweepText(e),
+                  QATS_DisplacementText(e), signal.pdStatus, outcome,
+                  QATS_DecisionName(outcome), reason,
+                  risk.equity, risk.dayPnl, risk.dayPnlPct, risk.ddPct,
+                  risk.consecLosses, risk.streakMax, risk.tradesToday, risk.tradesMax,
+                  (risk.dayLocked ? "yes" : "no"), (risk.ddHalted ? "yes" : "no"), cooldown);
+      PrintFormat("[QATS][FINAL] DECISION=%s REASON=%s side=%s SCORE=%d setup=%s",
+                  QATS_DecisionName(outcome), reason, SideName(dir), e.score, SetupId(dir, e.setupTime));
+      if(e.score >= InpMinScore && outcome != "EXECUTED" && outcome != "LIMIT_PLACED")
+      {
+         string gkey = key + "|GUARD";
+         if(gkey != g_lastGuardKey[i])
+         {
+            g_lastGuardKey[i] = gkey;
+            PrintFormat("[QATS][GUARD] SCORE=%d REJECTED AT=%s REASON=%s side=%s setup=%s",
+                        e.score, QATS_RejectAt(outcome, reason), reason, SideName(dir), SetupId(dir, e.setupTime));
+         }
+      }
+   }
+}
+
 // The lock protects first creation of persistent CAS keys across chart instances.
 bool InitSignalKeys()
 {
@@ -1706,12 +2487,18 @@ bool InitSignalKeys()
       if(!GlobalVariableCheck(key) && GlobalVariableSet(key, 0.0) == 0) ok = false;
    }
    GlobalVariablesFlush();
+   // verify the keys persisted, same contract as ReserveSignal
+   for(int dir = -1; dir <= 1; dir += 2)
+      if(!GlobalVariableCheck(GVKey(dir > 0 ? "sig_buy" : "sig_sell"))) ok = false;
    if(!GlobalVariableSetOnCondition(lock, 0.0, 1.0)) ok = false;
    return ok;
 }
 
 // Reserve BEFORE submission; ambiguous or rejected sends are not retried.
 // Identity is account + magic + symbol + direction + current M5 bar.
+// CR-3: the keys are account + magic + symbol namespaced via GVKey
+// (XAUUSD keeps the exact legacy key names). Reservation is created for
+// EVERY symbol, not only XAUUSD.
 bool ReserveSignal(const SAnalysis &signal, string &reason)
 {
    string key = GVKey(signal.dir > 0 ? "sig_buy" : "sig_sell");
@@ -1723,6 +2510,11 @@ bool ReserveSignal(const SAnalysis &signal, string &reason)
    if(!GlobalVariableSetOnCondition(key, (double)signal.signalBar, previous))
    { reason = "duplicate signal or reservation contention"; return false; }
    GlobalVariablesFlush();
+   // Verify the reservation persisted (Phase 8): a reservation that did not make
+   // it to disk must not authorize an order - fail closed instead of trusting RAM.
+   double persisted = GlobalVariableCheck(key) ? GlobalVariableGet(key) : -1.0;
+   if(persisted < (double)signal.signalBar)
+   { reason = "reservation did not persist (GV flush verification failed)"; return false; }
    return true;
 }
 
@@ -1741,12 +2533,42 @@ void MarkSetupTraded(const int dir, const datetime setupTime)
    GVSet(GVKey(dir > 0 ? "setup_buy" : "setup_sell"), (double)setupTime);
 }
 
+// Fill swings/pools from the per-bar cache, rebuilding when the H1 context moved.
+// The key is the closed-bar context itself (bar time + bar count + shift-1 H/L/C), so a
+// re-read of the same series hits and anything else rebuilds. Closed bars never change
+// inside a decision; the offline harness additionally clears the cache on tape swaps.
+void LiquidityContext(const string symbol, const double atrH1,
+                      SSwing &highs[], SSwing &lows[], SLiquidityPool &pools[])
+{
+   datetime h1Bar = iTime(symbol, PERIOD_H1, 1);
+   int h1Bars = iBars(symbol, PERIOD_H1);
+   double h1Close = iClose(symbol, PERIOD_H1, 1);
+   double h1High = iHigh(symbol, PERIOD_H1, 1);
+   double h1Low  = iLow(symbol, PERIOD_H1, 1);
+   if(g_mH1Bar == 0
+      || h1Bar != g_mH1Bar || h1Bars != g_mH1Bars
+      || h1Close != g_mH1Close || h1High != g_mH1High || h1Low != g_mH1Low)
+   {
+      double tol = MathMax(atrH1 * InpLiquidityToleranceATR, _Point * 2);
+      FindSwings(symbol, PERIOD_H1, InpSwingLookback, InpSwingK, g_mHighs, true);
+      FindSwings(symbol, PERIOD_H1, InpSwingLookback, InpSwingK, g_mLows, false);
+      BuildLiquidityMap(symbol, PERIOD_H1, g_mHighs, g_mLows, tol, MathMax(1, InpSetupWindowBars), g_mPools);
+      g_mH1Bar = h1Bar; g_mH1Bars = h1Bars;
+      g_mH1Close = h1Close; g_mH1High = h1High; g_mH1Low = h1Low;
+   }
+   ArrayResize(highs, ArraySize(g_mHighs));
+   for(int i = 0; i < ArraySize(g_mHighs); i++) highs[i] = g_mHighs[i];
+   ArrayResize(lows, ArraySize(g_mLows));
+   for(int i = 0; i < ArraySize(g_mLows); i++) lows[i] = g_mLows[i];
+   ArrayResize(pools, ArraySize(g_mPools));
+   for(int i = 0; i < ArraySize(g_mPools); i++) pools[i] = g_mPools[i];
+}
+
 SAnalysis AnalyzeMarket()
 {
    SAnalysis a;
    ResetAnalysis(a);
    a.signalBar = iTime(_Symbol, PERIOD_M5, 0);
-   a.dealPos = DealingRangePosition(_Symbol, PERIOD_H1, InpSwingLookback);
 
    SReading r;
    if(!LoadReading(r))
@@ -1757,23 +2579,44 @@ SAnalysis AnalyzeMarket()
    a.dataReady = true;
    a.vwap = r.vwap;
 
+   // v1.24 regime: report-only. Classification never gates an entry; it is
+   // journalled so evidence can accumulate before any rule is considered.
+   SRegime regime;
+   if(InpRegimeEnable) ComputeRegime(_Symbol, r.atrH1, r.h1Close, r.h1Fast, r.h1Slow, r.h1Slow200, regime);
+   else { regime.kind = QATS_REGIME_UNCLEAR; regime.volRatio = 0.0; regime.rangeRatio = 0.0; }
+   a.regime = RegimeName(regime.kind);
+   a.regimeVolRatio = regime.volRatio;
+   a.regimeRangeRatio = regime.rangeRatio;
+
+   // v1.24 adaptive premium / discount: three H1 ranges, one deterministic
+   // selection, one journal line per evaluation (never a silent 0.5)
+   SPdAdaptive pd;
+   ComputePdAdaptive(_Symbol, r.atrH1, pd);
+   a.dealPos = pd.position;
+   a.pdEq = pd.eq;
+   a.pdLongEq = pd.a.valid ? pd.a.eq : 0.0;
+   a.pdShortEq = pd.b.valid ? pd.b.eq : 0.0;
+   a.pdSwingEq = pd.c.valid ? pd.c.eq : 0.0;
+   a.pdLongValid = pd.a.valid; a.pdShortValid = pd.b.valid; a.pdSwingValid = pd.c.valid;
+   a.pdSelected = pd.selected;
+   a.pdStatus = pd.status;
+   PrintFormat("[QATS][PD] %s", PdLine(pd));
+
    // D1 bias and H4 context
    a.d1Bias = BiasFrom(r.d1Close, r.d1Fast, r.d1Slow);
    a.h4Bias = BiasFrom(r.h4Close, r.h4Fast, r.h4Slow);
 
    // H1 structure: confirmed swings, then BOS / CHoCH from closed closes
    SSwing highs[], lows[];
-   FindSwings(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, highs, true);
-   FindSwings(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, lows, false);
+   SLiquidityPool pools[];
+   LiquidityContext(_Symbol, r.atrH1, highs, lows, pools);
    SStructure st;
    BuildStructure(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, st);
    a.h1Struct = st.trend;
 
-   // liquidity map: every pool on both sides with its state
-   int window = MathMax(1, InpSetupWindowBars);
+   // liquidity map: every pool on both sides with its state (cached per bar)
    double tol = MathMax(r.atrH1 * InpLiquidityToleranceATR, _Point * 2);
-   SLiquidityPool pools[];
-   BuildLiquidityMap(_Symbol, PERIOD_H1, highs, lows, tol, window, pools);
+   JournalLiquidityTransitions(pools, ArraySize(pools), tol);
 
    // BOTH directions, every bar, through the same function
    double pxNow = iClose(_Symbol, PERIOD_M5, 1);
@@ -1791,8 +2634,8 @@ SAnalysis AnalyzeMarket()
    if(a.candidate > 0)      { a.score = a.buy.score;  a.setupTime = a.buy.setupTime; }
    else if(a.candidate < 0) { a.score = a.sell.score; a.setupTime = a.sell.setupTime; }
 
-   a.reason = StringFormat("D1=%+d H4=%+d H1trend=%+d P/D=%.2f VWAP=%.5f BUY=%d SELL=%d",
-                           a.d1Bias, a.h4Bias, a.h1Struct, a.dealPos, r.vwap, a.buy.score, a.sell.score);
+   a.reason = StringFormat("D1=%+d H4=%+d H1trend=%+d P/D=%.2f(%s) VWAP=%.5f BUY=%d SELL=%d",
+                           a.d1Bias, a.h4Bias, a.h1Struct, a.dealPos, PdLetter(a.pdSelected), r.vwap, a.buy.score, a.sell.score);
    return a;
 }
 
@@ -1864,27 +2707,27 @@ bool BuildTradePlan(const SAnalysis &in, SAnalysis &out)
 
    //--- take-profit: NEAREST intact opposing liquidity that pays >= InpMinRR, else RR multiple
    SSwing highs[], lows[];
-   FindSwings(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, highs, true);
-   FindSwings(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, lows, false);
    SLiquidityPool pools[];
-   BuildLiquidityMap(_Symbol, PERIOD_H1, highs, lows, MathMax(atrH1 * InpLiquidityToleranceATR, _Point * 2),
-                     MathMax(1, InpSetupWindowBars), pools);
+   LiquidityContext(_Symbol, atrH1, highs, lows, pools);
    double tp = 0.0;
    string tpSource = "RR";
    double target = 0.0;
    string targetKind = "";
+   double targetLevel = 0.0;
    bool snapUp = false;
-   if(NearestLiquidityTarget(pools, out.dir, entry, stopDist, InpMinRR, spread, target, targetKind))
+   if(NearestLiquidityTarget(pools, out.dir, entry, stopDist, InpMinRR, spread, target, targetKind, targetLevel))
    {
       // a liquidity target is snapped TOWARD the entry: never beyond the level it aims at
       tp = target;
-      tpSource = "LIQUIDITY:" + targetKind;
+      tpSource = "LIQUIDITY:" + targetKind + "@" + PriceText(targetLevel);
+      out.tpLevel = targetLevel;
       snapUp = (out.dir < 0);
    }
    else
    {
       // an RR target is snapped AWAY from the entry: never less than the requested multiple
       tp = (out.dir > 0) ? entry + stopDist * InpRewardRisk : entry - stopDist * InpRewardRisk;
+      out.tpLevel = 0.0;
       snapUp = (out.dir > 0);
    }
    tp = QATS_SnapToTick(tp, g_spec.tickSize, g_spec.digits, snapUp);
@@ -2016,6 +2859,95 @@ bool CalcPositionVolume(const double slDist, const bool isBuy, double &volumeOut
 }
 
 //+------------------------------------------------------------------+
+//| NEWS / CALENDAR GUARD (v1.24, Phase 7, CR-6)  -  OPT-IN            |
+//| Entries are blocked while a high-impact calendar event (importance |
+//| >= InpNewsMinImportance) for a watched currency sits within the    |
+//| [now - InpNewsBlockAfterMin, now + InpNewsBlockBeforeMin] window.  |
+//| An UNREACHABLE calendar blocks NOTHING: no events are ever          |
+//| fabricated; the miss is journalled once per attach.                 |
+//| NOTE: whether the calendar is populated on THIS terminal can only   |
+//| be verified in MetaEditor on the operator's platform (Phase 10).    |
+//+------------------------------------------------------------------+
+string NewsTrimToken(const string text)
+{
+   // trim spaces/tabs/CR/LF from a comma-separated token (shim has no StringTrim*)
+   int len = StringLen(text);
+   int a = 0, b = len - 1;
+   while(a <= b)
+   {
+      string ch = StringSubstr(text, a, 1);
+      if(ch != " " && ch != "\t" && ch != "\r" && ch != "\n") break;
+      a++;
+   }
+   while(b >= a)
+   {
+      string ch = StringSubstr(text, b, 1);
+      if(ch != " " && ch != "\t" && ch != "\r" && ch != "\n") break;
+      b--;
+   }
+   return (a > b) ? "" : StringSubstr(text, a, b - a + 1);
+}
+
+// one CalendarValueHistory call per watched currency; returns the number of
+// HIGH-IMPACT events in [from, to]. Returns -1 when EVERY call fails (calendar
+// unreachable); partial reachability reports the reachable calls' events.
+int NewsHighImpactInWindow(const datetime from, const datetime to, string &why)
+{
+   int events = 0;
+   int calls = 0, ok = 0;
+   string list = InpNewsCurrencies;
+   while(StringLen(list) > 0)
+   {
+      int comma = StringFind(list, ",");
+      string cur = NewsTrimToken((comma >= 0) ? StringSubstr(list, 0, comma) : list);
+      list = (comma >= 0) ? StringSubstr(list, comma + 1) : "";
+      if(StringLen(cur) == 0) continue;
+      calls++;
+      MqlCalendarValue vals[];
+      int cnt = CalendarValueHistory(vals, from, to, cur);
+      if(cnt < 0) continue;                      // this currency unreachable
+      ok++;
+      for(int i = 0; i < cnt; i++)
+         if(vals[i].importance >= InpNewsMinImportance) events++;
+   }
+   why = "";
+   if(calls == 0) return 0;                      // nothing watched -> nothing to block
+   if(ok == 0) return -1;                        // every call failed
+   return events;
+}
+
+// true = entries may proceed; false = blocked. Never blocks on an unverifiable calendar.
+bool NewsEntriesAllowed(const datetime now, string &why)
+{
+   why = "";
+   datetime from = now - (datetime)InpNewsBlockAfterMin * 60;
+   datetime to   = now + (datetime)InpNewsBlockBeforeMin * 60;
+   int events = NewsHighImpactInWindow(from, to, why);
+   if(events < 0)
+   {
+      if(!g_newsUnavailableLogged)
+      {
+         g_newsUnavailableLogged = true;
+         Print("[QATS][NEWS] CALENDAR_UNAVAILABLE - no events assumed, entries NOT blocked by unverifiable data");
+      }
+      return true;                                // fail open for TRADING, never invent events
+   }
+   if(!g_newsReadyLogged)
+   {
+      g_newsReadyLogged = true;
+      PrintFormat("[QATS][NEWS] enabled: importance>=%I64d around %s, window -%dm/+%dm (server time); entries blocked while a matching event sits inside it",
+                  InpNewsMinImportance, InpNewsCurrencies, InpNewsBlockAfterMin, InpNewsBlockBeforeMin);
+   }
+   if(events > 0)
+   {
+      why = StringFormat("high-impact calendar event inside the block window (%d event(s), importance>=%I64d, %s)",
+                         events, InpNewsMinImportance, InpNewsCurrencies);
+      return false;
+   }
+   return true;
+}
+
+//+------------------------------------------------------------------+
 //| SECTION 18 - GUARD CHAIN (MANDATORY RISK PROTECTION)             |
 //| Every guard that can veto an entry is evaluated on every pass,   |
 //| so the journal names ALL active blocks, not just the first one.  |
@@ -2046,7 +2978,7 @@ int GuardBlocks(string &codes, string &detail, string &first)
    int count = 0;
    if(!InpEnableTrading) AddBlock(codes, detail, first, count, "MASTER_SWITCH_OFF", "MASTER SWITCH off (InpEnableTrading=false)");
    if(g_execBlocked)     AddBlock(codes, detail, first, count, "EXEC_BLOCKED", g_blockReason);
-   // re-verify account/terminal/EA/symbol permissions at decision time
+      // re-verify account/terminal/EA/symbol permissions at decision time
    string pr = "";
    if(!VerifyAccountProtection(pr)) AddBlock(codes, detail, first, count, "PROTECTION", "PROTECTION: " + pr);
    if(g_dayLocked)
@@ -2073,6 +3005,13 @@ int GuardBlocks(string &codes, string &detail, string &first)
       else
          inSession = (hour >= InpSessionStartHour || hour < InpSessionEndHour);
       if(!inSession) AddBlock(codes, detail, first, count, "OUTSIDE_SESSION", "outside trading session");
+   }
+   // news / calendar blackout (opt-in)
+   if(InpNewsFilterEnable)
+   {
+      string why = "";
+      if(!NewsEntriesAllowed(TimeTradeServer(), why))
+         AddBlock(codes, detail, first, count, "NEWS_BLACKOUT", why);
    }
    // stale data guard
    if(InpMaxDataAgeSeconds > 0)
@@ -2243,7 +3182,9 @@ void QATS_Audit(const string stage, const int cls, const double score, const dou
                QATS_ProfileName(InpSignalExecutionProfile), result, why);
 }
 
-bool ExecuteSignal(const SAnalysis &inputPlan)
+// reserved=true is used ONLY by ProcessPendingRetry: the reservation was already
+// consumed by the initial send; re-reserving would brick the retry by design.
+bool ExecuteSignal(const SAnalysis &inputPlan, const bool reserved=false)
 {
    SAnalysis plan = inputPlan;
    g_executionReason = "";
@@ -2336,7 +3277,10 @@ bool ExecuteSignal(const SAnalysis &inputPlan)
    }
 
    g_executionStage = "RESERVE";
-   if(IsXAUUSD() && !ReserveSignal(plan, g_executionReason)) return false;
+   if(reserved)
+      PrintFormat("[QATS][EXEC] reservation carried from the initial send (retry)");
+   else if(!ReserveSignal(plan, g_executionReason))
+      return false;
    g_executionStage = "BROKER";
    ConfigureTrade();
    bool sent = (plan.dir > 0)
@@ -2354,6 +3298,11 @@ bool ExecuteSignal(const SAnalysis &inputPlan)
 
    if(sent && IsSuccessRetcode(rc))
    {
+      // filled-with-report (Phase 8): a fill short of the request is a fill, journalled as one
+      double filledVol = g_trade.ResultVolume();
+      if(QATS_FillShort(volume, filledVol))
+         PrintFormat("[QATS][EXECUTION][PARTIAL] symbol=%s direction=%s requested=%.2f filled=%.2f shortfall=%.2f retcode=%u (%s) - filled-with-report; the verified position carries the filled volume",
+                     _Symbol, side, volume, filledVol, volume - filledVol, rc, rcDesc);
       // A successful retcode is NOT proof of a position: verify it exists.
       ulong positionTicket = 0;
       bool positionVerified = VerifyPositionOpened(plan.dir, positionTicket);
@@ -2374,8 +3323,8 @@ bool ExecuteSignal(const SAnalysis &inputPlan)
       g_executionStage = "FILLED";
       g_executionReason = StringFormat("server accepted retcode=%u (%s); position %s", rc, rcDesc,
                                        (positionVerified ? "confirmed" : "NOT VERIFIED - inspect journal"));
-      PrintFormat("[QATS][EXECUTION][FILLED] symbol=%s direction=%s setup=%s retcode=%u deal=%I64u order=%I64u price=%s volume=%.2f position=%s ticket=%I64u",
-                  _Symbol, side, setupId, rc, deal, order, PriceText(g_trade.ResultPrice()), g_trade.ResultVolume(),
+      PrintFormat("[QATS][EXECUTION][FILLED] symbol=%s direction=%s setup=%s retcode=%u deal=%I64u order=%I64u price=%s requested=%.2f volume=%.2f position=%s ticket=%I64u",
+                  _Symbol, side, setupId, rc, deal, order, PriceText(g_trade.ResultPrice()), volume, g_trade.ResultVolume(),
                   (positionVerified ? "verified" : "UNVERIFIED"), positionTicket);
       return true;
    }
@@ -2425,7 +3374,7 @@ void ProcessPendingRetry()
    plan.entry = (plan.dir > 0) ? ask : bid;
    plan.stopDist = MathAbs(plan.entry - plan.sl);
    PrintFormat("[QATS][RETRY] re-submitting %s (retry %d/3)", (plan.dir > 0 ? "BUY" : "SELL"), g_pendingRetries);
-   bool accepted = ExecuteSignal(plan);
+   bool accepted = ExecuteSignal(plan, true);   // reservation already consumed by the initial send
    if(!accepted && g_pendingRetryAt == 0)
    {
       g_statRejected[SideIndex(plan.dir)]++;
@@ -2434,6 +3383,32 @@ void ProcessPendingRetry()
                   SetupId(plan.dir, plan.setupTime), plan.score, g_executionStage, g_executionReason);
       g_pendingRetries = 0;
    }
+}
+
+// Per-ticket refused-modify throttle (CR-4): the cooldown applies to the ticket that was
+// actually refused, never to the account's other positions. Fixed slots, oldest evicted.
+bool ManageFailRecent(const ulong ticket)
+{
+   datetime now = TimeTradeServer();
+   for(int i = 0; i < QATS_MANAGE_FAIL_MAX; i++)
+      if(g_manageFailTicket[i] == ticket && g_manageFailAt[i] > 0 && now - g_manageFailAt[i] < 10)
+         return true;
+   return false;
+}
+
+void ManageFailRecord(const ulong ticket)
+{
+   datetime now = TimeTradeServer();
+   int slot = -1, oldest = -1;
+   for(int i = 0; i < QATS_MANAGE_FAIL_MAX; i++)
+   {
+      if(g_manageFailTicket[i] == ticket) { slot = i; break; }
+      if(g_manageFailAt[i] == 0) { slot = i; break; }
+      if(oldest < 0 || g_manageFailAt[i] < g_manageFailAt[oldest]) oldest = i;
+   }
+   if(slot < 0) slot = oldest;
+   g_manageFailTicket[slot] = ticket;
+   g_manageFailAt[slot] = now;
 }
 
 //+------------------------------------------------------------------+
@@ -2484,14 +3459,14 @@ void ManagePositions()
          double beSL = open;
          bool needMove = (dir > 0) ? (sl < beSL - g_spec.point) : (sl > beSL + g_spec.point);
          // a refused modify is journalled and not re-sent for 10 seconds
-         if(needMove && IsStopValid(beSL, price) && TimeTradeServer() - g_lastManageFail >= 10)
+         if(needMove && IsStopValid(beSL, price) && !ManageFailRecent(ticket))
          {
             if(g_trade.PositionModify(ticket, beSL, tp))
                PrintFormat("[QATS][MANAGE] ticket=%I64u SL -> BREAK-EVEN @ %.5f (+%.2fR)", ticket, beSL, rMultiple);
             else
             {
-               g_lastManageFail = TimeTradeServer();
-               PrintFormat("[QATS][MANAGE] ticket=%I64u break-even modify REFUSED retcode=%u (%s) - retry in 10s",
+               ManageFailRecord(ticket);
+               PrintFormat("[QATS][MANAGE] ticket=%I64u break-even modify REFUSED retcode=%u (%s) - this ticket retries in 10s (other positions unaffected)",
                            ticket, (uint)g_trade.ResultRetcode(), g_trade.ResultRetcodeDescription());
             }
          }
@@ -2618,14 +3593,6 @@ string ZoneSourceName(const int src)
    return "NONE";
 }
 
-// Contract size of ONE lot in account currency: the terminal's own answer, the
-// same identity CalcPositionVolume already uses (money per price unit).
-double LimitMoneyPerPriceUnit()
-{
-   if(g_spec.tickSize <= 0.0) return 0.0;
-   return g_spec.tickValue / g_spec.tickSize;
-}
-
 // BUY LIMIT / SELL LIMIT orders of this EA on this symbol.
 int CountMyPending()
 {
@@ -2734,32 +3701,13 @@ bool PickEntryZone(const SSide &side, const int dir, SZone &out, int &source, st
    return false;
 }
 
-// TRUE when a price is on the allowed side of the H1 dealing range's midpoint.
-bool LimitPriceInPD(const int dir, const double price, string &why)
+// TRUE when a price is on the allowed side of the SELECTED adaptive range's midpoint.
+// The SAME rule the market path enforces, evaluated on the chart entry price; the
+// range and the selection come from the analysis, nothing is re-derived here.
+// Fails closed when no range is valid - PD is never silently bypassed.
+bool LimitPriceInPD(const SAnalysis &a, const int dir, const double price, string &why)
 {
-   double hh = 0.0, ll = 0.0;
-   if(!HighestHigh(_Symbol, PERIOD_H1, 1, MathMax(1, InpSwingLookback), hh) ||
-      !LowestLow(_Symbol, PERIOD_H1, 1, MathMax(1, InpSwingLookback), ll))
-   {
-      why = "H1 dealing range unavailable";
-      return false;
-   }
-   double eq = (hh + ll) / 2.0;
-
-   if(dir < 0 && price < eq)
-   {
-      why = StringFormat("SELL entry %s is below the H1 equilibrium %s (needs premium)",
-                         PriceText(price), PriceText(eq));
-      return false;
-   }
-   if(dir > 0 && price > eq)
-   {
-      why = StringFormat("BUY entry %s is above the H1 equilibrium %s (needs discount)",
-                         PriceText(price), PriceText(eq));
-      return false;
-   }
-   why = "";
-   return true;
+   return PdPriceOnSide(a.pdSelected, a.pdEq, a.pdStatus, dir, price, "PD_LIMIT", why);
 }
 
 // The LIMIT plan: entry at the zone, stop beyond the FAR edge of the zone, target
@@ -2842,7 +3790,7 @@ bool BuildLimitPlan(const SAnalysis &a, SAnalysis &out)
    }
 
    //--- premium / discount: never BUY into premium, never SELL into discount
-   if(InpLimitNeedPD && !LimitPriceInPD(out.dir, chartEntry, why))
+   if(InpLimitNeedPD && !LimitPriceInPD(out, out.dir, chartEntry, why))
    {
       g_executionReason = why;
       return false;
@@ -2888,28 +3836,28 @@ bool BuildLimitPlan(const SAnalysis &a, SAnalysis &out)
    //--- the target: the nearest INTACT range liquidity the trade runs into,
    // offset 0.10 x H1 ATR back inside the range; otherwise the RR fallback.
    SSwing highs[], lows[];
-   FindSwings(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, highs, true);
-   FindSwings(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, lows, false);
    SLiquidityPool pools[];
-   BuildLiquidityMap(_Symbol, PERIOD_H1, highs, lows, MathMax(atrH1 * InpLiquidityToleranceATR, point * 2.0),
-                     MathMax(1, InpSetupWindowBars), pools);
+   LiquidityContext(_Symbol, atrH1, highs, lows, pools);
    double inside = 0.10 * atrH1;
    double tp = 0.0;
    string tpSource = "RR";
    double target = 0.0;
    string targetKind = "";
    double minRR = MathMax(InpLimitMinRR, 0.0);
-   if(NearestLiquidityTarget(pools, out.dir, entry, stopDist, minRR, spread, target, targetKind))
+   double targetLevel = 0.0;
+   if(NearestLiquidityTarget(pools, out.dir, entry, stopDist, minRR, spread, target, targetKind, targetLevel))
    {
       tp = (out.dir > 0) ? QATS_SnapToTick(target - inside, tick, g_spec.digits, false)
                          : QATS_SnapToTick(target + inside, tick, g_spec.digits, true);
-      tpSource = "LIQUIDITY:" + targetKind;
+      tpSource = "LIQUIDITY:" + targetKind + "@" + PriceText(targetLevel);
+      out.tpLevel = targetLevel;
    }
    else
    {
       double rrMult = MathMax(InpRewardRisk, minRR);
       tp = (out.dir > 0) ? entry + stopDist * rrMult : entry - stopDist * rrMult;
       tp = QATS_SnapToTick(tp, tick, g_spec.digits, (out.dir > 0));
+      out.tpLevel = 0.0;
    }
    if(MathAbs(tp - entry) < minGap)
    {
@@ -3063,9 +4011,9 @@ bool PlaceLimitOrder(const SAnalysis &raw)
       return false;
    }
 
-   // XAUUSD duplicate protection, identical to the market path: reserve BEFORE sending
+   // CR-3 duplicate protection, identical on every symbol: reserve BEFORE sending
    g_executionStage = "LIMIT_RESERVE";
-   if(IsXAUUSD() && !ReserveSignal(plan, g_executionReason))
+   if(!ReserveSignal(plan, g_executionReason))
    {
       PrintFormat("%s NOT_PLACED direction=%s reason=%s", QATS_LIMIT_PREFIX, side, g_executionReason);
       return false;
@@ -3521,9 +4469,14 @@ int FindClosedPos(const SClosedPos &list[], const int count, const long id)
 void ProcessClosedDeals()
 {
    datetime nowTs = TimeTradeServer();
-   // +1 day on the upper bound: a deal stamped slightly ahead of the local estimate
-   // of server time must not stay invisible until the next pass
-   if(!HistorySelect(nowTs - 30 * 86400, nowTs + 86400)) return;
+   // CR-5: the scan is bounded by the watermark of what was already counted -
+   // from the time of the last counted deal minus a 6h slack, never worse than the
+   // old fixed 30-day window. The ticket filter below (lastOut <= maxSeen) prevents
+   // double counting regardless of the window.
+   datetime wmTime = (datetime)GVGet(GVKey("last_deal_time"), 0.0);
+   datetime from = (wmTime > 0) ? MathMax(wmTime - 6 * 3600, nowTs - 30 * 86400) : (nowTs - 30 * 86400);
+   if(from > nowTs) from = nowTs;
+   if(!HistorySelect(from, nowTs + 86400)) return;
    int total = HistoryDealsTotal();
    ulong lastSeen = (ulong)GVGet(GVKey("last_deal"), 0.0);
 
@@ -3576,6 +4529,7 @@ void ProcessClosedDeals()
    if(!MathIsValidNumber(consec) || consec < 0.0) consec = 0.0;
    double band = NeutralBandMoney();
    ulong maxSeen = lastSeen;
+   datetime maxOutTime = 0;
    bool changed = false;
    for(int pass = 0; pass < count; pass++)
    {
@@ -3589,6 +4543,7 @@ void ProcessClosedDeals()
       }
       if(pick < 0) break;
       maxSeen = list[pick].lastOut;
+      if(list[pick].lastOutTime > maxOutTime) maxOutTime = list[pick].lastOutTime;
       changed = true;
       GVDel(GVKey("pc_" + IntegerToString(list[pick].id)));    // position closed: drop partial-bank marker
       int outcome = QATS_ClassifyClose(list[pick].net, band);
@@ -3615,6 +4570,7 @@ void ProcessClosedDeals()
    if(changed)
    {
       GVSet(GVKey("last_deal"), (double)maxSeen);
+      if(maxOutTime > 0) GVSet(GVKey("last_deal_time"), (double)maxOutTime);
       GVSet(GVKey("consec_losses"), consec);
       g_consecLosses = (int)consec;
    }
@@ -3623,9 +4579,14 @@ void ProcessClosedDeals()
 // on attach, adopt the current history watermark so ancient deals are never re-counted
 void InitDealWatermark()
 {
-   if(GlobalVariableCheck(GVKey("last_deal"))) return;
+   // CR-5: seed BOTH watermarks from one 30-day lookback (once per account/symbol/magic),
+   // so an upgrade from a pre-CR-5 tree never rescans 30 days every M5 bar.
+   bool needTicket = !GlobalVariableCheck(GVKey("last_deal"));
+   bool needTime   = !GlobalVariableCheck(GVKey("last_deal_time"));
+   if(!needTicket && !needTime) return;
    datetime from = TimeTradeServer() - 30 * 86400;
    ulong maxSeen = 0;
+   datetime maxSeenTime = 0;
    if(HistorySelect(from, TimeTradeServer() + 86400))
    {
       int total = HistoryDealsTotal();
@@ -3634,11 +4595,57 @@ void InitDealWatermark()
          ulong ticket = HistoryDealGetTicket(i);
          if(ticket == 0) continue;
          if(HistoryDealGetString(ticket, DEAL_SYMBOL) != _Symbol) continue;
-         if(ticket > maxSeen) maxSeen = ticket;
+         if(ticket > maxSeen)
+         {
+            maxSeen = ticket;
+            maxSeenTime = (datetime)HistoryDealGetInteger(ticket, DEAL_TIME);
+         }
       }
    }
-   GVSet(GVKey("last_deal"), (double)maxSeen);
-   PrintFormat("[QATS] deal watermark initialised at ticket %I64u", maxSeen);
+   if(needTicket) GVSet(GVKey("last_deal"), (double)maxSeen);
+   if(needTime)   GVSet(GVKey("last_deal_time"), (double)maxSeenTime);
+   PrintFormat("[QATS] deal watermark initialised at ticket %I64u time %s", maxSeen, TimeToString(maxSeenTime, TIME_DATE | TIME_SECONDS));
+}
+
+// RISK_STATUS exposure map (Phase 8): read-only snapshot of the account-side risk
+// posture. Computed from live + persisted state; the guard chain enforces it, the
+// journal ([QATS][RISK]) reports it, Phase 9 folds it into the ANALYSIS record.
+void BuildRiskStatus(SRiskStatus &st)
+{
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   st.equity = equity;
+   st.dayPnl = g_dayPnL;
+   st.dayPnlPct = (g_dayBase > 0.0) ? g_dayPnL / g_dayBase * 100.0 : 0.0;
+   st.hwm = g_equityHWM;
+   st.ddPct = g_accountDDPct;
+   st.ddCapPct = EffectiveDrawdownPercent();
+   st.ddUsedPct = (st.ddCapPct > 0.0) ? st.ddPct / st.ddCapPct * 100.0 : 0.0;
+   st.consecLosses = g_consecLosses;
+   st.streakMax = InpStopAfterConsecLoss;
+   st.tradesToday = g_tradesToday;
+   st.tradesMax = InpMaxTradesPerDay;
+   st.dailyLossPct = (g_dayBase > 0.0 && equity < g_dayBase) ? (g_dayBase - equity) / g_dayBase * 100.0 : 0.0;
+   st.dailyLossCapPct = EffectiveDailyLossPercent();
+   st.dayLocked = g_dayLocked;
+   st.ddHalted = g_ddHalted;
+   st.cooldownActive = g_inCooldown || (g_cooldownUntil > TimeTradeServer());
+   st.cooldownUntil = g_cooldownUntil;
+   double used = AccountInfoDouble(ACCOUNT_MARGIN);
+   double freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+   st.marginUsedPct = (used + freeMargin > 0.0) ? used / (used + freeMargin) * 100.0 : 0.0;
+}
+
+string RiskStatusText(const SRiskStatus &st)
+{
+   string cooldown = (st.cooldownActive && st.cooldownUntil > 0)
+                     ? ("until " + TimeToString(st.cooldownUntil, TIME_DATE | TIME_MINUTES))
+                     : (st.cooldownActive ? "active" : "no");
+   return StringFormat("equity=%.2f %s dayPnL=%+.2f (%+.2f%%) HWM=%.2f DD=%.2f%% (cap %.2f%%, %.0f%% used) streak=%d/%d tradesToday=%d/%d dayLoss=%.2f%% (cap %.2f%%) dayLocked=%s ddHalted=%s cooldown=%s marginUsed=%.1f%%",
+                      st.equity, g_spec.profitCcy, st.dayPnl, st.dayPnlPct, st.hwm, st.ddPct, st.ddCapPct, st.ddUsedPct,
+                      st.consecLosses, st.streakMax, st.tradesToday, st.tradesMax,
+                      st.dailyLossPct, st.dailyLossCapPct,
+                      (st.dayLocked ? "yes" : "no"), (st.ddHalted ? "yes" : "no"), cooldown,
+                      st.marginUsedPct);
 }
 
 //+------------------------------------------------------------------+
@@ -3650,6 +4657,11 @@ void Heartbeat()
    datetime now = TimeTradeServer();
    if(g_lastHeartbeat != 0 && now - g_lastHeartbeat < InpHeartbeatSeconds) return;
    g_lastHeartbeat = now;
+   {
+      SRiskStatus risk;
+      BuildRiskStatus(risk);
+      PrintFormat("[QATS][RISK] %s", RiskStatusText(risk));
+   }
    PrintFormat("[QATS][HB] equity=%.2f %s dayPnL=%+.2f (%.2f%%) HWM=%.2f DD=%.2f%% tradesToday=%d/%d consecLosses=%d/%d dayLocked=%s ddHalted=%s cooldown=%s spread=%.0fpts lastBUY=%d lastSELL=%d lastDir=%+d | %s",
                AccountInfoDouble(ACCOUNT_EQUITY), g_spec.profitCcy,
                g_dayPnL, (g_dayBase > 0 ? g_dayPnL / g_dayBase * 100.0 : 0.0),
@@ -3680,6 +4692,8 @@ int OnInit()
 {
    Print("[QATS]====================================================");
    PrintFormat("[QATS] QuantumAutonomousTradingSystem v%s attaching to %s", QATS_VERSION, _Symbol);
+   PrintFormat("[QATS][SESSION] trading windows are BROKER SERVER hours (%02d:00..%02d:00 server); broker->UTC offset input = %+d min (advisory only - the guard enforces server time; the broker's DST follows its own server clock, not this input)",
+               InpSessionStartHour, InpSessionEndHour, InpBrokerUtcOffsetMinutes);
    Print("[QATS]====================================================");
 
    g_boundLogin = AccountInfoInteger(ACCOUNT_LOGIN);
@@ -3694,7 +4708,10 @@ int OnInit()
       return INIT_FAILED;   // without specs no risk math is possible; refuse to run
    }
    PrintSymbolSpec();
-   if(IsXAUUSD() && !InitSignalKeys())
+   // CR-3: the atomic reservation is required on EVERY symbol (the keys are
+   // account + magic + symbol namespaced; XAUUSD keys keep their legacy names).
+   // An account/terminal that cannot persist the reservation refuses to run.
+   if(!InitSignalKeys())
    {
       Print("[QATS][FATAL] Cannot initialize persistent signal reservations; execution disabled");
       return INIT_FAILED;
@@ -3750,6 +4767,7 @@ int OnInit()
    g_hH1Fast  = iMA(_Symbol, PERIOD_H1, 20, 0, MODE_EMA, PRICE_CLOSE);
    g_hH1Slow  = iMA(_Symbol, PERIOD_H1, 50, 0, MODE_EMA, PRICE_CLOSE);
    g_hM15Fast = iMA(_Symbol, PERIOD_M15, 20, 0, MODE_EMA, PRICE_CLOSE);
+   g_hH1Slow200 = iMA(_Symbol, PERIOD_H1, 200, 0, MODE_EMA, PRICE_CLOSE);
    g_hATRH1   = iATR(_Symbol, PERIOD_H1, InpATRPeriod);
    g_hATRM15  = iATR(_Symbol, PERIOD_M15, InpATRPeriod);
    g_hATRM5   = iATR(_Symbol, PERIOD_M5, InpATRPeriod);
@@ -3757,7 +4775,7 @@ int OnInit()
    if(g_hD1Fast == INVALID_HANDLE || g_hD1Slow == INVALID_HANDLE ||
       g_hH4Fast == INVALID_HANDLE || g_hH4Slow == INVALID_HANDLE ||
       g_hH1Fast == INVALID_HANDLE || g_hH1Slow == INVALID_HANDLE ||
-      g_hM15Fast == INVALID_HANDLE || g_hATRH1 == INVALID_HANDLE || g_hATRM15 == INVALID_HANDLE || g_hATRM5 == INVALID_HANDLE)
+      g_hM15Fast == INVALID_HANDLE || g_hH1Slow200 == INVALID_HANDLE || g_hATRH1 == INVALID_HANDLE || g_hATRM15 == INVALID_HANDLE || g_hATRM5 == INVALID_HANDLE)
    {
       PrintFormat("[QATS][FATAL] Failed to create indicator handles, error=%d", GetLastError());
       ReleaseHandles();
@@ -3801,10 +4819,12 @@ void ReleaseHandles()
    if(g_hH1Slow != INVALID_HANDLE) IndicatorRelease(g_hH1Slow);
    if(g_hM15Fast != INVALID_HANDLE) IndicatorRelease(g_hM15Fast);
    if(g_hATRH1  != INVALID_HANDLE) IndicatorRelease(g_hATRH1);
+   if(g_hH1Slow200 != INVALID_HANDLE) IndicatorRelease(g_hH1Slow200);
    if(g_hATRM15 != INVALID_HANDLE) IndicatorRelease(g_hATRM15);
    if(g_hATRM5  != INVALID_HANDLE) IndicatorRelease(g_hATRM5);
    g_hD1Fast = g_hD1Slow = g_hH4Fast = g_hH4Slow = g_hH1Fast = g_hH1Slow = INVALID_HANDLE;
    g_hM15Fast = g_hATRH1 = g_hATRM15 = g_hATRM5 = INVALID_HANDLE;
+   g_hH1Slow200 = INVALID_HANDLE;
 }
 
 void OnDeinit(const int reason)
@@ -3930,6 +4950,27 @@ void ProcessSignal(const SAnalysis &raw, const bool canManage)
       LogRejected(raw, g_executionStage, g_executionReason);
       LogSignal(raw, "NOT_PLACED", "LIMIT");
       return;
+   }
+
+   // v1.24: the SAME premium/discount protection on MARKET entries. The limit path
+   // enforces it at the zone price (InpLimitNeedPD); here it enforces on the live
+   // quote (ask for BUY / bid for SELL). SELL premium / BUY discount - never
+   // relaxed; a high-scoring setup that fails premium/discount is blocked and
+   // journalled, never re-routed silently.
+   if(InpPDEnforceMarket)
+   {
+      double px = (raw.dir > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+                                : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      string why = "";
+      if(!PdPriceOnSide(raw.pdSelected, raw.pdEq, raw.pdStatus, raw.dir, px, "PD_MARKET", why))
+      {
+         g_statBlockedBars[SideIndex(raw.dir)]++;
+         LogSignal(raw, "BLOCKED", "PD_MARKET");
+         PrintFormat("[QATS][PD] MARKET_BLOCKED direction=%s bar=%s price=%s reason=%s",
+                     SideName(raw.dir), TimeToString(raw.signalBar, TIME_DATE | TIME_MINUTES),
+                     PriceText(px), why);
+         return;
+      }
    }
 
    SAnalysis plan;

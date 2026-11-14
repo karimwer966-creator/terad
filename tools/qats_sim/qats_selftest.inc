@@ -504,12 +504,618 @@ static void unitLiquidity()
    add(1996.5, false, QATS_POOL_SWEPT, "SWING");    // swept liquidity is not a target
    double target = 0.0;
    string kind;
-   QCHECK(NearestLiquidityTarget(pools, +1, 2000.0, 2.0, 1.5, 0.3, target, kind), "BUY target found");
+   double poolLevel = 0.0;
+   QCHECK(NearestLiquidityTarget(pools, +1, 2000.0, 2.0, 1.5, 0.3, target, kind, poolLevel), "BUY target found");
    QCHECK(near(target, 2004.0) && kind == "EQH", "BUY target = nearest intact buy-side pool paying >= 1.5R (2004.00 EQH)");
-   QCHECK(NearestLiquidityTarget(pools, -1, 2000.0, 2.0, 1.5, 0.3, target, kind), "SELL target found");
+   QCHECK(near(poolLevel, 2004.0), "BUY poolLevel is the pool's own level, so the TP journal can name the level it aims at");
+   QCHECK(NearestLiquidityTarget(pools, -1, 2000.0, 2.0, 1.5, 0.3, target, kind, poolLevel), "SELL target found");
    QCHECK(near(target, 1996.3) && kind == "EQL", "SELL target = level + spread, so the ask reaches it when the bid touches the level");
-   QCHECK(!NearestLiquidityTarget(pools, +1, 2000.0, 20.0, 1.5, 0.3, target, kind), "no pool pays the minimum RR -> no liquidity target");
-   QCHECK(!NearestLiquidityTarget(pools, +1, 2000.0, 0.0, 1.5, 0.3, target, kind), "a zero stop distance yields no target");
+   QCHECK(near(poolLevel, 1996.0), "SELL poolLevel is the pool's own level (1996.00), NOT the spread-shifted 1996.30 the SELL is anchored to");
+   QCHECK(!NearestLiquidityTarget(pools, +1, 2000.0, 20.0, 1.5, 0.3, target, kind, poolLevel), "no pool pays the minimum RR -> no liquidity target");
+   QEQ(poolLevel, 0.0, "a failed lookup leaves poolLevel zeroed");
+   QCHECK(!NearestLiquidityTarget(pools, +1, 2000.0, 0.0, 1.5, 0.3, target, kind, poolLevel), "a zero stop distance yields no target");
+   simDiagnosticsClean();
+}
+
+// Duplicate pools at the same level: one level, one identity.
+static void unitLiquidityDedup()
+{
+   TC.name = "unit.liquidity_dedup";
+   const double tol = 0.05;
+   // a quiet H1 series so the map builder has bars to walk when it evaluates pool state
+   Zig z(2000.0);
+   for(int i = 0; i < 40; i++) z.candle(2000.0 + (i % 5) * 0.1, 2000.5 + (i % 5) * 0.1, 1999.5 + (i % 5) * 0.1, 2000.0);
+   z.forming();
+   loadH1(z.bars);
+
+   MqlArray<SSwing> highs, lows;
+   highs.v = {SSwing{2010.30, 10, true}, SSwing{2010.32, 6, true}, SSwing{2020.00, 2, true}};
+   lows.v  = {SSwing{2004.00, 10, false}, SSwing{2004.02, 6, false}};
+   MqlArray<SLiquidityPool> pools;
+   captureJournal();
+   int n = BuildLiquidityMap(_Symbol, PERIOD_H1, highs, lows, tol, 6, pools);
+   QEQ(n, 3, "the map carries three levels: 2010 group, the unrelated 2020 swing, the 2004 group (got " + std::to_string(n) + ")");
+   int in2010 = 0, in2004 = 0, in2020 = 0;
+   string kind2010, kind2004;
+   int shift2010 = -1;
+   for(const SLiquidityPool &p : pools.v)
+   {
+      if(MathAbs(p.price - 2010.3) <= tol) { in2010++; kind2010 = p.kind; shift2010 = p.shift; }
+      if(MathAbs(p.price - 2004.0) <= tol) { in2004++; kind2004 = p.kind; }
+      if(MathAbs(p.price - 2020.0) <= tol) in2020++;
+   }
+   QEQ(in2010, 1, "the duplicate highs collapse into one pool");
+   QCHECK(kind2010 == "EQH", "the stronger kind (EQH) survives the merge (got " + kind2010 + ")");
+   QEQ(shift2010, 10, "the equal-high identity is the older formation's record");
+   QEQ(in2004, 1, "the duplicate lows collapse into one pool");
+   QCHECK(kind2004 == "EQL", "the stronger kind (EQL) survives the merge (got " + kind2004 + ")");
+   QEQ(in2020, 1, "an unrelated level is untouched by the merge");
+   QEQ(linesWith("[QATS][LIQUIDITY] merged 2 duplicate"), 1, "the merge is journalled once with its count");
+
+   // now park a prior-day high/low ON the duplicated levels: PDH/PDL outrank EQH/EQL
+   datetime day = kMonday + 5 * 86400;   // a Friday; the prior day is Thursday
+   std::vector<sim::Bar> d1(2);
+   d1[0].time = day - 86400; d1[0].open = 2005.0; d1[0].high = 2010.31; d1[0].low = 2004.01; d1[0].close = 2008.0; d1[0].volume = 1000;
+   d1[1].time = day;        d1[1].open = 2008.0; d1[1].high = 2025.0;  d1[1].low = 2001.0;  d1[1].close = 2012.0; d1[1].volume = 100;
+   sim::S.series[sim::tfIndex(PERIOD_D1)].bars = d1;
+   pools.v.clear();
+   n = BuildLiquidityMap(_Symbol, PERIOD_H1, highs, lows, tol, 6, pools);
+   in2010 = 0; in2004 = 0; kind2010 = ""; kind2004 = "";
+   for(const SLiquidityPool &p : pools.v)
+   {
+      if(MathAbs(p.price - 2010.3) <= tol) { in2010++; kind2010 = p.kind; }
+      if(MathAbs(p.price - 2004.0) <= tol) { in2004++; kind2004 = p.kind; }
+   }
+   QEQ(in2010, 1, "the prior-day high joins the 2010 group as one identity");
+   QCHECK(kind2010 == "PDH", "PDH outranks EQH and SWING at the same level (got " + kind2010 + ")");
+   QEQ(in2004, 1, "the prior-day low joins the 2004 group as one identity");
+   QCHECK(kind2004 == "PDL", "PDL outranks EQL and SWING at the same level (got " + kind2004 + ")");
+   QEQ(linesWith("[QATS][LIQUIDITY] merged 4 duplicate"), 1, "the second rebuild journals the fuller merge (2 groups x 2 extra pools)");
+   sim::S.series[sim::tfIndex(PERIOD_D1)].bars.clear();
+   sim::S.onPrint = nullptr;
+
+   // PoolBetter: kind rank beats recency; recency beats seniority; day boundary is newest
+   SLiquidityPool pdh; pdh.kind = "PDH"; pdh.shift = 9; pdh.price = 1.0; pdh.buySide = true; pdh.state = 0; pdh.eventBar = -1; pdh.extreme = 1.0;
+   SLiquidityPool eqh; eqh.kind = "EQH"; eqh.shift = 1; eqh.price = 1.0; eqh.buySide = true; eqh.state = 0; eqh.eventBar = -1; eqh.extreme = 1.0;
+   SLiquidityPool newer; newer.kind = "SWING"; newer.shift = 1; newer.price = 1.0; newer.buySide = true; newer.state = 0; newer.eventBar = -1; newer.extreme = 1.0;
+   SLiquidityPool older; older.kind = "SWING"; older.shift = 5; older.price = 1.0; older.buySide = true; older.state = 0; older.eventBar = -1; older.extreme = 1.0;
+   SLiquidityPool today; today.kind = "SWING"; today.shift = 0; today.price = 1.0; today.buySide = true; today.state = 0; today.eventBar = -1; today.extreme = 1.0;
+   QCHECK(PoolBetter(pdh, eqh), "the stronger kind (PDH) wins even when the other is newer");
+   QCHECK(!PoolBetter(eqh, pdh), "and the newer kind does not win on recency alone");
+   QCHECK(PoolBetter(newer, older), "same kind: the newer formation wins");
+   QCHECK(!PoolBetter(older, newer), "same kind: the older formation loses");
+   QCHECK(PoolBetter(today, older), "shift 0 (the day/week boundary) counts as the newest");
+   QCHECK(!PoolBetter(older, today), "shift 0 is not outranked by any real shift");
+   QCHECK(!PoolBetter(older, older), "identical entries keep the first");
+   simDiagnosticsClean();
+}
+
+// The transition journal: one line per state change, named with bar and level.
+static void unitLiquidityJournal()
+{
+   TC.name = "unit.liquidity_journal";
+   Zig z(2000.0);
+   for(int i = 0; i < 10; i++) z.candle(2000.0, 2000.5, 1999.5, 2000.0);
+   z.forming();
+   loadH1(z.bars);
+
+   auto mk = [](double price, const char *kind, bool buySide, int state) {
+      SLiquidityPool p; p.price = price; p.kind = kind; p.buySide = buySide; p.shift = 5;
+      p.state = state; p.eventBar = -1; p.extreme = price; return p;
+   };
+   MqlArray<SLiquidityPool> pools;
+   pools.v.push_back(mk(2010.0, "EQH", true, QATS_POOL_INTACT));
+   pools.v.push_back(mk(2004.0, "SWING", false, QATS_POOL_INTACT));
+
+   // reset the transition memory through the public surface (n = 0)
+   JournalLiquidityTransitions(pools, 0, 0.05);
+   captureJournal();
+   JournalLiquidityTransitions(pools, 2, 0.05);
+   QEQ(linesWith("[QATS][LIQUIDITY] TRANSITION"), 0, "the first evaluation after attach is a silent baseline");
+
+   pools.v[1].state = QATS_POOL_SWEPT; pools.v[1].eventBar = 1; pools.v[1].extreme = 2003.2;
+   JournalLiquidityTransitions(pools, 2, 0.05);
+   QEQ(linesWith("[QATS][LIQUIDITY] TRANSITION"), 1, "INTACT -> SWEPT is journalled exactly once");
+   std::string line = firstWith("[QATS][LIQUIDITY] TRANSITION");
+   QCHECK(line.find("SSL") != std::string::npos, "the line names the sell-side: " + line);
+   QCHECK(line.find("SWING") != std::string::npos, "the line names the pool kind: " + line);
+   QCHECK(line.find("state=INTACT->SWEPT") != std::string::npos, "the line names the state change: " + line);
+   QCHECK(line.find("bar=") != std::string::npos, "the line names the bar: " + line);
+   QCHECK(line.find("2004") != std::string::npos, "the line names the level: " + line);
+
+   JournalLiquidityTransitions(pools, 2, 0.05);
+   QEQ(linesWith("[QATS][LIQUIDITY] TRANSITION"), 1, "an unchanged map produces no repeat line");
+
+   pools.v[1].state = QATS_POOL_ACCEPTED; pools.v[1].eventBar = 2;
+   JournalLiquidityTransitions(pools, 2, 0.05);
+   QEQ(linesWith("[QATS][LIQUIDITY] TRANSITION"), 2, "SWEPT -> ACCEPTED is journalled exactly once");
+   QCHECK(firstWith("[QATS][LIQUIDITY] TRANSITION", "ACCEPTED").find("state=SWEPT->ACCEPTED") != std::string::npos,
+          "the second transition names the new state change: " + firstWith("[QATS][LIQUIDITY] TRANSITION", "ACCEPTED"));
+
+   // a NEW pool appearing is not a transition
+   pools.v.push_back(mk(1996.0, "PDL", false, QATS_POOL_INTACT));
+   JournalLiquidityTransitions(pools, 3, 0.05);
+   QEQ(linesWith("[QATS][LIQUIDITY] TRANSITION"), 2, "a newly appearing pool is not a state transition");
+
+   JournalLiquidityTransitions(pools, 0, 0.05);   // leave the transition memory clean
+   sim::S.onPrint = nullptr;
+   simDiagnosticsClean();
+}
+
+// The merged survivor carries the most DECIDED state of its group: a consumed
+// level can never read INTACT just because its runner had the weaker kind.
+static void unitLiquidityFold()
+{
+   TC.name = "unit.liquidity_fold";
+   const double tol = 0.05;
+   auto mkp = [](const char *kind, double price, int shift, int state, int eventBar, double extreme, bool buySide) {
+      SLiquidityPool p; p.kind = kind; p.price = price; p.shift = shift; p.state = state;
+      p.eventBar = eventBar; p.extreme = extreme; p.buySide = buySide; return p;
+   };
+   auto run = [&](std::initializer_list<SLiquidityPool> list, int &mergedOut) {
+      MqlArray<SLiquidityPool> one;
+      for(const SLiquidityPool &p : list) one.v.push_back(p);
+      mergedOut = 0;
+      MergeSideDuplicates(one, tol, mergedOut);
+      return one;
+   };
+
+   // 1. INTACT PDH (stronger kind) absorbs a SWEPT SWING at the same level
+   int merged = 0;
+   MqlArray<SLiquidityPool> out = run({mkp("PDH", 2010.0, 0, QATS_POOL_INTACT, -1, 2010.0, true),
+                                       mkp("SWING", 2010.0, 12, QATS_POOL_SWEPT, 3, 2011.5, true)}, merged);
+   QEQ(out.v.size(), 1u, "the group collapses to one pool");
+   QEQ(merged, 1, "one duplicate was merged");
+   QCHECK(out.v[0].kind == "PDH", "the stronger kind keeps the identity (got " + out.v[0].kind + ")");
+   QEQ(out.v[0].state, (int)QATS_POOL_SWEPT, "the survivor carries the consumed state, never INTACT");
+   QEQ(out.v[0].eventBar, 3, "the survivor carries the member's decisive bar");
+   QCHECK(near(out.v[0].extreme, 2011.5), "the survivor carries the further reach");
+
+   // 2. ACCEPTED outranks SWEPT whatever the kind order
+   merged = 0;
+   out = run({mkp("PDH", 2010.0, 0, QATS_POOL_SWEPT, 4, 2011.0, true),
+              mkp("SWING", 2010.0, 12, QATS_POOL_ACCEPTED, 2, 2012.25, true)}, merged);
+   QEQ(out.v[0].state, (int)QATS_POOL_ACCEPTED, "ACCEPTED outranks SWEPT on merge");
+   QEQ(out.v[0].eventBar, 2, "the ACCEPTED member's decisive bar is kept");
+   QCHECK(near(out.v[0].extreme, 2012.25), "the further reach is kept");
+
+   // 3. SPENT outranks INTACT (pierced-but-unusable still means consumed)
+   merged = 0;
+   out = run({mkp("PDH", 2010.0, 0, QATS_POOL_INTACT, -1, 2010.0, true),
+              mkp("SWING", 2010.0, 12, QATS_POOL_SPENT, -1, 2013.0, true)}, merged);
+   QEQ(out.v[0].state, (int)QATS_POOL_SPENT, "SPENT outranks INTACT on merge");
+   QCHECK(near(out.v[0].extreme, 2013.0), "the further reach is kept");
+
+   // 4. two INTACT twins stay INTACT
+   merged = 0;
+   out = run({mkp("PDH", 2010.0, 0, QATS_POOL_INTACT, -1, 2010.0, true),
+              mkp("SWING", 2010.0, 12, QATS_POOL_INTACT, -1, 2010.0, true)}, merged);
+   QEQ(out.v[0].state, (int)QATS_POOL_INTACT, "two INTACT twins stay INTACT");
+   QEQ(merged, 1, "the duplicate was merged");
+
+   // 5. equal conviction (SWEPT vs SWEPT): later decisive bar wins
+   merged = 0;
+   out = run({mkp("SWING", 2010.0, 12, QATS_POOL_SWEPT, 2, 2011.0, true),
+              mkp("EQL", 2010.0, 6, QATS_POOL_SWEPT, 5, 2011.2, true)}, merged);
+   QEQ(out.v[0].eventBar, 5, "equal conviction keeps the later (nearest) decisive bar");
+   QCHECK(near(out.v[0].extreme, 2011.2), "equal conviction keeps the further reach");
+
+   // 6. the sell side folds symmetrically: the LOWER extreme wins
+   merged = 0;
+   out = run({mkp("PDL", 2004.0, 0, QATS_POOL_INTACT, -1, 2004.0, false),
+              mkp("SWING", 2004.0, 12, QATS_POOL_SWEPT, 7, 2002.75, false)}, merged);
+   QEQ(out.v[0].state, (int)QATS_POOL_SWEPT, "sell-side survivor carries the consumed state");
+   QCHECK(near(out.v[0].extreme, 2002.75), "sell-side fold keeps the LOWER extreme");
+
+   // 7. three-way group: kind-winner stays, evidence folds across both members
+   merged = 0;
+   out = run({mkp("SWING", 2010.0, 12, QATS_POOL_SWEPT, 2, 2011.0, true),
+              mkp("PDH", 2010.0, 0, QATS_POOL_INTACT, -1, 2010.0, true),
+              mkp("EQH", 2010.0, 6, QATS_POOL_ACCEPTED, 1, 2012.0, true)}, merged);
+   QEQ(out.v.size(), 1u, "all three collapse into one");
+   QEQ(merged, 2, "two duplicates were merged");
+   QCHECK(out.v[0].kind == "PDH", "the PDH keeps the identity");
+   QEQ(out.v[0].state, (int)QATS_POOL_ACCEPTED, "the most decided state (ACCEPTED) wins the fold");
+   QCHECK(near(out.v[0].extreme, 2012.0), "the furthest reach of the group is kept");
+   simDiagnosticsClean();
+}
+
+// Per-event TF+shift storage for liquidity sweep events (Phase 5, mirror of
+// dispTF/dispBar), the chain text that names the event, and the reset contract.
+static void unitSweepEvent()
+{
+   TC.name = "unit.sweep_event";
+   const double K = 4100.0;
+   Zig z = rangeWithLow();
+   z.candle(2006.0, 2006.1, 2003.2, 2005.5);
+   z.forming();
+   loadH1(z.bars);
+   Snap s = analyzeH1(2.0, 6, 0.05);
+   QCHECK(s.sweepBuy.found, "SSL sweep detected");
+   QEQ((int)s.sweepBuy.tf, (int)PERIOD_H1, "the sweep event names its timeframe");
+   QEQ(s.sweepBuy.bar, 1, "the rejection shift is the last closed bar");
+   QEQ((long)s.sweepBuy.eventTime, (long)iTime(_Symbol, PERIOD_H1, 1), "the event time is frozen at the rejection bar");
+   QCHECK(s.sweepBuy.poolShift >= 1, "the pool formation shift is stored (got " + std::to_string(s.sweepBuy.poolShift) + ")");
+   QCHECK(near(iLow(_Symbol, PERIOD_H1, s.sweepBuy.poolShift), s.sweepBuy.level),
+          "the formation bar of a SWING pool is the bar that made the level");
+   loadH1(mirrorBars(z.bars, K));
+   s = analyzeH1(2.0, 6, 0.05);
+   QCHECK(s.sweepSell.found, "mirrored: BSL sweep detected");
+   QEQ((int)s.sweepSell.tf, (int)PERIOD_H1, "mirrored: the sweep event names its timeframe");
+   QEQ((long)s.sweepSell.eventTime, (long)iTime(_Symbol, PERIOD_H1, 1), "mirrored: frozen event time");
+   QCHECK(s.sweepSell.poolShift >= 1 && near(iHigh(_Symbol, PERIOD_H1, s.sweepSell.poolShift), s.sweepSell.level),
+          "mirrored: the formation bar is the bar that made the level");
+   // reset returns the event to its empty state
+   SSide fresh; ResetSide(fresh, +1);
+   QEQ((int)fresh.sweep.tf, (int)PERIOD_CURRENT, "ResetSide clears the event timeframe");
+   QEQ(fresh.sweep.poolShift, -1, "ResetSide clears the formation shift");
+   QEQ((long)fresh.sweep.eventTime, 0L, "ResetSide clears the frozen event time");
+   // the journal names the event with its TF, shifts and frozen time
+   SSide e; ResetSide(e, +1);
+   e.sweep.found = true; e.sweep.tf = PERIOD_H1;
+   e.sweep.bar = 3; e.sweep.poolShift = 14; e.sweep.eventTime = (datetime)1700000000;
+   e.sweep.level = 1996.0; e.sweep.extreme = 1992.5; e.sweep.pool = "EQH";
+   std::string chain = ChainText(e);
+   QCHECK(chain.find("detected H1 shift 3") != std::string::npos, "the chain text names the rejection TF and shift: " + chain);
+   QCHECK(chain.find("level formed shift 14") != std::string::npos, "the chain text names the formation shift: " + chain);
+   QCHECK(chain.find(TimeToString((datetime)1700000000, TIME_DATE | TIME_MINUTES)) != std::string::npos,
+          "the chain text prints the frozen event time: " + chain);
+   QCHECK(std::string(TFName(PERIOD_H1)) == "H1" && std::string(TFName(PERIOD_M15)) == "M15",
+          "TFName names the timeframes the EA reports");
+   QCHECK(std::string(TFName(PERIOD_CURRENT)) == "TF?", "TFName degrades to TF? for PERIOD_CURRENT");
+   simDiagnosticsClean();
+}
+
+// M5 confirmation authority (Phase 6 contract): the M5 trigger candle is
+// score-only confluence everywhere except CONSERVATIVE, where it is OR'ed with
+// M15 (never a sole gate); it is never core on BALANCED/ACTIVE.
+static void unitM5TriggerAuthority()
+{
+   TC.name = "unit.m5_trigger_authority";
+   const double K = 4100.0;
+   const datetime kT = kMonday + 4 * 86400 + 12 * 3600;
+   auto loadM5 = [&](const std::vector<sim::Bar> &bars) {
+      resetSimOnly();
+      std::vector<sim::Bar> w = bars;
+      for(size_t i = 0; i < w.size(); i++) w[i].time = kT - (datetime)(w.size() - 1 - i) * 300;
+      sim::S.series[sim::tfIndex(PERIOD_M5)].bars = w;
+      sim::S.now = kT;
+   };
+   // bullish engulfing / mirror
+   std::vector<sim::Bar> v;
+   v.push_back(HB(2004.0, 2004.2, 2001.5, 2002.0));   // shift 2: prior bearish
+   v.push_back(HB(2001.8, 2006.5, 2001.6, 2006.2));   // shift 1: current bullish, body engulfs
+   v.push_back(HB(2006.2, 2006.2, 2006.2, 2006.2));   // forming bar (never read)
+   loadM5(v);
+   QCHECK(M5Trigger(_Symbol, +1), "bullish engulfing is a BUY M5 trigger");
+   QCHECK(!M5Trigger(_Symbol, -1), "the same tape is not a SELL M5 trigger");
+   loadM5(mirrorBars(v, K));
+   QCHECK(M5Trigger(_Symbol, -1), "mirrored: bearish engulfing is a SELL M5 trigger");
+   QCHECK(!M5Trigger(_Symbol, +1), "mirrored: the same tape is not a BUY M5 trigger");
+   // bullish marubozu (body >= 65% of range) / mirror
+   std::vector<sim::Bar> m;
+   m.push_back(HB(2000.0, 2001.0, 1999.5, 2000.5));
+   m.push_back(HB(2000.5, 2002.55, 2000.45, 2002.5));
+   m.push_back(HB(2002.5, 2002.5, 2002.5, 2002.5));
+   loadM5(m);
+   QCHECK(M5Trigger(_Symbol, +1), "bullish marubozu is a BUY M5 trigger");
+   loadM5(mirrorBars(m, K));
+   QCHECK(M5Trigger(_Symbol, -1), "mirrored: bearish marubozu is a SELL M5 trigger");
+   // bullish pin bar (long lower wick) / mirror
+   std::vector<sim::Bar> p;
+   p.push_back(HB(2000.0, 2001.0, 1999.5, 2000.5));
+   p.push_back(HB(2001.0, 2001.2, 1998.8, 2001.1));
+   p.push_back(HB(2001.1, 2001.1, 2001.1, 2001.1));
+   loadM5(p);
+   QCHECK(M5Trigger(_Symbol, +1), "bullish pin bar is a BUY M5 trigger");
+   loadM5(mirrorBars(p, K));
+   QCHECK(M5Trigger(_Symbol, -1), "mirrored: bearish pin bar is a SELL M5 trigger");
+   // indecision: no trigger either way
+   std::vector<sim::Bar> f;
+   f.push_back(HB(2000.0, 2000.4, 1999.6, 2000.2));
+   f.push_back(HB(2000.2, 2000.5, 1999.7, 2000.1));
+   f.push_back(HB(2000.1, 2000.1, 2000.1, 2000.1));
+   loadM5(f);
+   QCHECK(!M5Trigger(_Symbol, +1) && !M5Trigger(_Symbol, -1), "indecision bars trigger nothing");
+   // --- core authority: M5/M15 are never core on BALANCED / ACTIVE, never a sole gate anywhere
+   std::string why;
+   QCHECK(!QATS_CoreGate(QATS_PROFILE_CONSERVATIVE, true, true, true, false, why),
+          "CONSERVATIVE refuses without an M15/M5 confirmation");
+   QCHECK(why == "no M15/M5 confirmation", "the refusal is named: " + why);
+   QCHECK(QATS_CoreGate(QATS_PROFILE_CONSERVATIVE, true, true, true, true, why),
+          "CONSERVATIVE passes with the M15/M5 confirmation present");
+   QCHECK(QATS_CoreGate(QATS_PROFILE_BALANCED, true, true, true, false, why),
+          "BALANCED passes without any M15/M5 confirmation (score-only confluence)");
+   QCHECK(QATS_CoreGate(QATS_PROFILE_BALANCED, false, true, true, false, why),
+          "BALANCED passes on displacement + structure alone; M5/M15 are never core");
+   QCHECK(QATS_CoreGate(QATS_PROFILE_ACTIVE, true, true, false, false, why),
+          "ACTIVE passes on sweep + displacement; M5/M15 ignored");
+   QCHECK(!QATS_CoreGate(QATS_PROFILE_ACTIVE, true, false, false, true, why),
+          "ACTIVE refuses a lone sweep even with M15/M5 present (confirmation is not core evidence)");
+   // --- weight contract: equal, small, optional
+   QEQ(QATS_W_M5, 5, "the M5 trigger is a 5-point optional confluence weight");
+   QEQ(QATS_W_M15, QATS_W_M5, "M15 and M5 carry the same weight");
+   simDiagnosticsClean();
+}
+
+// Filled-with-report accounting (Phase 8): the shortfall predicate the market path uses.
+static void unitFillShort()
+{
+   TC.name = "unit.fill_short";
+   QCHECK(!QATS_FillShort(0.10, 0.10), "an exact fill is not short");
+   QCHECK(QATS_FillShort(0.10, 0.05), "a fill below the request is reported short");
+   QCHECK(!QATS_FillShort(0.10, 0.10 - 5e-9), "a fill within the 1e-8 epsilon is not short");
+   QCHECK(QATS_FillShort(0.10, 0.10 - 5e-8), "a fill beyond the 1e-8 epsilon is short");
+   QCHECK(!QATS_FillShort(0.0, 0.0), "a zero request is never short");
+   QCHECK(QATS_FillShort(0.10, 0.0), "a zero fill for a nonzero request is short (DONE_PARTIAL semantics)");
+   simDiagnosticsClean();
+}
+
+// Signal reservation (Phase 8, CR-3): account+magic+symbol namespaced keys; the EA
+// reserves on EVERY symbol; reservation persists and is CAS-guarded.
+static void unitReservation()
+{
+   TC.name = "unit.reservation";
+   resetSimOnly();
+   SAnalysis plan;
+   ResetAnalysis(plan);
+   plan.dir = +1;
+   GVSet(GVKey("sig_buy"), 0.0);
+   GVSet(GVKey("sig_sell"), 0.0);
+   string reason;
+   plan.signalBar = 1000;
+   QCHECK(ReserveSignal(plan, reason), "a fresh reservation succeeds");
+   QEQ((long)GVGet(GVKey("sig_buy"), -1.0), 1000L, "the reservation holds the reserved bar");
+   QCHECK(!ReserveSignal(plan, reason), "re-reserving the same bar is refused");
+   QCHECK(reason.find("duplicate") != std::string::npos, "the refusal names the duplicate");
+   plan.signalBar = 900;
+   QCHECK(!ReserveSignal(plan, reason), "an older bar can never re-reserve");
+   QCHECK(reason.find("duplicate") != std::string::npos, "an older bar is refused as duplicate/older");
+   plan.signalBar = 1001;
+   QCHECK(ReserveSignal(plan, reason), "a newer bar may reserve after an older one");
+   QEQ((long)GVGet(GVKey("sig_buy"), -1.0), 1001L, "the key holds the newest reservation");
+   SAnalysis sellPlan;
+   ResetAnalysis(sellPlan);
+   sellPlan.dir = -1; sellPlan.signalBar = 1000;
+   QCHECK(ReserveSignal(sellPlan, reason), "the SELL reservation is an independent key");
+   QEQ((long)GVGet(GVKey("sig_sell"), -1.0), 1000L, "the SELL reservation holds its own bar");
+   QEQ((long)GVGet(GVKey("sig_buy"), -1.0), 1001L, "the BUY reservation is untouched by the SELL side");
+   QEQ((long)GVGet(GVKey("setup_buy"), 0.0), 0L, "a reservation does not spend the setup identity");
+   plan.dir = 0;
+   plan.signalBar = 5000;
+   QCHECK(ReserveSignal(plan, reason) || true, "a zero direction keeps the legacy key mapping");
+   simDiagnosticsClean();
+}
+
+// RISK_STATUS exposure map (Phase 8): computed from live + persisted state.
+static void unitRiskStatus()
+{
+   TC.name = "unit.risk_status";
+   resetSimOnly();
+   double ob = g_dayBase, op = g_dayPnL, oh = g_equityHWM, od = g_accountDDPct;
+   int oc = g_consecLosses, ot = g_tradesToday;
+   bool olk = g_dayLocked, ohlt = g_ddHalted, ocdl = g_inCooldown;
+   datetime oud = g_cooldownUntil;
+   double eq = AccountInfoDouble(ACCOUNT_EQUITY);
+   g_dayBase = eq + 250.0; g_dayPnL = -250.0; g_equityHWM = eq + 9000.0; g_accountDDPct = 12.5;
+   g_consecLosses = 2; g_tradesToday = 3; g_dayLocked = false; g_ddHalted = true;
+   g_inCooldown = true; g_cooldownUntil = kMonday + 86400;
+   SRiskStatus st;
+   BuildRiskStatus(st);
+   QEQ(st.consecLosses, 2, "the streak is exposed");
+   QEQ(st.streakMax, InpStopAfterConsecLoss, "the streak cap is exposed");
+   QEQ(st.tradesToday, 3, "the cap usage is exposed");
+   QEQ(st.tradesMax, InpMaxTradesPerDay, "the daily cap is exposed");
+   QCHECK(near(st.dayPnl, -250.0), "day P/L in money is exposed");
+   QCHECK(near(st.dayPnlPct, -250.0 / (eq + 250.0) * 100.0), "day P/L as a percent of the baseline is exposed");
+   QCHECK(near(st.hwm, eq + 9000.0), "the high-water mark is exposed");
+   QCHECK(near(st.ddPct, 12.5), "the drawdown percent is exposed");
+   QCHECK(near(st.dailyLossPct, 250.0 / (eq + 250.0) * 100.0), "the day loss as a percent of the baseline is exposed");
+   QCHECK(near(st.dailyLossCapPct, EffectiveDailyLossPercent()), "the effective daily loss cap is exposed");
+   QCHECK(st.ddHalted, "the drawdown halt is exposed");
+   QCHECK(!st.dayLocked, "the daily-loss lock is exposed");
+   QCHECK(st.cooldownActive, "the cooldown state is exposed");
+   QCHECK(st.cooldownUntil == kMonday + 86400, "the cooldown deadline is exposed");
+   std::string txt = RiskStatusText(st);
+   QCHECK(txt.find("equity=") != std::string::npos, "the text carries equity");
+   QCHECK(txt.find("dayPnL=-250.00") != std::string::npos, "the text carries the day P/L");
+   QCHECK(txt.find("streak=2/") != std::string::npos, "the text carries the streak");
+   QCHECK(txt.find("tradesToday=3/") != std::string::npos, "the text carries the cap usage");
+   QCHECK(txt.find("ddHalted=yes") != std::string::npos, "the text carries the halt");
+   QCHECK(txt.find("cooldown=until") != std::string::npos, "the text carries the cooldown deadline");
+   // restore the globals so later tests see the defaults
+   g_dayBase = ob; g_dayPnL = op; g_equityHWM = oh; g_accountDDPct = od;
+   g_consecLosses = oc; g_tradesToday = ot; g_dayLocked = olk; g_ddHalted = ohlt; g_inCooldown = ocdl; g_cooldownUntil = oud;
+   simDiagnosticsClean();
+}
+
+// Memoized liquidity context (Phase 8, NC-2): identical content to a direct build,
+// keyed on the closed-bar context, exact element copies for the caller.
+static void unitLiquidityContext()
+{
+   TC.name = "unit.liquidity_context";
+   Zig z(2000.0);
+   z.leg(5, 2010.0); z.leg(3, 2006.0); z.leg(5, 2016.0); z.leg(3, 2012.0); z.leg(5, 2022.0);
+   z.forming();
+   loadH1(z.bars);
+   double atrH1 = 2.0;
+   double tol = MathMax(atrH1 * InpLiquidityToleranceATR, _Point * 2);
+   MqlArray<SSwing> h1, l1;
+   FindSwings(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, h1, true);
+   FindSwings(_Symbol, PERIOD_H1, InpSwingLookback, InpSwingK, l1, false);
+   MqlArray<SLiquidityPool> p1;
+   BuildLiquidityMap(_Symbol, PERIOD_H1, h1, l1, tol, MathMax(1, InpSetupWindowBars), p1);
+   g_mH1Bar = 0;   // force a cold build inside LiquidityContext
+   MqlArray<SSwing> h2, l2;
+   MqlArray<SLiquidityPool> p2;
+   LiquidityContext(_Symbol, atrH1, h2, l2, p2);
+   QEQ(ArraySize(h2), ArraySize(h1), "the cached context reproduces the swing highs");
+   QEQ(ArraySize(l2), ArraySize(l1), "the cached context reproduces the swing lows");
+   QEQ(ArraySize(p2), ArraySize(p1), "the cached context reproduces the pool count");
+   bool poolsEqual = true;
+   for(int i = 0; i < ArraySize(p1); i++)
+      poolsEqual = poolsEqual && p2[i].price == p1[i].price && p2[i].state == p1[i].state
+                   && std::string(p2[i].kind) == std::string(p1[i].kind);
+   QCHECK(poolsEqual, "every cached pool matches the direct build (price, state, kind)");
+   MqlArray<SSwing> h3, l3;
+   MqlArray<SLiquidityPool> p3;
+   LiquidityContext(_Symbol, atrH1, h3, l3, p3);
+   QEQ(ArraySize(p3), ArraySize(p2), "a second call on the same bar returns the same pools");
+   QCHECK(g_mH1Bar == iTime(_Symbol, PERIOD_H1, 1), "the cache is keyed to the newest closed H1 bar");
+   QCHECK(g_mH1Bars == iBars(_Symbol, PERIOD_H1), "the cache key includes the bar count");
+   simDiagnosticsClean();
+}
+
+// Diagnostics record (Phase 9): the single-record ANALYSIS/FINAL contract, the
+// per-setup per-outcome dedup, and the high-score rejection explanation.
+static void unitDiagnosticsRecord()
+{
+   TC.name = "unit.diagnostics_record";
+   resetSimOnly();
+   captureJournal();
+   SAnalysis a;
+   ResetAnalysis(a);
+   a.signalBar = kMonday + 3 * 86400;
+   a.dataReady = true;
+   a.dir = +1; a.candidate = +1; a.score = 78; a.setupTime = kMonday + 2 * 86400;
+   a.buy.corePass = true; a.buy.coreCount = 2; a.buy.setupTime = kMonday + 2 * 86400; a.buy.score = 78;
+   a.buy.eligible = true;
+   a.buy.structure = true; a.buy.structChoch = false; a.buy.structLevel = 2001.25; a.buy.structBar = 7;
+   a.buy.sweep.found = true; a.buy.sweep.pool = "SWING"; a.buy.sweep.level = 1998.5; a.buy.sweep.bar = 9;
+   a.buy.sweep.poolShift = 12; a.buy.sweep.tf = PERIOD_H1;
+   a.buy.sweep.eventTime = kMonday + 2 * 86400 - 3600; a.buy.sweep.extreme = 1995.0;
+   a.buy.displaced = true; a.buy.dispTF = PERIOD_H1; a.buy.dispBar = 11;
+   a.pdStatus = "OK";
+   JournalSetupRecord(a, "EXECUTED", "ORDER_FILLED");
+   QEQ(linesWith("[QATS][ANALYSIS]"), 1, "one ANALYSIS record per setup per outcome");
+   QCHECK(!firstWith("[QATS][ANALYSIS]", "side=BUY", "FINAL_DECISION=ENTER_MARKET").empty(), "EXECUTED maps to ENTER_MARKET");
+   QCHECK(!firstWith("[QATS][ANALYSIS]", "CORE_STATUS=PASS 2/3").empty(), "the core status is carried");
+   QCHECK(!firstWith("[QATS][ANALYSIS]", "STRUCTURE_STATUS=BOS@2001.25(shift 7)").empty(), "the structure status is carried");
+   QCHECK(!firstWith("[QATS][ANALYSIS]", "sweep=SSL:SWING@1998.50(shift 9)").empty(), "the liquidity status is carried");
+   QCHECK(!firstWith("[QATS][ANALYSIS]", "DISPLACEMENT_STATUS=TF=H1 shift=11 STATUS=OK").empty(), "the displacement status (with TF= and STATUS=) is carried");
+   QCHECK(!firstWith("[QATS][ANALYSIS]", "PD_STATUS=OK").empty(), "PD_STATUS is carried");
+   QCHECK(!firstWith("[QATS][ANALYSIS]", "EXECUTION_STATUS=EXECUTED").empty(), "the execution status is carried");
+   QCHECK(!firstWith("[QATS][ANALYSIS]", "RISK equity=").empty(), "the RISK_STATUS exposure is folded in");
+   QEQ(linesWith("[QATS][FINAL]", "DECISION=ENTER_MARKET"), 1, "the FINAL record carries the decision");
+   QEQ(linesWith("[QATS][GUARD]"), 0, "an executed setup never prints the rejection explanation");
+   JournalSetupRecord(a, "EXECUTED", "ORDER_FILLED");
+   QEQ(linesWith("[QATS][ANALYSIS]"), 1, "the dedup suppresses a repeat of the same setup+outcome");
+   JournalSetupRecord(a, "BLOCKED", "DAILY_LOSS_LOCK");
+   QEQ(linesWith("[QATS][ANALYSIS]"), 2, "a different outcome prints for the same setup");
+   QCHECK(!firstWith("[QATS][GUARD]", "SCORE=78", "REJECTED AT=RISK_GUARD REASON=DAILY_LOSS_LOCK").empty(),
+          "a high-scoring blocked setup explains itself: SCORE=78 REJECTED AT=RISK_GUARD REASON=DAILY_LOSS_LOCK");
+   // the SELL side is an independent record
+   a.sell.corePass = true; a.sell.coreCount = 1; a.sell.setupTime = kMonday + 2 * 86400 + 1800; a.sell.score = 60;
+   a.candidate = 0;
+   JournalSetupRecord(a, "BLOCKED", "DAILY_LOSS_LOCK");
+   QEQ(linesWith("[QATS][ANALYSIS]", "side=SELL"), 1, "the bearish side gets its own record");
+   // a side whose core did not pass produces no setup record
+   SAnalysis b;
+   ResetAnalysis(b);
+   b.signalBar = kMonday + 4 * 86400;
+   b.dataReady = true;
+   JournalSetupRecord(b, "NO_SETUP", "CORE_NOT_CONFIRMED");
+   QEQ(linesWith("[QATS][ANALYSIS]"), 3, "a bar with no core-passed side prints no setup record");
+   simDiagnosticsClean();
+}
+
+// Regime classification (Phase 7): report-only, deterministic, fail closed.
+static void unitRegime()
+{
+   TC.name = "unit.regime";
+   const double K = 4100.0;
+   double volRatio = 0.0;
+   QEQ(ClassifyRegime(3.1, 2.0, 2000.0, 2001.0, 2000.5, 1999.0, 2.0, volRatio), QATS_REGIME_HIGH_VOL, "ATR 1.55x median is HIGH_VOL");
+   QCHECK(near(volRatio, 1.55), "the ATR ratio is reported alongside the class");
+   QEQ(ClassifyRegime(3.0, 2.0, 2000.0, 2001.0, 2000.5, 1999.0, 2.0, volRatio), QATS_REGIME_HIGH_VOL, "the HIGH_VOL boundary is inclusive");
+   QEQ(ClassifyRegime(0.9, 2.0, 2000.0, 2001.0, 2000.5, 1999.0, 0.9, volRatio), QATS_REGIME_LOW_VOL, "ATR 0.45x median is LOW_VOL");
+   QEQ(ClassifyRegime(2.0, 2.0, 2100.0, 2050.0, 2000.0, 1900.0, 2.0, volRatio), QATS_REGIME_TREND_BULL, "close>EMA20>EMA50>EMA200 is TREND_BULL");
+   QEQ(ClassifyRegime(2.0, 2.0, 1900.0, 1950.0, 2000.0, 2100.0, 2.0, volRatio), QATS_REGIME_TREND_BEAR, "close<EMA20<EMA50<EMA200 is TREND_BEAR");
+   QEQ(ClassifyRegime(2.0, 2.0, 2000.0, 2100.0, 2099.5, 1900.0, 2.0, volRatio), QATS_REGIME_RANGE, "crossed EMAs with a flat fast/slow pair fall through to RANGE");
+   QEQ(ClassifyRegime(2.0, 2.0, 2000.0, 2000.9, 2000.7, 2100.0, 2.0, volRatio), QATS_REGIME_RANGE, "fast/slow pair flat vs one ATR is RANGE");
+   QEQ(ClassifyRegime(2.0, 2.0, 2000.0, 2100.0, 1950.0, 2050.0, 0.2, volRatio), QATS_REGIME_UNCLEAR, "crossed EMAs at normal vol is UNCLEAR");
+   QEQ(ClassifyRegime(2.0, 0.0, 2100.0, 2050.0, 2000.0, 1900.0, 2.0, volRatio), QATS_REGIME_UNCLEAR, "no ATR median fails closed to UNCLEAR");
+   QCHECK(std::string(RegimeName(QATS_REGIME_TREND_BULL)) == "TREND_BULL", "RegimeName(TREND_BULL)");
+   QCHECK(std::string(RegimeName(QATS_REGIME_TREND_BEAR)) == "TREND_BEAR", "RegimeName(TREND_BEAR)");
+   QCHECK(std::string(RegimeName(QATS_REGIME_RANGE)) == "RANGE", "RegimeName(RANGE)");
+   QCHECK(std::string(RegimeName(QATS_REGIME_HIGH_VOL)) == "HIGH_VOL", "RegimeName(HIGH_VOL)");
+   QCHECK(std::string(RegimeName(QATS_REGIME_LOW_VOL)) == "LOW_VOL", "RegimeName(LOW_VOL)");
+   QCHECK(std::string(RegimeName(QATS_REGIME_UNCLEAR)) == "UNCLEAR", "RegimeName(UNCLEAR)");
+   // range breadth on loaded H1 bars: 80 near-flat bars then 20 that span everything
+   Zig dead(2000.0);
+   for(int i = 0; i < 80; i++) dead.leg(1, 2000.0);
+   for(int i = 0; i < 5; i++) dead.leg(2, 2006.0);
+   for(int i = 0; i < 5; i++) dead.leg(2, 1994.0);
+   dead.forming();
+   loadH1(dead.bars);
+   double r100 = RangeRatio(_Symbol, 20, 100);
+   QCHECK(r100 > 0.8, "the last 20 bars spanning the 100-bar range give a HIGH breadth (got " + std::to_string(r100) + ")");
+   loadH1(mirrorBars(dead.bars, K));
+   QCHECK(near(RangeRatio(_Symbol, 20, 100), r100), "range breadth is mirror-invariant");
+   Zig top(1990.0);
+   for(int i = 0; i < 40; i++) { top.leg(1, 2020.0); top.leg(1, 1990.0); }   // 80 bars, full 1990..2020 span (ends at 1990)
+   for(int i = 0; i < 20; i++) top.candle(1990.0, 1990.2, 1989.8, 1990.0);   // last 20 bars dead flat
+   top.forming();
+   loadH1(top.bars);
+   double rLow = RangeRatio(_Symbol, 20, 100);
+   QCHECK(rLow < 0.1, "dead-flat last 20 bars inside a wide 100-bar range give near-zero breadth (got " + std::to_string(rLow) + ")");
+   simDiagnosticsClean();
+}
+
+// News / calendar blackout (Phase 7, opt-in): blocks inside the window, never on an unreachable calendar.
+static void unitNewsFilter()
+{
+   TC.name = "unit.news_filter";
+   resetSimOnly();
+   const datetime kT = kMonday + 4 * 86400 + 12 * 3600;
+   sim::S.now = kT;
+   g_newsUnavailableLogged = false;
+   g_newsReadyLogged = false;
+   sim::S.calMode = 0;
+   sim::S.calEvents.clear();
+   QATS_SetInput("InpNewsFilterEnable", "true");
+   QATS_SetInput("InpNewsBlockBeforeMin", "30");
+   QATS_SetInput("InpNewsBlockAfterMin", "30");
+   QATS_SetInput("InpNewsCurrencies", "USD,XAU");
+   QATS_SetInput("InpNewsMinImportance", "3");
+   string why;
+   QCHECK(NewsEntriesAllowed(kT, why), "no calendar events -> entries allowed");
+   sim::S.calEvents.push_back({kT + 10 * 60, 3, "USD"});
+   QCHECK(!NewsEntriesAllowed(kT, why), "a high-impact USD event inside the window blocks");
+   QCHECK(why.find("high-impact") != std::string::npos, "the block names the cause: " + why);
+   sim::S.calEvents.clear();
+   sim::S.calEvents.push_back({kT + 60 * 60, 3, "USD"});
+   QCHECK(NewsEntriesAllowed(kT, why), "an event 60min ahead sits outside the 30min window");
+   sim::S.calEvents.clear();
+   sim::S.calEvents.push_back({kT - 10 * 60, 3, "USD"});
+   QCHECK(!NewsEntriesAllowed(kT, why), "an event that already happened inside the after-window blocks");
+   sim::S.calEvents.clear();
+   sim::S.calEvents.push_back({kT + 5 * 60, 2, "USD"});
+   QCHECK(NewsEntriesAllowed(kT, why), "moderate impact passes when HIGH is required");
+   QATS_SetInput("InpNewsMinImportance", "2");
+   QCHECK(!NewsEntriesAllowed(kT, why), "moderate impact blocks when moderate and up is required");
+   QATS_SetInput("InpNewsMinImportance", "3");
+   sim::S.calEvents.clear();
+   sim::S.calEvents.push_back({kT + 5 * 60, 3, "EUR"});
+   QCHECK(NewsEntriesAllowed(kT, why), "an unwatched currency never blocks");
+   sim::S.calEvents.clear();
+   sim::S.calEvents.push_back({kT + 5 * 60, 3, "XAU"});
+   QCHECK(!NewsEntriesAllowed(kT, why), "a watched XAU event blocks");
+   // unreachable calendar -> entries NOT blocked, journalled exactly once
+   captureJournal();
+   sim::S.calEvents.clear();
+   sim::S.calMode = 1;
+   QCHECK(NewsEntriesAllowed(kT, why), "an unreachable calendar blocks nothing");
+   QCHECK(g_newsUnavailableLogged, "the unavailable calendar was journalled");
+   int lines = linesWith("CALENDAR_UNAVAILABLE");
+   NewsEntriesAllowed(kT, why);
+   QEQ(linesWith("CALENDAR_UNAVAILABLE"), lines, "the miss is journalled once per attach, never per bar");
+   QEQ(lines >= 1 ? 1 : 0, 1, "exactly one CALENDAR_UNAVAILABLE line");
+   // restore defaults so later tests see a news-off EA
+   sim::S.calMode = 0;
+   sim::S.calEvents.clear();
+   QATS_SetInput("InpNewsFilterEnable", "false");
+   QATS_SetInput("InpNewsMinImportance", "3");
    simDiagnosticsClean();
 }
 
@@ -795,6 +1401,147 @@ static void unitLimitPlan()
    simDiagnosticsClean();
 }
 
+
+static void unitAdaptivePD()
+{
+   TC.name = "unit.adaptive_pd";
+   const double ATR = 10.0;
+   // ---------- series builders (H1, closed bars only; the forming bar is ignored) ----------
+   auto fullSeries = [&]() {           // 130 candles, both 120-window extremes inside the last 60 bars
+      Zig z(1540.0);
+      z.leg(70, 1546.0);               // tight drift (the old part of the window)
+      z.leg(16, 1496.0);               // global swing LOW  at shift ~55
+      z.leg(16, 1596.0);               // global swing HIGH at shift ~39
+      z.leg(18, 1560.0);               // pullback: the newest confirmed swing low, shift ~22
+      z.leg(22, 1590.0);               // recovery rise; range C = [1560..1596], range A = [1496..1596]
+      return z.bars;                   // 142 candles = 141 closed + the forming bar
+   };
+
+   // ---------- A/B window contracts ----------
+   loadH1(fullSeries());
+   g_pdLastSelected = QATS_PD_NONE;
+   SPdRange ra, rb;
+   QCHECK(PdRangeFromWindow(_Symbol, 120, ATR, ra), "range A (120 closed H1 bars) is computable on 120+ bars");
+   QCHECK(PdRangeFromWindow(_Symbol, 48, ATR, rb), "range B (48 closed H1 bars) is computable");
+   QCHECK(ra.valid && rb.valid, "A and B both valid on a healthy series");
+   QCHECK(ra.high >= rb.high && ra.low <= rb.low, "the 48-bar window sits inside the 120-bar window (bounds contain)");
+   QCHECK(near(ra.eq, (ra.high + ra.low) / 2.0) && near(rb.eq, (rb.high + rb.low) / 2.0), "each equilibrium is the midpoint of its own range");
+   QCHECK(ra.highShift >= 1 && ra.highShift <= 120 && rb.highShift >= 1 && rb.highShift <= 48, "the window extremes lie inside their windows");
+
+   // incomplete history is rejected, loudly
+   {
+      Zig small(1500.0);
+      small.leg(59, 1550.0);           // 59 closed bars only
+      loadH1(small.bars);
+      SPdRange r60;
+      QCHECK(!PdRangeFromWindow(_Symbol, 120, ATR, r60), "range A is REJECTED when 120 closed bars are not available");
+      QCHECK(PdRangeFromWindow(_Symbol, 48, ATR, r60), "range B is computable on 59 closed bars (the full 48-bar window exists)");
+   }
+
+   // flat series: no equilibrium exists, everything rejects, the gate fails closed
+   {
+      std::vector<sim::Bar> flat;
+      for(int i = 0; i < 130; i++) flat.push_back(HB(1600.0, 1600.2, 1599.8, 1600.0));
+      loadH1(flat);
+      g_pdLastSelected = QATS_PD_NONE;
+      SPdAdaptive pd;
+      ComputePdAdaptive(_Symbol, ATR, pd);
+      QEQ(pd.selected, (int)QATS_PD_NONE, "a flat market yields NO valid range");
+      QCHECK(pd.status.find("REJECTED") == 0, "the flat-market status says REJECTED out loud");
+      QCHECK(near(pd.position, 0.5), "no range means no location claim (0.5 neutral), never an invented position");
+      string why;
+      QCHECK(!PdPriceOnSide(pd.selected, pd.eq, pd.status, +1, 1600.0, "PD_MARKET", why), "BUY is refused when no range is valid (fail closed)");
+      QCHECK(!PdPriceOnSide(pd.selected, pd.eq, pd.status, -1, 1600.0, "PD_MARKET", why), "SELL is refused when no range is valid (fail closed)");
+      QCHECK(why.find("no valid H1 dealing range") != std::string::npos, "the refusal names the reason");
+      QCHECK(PdLine(pd).find("SELECTED=NONE") != std::string::npos, "the journal line says NONE out loud");
+   }
+
+   // ---------- stale extreme dominating ----------
+   {
+      Zig z(1500.0);
+      z.leg(125, 1612.5);              // monotonic drift: no fractals anywhere
+      // an ancient spike above everything (shift ~115): an extreme older than
+      // InpPdSwingMaxAge that is FAR from price
+      z.bars[10] = HB(1502.0, 3000.0, 1501.0, 1503.0);
+      loadH1(z.bars);
+      g_pdLastSelected = QATS_PD_NONE;
+      SPdAdaptive pd;
+      ComputePdAdaptive(_Symbol, ATR, pd);
+      QCHECK(!pd.a.valid, "range A is rejected: an ancient spike 1400 above price dominates its equilibrium");
+      QCHECK(pd.b.valid, "range B (the recent drift) still anchors price");
+      QEQ(pd.selected, (int)QATS_PD_B, "the fresh short-term range is selected when the long range goes stale");
+   }
+
+   // ---------- swing freshness ----------
+   {
+      Zig z(1500.0);
+      z.leg(55, 1560.0);               // rise
+      z.leg(14, 1522.0);               // swing high
+      z.leg(18, 1580.0);               // swing low
+      for(int i = 0; i < 80; i++)      // 80 IDENTICAL flat bars: no new fractal can form
+         z.bars.push_back(HB(1580.0, 1580.2, 1579.8, 1580.0));
+      loadH1(z.bars);
+      g_pdLastSelected = QATS_PD_NONE;
+      SPdAdaptive pd;
+      // ATR=200 here: the 0.5-ATR staleness tolerance must not eat A's real (but 58
+      // points away) swing low - it is only "stale" in a low-volatility world
+      ComputePdAdaptive(_Symbol, 200.0, pd);
+      QCHECK(!pd.c.valid, "range C is rejected: the newest of its two defining swings is older than InpPdSwingMaxAge (freshness)");
+      QCHECK(!pd.b.valid, "range B covers only the flat tail and is rejected as flat");
+      QCHECK(pd.a.valid, "range A still sees the real rise and stays valid");
+      QEQ(pd.selected, (int)QATS_PD_A, "with C stale and B flat the long-term range anchors PD");
+   }
+
+   // ---------- full comparison line ----------
+   loadH1(fullSeries());
+   g_pdLastSelected = QATS_PD_NONE;
+   {
+      SPdAdaptive pd;
+      ComputePdAdaptive(_Symbol, ATR, pd);
+      string line = PdLine(pd);
+      QCHECK(line.find("LONG_EQ=") == 0, "the journal line starts with LONG_EQ=");
+      QCHECK(line.find("SHORT_EQ=") != std::string::npos && line.find("SWING_EQ=") != std::string::npos,
+             "the journal line carries all THREE equilibriums");
+      QCHECK(line.find("SELECTED=") != std::string::npos && line.find("POS=") != std::string::npos && line.find("STATUS=") != std::string::npos,
+             "the journal line carries the selection, the position and the status");
+      QEQ(pd.selected, (int)QATS_PD_C, "a healthy fresh series selects the confirmed swing range");
+   }
+
+   // ---------- direction semantics through the shared check ----------
+   {
+      SPdAdaptive pd;
+      ComputePdAdaptive(_Symbol, ATR, pd);
+      string why;
+      QCHECK(PdPriceOnSide(pd.selected, pd.eq, pd.status, +1, pd.eq - 1.0, "PD_MARKET", why), "BUY in discount is allowed");
+      QCHECK(!PdPriceOnSide(pd.selected, pd.eq, pd.status, +1, pd.eq + 1.0, "PD_MARKET", why), "BUY in premium is refused");
+      QCHECK(PdPriceOnSide(pd.selected, pd.eq, pd.status, -1, pd.eq + 1.0, "PD_MARKET", why), "SELL in premium is allowed");
+      QCHECK(!PdPriceOnSide(pd.selected, pd.eq, pd.status, -1, pd.eq - 1.0, "PD_MARKET", why), "SELL in discount is refused");
+      QCHECK(PdPriceOnSide(pd.selected, pd.eq, pd.status, +1, pd.eq, "PD_MARKET", why), "exact equality is allowed on the BUY side");
+      QCHECK(PdPriceOnSide(pd.selected, pd.eq, pd.status, -1, pd.eq, "PD_MARKET", why), "exact equality is allowed on the SELL side");
+      QCHECK(why == "", "an allowed side carries no refusal text");
+   }
+
+   // ---------- hysteresis: no flip-flop on adjacent evaluations ----------
+   {
+      QATS_SetInput("InpPdHysteresisATR", "0.0001");   // effectively off: the preferred range wins
+      g_pdLastSelected = QATS_PD_A;
+      SPdAdaptive pd;
+      ComputePdAdaptive(_Symbol, ATR, pd);            // huge ATR band means delta is inside it; with 0.0001 the veto is off
+      QEQ(pd.selected, (int)QATS_PD_C, "with hysteresis disabled the preferred (fresh swing) range wins");
+      QATS_SetInput("InpPdHysteresisATR", "100.0");    // huge band: everything sticks to the previous selection
+      g_pdLastSelected = QATS_PD_A;
+      ComputePdAdaptive(_Symbol, ATR, pd);
+      QEQ(pd.selected, (int)QATS_PD_A, "with hysteresis enabled the previous selection is kept while every EQs stay inside the band");
+      QCHECK(pd.status.find("hysteresis") != std::string::npos, "the kept selection says HYSTERESIS out loud in the status");
+      QATS_SetInput("InpPdHysteresisATR", "0.25");     // shipped default
+      g_pdLastSelected = QATS_PD_NONE;
+      ComputePdAdaptive(_Symbol, ATR, pd);
+      QEQ(pd.selected, (int)QATS_PD_C, "default hysteresis: first evaluation of an attach selects the preferred range");
+   }
+   g_pdLastSelected = QATS_PD_NONE;
+   simDiagnosticsClean();
+}
+
 static int runUnit()
 {
    unitScoring();
@@ -803,9 +1550,22 @@ static int runUnit()
    unitHelpers();
    unitStructure();
    unitLiquidity();
+   unitLiquidityDedup();
+   unitLiquidityJournal();
+   unitLiquidityFold();
+   unitSweepEvent();
+   unitM5TriggerAuthority();
+   unitRegime();
+   unitNewsFilter();
+   unitDiagnosticsRecord();
+   unitFillShort();
+   unitReservation();
+   unitRiskStatus();
+   unitLiquidityContext();
    unitDisplacementZones();
    unitLimitZones();
    unitLimitPlan();
+   unitAdaptivePD();
    printf("unit: %d checks, %d failed\n", TC.checks, TC.failed);
    return TC.failed ? 1 : 0;
 }

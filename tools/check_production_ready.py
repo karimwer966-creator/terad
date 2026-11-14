@@ -117,6 +117,15 @@ CHECKS = [
     ("qats-native-build", [sys.executable, "tools/test_qats_native_build.py"]),
     ("qats-dual-direction", [sys.executable, "tools/test_qats_dual_direction.py"]),
     ("qats-journal-report", [sys.executable, "tools/test_qats_journal_report.py"]),
+    # v1.24 PR-68 close-out: the CI structural job runs four suites this gate did
+    # not, and CI caught two of them red against the phase-8 source
+    # (tools/test_xau_execution_policy.py pinned the pre-phase-8 XAUUSD-only
+    # reservation text). They run in CI and now here, so the gate and the job
+    # cannot disagree again.
+    ("compile-regressions", [sys.executable, "tools/test_quantum_compile_regressions.py"]),
+    ("xau-execution-policy", [sys.executable, "tools/test_xau_execution_policy.py"]),
+    ("quantum-account-policy", [sys.executable, "tools/test_quantum_account_policy.py"]),
+    ("qats-limit-entry", [sys.executable, "tools/test_qats_limit_entry.py"]),
     # v6.6.22 chart hygiene + the SMC / Volume Profile decision engine. The first
     # EXECUTES the real AlertDispatcherDrawPrimary() of nadir2.mq5 against a
     # chart-object simulator, before and after the fix (one mark per setup, not

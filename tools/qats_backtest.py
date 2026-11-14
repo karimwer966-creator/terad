@@ -82,7 +82,10 @@ PERIODS = [
 # drawdown halt, daily loss lock) are switched off and the balance is large enough
 # that the minimum lot never decides, so the SIGNAL can be measured over the whole
 # window. Every other guard stays on. The production run keeps everything on.
-SIGNAL_STUDY = {"InpMaxAccountDrawdownPct": "0", "InpMaxDailyLossPercent": "0"}
+# the signal-symmetry study isolates the RAW signal path; account-level breakers
+# and the v1.24 premium/discount market gate are disabled here so the mirror
+# property is measured on the signal itself (production preset keeps them ON)
+SIGNAL_STUDY = {"InpMaxAccountDrawdownPct": "0", "InpMaxDailyLossPercent": "0", "InpPDEnforceMarket": "false"}
 
 PRESET_REL = "presets/Quantum_XAUUSD_PRODUCTION.set"
 

@@ -111,7 +111,7 @@ string TodayKey(){return "today";}
 void GVSet(string,double){}
 datetime TimeTradeServer(){return 1;}
 '''
-        functions = '\n'.join(function(n) for n in ('QATS_DirectionVeto', 'QATS_ScoreEligible', 'QATS_StopsValid', 'ReserveSignal', 'CalcPositionVolume', 'ExecuteSignal'))
+        functions = '\n'.join(function(n) for n in ('QATS_DirectionVeto', 'QATS_ScoreEligible', 'QATS_StopsValid', 'QATS_FillShort', 'ReserveSignal', 'CalcPositionVolume', 'ExecuteSignal'))
         main = r'''
 void check(bool ok,const char* message){if(!ok){std::cerr<<message<<"\n";std::exit(1);}}
 void reset(){globals.clear();globals["sig_buy"]=0;globals["sig_sell"]=0;sentCount=0;guard=true;freeMargin=10000;bid=2000;ask=2000.1;InpDryRun=false;serverRetcode=10009;sendResult=true;oppositeOpen=false;setupTraded=false;setupMarks=0;}
@@ -159,7 +159,11 @@ int main(){
         self.assertIn('EvaluateSide(+1, r, st, pools, a.d1Bias, a.h4Bias, a.dealPos, pxNow, a.buy);', SOURCE)
         self.assertIn('EvaluateSide(-1, r, st, pools, a.d1Bias, a.h4Bias, a.dealPos, pxNow, a.sell);', SOURCE)
         self.assertIn('!IsXAUUSD() && !QATS_ProfileAllows(plan_cls)', SOURCE)
-        self.assertIn('if(IsXAUUSD() && !ReserveSignal(plan, g_executionReason)) return false;', SOURCE)
+        # CR-3 (v1.24 phase 8): the signal reservation is symbol-agnostic now; the
+        # XAUUSD-only gate is gone and MUST NOT come back.
+        self.assertNotIn('if(IsXAUUSD() && !ReserveSignal(plan, g_executionReason))', SOURCE)
+        self.assertEqual(SOURCE.count('!ReserveSignal(plan, g_executionReason)'), 2,
+                         'reservation is wired into both send paths (market and limit)')
         self.assertIn('if(IsXAUUSD() || AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_REAL)\n   {\n      g_executionReason = StringFormat("order not confirmed:', SOURCE)
         self.assertIn('LogSignal(raw,', SOURCE)
 

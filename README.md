@@ -36,6 +36,11 @@ claim of production readiness.
 > [`docs/QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md`](docs/QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md)
 > (Arabic: [`docs/QATS_DUAL_DIRECTION_AR.md`](docs/QATS_DUAL_DIRECTION_AR.md)) before attaching it.
 
+> **v1.24 module series + Phase 10 status (2026-11-14): still not production-ready — MODIFIED.**
+> Phases 2–10 of the master audit ([`docs/QATS_MASTER_AUDIT_2026-11-13.md`](docs/QATS_MASTER_AUDIT_2026-11-13.md)) landed on this branch: adaptive
+> P/D ranges, liquidity engine, displacement/OB/FVG hardening, M1 research, regime report-only/news fail-open, execution–risk (CR-3/CR-5/NC-2, partial fills, GV-flush verification, RISK_STATUS), diagnostics journal (`[QATS][ANALYSIS]`/`[QATS][FINAL]`/`[QATS][GUARD]`), and the compile/test deliverables. **MetaEditor F7 is not available in this environment** — no compile, no Strategy Tester run, no DEMO forward test has happened here. Everything offline is green (61/61 OFFLINE GO; NOT MetaEditor). The honest prior is unchanged: **no demonstrated edge** ([`docs/QATS_BACKTEST_STUDY_2026-11-11.md`](docs/QATS_BACKTEST_STUDY_2026-11-11.md)).
+> To go any further you must run F7 and the tester yourself — configuration: [`docs/QATS_STRATEGY_TESTER_CONFIG.md`](docs/QATS_STRATEGY_TESTER_CONFIG.md), report template: [`docs/QATS_TEST_REPORT_TEMPLATE.md`](docs/QATS_TEST_REPORT_TEMPLATE.md), what was verified vs not: [`docs/QATS_COMPILE_TEST_V124.md`](docs/QATS_COMPILE_TEST_V124.md). REAL stays disarmed.
+
 ## What it does
 
 ```
@@ -242,6 +247,18 @@ tools/qats_backtest.py                            fetch / run / study / mirror /
 tools/qats_journal_report.py                      BUY-vs-SELL report from an MT5 journal
 tools/test_qats_*.py                              the v1.20 / v1.21 / v1.22 / v1.23 suites
 docs/QATS_M15_DISPLACEMENT_V123.md               v1.23: M15 displacement fallback, semantics and safeguards
+docs/QATS_ADAPTIVE_PD_V124.md                    v1.24 module series, phase 3: adaptive P/D ranges
+docs/QATS_LIQUIDITY_V124.md                      v1.24, phase 4: liquidity engine
+docs/QATS_DISPLACEMENT_FVG_V124.md               v1.24, phase 5: displacement / OB / FVG hardening
+docs/QATS_M5_M1_SCALPING_V124.md                 v1.24, phase 6: M5/M1 scalping research (no edge found, disabled)
+docs/QATS_REGIME_SESSION_NEWS_V124.md            v1.24, phase 7: regime (report-only), sessions/DST, news guard
+docs/QATS_EXECUTION_RISK_V124.md                 v1.24, phase 8: reservation, scan, memoization, RISK_STATUS
+docs/QATS_DIAGNOSTICS_JOURNAL_V124.md            v1.24, phase 9: single-record journal contract
+docs/QATS_COMPILE_TEST_V124.md                   v1.24, phase 10: compile/test scope; F7 unavailable here
+docs/QATS_STRATEGY_TESTER_CONFIG.md              v1.24, phase 10: how to run the MT5 Strategy Tester
+docs/QATS_TEST_REPORT_TEMPLATE.md                v1.24, phase 10: the report the tester run must fill
+docs/QATS_MASTER_AUDIT_2026-11-13.md              the master audit (phases 2..10 addendum)
+docs/QATS_CHANGELOG.md                           every phase, dated
 docs/QATS_DUAL_DIRECTION_AUDIT_2026-11-11.md      v1.20 audit, evidence, verdict
 docs/QATS_DUAL_DIRECTION_AR.md                    the same for the operator, in Arabic
 docs/QATS_BACKTEST_STUDY_2026-11-11.md            simulation study, full tables
