@@ -113,6 +113,8 @@ private:
    bool              m_deinit_done;
    bool              m_cfg_locked;
    bool              m_bias_external;
+   bool              m_ext_d1_known;
+   bool              m_ext_h4_known;
    //--- INSTRUMENT IDENTITY. Set once in Init() from the caller's arguments and
    //--- read everywhere else. This root used to consult _Symbol/_Period inside
    //--- Refresh()/BuildContext(), which is harmless while one indicator instance
@@ -327,7 +329,8 @@ public:
                      CQuantumRoot()
      { m_ready=false; m_zone_src_n=0; m_tac_n=0; m_tac_bar_time=0;
        m_last_state=(int)SIG_NONE; m_last_text=""; m_bars=0; m_deinit_done=false;
-       m_cfg_locked=false; m_bias_external=false; m_ext_h1_known=true;
+       m_cfg_locked=false; m_bias_external=false;
+       m_ext_h1_known=true; m_ext_d1_known=true; m_ext_h4_known=true;
        m_ext_d1=0; m_ext_h4=0; m_ext_h1=0;
        m_structure_has_event=false; m_structure_ok=false; m_structure_seen_time=0;
        m_structure_left=2; m_structure_right=2;
@@ -707,13 +710,24 @@ public:
       return true;
      }
 
-   //--- d1/h4/h1 are +1 / -1 / 0. `h1_known=false` removes H1 from the
-   //--- weight sum instead of counting an unknown timeframe as neutral
-   //--- agreement: an unknown TF must never license a signal.
+   //--- d1/h4/h1 are +1 / -1 / 0 and every one of them carries its own
+   //--- "I actually have this series" flag (v6.6.23 T2).
+   //---
+   //--- The old signature had a known-flag for H1 only, while the internal
+   //--- provider had three: the same word "bias" therefore meant a different
+   //--- number depending on who wrote it, and a host with no D1/H4 data had no
+   //--- way to say so - its 0/0/0 was recorded as a known-neutral consensus.
+   //--- Now: an unknown timeframe is removed from the weight sum (never counted
+   //--- as neutral agreement), and if NO timeframe is known the consensus is
+   //--- UNKNOWN, which CBiasGate refuses to license (T1).
+   //--- The three default to true so every existing call keeps its meaning.
    void              SetExternalBias(const int d1,const int h4,const int h1,
-                                     const bool h1_known=true)
+                                     const bool h1_known=true,
+                                     const bool d1_known=true,
+                                     const bool h4_known=true)
      {
-      m_ext_d1=d1; m_ext_h4=h4; m_ext_h1=h1; m_ext_h1_known=h1_known;
+      m_ext_d1=d1; m_ext_h4=h4; m_ext_h1=h1;
+      m_ext_h1_known=h1_known; m_ext_d1_known=d1_known; m_ext_h4_known=h4_known;
       m_bias_external=true;
       ApplyExternalBias();
      }
@@ -724,23 +738,40 @@ public:
      {
       if(!m_bias_external) return;
       int d1=m_ext_d1, h4=m_ext_h4, h1=m_ext_h1;
-      int wsum=MathAbs(m_cfg.w_d1)+MathAbs(m_cfg.w_h4)+(m_ext_h1_known?MathAbs(m_cfg.w_h1):0);
-      if(wsum<1) wsum=1;
-      int score=(int)MathRound((double)(m_cfg.w_d1*d1+m_cfg.w_h4*h4+
-                (m_ext_h1_known?m_cfg.w_h1*h1:0))*100.0/(double)wsum);
-      if(score>100)  score=100;
-      if(score<-100) score=-100;
-      m_ctx.d1_bias=d1;
-      m_ctx.h4_bias=h4;
-      m_ctx.h1_bias=h1;
+      bool k1=m_ext_h1_known, kd=m_ext_d1_known, kh=m_ext_h4_known;
+      //--- only known timeframes enter the sum: an unknown TF is missing
+      //--- evidence, not a neutral vote (T1/T2 share this rule).
+      int wsum=(kd?MathAbs(m_cfg.w_d1):0)+(kh?MathAbs(m_cfg.w_h4):0)+(k1?MathAbs(m_cfg.w_h1):0);
+      bool any_known=(kd||kh||k1);
+      int score=0;
+      if(any_known && wsum>0)
+        {
+         int num=(kd?m_cfg.w_d1*d1:0)+(kh?m_cfg.w_h4*h4:0)+(k1?m_cfg.w_h1*h1:0);
+         score=(int)MathRound((double)num*100.0/(double)wsum);
+         if(score>100)  score=100;
+         if(score<-100) score=-100;
+        }
+      m_ctx.d1_bias=(kd?d1:0);
+      m_ctx.h4_bias=(kh?h4:0);
+      m_ctx.h1_bias=(k1?h1:0);
       m_ctx.bias_score=score;
-      if(score>0)          m_ctx.htf_bias=1;
-      else if(score<0)     m_ctx.htf_bias=-1;
-      else if(d1!=0)       m_ctx.htf_bias=d1;
-      else if(h4!=0)       m_ctx.htf_bias=h4;
-      else                 m_ctx.htf_bias=h1;
-      //--- The host computed these values from its own closed-bar state, so
-      //--- 0/0/0 here is a KNOWN-NEUTRAL consensus, not an unknown bias.
+      if(!any_known)
+        {
+         //--- nothing known: UNKNOWN, not neutral. htfbias stays 0 so
+         //--- UpdateMarketDirection() falls back to chart structure alone.
+         m_ctx.htf_bias=0;
+         m_ctx.bias_known=false;
+         UpdateMarketDirection();
+         return;
+        }
+      if(score>0)                  m_ctx.htf_bias=1;
+      else if(score<0)             m_ctx.htf_bias=-1;
+      else if(kd && d1!=0)         m_ctx.htf_bias=d1;
+      else if(kh && h4!=0)         m_ctx.htf_bias=h4;
+      else if(k1 && h1!=0)         m_ctx.htf_bias=h1;
+      else                         m_ctx.htf_bias=0;
+      //--- At least one timeframe was supplied, so 0/0/0 is a KNOWN-NEUTRAL
+      //--- consensus - which T1 then refuses to treat as agreement.
       m_ctx.bias_known=true;
       UpdateMarketDirection();
      }

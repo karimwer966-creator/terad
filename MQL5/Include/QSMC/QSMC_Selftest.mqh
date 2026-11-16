@@ -197,6 +197,7 @@ public:
       T09_CounterTrendDowngraded();
       T15_OneZoneRole();
       T16_BiasUnknownIsNotNeutral();
+      T17_ExternalBiasContract();
       T10_DataNotReady();
 
       Say("---------------------------------------------------------");
@@ -1011,6 +1012,62 @@ public:
       ENUM_GATE_RESULT e=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
       Check(e==GATE_FAIL && StringFind(why,"opposes")>=0,
             "T16e an opposed consensus still fails with counter-trend disabled",why);
+     }
+
+   //==================================================================
+   // T17 - the external bias contract carries a known-flag per timeframe
+   //       (v6.6.23 T2). A host with no D1/H4/H1 data can now say so,
+   //       an unknown timeframe is removed from the weight sum instead of
+   //       voting neutral, and "nothing known" is UNKNOWN - not 0.
+   //==================================================================
+   void              T17_ExternalBiasContract()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);   // w_d1=50 w_h4=30 w_h1=20
+      CQuantumRoot r;
+      if(!NewRoot(r,cfg)) return;
+      SGateCtx ctx;
+
+      //--- (a) D1 and H4 agree short, H1 absent (the host's own call shape:
+      //---     h1_known=false), so the H1 weight must not enter the sum.
+      r.SetExternalBias(-1,-1,0,false);
+      r.GetContext(ctx);
+      Check(ctx.bias_known && ctx.htf_bias==-1 && ctx.bias_score==-100 &&
+            ctx.d1_bias==-1 && ctx.h4_bias==-1 && ctx.h1_bias==0,
+            "T17a D1+H4 short with H1 absent: known, -100, htf -1",
+            "known="+(string)ctx.bias_known+" score="+IntegerToString(ctx.bias_score)+
+            " htf="+IntegerToString(ctx.htf_bias));
+
+      //--- (b) H4 is NOT known: its +1 must be dropped from the numerator.
+      //---     with it: (-50+30+20)/100 = 0. without it: (-50+20)/70 = -43.
+      r.SetExternalBias(-1,+1,+1,true,true,false);
+      r.GetContext(ctx);
+      Check(ctx.bias_known && ctx.h4_bias==0 && ctx.h1_bias==1 &&
+            ctx.bias_score==-43,
+            "T17b an unknown H4 is excluded from the weight sum",
+            "score="+IntegerToString(ctx.bias_score)+
+            " h4="+IntegerToString(ctx.h4_bias));
+
+      //--- (c) nothing known at all -> UNKNOWN (T1 then refuses to license)
+      r.SetExternalBias(0,0,0,false,false,false);
+      r.GetContext(ctx);
+      Check(!ctx.bias_known && ctx.bias_score==0 && ctx.htf_bias==0,
+            "T17c no known timeframe is UNKNOWN, not a neutral consensus",
+            "known="+(string)ctx.bias_known+" htf="+IntegerToString(ctx.htf_bias));
+
+      //--- (d) one known timeframe that is neutral -> known-neutral
+      r.SetExternalBias(0,0,0,true,false,false);
+      r.GetContext(ctx);
+      Check(ctx.bias_known && ctx.bias_score==0 && ctx.htf_bias==0,
+            "T17d a known-neutral H1 stays KNOWN with a 0 consensus",
+            "known="+(string)ctx.bias_known+" score="+IntegerToString(ctx.bias_score));
+
+      //--- (e) the legacy 4-argument call keeps its meaning: value defaults
+      //---     to known, so the consensus is still computed.
+      r.SetExternalBias(+1,0,0);
+      r.GetContext(ctx);
+      Check(ctx.bias_known && ctx.htf_bias==1 && ctx.bias_score==50,
+            "T17e a 4-argument call is still D1/H4 known (50/100=+50)",
+            "score="+IntegerToString(ctx.bias_score));
      }
 
    //==================================================================
