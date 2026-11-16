@@ -200,6 +200,7 @@ public:
       T17_ExternalBiasContract();
       T18_ReportNamesTheLoser();
       T19_RefusedFactsAreNotCandidates();
+      T20_OneAlertPerBar();
       T10_DataNotReady();
 
       Say("---------------------------------------------------------");
@@ -1198,6 +1199,97 @@ public:
       Check(r2.ReportPublished() && r2.ReportEvaluated()==1,
             "T19c a real closed-bar rejection is still submitted and published",
             "evaluated="+IntegerToString(r2.ReportEvaluated())+" trace="+r2.ReportTrace());
+     }
+
+   //==================================================================
+   // T20 - one alert per bar, enforced inside the arbiter (v6.6.23 T5).
+   //       Before this, both promises lived only in the host:
+   //       auth_pending = g_alert_candidate_count>0 was recomputed per
+   //       call, so a second Finalize() in the same bar could release the
+   //       bar to the tactical path, and nothing stopped a second publish.
+   //==================================================================
+   void              T20_OneAlertPerBar()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);
+      SGateCtx ctx;
+      ctx.data_ready=true;
+      ctx.atr=QST_ATR;
+      ctx.point=_Point;
+      ctx.price=100.0;
+      ctx.tick_size=_Point;
+      ctx.closed_index=39;
+      ctx.digits=(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS);
+      ctx.bar_time=D'2024.01.02 10:00';
+      ctx.bias_known=true;
+      ctx.bias_score=0;
+      ctx.session_ok=-1;
+
+      CZoneRegistry zones;             // empty: nothing can pass DATA_QUALITY
+      CAlertManager alerts;            // never touched
+      SSignalCandidate c;
+      c.valid=true; c.dir=+1; c.source=SRC_TACTICAL; c.state=(int)SIG_CONFIRMED;
+      c.bar_closed=true; c.score=90; c.zone_id="T20"; c.bar_index=38;
+      c.entry=100.0; c.sl=99.0; c.tp1=102.0; c.rr=2.0;
+
+      //--- (a) a claim on this bar is sticky, even after the host reports
+      //---     false again within the same bar
+      CSignalArbiter arb;
+      arb.Init(NULL,false,false);
+      SArbiterReport rep;
+      arb.SetAuthoritativePending(true);
+      arb.Submit(c,ctx.bar_time);
+      bool ok1=arb.Finalize(ctx,cfg,zones,alerts,rep);
+      Check(!ok1 && StringFind(rep.trace,"authoritative dispatcher owns this bar")>=0,
+            "T20a a claimed bar suppresses the tactical path",rep.trace);
+
+      arb.SetAuthoritativePending(false);        // the host forgot, same bar
+      arb.Submit(c,ctx.bar_time);
+      SArbiterReport rep2;
+      bool ok2=arb.Finalize(ctx,cfg,zones,alerts,rep2);
+      Check(!ok2 && StringFind(rep2.trace,"authoritative dispatcher owns this bar")>=0,
+            "T20b the claim is sticky for the whole bar",rep2.trace);
+
+      //--- (c) the next bar releases it
+      SGateCtx ctx2=ctx;
+      ctx2.bar_time=ctx.bar_time+60;
+      arb.Submit(c,ctx2.bar_time);
+      SArbiterReport rep3;
+      bool ok3=arb.Finalize(ctx2,cfg,zones,alerts,rep3);
+      Check(!ok3 && StringFind(rep3.trace,"authoritative dispatcher")<0,
+            "T20c a new bar releases the claim",rep3.trace);
+      arb.Shutdown();
+
+      //--- (d) no second publish on the same bar, through the root path
+      SQsmcArbConfig cfg2; CfgBase(cfg2);
+      double o[],h[],l[],c2[]; datetime t[]; long v[];
+      Flat(QST_BARS,105.0,QST_HALF,1000,
+           (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c2,t,v);
+      SetBar(37,105.20,107.00,105.00,106.80,1000,o,h,l,c2,v);
+      SetBar(38,106.80,109.40,106.70,107.10,2000,o,h,l,c2,v);
+      double eo[],eh[],el[],ec[]; datetime et[]; long ev[];
+      Copy6(QST_BARS,o,h,l,c2,t,v,eo,eh,el,ec,et,ev);
+      CQuantumRoot r;
+      if(!NewRoot(r,cfg2)) { Check(false,"T20 setup",""); return; }
+      if(!r.LoadSynthetic(o,h,l,c2,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
+        { Check(false,"T20 synthetic load",""); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T20 context",r.CtxDataReason()); return; }
+      SQZone zs[2];
+      MakeZone(zs[0],ZR_RESISTANCE,108.00,109.00,80);
+      MakeZone(zs[1],ZR_SUPPORT,90.00,91.00,78);
+      r.SetZones(zs,2);
+      r.SetExternalBias(0,0,0);
+      STacticalFact f;
+      f.valid=true; f.bull=false; f.closed_confirm=true;
+      f.entry_price=c2[38]; f.exec_bar_time=t[38]; f.exec_tf=PERIOD_M1;
+      f.trigger=108.00; f.trigger_time=t[37]; f.core_owned=false; f.chase_atr=0.2;
+      r.TacticalObserve(f);
+      r.FinalizeBar(false);
+      int published_once=(r.ReportPublished()?1:0);
+      r.FinalizeBar(false);                        // same bar, called again
+      Check(published_once==1 && r.Published()==1 &&
+            StringFind(r.ReportTrace(),"already published on this bar")>=0,
+            "T20d a second Finalize on the same bar cannot publish again",
+            r.ReportTrace());
      }
 
    //==================================================================
