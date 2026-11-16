@@ -198,6 +198,7 @@ public:
       T15_OneZoneRole();
       T16_BiasUnknownIsNotNeutral();
       T17_ExternalBiasContract();
+      T18_ReportNamesTheLoser();
       T10_DataNotReady();
 
       Say("---------------------------------------------------------");
@@ -1068,6 +1069,66 @@ public:
       Check(ctx.bias_known && ctx.htf_bias==1 && ctx.bias_score==50,
             "T17e a 4-argument call is still D1/H4 known (50/100=+50)",
             "score="+IntegerToString(ctx.bias_score));
+     }
+
+   //==================================================================
+   // T18 - the report names the loser (v6.6.23 T3).
+   //       Finalize() used to discard ev.reject_text and leave trace as
+   //       "no candidate survived the gates", so a silent bar could not
+   //       be explained from the journal at all.
+   //==================================================================
+   void              T18_ReportNamesTheLoser()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);
+      CSignalArbiter arb;
+      arb.Init(NULL,false,false);      // no history: the anti-spam gates are unused
+      SGateCtx ctx;
+      ctx.data_ready=true;
+      ctx.atr=QST_ATR;
+      ctx.point=_Point;
+      ctx.price=100.0;
+      ctx.tick_size=_Point;
+      ctx.closed_index=39;              // CfgBase.min_bars = 30
+      ctx.digits=(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS);
+      ctx.bar_time=D'2024.01.02 10:00';
+      ctx.bias_known=true;
+      ctx.bias_score=0; ctx.d1_bias=0; ctx.h4_bias=0; ctx.h1_bias=0;
+      ctx.session_ok=-1;
+
+      SSignalCandidate c;
+      c.valid=true;
+      c.dir=+1;
+      c.source=SRC_CORE;
+      c.state=(int)SIG_CONFIRMED;
+      c.bar_closed=true;
+      c.score=90;
+      c.zone_id="T18-NOT-IN-REGISTRY";
+      c.bar_index=38;
+      c.entry=100.00;
+      c.sl=99.00;
+      c.tp1=102.00;
+      c.rr=2.0;
+      arb.Submit(c,D'2024.01.02 10:00');
+
+      CZoneRegistry zones;             // deliberately empty: LOCATION refuses
+      CAlertManager alerts;            // never touched - nothing survives
+      SArbiterReport rep;
+      bool ok=arb.Finalize(ctx,cfg,zones,alerts,rep);
+      Check(!ok && rep.rejected==1 &&
+            StringFind(rep.trace,"first: DATA_QUALITY:")>=0,
+            "T18a the report keeps the first refusal instead of a bare no-survivor line",
+            rep.trace);
+      Check(StringFind(rep.trace,"1 rejected")>=0 && rep.reject_first!="",
+            "T18b the report counts the refusals",rep.trace);
+
+      //--- a bar without candidates still says exactly that, and the
+      //--- reject fields stay empty (no stale text from the previous bar).
+      SArbiterReport rep2;
+      arb.SetAuthoritativePending(false);
+      bool ok2=arb.Finalize(ctx,cfg,zones,alerts,rep2);
+      Check(!ok2 && rep2.trace=="no candidate" && rep2.reject_first=="",
+            "T18c a bar with no candidate keeps its own trace",rep2.trace);
+      arb.Shutdown();
      }
 
    //==================================================================

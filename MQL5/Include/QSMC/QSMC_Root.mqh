@@ -1041,6 +1041,11 @@ public:
          //--- Explain the silence. Never a bare "NO TRADE".
          string why=m_rep.trace;
          if(why=="") why="no candidate survived the gates";
+         //--- v6.6.23 T3: when candidates WERE evaluated and every one was
+         //--- refused, say why in the journal. This is rare (a bar with
+         //--- candidates that all lost) so it is not gated behind the
+         //--- verbose switch - otherwise the operator sees a silent NO TRADE.
+         if(m_rep.evaluated>0) Print("[QSMC_ARB] no alert | ",why);
          m_last_state=(int)SIG_NO_TRADE;
          m_last_text=why;
          m_render.DrawSuppressed(why,m_ctx.bar_time,m_ctx.price,

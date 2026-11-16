@@ -42,6 +42,11 @@ struct SArbiterReport
    string            gate_lines[QSMC_ARB_MAX_REASONS];
    int               gate_line_count;
    string            trace;      // one-line summary for the journal
+   //--- v6.6.23 T3: when nothing is published the report used to say only
+   //--- "no candidate survived the gates" and threw the reason away. The
+   //--- first refusal is kept here so the loser can be named.
+   string            reject_first;   // "GATE: reason" of the first refusal
+   int               state_capped;   // candidates dropped by state, not gates
   };
 
 //+------------------------------------------------------------------+
@@ -313,6 +318,7 @@ public:
       rep.submitted=m_cand_count;
       rep.evaluated=0; rep.rejected=0; rep.downgraded=0;
       rep.published=false; rep.gate_line_count=0; rep.trace="";
+      rep.reject_first=""; rep.state_capped=0;
       rep.primary.valid=false;
 
       if(!cfg.enabled) { rep.trace="arbitration disabled"; m_cand_count=0; return false; }
@@ -355,8 +361,23 @@ public:
               }
             rep.evaluated++;
             SSignalCandidate ev;
-            if(!EvaluateCandidate(c,ctx,cfg,zones,ev,rep)) continue;
-            if(!Alertable(ev.state)) continue;
+            if(!EvaluateCandidate(c,ctx,cfg,zones,ev,rep))
+              {
+               //--- T3: keep the loser's own words instead of discarding
+               //--- them. The first refusal is usually the real story; the
+               //--- count tells the operator whether others followed.
+               if(rep.reject_first=="" && ev.reject_text!="") rep.reject_first=ev.reject_text;
+               continue;
+              }
+            if(!Alertable(ev.state))
+              {
+               //--- passed every gate but the final state is not alertable
+               //--- (WATCH / PREVIEW / LIMITED ROOM): name it too.
+               if(rep.reject_first=="")
+                  rep.reject_first=QSMC_StateName(ev.state)+" is not alertable";
+               rep.state_capped++;
+               continue;
+              }
             if(!have_best || Better(ev,best)) { best=ev; have_best=true; }
            }
         }
@@ -365,7 +386,16 @@ public:
 
       if(!have_best)
         {
-         if(rep.trace=="") rep.trace="no candidate survived the gates";
+         if(rep.trace=="")
+           {
+            if(rep.reject_first!="")
+               rep.trace="no candidate survived the gates ("+
+                          IntegerToString(rep.rejected)+" rejected, "+
+                          IntegerToString(rep.state_capped)+" state-capped) - first: "+
+                          rep.reject_first;
+            else
+               rep.trace="no candidate survived the gates";
+           }
          return false;
         }
 
