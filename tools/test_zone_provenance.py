@@ -21,6 +21,10 @@ with tempfile.TemporaryDirectory() as d:
  p=Path(d)/'zone.cpp';e=Path(d)/'zone';p.write_text(pre+method+checks)
  subprocess.run(['g++','-std=c++17',str(p),'-o',str(e)],check=True);subprocess.run([str(e)],check=True)
 main=(r/'nadir2.mq5').read_text();scanner=(r/'MQL5/Include/QSMC/QSMC_Scanners.mqh').read_text()
-assert 'QA_FilterCandidates(cands,ctx)' in main
+# v6.6.15 FIX (C1) widened the call: the guard now receives the caller's
+# h/l AND the time array, so ZRE_SelfTest's synthetic series are recognised.
+# The invariant this suite exists for is unchanged: the plausibility gate runs
+# before any candidate is scored.
+assert 'QA_FilterCandidates(cands,ctx,h,l,g_buf_t);' in main
 assert scanner.index('QSMC_ZoneRangeReason(z.lo')<scanner.index('m_react.Evaluate(z,*ch')
 print('PASS symbol-history plausibility gate and host/scanner score boundaries')

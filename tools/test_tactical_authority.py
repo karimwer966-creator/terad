@@ -1000,7 +1000,9 @@ check(TEXT.count("STacticalFact") == 1,
       "C1 the indicator builds exactly one tactical fact", "got %d" % TEXT.count("STacticalFact"))
 check(TEXT.count("TacticalObserve(") == 1,
       "C1 and feeds the arbiter exactly once", "got %d" % TEXT.count("TacticalObserve("))
-FACT, FEED, HLINE, GATECALL  = 5741, 5752, 5760, 5642
+# Re-anchored to the v6.6.22 source on 2026-11-16 (the block moved ~260
+# lines down; the probes below are unchanged).
+FACT, FEED, HLINE, GATECALL  = 6005, 6016, 6024, 5906
 check(tline(FACT).strip() == "STacticalFact _tf;", "C1 the fact is built at L%d" % FACT)
 check("TacticalObserve(_tf);" in tline(FEED), "C1 and fed at L%d" % FEED)
 check(GATECALL < FACT < FEED < HLINE,
@@ -1045,7 +1047,7 @@ check(TEXT.count("g_mtf_entry_blocked=true;") == 1,
 check(TEXT.count("g_tac_dir=bull?1:-1;") == 1,
       "C3 and the resolver's tactical leg has exactly one publisher (L5687)",
       "got %d" % TEXT.count("g_tac_dir=bull?1:-1;"))
-check(tline(5687) == "   g_tac_dir=bull?1:-1; g_tac_closed=closed_confirm;",
+check(tline(5951) == "   g_tac_dir=bull?1:-1; g_tac_closed=closed_confirm;",
       "C3 that publisher is the line Part B's ordering proof depends on")
 clr = region("void ClearMTFExecutionEntry()", "void UpdateMTFExecutionEntry()", "ClearMTFExecutionEntry")
 check("g_tac_dir=0; g_tac_closed=false;" in clr,
