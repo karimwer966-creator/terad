@@ -111,12 +111,22 @@ def main() -> int:
     check(not bad_prop, "every shipped program declares #property version %s" % EXPECT_PROPERTY,
           ", ".join(bad_prop))
 
+    #--- Identity statements only. A comment that says "v6.6.23 T3" is history
+    #--- and is supposed to stay (it is how a reader learns why a line exists);
+    #--- what must never survive is a program ANNOUNCING an old release.
     stale = []
+    identity = re.compile(r'(#property\s+version\s+"6\.62[0-3])'
+                          r'|(QSMC_VERSION_TEXT\s+"v6\.6\.2[0-3]")'
+                          r'|(QSMC v6\.62[0-3]\b)'
+                          r'|(\[QSMC_ARB\] v6\.6\.2[0-3]\b)'
+                          r'|(QSMC_ArbiterTest - v6\.6\.2[0-3]\b)'
+                          r'|(CHART PROFILE / VISUAL LAYERS[^\n]*v6\.6\.2[0-3])')
     for path in mql_sources():
         src = read(path)
-        if re.search(r"v6\.6\.2[0-3]\b", src) or "6.62" in src.replace(EXPECT_PROPERTY, ""):
+        if identity.search(src):
             stale.append(os.path.relpath(path, ROOT))
-    check(not stale, "no shipped source still says v6.6.20..v6.6.23", ", ".join(stale))
+    check(not stale, "no shipped program ANNOUNCES v6.6.20..v6.6.23 "
+                     "(historical comments are kept on purpose)", ", ".join(stale))
 
     # ---------------------------------------------------------------- 2 presets
     rc = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "check_presets.py")],

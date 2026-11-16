@@ -29,7 +29,7 @@ own journal cannot do it: by the time the EA sees the buffers, the refusal and
 the sizing logic have already thrown the evidence away.
 
 `MQL5/Scripts/QSMC_BufferDump.mq5` (R4) dumps all eleven slots for the last
-`InpBars` bars into `MQL5/Files/QSMC_buffers.csv`, one row per bar, with the
+`InpBars` bars into `QSMC_buffers.csv` in the terminal's data folder, one row per bar, with the
 copy counts and `BarsCalculated` on every row so a partial copy is visible
 instead of looking like a zero.
 
