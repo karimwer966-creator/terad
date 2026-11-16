@@ -176,8 +176,12 @@ int UD_PathDuplicate(const int index,const int &selected[],const int count)
    return -1;
 }
 
-// Fixed-capacity cooldown. Live keys are never evicted: on saturation new keys
-// are suppressed until a slot expires, preserving the no-repeat guarantee.
+// Fixed-capacity cooldown. v6.6.23 T6: on saturation the OLDEST slot is
+// recycled instead of suppressing the new key. The old rule kept the no-repeat
+// guarantee but turned a full table into a silent mute: after 128 distinct
+// diagnostics every later message was dropped until a slot expired, so the
+// journal went quiet exactly when the chart was busiest. The guarantee now
+// covers the most recent UD_LOG_CAP keys, and a new key is never lost.
 string g_ud_log_keys[UD_LOG_CAP];
 datetime g_ud_log_times[UD_LOG_CAP];
 bool UD_LogAllows(const string key)
@@ -202,7 +206,14 @@ bool UD_LogAllows(const string key)
       if(g_ud_log_keys[i]==key && !expired) return false;
       if(expired && free_slot<0) free_slot=i;
    }
-   if(free_slot<0) return false;
+   if(free_slot<0)
+     {
+      //--- every slot is live: recycle the oldest one (ties go to the lowest
+      //--- index, so the choice is deterministic)
+      free_slot=0;
+      for(int i=1;i<UD_LOG_CAP;i++)
+         if(g_ud_log_times[i]<g_ud_log_times[free_slot]) free_slot=i;
+     }
    g_ud_log_keys[free_slot]=key; g_ud_log_times[free_slot]=now; return true;
 }
 #endif

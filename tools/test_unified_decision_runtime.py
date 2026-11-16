@@ -96,7 +96,9 @@ int main(){
  g_rates_total=13;assert(UD_LogAllows("a")); // three bars later
  InpMessageCooldownBars=0;assert(UD_LogAllows("a")&&UD_LogAllows("a"));
  InpMessageCooldownBars=3;clearlog();for(int i=0;i<UD_LOG_CAP;i++)assert(UD_LogAllows(std::to_string(i)));
- assert(!UD_LogAllows("overflow")&&!UD_LogAllows("0"));
+ // T6: a saturated table recycles its oldest key instead of muting new ones.
+ assert(UD_LogAllows("overflow"));
+ assert(!UD_LogAllows("overflow")); // repeat guard still applies to the newest key
  g_rates_total=16;assert(UD_LogAllows("overflow"));
  InpUnifiedDecision=false;assert(UD_AlertAllows(2,-1));
  std::cout<<"PASS actual unified header: authority, merges, cooldown, saturation and legacy mode\n";
