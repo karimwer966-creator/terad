@@ -160,6 +160,11 @@ public:
       cfg.push=InpArbPush;
       cfg.sound=InpArbSound;
       cfg.allow_countertrend=InpArbAllowCounterTrend;
+      //--- A KNOWN-NEUTRAL HTF consensus (D1=H4=H1=0 after at least one series
+      //--- was complete) is not agreement. It may only PASS when a config
+      //--- explicitly says so; the shipped arbiter says no. UNKNOWN bias
+      //--- (no series at all) is refused by CBiasGate whatever this is.
+      cfg.allow_neutral_bias=false;
       cfg.countertrend_min_score=(int)MathMax(0,MathMin(100,InpArbCounterTrendMinScore));
       cfg.countertrend_extra_evidence=(int)MathMax(0,MathMin(QEV_COUNT,InpArbCounterTrendExtraEv));
       cfg.w_d1=InpArbBiasW_D1; cfg.w_h4=InpArbBiasW_H4; cfg.w_h1=InpArbBiasW_H1;

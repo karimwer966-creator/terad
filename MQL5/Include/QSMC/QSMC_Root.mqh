@@ -584,6 +584,7 @@ public:
       m_ctx.data_reason="context not built";
       m_ctx.htf_bias=0; m_ctx.d1_bias=0; m_ctx.h4_bias=0; m_ctx.h1_bias=0;
       m_ctx.bias_score=0;
+      m_ctx.bias_known=false;      // UNKNOWN until a series or the host supplies one
       m_ctx.regime=VREG_UNKNOWN;
       m_ctx.session_ok=-1;
 
@@ -616,6 +617,9 @@ public:
       m_ctx.h4_bias=m_bias.H4();
       m_ctx.h1_bias=m_bias.H1();
       m_ctx.bias_score=m_bias.Score();
+      //--- CBiasGate separates NEUTRAL from UNKNOWN; a bias is only "known"
+      //--- when at least one HTF series was complete enough to produce it.
+      m_ctx.bias_known=(m_bias.KnownCount()>0);
 
       ApplyExternalBias();
       UpdateStructure(*ch,ci);
@@ -644,6 +648,7 @@ public:
       m_ctx.data_reason=reason;
       m_ctx.htf_bias=0; m_ctx.d1_bias=0; m_ctx.h4_bias=0; m_ctx.h1_bias=0;
       m_ctx.bias_score=0;
+      m_ctx.bias_known=false;
       m_ctx.regime=VREG_UNKNOWN;
       m_ctx.session_ok=-1;
       m_market_direction=0; m_market_direction_score=0;
@@ -734,6 +739,9 @@ public:
       else if(d1!=0)       m_ctx.htf_bias=d1;
       else if(h4!=0)       m_ctx.htf_bias=h4;
       else                 m_ctx.htf_bias=h1;
+      //--- The host computed these values from its own closed-bar state, so
+      //--- 0/0/0 here is a KNOWN-NEUTRAL consensus, not an unknown bias.
+      m_ctx.bias_known=true;
       UpdateMarketDirection();
      }
    bool              BiasExternal() const { return m_bias_external; }

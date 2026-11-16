@@ -183,6 +183,10 @@ struct SGateCtx
    int              h4_bias;
    int              h1_bias;
    int              bias_score;        // signed weighted consensus, -100..+100
+   bool             bias_known;        // true = a D1/H4/H1 series (or an
+                                       // external bias) actually supplied a
+                                       // value; false = UNKNOWN, which is NOT
+                                       // neutral and can never license a trade
    ENUM_VOL_REGIME  regime;
    int              session_ok;        // 1 inside session, 0 outside, -1 disabled
   };
@@ -260,6 +264,9 @@ struct SQsmcArbConfig
    bool             allow_countertrend;
    int              countertrend_min_score;
    int              countertrend_extra_evidence;
+   bool             allow_neutral_bias; // known-neutral consensus may PASS only
+                                        // when this is explicitly true; the
+                                        // shipped preset sets it false
    //--- room (R4)
    double           min_rr;
    double           max_stop_atr;

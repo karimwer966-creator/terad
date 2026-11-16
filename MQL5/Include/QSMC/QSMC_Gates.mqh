@@ -237,15 +237,41 @@ public:
       reason=""; downgrade_state=(int)SIG_COUNTER_TREND;
       if(c.dir==0) { reason="no direction"; return GATE_FAIL; }
 
+      //--- UNKNOWN is not NEUTRAL (v6.6.23 T1).
+      //--- The old code collapsed both into agree==0 and returned GATE_PASS,
+      //--- so a chart with NO higher-timeframe information at all licensed a
+      //--- CONFIRMED - the exact opposite of the comment that promised
+      //--- "unknown is never counted as agreement". The two cases are now
+      //--- separated: with no known bias the candidate cannot pass, whatever
+      //--- its own evidence says, because there is nothing to agree with.
+      if(!ctx.bias_known)
+        {
+         downgrade_state=(int)SIG_WATCH;
+         reason="HTF bias unknown - no D1/H4/H1 series supplied a value, and "
+                "an unknown timeframe is never counted as agreement";
+         return GATE_DOWNGRADE;
+        }
+
       int agree=0;
       if(ctx.bias_score>0)      agree=(c.dir>0 ? +1 : -1);
       else if(ctx.bias_score<0) agree=(c.dir>0 ? -1 : +1);
       else if(ctx.d1_bias!=0)   agree=(ctx.d1_bias==c.dir ? +1 : -1);
       else if(ctx.h4_bias!=0)   agree=(ctx.h4_bias==c.dir ? +1 : -1);
       else if(ctx.h1_bias!=0)   agree=(ctx.h1_bias==c.dir ? +1 : -1);
-      //--- agree == 0 means NEUTRAL OR UNKNOWN. Unknown is never counted
-      //--- as agreement, so a missing HTF cannot license a signal.
-      if(agree>=0) return GATE_PASS;
+      //--- agree > 0: the known consensus agrees -> the candidate keeps its
+      //--- state. agree == 0 here means a KNOWN-NEUTRAL consensus (a series
+      //--- was complete and every bias it produced was 0): neutral is not
+      //--- agreement either, so it only passes when a config asks for it.
+      if(agree>0) return GATE_PASS;
+      if(agree==0)
+        {
+         if(cfg.allow_neutral_bias) return GATE_PASS;
+         downgrade_state=(int)SIG_WATCH;
+         reason="HTF bias is KNOWN but neutral (D1="+IntegerToString(ctx.d1_bias)+
+                " H4="+IntegerToString(ctx.h4_bias)+" H1="+IntegerToString(ctx.h1_bias)+
+                ") - neutral is not agreement, so the state is capped at WATCH";
+         return GATE_DOWNGRADE;
+        }
 
       if(!cfg.allow_countertrend)
         {

@@ -126,6 +126,13 @@ private:
       cfg.allow_countertrend=true;
       cfg.countertrend_min_score=70;
       cfg.countertrend_extra_evidence=1;
+      //--- v6.6.23 T1: a KNOWN-NEUTRAL consensus passes only when the config
+      //--- says so. The scenarios below drive synthetic bars that carry no D1/
+      //--- H4/H1 series, and they deliberately set a neutral external bias
+      //--- (SetExternalBias(0,0,0)); they test location, geometry and timing,
+      //--- not the HTF policy, so they keep the permissive config. T16 asserts
+      //--- the two stricter paths with the shipped value (false).
+      cfg.allow_neutral_bias=true;
       cfg.min_rr=1.50;
       cfg.max_stop_atr=4.00;
       cfg.sl_buffer_atr=0.20;
@@ -189,6 +196,7 @@ public:
       T08_MultiChartSingleAlert();
       T09_CounterTrendDowngraded();
       T15_OneZoneRole();
+      T16_BiasUnknownIsNotNeutral();
       T10_DataNotReady();
 
       Say("---------------------------------------------------------");
@@ -939,6 +947,70 @@ public:
       Check(gr2==GATE_FAIL && StringFind(why2,"RESISTANCE")<0,
             "T15d the mirrored direction is not refused for its ROLE",
             why2);
+     }
+
+   //==================================================================
+   // T16 - UNKNOWN bias is not NEUTRAL bias (v6.6.23 T1).
+   //       Old behaviour: agree==0 returned GATE_PASS, so a chart with no
+   //       higher-timeframe information at all could publish CONFIRMED.
+   //       New behaviour: no known bias -> DOWNGRADE to WATCH; a known but
+   //       neutral consensus -> DOWNGRADE unless cfg.allow_neutral_bias.
+   //==================================================================
+   void              T16_BiasUnknownIsNotNeutral()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);
+      SSignalCandidate cand;
+      cand.valid=true;
+      cand.dir=+1;
+      cand.state=(int)SIG_CONFIRMED;
+      cand.bar_closed=true;
+      cand.score=90;
+      cand.zone_id="T16";
+      SGateCtx ctx;
+      ctx.data_ready=true;
+      ctx.atr=QST_ATR;
+      ctx.point=_Point;
+      ctx.price=100.0;
+      ctx.bias_score=0; ctx.d1_bias=0; ctx.h4_bias=0; ctx.h1_bias=0;
+      string why="";
+      int ds=(int)SIG_CONFIRMED;
+      CBiasGate gate;
+      CZoneRegistry reg;                 // the bias gate never reads it, but a
+                                         // reference parameter needs a real object
+
+      //--- (a) nothing known at all -> not PASS, capped at WATCH
+      ctx.bias_known=false;
+      ENUM_GATE_RESULT a=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(a==GATE_DOWNGRADE && ds==(int)SIG_WATCH && StringFind(why,"unknown")>=0,
+            "T16a no HTF information is never agreement: DOWNGRADE to WATCH",why);
+
+      //--- (b) known but neutral with the shipped policy (allow=false)
+      ctx.bias_known=true;
+      cfg.allow_neutral_bias=false;
+      why=""; ds=(int)SIG_CONFIRMED;
+      ENUM_GATE_RESULT b=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(b==GATE_DOWNGRADE && ds==(int)SIG_WATCH && StringFind(why,"neutral")>=0,
+            "T16b a known-neutral consensus does not license CONFIRMED either",why);
+
+      //--- (c) the same neutral consensus passes only when explicitly allowed
+      cfg.allow_neutral_bias=true;
+      why=""; ds=(int)SIG_CONFIRMED;
+      ENUM_GATE_RESULT c=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(c==GATE_PASS,"T16c neutral PASS requires an explicit config switch",why);
+
+      //--- (d) agreement still passes, and opposition still fails
+      ctx.d1_bias=+1;
+      ctx.bias_score=+50;
+      why=""; ds=(int)SIG_CONFIRMED;
+      ENUM_GATE_RESULT d=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(d==GATE_PASS,"T16d an agreeing known consensus still passes",why);
+
+      cfg.allow_countertrend=false;
+      ctx.bias_score=-50;
+      why="";
+      ENUM_GATE_RESULT e=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(e==GATE_FAIL && StringFind(why,"opposes")>=0,
+            "T16e an opposed consensus still fails with counter-trend disabled",why);
      }
 
    //==================================================================
