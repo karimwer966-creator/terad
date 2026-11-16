@@ -4513,7 +4513,7 @@ int OnInit()
    double eff_daily=EffectiveDailyPercent();
    double eff_dd=EffectiveDDPct();
 
-   Print("[QSMC_AT] QSMC v6.620 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
+   Print("[QSMC_AT] QSMC v6.622 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",(InpLotMode==QSMC_LOT_FIXED

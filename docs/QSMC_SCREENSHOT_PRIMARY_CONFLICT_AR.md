@@ -130,7 +130,7 @@ PRIMARY RXN S 3893.55-3901.63 | 64/100   ← S = دعم، لكنها تُقرأ 
 3. اقرأ ثلاثة أسطر فقط بالترتيب: `STATUS` ← `PRIMARY` (مع مسافة ATR) ← `NEEDS`.
    هذه هي الحالة. الباقي سياق.
 4. للتنفيذ: `docs/QSMC_WHY_NO_TRADES.md` §0 ثم `docs/QSMC_GO_LIVE_RUNBOOK.md`.
-5. لتقليل الزحام على M15: `presets/QSMC_clean_chart.set`.
+5. لتقليل الزحام على M15: `presets/QSMC_v6.6.20_production_chart.set`.
 
 **تنبيه:** لا شيء في هذا الملف — ولا في المستودع — يثبت ربحية، ولا يُغني عن
 F7 وعلى الأقل أسبوع على حساب تجريبي.

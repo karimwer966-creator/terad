@@ -48,6 +48,11 @@ CHECKS = [
     ("python-parse", [sys.executable, "-m", "py_compile"] +
      [os.path.join("tools", f) for f in sorted(os.listdir(os.path.join(ROOT, "tools")))
       if f.endswith(".py")]),
+    # Layout and preset binding first: they are sub-second and they fail on the
+    # class of defect that makes every later check meaningless (a runbook that
+    # names a file which does not exist, a preset key the EA never declares).
+    ("repo-layout", [sys.executable, "tools/check_repo_layout.py", "--verbose"]),
+    ("preset-binding", [sys.executable, "tools/check_presets.py"]),
     ("mql5-rules", [sys.executable, "tools/mql5_rules.py", "--quiet"]),
     ("static-check", [sys.executable, "tools/static_check.py"]),
     ("comment-integrity", [sys.executable, "tools/test_comment_integrity.py"]),

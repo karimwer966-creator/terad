@@ -1,4 +1,5 @@
 ; QuantumAutonomousTradingSystem only - XAUUSD
+; source: MQL5/Experts/QuantumAutonomousTradingSystem.mq5
 ; Demo armed. REAL requires manual opt-in and exact account/server confirmation.
 ; Compile and test in Strategy Tester and demo before considering live trading.
 ; Keep stop, margin, broker and risk checks enabled.

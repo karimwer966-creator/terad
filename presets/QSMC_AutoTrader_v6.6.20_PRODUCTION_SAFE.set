@@ -1,4 +1,5 @@
 ; =====================================================================
+; source: MQL5/Experts/QSMC_AutoTrader.mq5
 ; QSMC v6.6.20 — PRODUCTION SAFE execution preset (EA: QSMC_AutoTrader)
 ;
 ; THIS PRESET DOES NOT ARM THE ACCOUNT.
@@ -56,13 +57,13 @@ InpIndicatorName=nadir2
 InpTradeComment=QSMC-AUTO
 
 ; ---- risk -------------------------------------------------------------
-InpLotMode=QSMC_LOT_RISK_PERCENT
+InpLotMode=0
 InpRiskPercent=0.10
 InpMaxRiskPercent=0.10
 InpFixedLots=0.00
 
 ; ---- targets / exits --------------------------------------------------
-InpTPLevel=QSMC_TP_LEVEL1
+InpTPLevel=1
 InpBreakEvenAtR=1.00
 InpPartialCloseAtR=1.50
 InpPartialClosePercent=50.0
@@ -113,7 +114,7 @@ InpHeartbeatLookback=200
 ; multiplier; this EA applies it. With BOTH Allow* switches OFF the effective
 ; set is STRONG only, so these lines do not change the demo behaviour - they
 ; document the ceiling the operator can loosen deliberately.
-InpSignalExecutionProfile=SIGNAL_PROFILE_PERMISSIVE
+InpSignalExecutionProfile=2
 InpAllowWeakSignals=false
 InpRequireProfileMatch=true
 InpWeakRiskMultiplier=0.25

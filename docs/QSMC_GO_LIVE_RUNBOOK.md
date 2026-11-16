@@ -81,7 +81,7 @@ iCustom(_Symbol,_Period,InpIndicatorName)   // بلا أي إدخال
 
 **للقراءة فقط:** `docs/QSMC_CHART_READING_AR.md` يشرح معنى كل نص على الشارت، وترتيب سلطة
 الطبقات (`PRIMARY > SCENARIO > RXN/WATCH`)، ومعنى `STATUS/PRIMARY/INVALIDATION`، وإعداد
-`presets/QSMC_clean_chart.set` لشارت نظيف.
+`presets/QSMC_v6.6.20_production_chart.set` لشارت نظيف.
 
 **لماذا يتداول النظام كما يتداول:** `docs/QSMC_TRADER_MIND_REVIEW_AR.md` يشرح خطوة بخطوة كيف
 يفكّر النظام (تسع خطوات، كل واحدة مع موضعها في الكود)، ويقيّم كل خطوة من خطوات المتداول المحترف،
@@ -93,8 +93,8 @@ iCustom(_Symbol,_Period,InpIndicatorName)   // بلا أي إدخال
 `InpCooldownAfterLossMin` (تهدئة بعد إغلاق خاسر)، `InpPartialCloseAtR` +
 `InpPartialClosePercent` (إغلاق جزئي عند +R). الافتراضات المترجمة الآن: جلسة
 10:00–18:00 سيرفر، 3 دخولات، 60 دقيقة تهدئة، 50 % عند +1.5R، تعادل عند +1R
-(ملف `presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set` هو نفسها). `presets/QSMC_pro_execution.set`
-نسخة أوسع (07:00–20:00) **لا تُسلّح الحساب**. سطر `[QSMC_AT] discipline:` في سجل Experts يطبع
+(ملف `presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set` هو نفسها). `presets/QSMC_AutoTrader_v6.6.22_SCALP_M5.set`
+نسخة أوسع نافذةً (08:00–20:00) لكنها مثبّتة على M5، **ولا تُسلّح الحساب الحقيقي**. سطر `[QSMC_AT] discipline:` في سجل Experts يطبع
 القيم الأربع عند الإقلاع، وسطر الـheartbeat يذكر أيّها يمنع الدخول الآن.
 
 تفصيلان يخصّان السقف اليومي: (1) **تغيّر في 2026-11-09:** دخول `DRY RUN` لم يعد يُستهلك من
