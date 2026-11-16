@@ -192,7 +192,7 @@ each file goes (one EA per chart) and which timeframe suits which pip ladder.
 | `InpMaxSpreadPoints` | `30` | skip while the spread is wider |
 | `InpMaxOpenPositions` | `1` | cap on this magic + symbol |
 | `InpMaxDailyLossPercent` | `3.00` | stop opening trades for the day after this equity drawdown |
-| `InpMaxSignalAgeBars` | `2` | ignore a signal older than this many closed bars |
+| `InpMaxSignalAgeBars` | `1` | ignore a signal older than this many closed bars (v6.6.24: one bar - the bar that just closed) |
 | `InpMinStopPoints` | `20` | refuse a stop tighter than this |
 | `InpMaxStopPoints` | `5000` | refuse a stop wider than this |
 | `InpCloseOnOpposite` | `false` | close this magic's position when the opposite signal publishes |

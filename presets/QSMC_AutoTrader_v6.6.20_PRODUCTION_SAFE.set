@@ -95,7 +95,7 @@ InpMinRRAtFill=1.20
 InpMinStopPoints=20
 InpMaxStopPoints=5000
 InpOrderRetryMax=3
-InpMaxSignalAgeBars=2
+InpMaxSignalAgeBars=1
 InpCloseOnOpposite=false
 
 ; ---- session / discipline ---------------------------------------------

@@ -149,7 +149,7 @@ NADIR2_OVERRIDES = {
     # These four are OFF on purpose and are NOT defects:
     #   InpUseRetestLifecycle : seeds a setup and waits for a later closed-bar
     #       confirmation. OFF = enter on the published closed bar, which is what
-    #       InpMaxSignalAgeBars=2 assumes in the EA. Turning it on makes the
+    #       InpMaxSignalAgeBars=1 assumes in the EA. Turning it on makes the
     #       EA's 2-bar window occasionally too tight; leave off for the trial.
     #   InpRequireMSSAfterSweep : a stricter structural filter; OFF = a CHoCH or
     #       BOS may anchor, which is what the PRACTICAL profile documents.
@@ -234,7 +234,7 @@ NADIR2_REASONS = {
     "InpRXNAlerts": "OFF: RXN is an observation layer; its alerts duplicate ZRE's",
     "InpTopDownAlerts": "OFF: noise on every HTF flip",
     "InpAlertDispatcherLog": "OFF: the signal log already records the alerts",
-    "InpUseRetestLifecycle": "OFF on purpose: enter on the published closed bar, which is what the EA's InpMaxSignalAgeBars=2 assumes",
+    "InpUseRetestLifecycle": "OFF on purpose: enter on the published closed bar, which is what the EA's InpMaxSignalAgeBars=1 assumes",
     "InpRequireMSSAfterSweep": "OFF on purpose: a CHoCH or BOS may anchor (documented in the PRACTICAL profile)",
     "InpBlockEquilibriumEntries": "OFF on purpose: the profile already handles location",
     "InpUseEMAVWAPConfluence": "OFF on purpose: an extra confluence leg would re-tighten the profile",
@@ -271,7 +271,7 @@ EA_REASONS = {
     "InpMaxSpreadPoints": "gold spreads are wide; 60 points is still under a normal tick",
     "InpDeviationPoints": "slippage allowance for a market fill",
     "InpMinRRAtFill": "re-check RR at the price actually paid, not the planned zone edge",
-    "InpMaxSignalAgeBars": "a 2-bar-old signal is stale on M15",
+    "InpMaxSignalAgeBars": "only the bar that just closed is tradable (a signal is stale one bar later)",
     "InpSessionStartHour": "session start, SERVER clock (10:00 as configured)",
     "InpSessionEndHour": "session end, SERVER clock (18:00 as configured)",
     "InpCooldownAfterLossMin": "60 minutes of silence after a loss",
@@ -339,7 +339,7 @@ EA_OVERRIDES = {
     "InpMaxSpreadPoints": "60",
     "InpDeviationPoints": "30",
     "InpMinRRAtFill": "1.20",
-    "InpMaxSignalAgeBars": "2",
+    "InpMaxSignalAgeBars": "1",
     "InpSessionStartHour": "10",
     "InpSessionEndHour": "18",
     "InpCooldownAfterLossMin": "60",

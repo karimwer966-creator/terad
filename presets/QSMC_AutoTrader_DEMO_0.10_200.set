@@ -88,8 +88,8 @@ InpResetBreakersAtInit=true
 ; InpPinTimeframeMinutes: pin M15: refuse to run on any other chart timeframe (the 2026-11-06 log cycled M1..H4)
 InpPinTimeframeMinutes=15
 InpMaxDataAgeSeconds=30
-; InpMaxSignalAgeBars: a 2-bar-old signal is stale on M15
-InpMaxSignalAgeBars=2
+; InpMaxSignalAgeBars: only the bar that just closed is tradable (v6.6.24)
+InpMaxSignalAgeBars=1
 InpMinStopPoints=20
 InpMaxStopPoints=5000
 InpCloseOnOpposite=false

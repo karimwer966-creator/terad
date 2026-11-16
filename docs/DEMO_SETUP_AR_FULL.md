@@ -70,7 +70,7 @@ InpRuntimeNoLookaheadAudit=true   + كل self-tests
 ```
 
 **مُعطَّل عن قصد** (وسُجّل صريحاً في الملف كي لا يُفهم كسهو):
-`InpUseRetestLifecycle` (الدخول على الشمعة المغلقة المنشورة — وهو ما يفترضه `InpMaxSignalAgeBars=2` في الـEA)، `InpRequireMSSAfterSweep`، `InpBlockEquilibriumEntries`، `InpUseEMAVWAPConfluence`، وكل خيارات زحام الشارت (Fibo, debug, early-preview, push/sound).
+`InpUseRetestLifecycle` (الدخول على الشمعة المغلقة المنشورة — وهو ما يفترضه `InpMaxSignalAgeBars=1` في الـEA)، `InpRequireMSSAfterSweep`، `InpBlockEquilibriumEntries`، `InpUseEMAVWAPConfluence`، وكل خيارات زحام الشارت (Fibo, debug, early-preview, push/sound).
 
 ---
 

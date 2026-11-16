@@ -170,7 +170,7 @@ envelope = {
     "InpMinStopPoints": "20",
     "InpMaxStopPoints": "5000",
     "InpMaxOpenPositions": "1",
-    "InpMaxSignalAgeBars": "2",
+    "InpMaxSignalAgeBars": "1",
     "InpMaxDataAgeSeconds": "30",
 }
 for name, want in sorted(envelope.items()):

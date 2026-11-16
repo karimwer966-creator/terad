@@ -128,7 +128,7 @@ iCustom(_Symbol,_Period,InpIndicatorName)   // بلا أي إدخال
 | `InpDeviationPoints` | 20 | أقصى انزلاق مقبول | 30 |
 | `InpMaxOpenPositions` | 1 | صفقات هذا الـmagic على هذا الرمز | 1 |
 | `InpMaxDailyLossPercent` | 3.00 % | إيقاف اليوم **محفوظ** لا يُصفَّر بإعادة التحميل | 5 % |
-| `InpMaxSignalAgeBars` | 2 | عمر الإشارة المسموح | 3 |
+| `InpMaxSignalAgeBars` | 1 | عمر الإشارة المسموح | 2 |
 | `InpMinStopPoints` / `InpMaxStopPoints` | 20 / 5000 | حدود الوقف | حسب الرمز |
 | `InpMinRRAtFill` | 1.00 | مكافأة:مخاطرة عند **سعر التنفيذ** | لا تُنزله |
 | `InpOrderRetryMax` | 3 | محاولات الفشل العابر لكل إشارة | 5 |

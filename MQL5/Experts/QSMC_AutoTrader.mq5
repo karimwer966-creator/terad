@@ -361,7 +361,7 @@ input int    InpStopAfterConsecLoss  = 2;      // halt new entries after this ma
 input bool   InpResetBreakersAtInit  = false;  // SAFETY RESET: when true at EA attach, clears persisted day/session breaker state for this (login, magic, symbol) and re-captures a fresh baseline. Logs RESET_REASON. MEANT FOR OPERATOR USE AFTER REVIEW — does NOT auto-clear on TF change or mid-session reload.
 input int    InpPinTimeframeMinutes  = 15;     // TIMEFRAME PIN: 0 = off. 15 = this EA only runs on an M15 chart (the QSMC profile timeframe) and refuses any other. It never switches the chart itself.
 input int    InpMaxDataAgeSeconds    = 30;     // refuse entries when the last tick is older than this (stale feed / disconnect); 0 = off
-input int    InpMaxSignalAgeBars     = 2;      // ignore a signal older than this many closed bars
+input int    InpMaxSignalAgeBars     = 1;      // ignore a signal older than this many closed bars
                                                // 1 = only the bar that just closed. 2 is the shipped
                                                // value for the DEMO presets; on M15 that accepts a
                                                // 30-minute-old signal, so lower it if you want the
@@ -4090,7 +4090,7 @@ void PrintEffectiveVsPreset()
    PresetDelta(rows,"InpResetBreakersAtInit","false",(InpResetBreakersAtInit? "true":"false"));
    PresetDelta(rows,"InpPinTimeframeMinutes","15",IntegerToString(InpPinTimeframeMinutes));
    PresetDelta(rows,"InpMaxDataAgeSeconds","30",IntegerToString(InpMaxDataAgeSeconds));
-   PresetDelta(rows,"InpMaxSignalAgeBars","2",IntegerToString(InpMaxSignalAgeBars));
+   PresetDelta(rows,"InpMaxSignalAgeBars","1",IntegerToString(InpMaxSignalAgeBars));
    PresetDelta(rows,"InpMinStopPoints","20",IntegerToString(InpMinStopPoints));
    PresetDelta(rows,"InpMaxStopPoints","5000",IntegerToString(InpMaxStopPoints));
    PresetDelta(rows,"InpCloseOnOpposite","false",(InpCloseOnOpposite? "true":"false"));

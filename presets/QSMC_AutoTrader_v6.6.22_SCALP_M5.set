@@ -100,8 +100,8 @@ InpResetBreakersAtInit=false
 ; InpPinTimeframeMinutes: 5 = this EA refuses to run on anything but the M5 chart. It never switches the chart itself.
 InpPinTimeframeMinutes=5
 InpMaxDataAgeSeconds=30
-; InpMaxSignalAgeBars: M5 scalper plan (v6.6.22)
-InpMaxSignalAgeBars=2
+; InpMaxSignalAgeBars: M5 scalper plan (v6.6.24: 1 = only the just-closed bar)
+InpMaxSignalAgeBars=1
 ; InpMinStopPoints: M5 scalper plan (v6.6.22)
 InpMinStopPoints=80
 ; InpMaxStopPoints: M5 scalper plan (v6.6.22)
