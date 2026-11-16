@@ -997,16 +997,6 @@ public:
       return out.state;
      }
 
-   //--- Round to the symbol tick grid so TP/SL are always placeable.
-   double            RoundNear(const double anchor,const double v) const
-     {
-      double tick=m_ctx.tick_size;
-      if(!(tick>0.0)) tick=_Point;
-      double r=MathRound(v/tick)*tick;
-      if(!(r>0.0)) r=v;
-      return r;
-     }
-
    //=================================================================
    // 4. Finalize: evaluate everything recorded for this bar, publish
    // at most one signal, draw it, and journal it.
