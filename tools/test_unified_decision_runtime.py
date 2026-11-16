@@ -69,7 +69,7 @@ int main(){
  UD_Update(8);assert(g_ud.direction==0); // advisory evidence cannot authorize
  g_confirmed_signal_journal={{g_buf_t[9],8,2,true}};g_rxn_built_time=g_buf_t[8];
  UD_Update(8);assert(g_ud.direction==1&&g_ud.score==100);
- assert(UD_AlertAllows(3,1)&&!UD_AlertAllows(2,1)&&!UD_AlertAllows(3,-1));
+ assert(UD_AlertAllows(QSMC_ALERT_SRC_CORE,1)&&!UD_AlertAllows(QSMC_ALERT_SRC_RXN,1)&&!UD_AlertAllows(QSMC_ALERT_SRC_CORE,-1));
  g_confirmed_signal_journal.push_back({g_buf_t[9],8,2,false});UD_Update(8);assert(g_ud.direction==0);
  g_confirmed_signal_journal={{g_buf_t[8],7,2,true}};UD_Update(8);assert(g_ud.direction==0);
  string why;assert(UD_Verdict(7,why)==0&&g_res_score==0);

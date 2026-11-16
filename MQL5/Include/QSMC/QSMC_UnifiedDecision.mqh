@@ -8,6 +8,16 @@ input double InpUnifiedMergeATR = 0.15; // same-side zone/path consolidation tol
 input int InpMessageCooldownBars = 10; // 0 disables diagnostic dedup; 1..1000 bars
 #endif
 #define UD_LOG_CAP 128
+// Alert source ids are a THIRD id space and they are NOT ENUM_SIG_SOURCE:
+// SAlertCandidate (nadir2.mq5) numbers 1=ZRE, 2=RXN, 3=CORE, while
+// ENUM_SIG_SOURCE numbers 1=CORE, 2=ZRE, 3=RXN. UD_AlertAllows() used to test
+// the bare literal 3, which read as "SRC_RXN" to anyone holding the enum and
+// as "CORE" to anyone holding the dispatcher struct - the same integer with
+// two meanings (v6.6.23 T7). The host defines the macro next to the struct;
+// this fallback keeps the header usable on its own (and by the native test).
+#ifndef QSMC_ALERT_SRC_CORE
+#define QSMC_ALERT_SRC_CORE 3
+#endif
 struct SUnifiedDecision
 {
    datetime bar;
@@ -68,7 +78,9 @@ int UD_Verdict(const int closed,string &why)
 bool UD_AlertAllows(const int source,const int direction)
 {
    if(!InpUnifiedDecision || direction==0) return true;
-   return source==3 && direction==g_ud.direction && g_ud.direction!=0;
+   //--- only the authoritative Core dispatcher may publish while the unified
+   //--- decision is waiting; advisory layers (ZRE/RXN) never authorize.
+   return source==QSMC_ALERT_SRC_CORE && direction==g_ud.direction && g_ud.direction!=0;
 }
 
 double UD_Tolerance(const double atr)

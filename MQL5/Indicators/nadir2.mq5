@@ -4162,12 +4162,21 @@ struct SZRELifecycleMemo
 // One shared observational alert candidate. ZRE and RXN feed this record;
 // only the dispatcher publishes a directional scenario. It carries no setup
 // ownership and cannot authorize an entry.
+//--- v6.6.23 T7: the alert dispatcher has its OWN source id space.
+//--- It is NOT ENUM_SIG_SOURCE (where 1=CORE, 2=ZRE, 3=RXN): here 3 is CORE.
+//--- QSMC_ALERT_SRC_CORE is defined once, here, and QSMC_UnifiedDecision.mqh
+//--- consumes it (it carries a matching fallback for standalone use).
+#define QSMC_ALERT_SRC_NONE 0
+#define QSMC_ALERT_SRC_ZRE  1
+#define QSMC_ALERT_SRC_RXN  2
+#define QSMC_ALERT_SRC_CORE 3
+
 struct SAlertCandidate
 {
    bool     valid;
    bool     scenario_candidate;
    bool     alert_eligible;
-   int      source;              // 1=ZRE, 2=RXN, 3=CORE legacy
+   int      source;              // QSMC_ALERT_SRC_*: 1=ZRE, 2=RXN, 3=CORE
    int      direction;           // +1 BUY, -1 SELL, 0 non-directional zone state
    int      level;               // comparable RXN-level rank; ZRE reaction maps to 2
    int      score;               // evidence/strength, not probability
@@ -22572,7 +22581,7 @@ void FireSetupAlert(const datetime bar_time)
    a.valid=true;
    a.scenario_candidate=true;
    a.alert_eligible=alert_enabled;
-   a.source=3;
+   a.source=QSMC_ALERT_SRC_CORE;   // authoritative Core dispatcher
    a.direction=(g_trade_setup.is_buy?1:-1);
    a.level=(int)RXN_LEVEL_EXECUTION_READY;
    a.score=(int)MathMax(0,MathMin(100,g_trade_setup.confidence));
@@ -38064,7 +38073,7 @@ void ZRE_AlertState(const SZREZone &z,const ENUM_ZRE_STATE state,const datetime 
    SAlertCandidate a;
    AlertCandidateInit(a);
    a.valid=true;
-   a.source=1;
+   a.source=QSMC_ALERT_SRC_ZRE;
    a.closed_index=closed;
    a.bar_time=bar_time;
    a.zone_id=z.id;
@@ -41168,7 +41177,7 @@ void AlertCandidateInit(SAlertCandidate &a)
    a.valid=false;
    a.scenario_candidate=false;
    a.alert_eligible=false;
-   a.source=0;
+   a.source=QSMC_ALERT_SRC_NONE;
    a.direction=0;
    a.level=0;
    a.score=0;
@@ -41892,7 +41901,7 @@ void RXN_Alert(const SRxnEvidence &e,const datetime bar_time)
    AlertCandidateInit(a);
    a.valid=true;
    a.scenario_candidate=true;
-   a.source=2;
+   a.source=QSMC_ALERT_SRC_RXN;
    a.direction=e.direction;
    a.level=e.level;
    a.score=e.reaction_score;
