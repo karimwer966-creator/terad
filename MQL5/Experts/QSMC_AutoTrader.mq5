@@ -3028,12 +3028,18 @@ void HandleSignal(SQsigSignal &s)
          CountOneTrade();
          g_sent++;
          if(filled_partial) g_partial++;
+         //--- R2 reads "slip_points" from this note: the signed distance
+         //--- between the price the signal planned and the price the fill paid,
+         //--- in points. Positive = paid worse than planned.
+         double pt=_Point;
+         double slip=(pt>0.0 ? (buy ? (pos_entry-s.entry)/pt : (s.entry-pos_entry)/pt) : 0.0);
          JournalOrder(s,"fill",pos_vol,risk_money,rc,
                       "position="+IntegerToString((long)pos_ticket)+
                       " deal="+IntegerToString((long)deal_ticket)+
                       " entry="+DoubleToString(pos_entry,_Digits)+
                       " server_sl="+DoubleToString(pos_sl,_Digits)+
                       " server_tp="+DoubleToString(pos_tp,_Digits)+
+                      " slip_points="+DoubleToString(slip,1)+
                       (filled_partial ? " PARTIAL" : ""));
          //--- R1: remember the ticket and the money risked on it, so a close by
          //--- SL/TP at the SERVER can still be reported in R.
