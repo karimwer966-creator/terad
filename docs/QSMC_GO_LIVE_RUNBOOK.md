@@ -200,7 +200,7 @@ iCustom(_Symbol,_Period,InpIndicatorName)   // بلا أي إدخال
 
 | السطر | متى | إن لم يظهر |
 |---|---|---|
-| `QSMC v6.620 execution companion ON …` | عند التحميل | لم يُشغّل الـEA / Algo Trading مطفأ |
+| `QSMC v6.622 execution companion ON …` | عند التحميل | لم يُشغّل الـEA / Algo Trading مطفأ |
 | `envelope: risk<= … \| daily loss stop … (persisted)` | عند التحميل | نسخة قديمة من الملف |
 | `state INERT / DRY RUN / BLOCKED / ARMED` | عند التحميل | — |
 | `day guard: new baseline … for server day …` | مرة كل يوم | الساعة/الخادم غير متصل |
