@@ -88,7 +88,7 @@ InpResetBreakersAtInit=true
 ; InpPinTimeframeMinutes: pin M15: refuse to run on any other chart timeframe (the 2026-11-06 log cycled M1..H4)
 InpPinTimeframeMinutes=15
 InpMaxDataAgeSeconds=30
-; InpMaxSignalAgeBars: only the bar that just closed is tradable (v6.6.24)
+; InpMaxSignalAgeBars: only the bar that just closed is tradable (a signal is stale one bar later)
 InpMaxSignalAgeBars=1
 InpMinStopPoints=20
 InpMaxStopPoints=5000
@@ -120,7 +120,5 @@ InpModerateRiskMultiplier=0.5
 InpStrongRiskMultiplier=1.0
 InpOwnExecutionLane=true
 InpPrintEntryReview=true
-; InpEnableTrialJournal: one CSV row per execution event in
-; MQL5/Files/QSMC_trial_<login>.csv (display only; a write failure never
-; affects an order). On for the demo trial, it is how the trial is judged.
+; InpEnableTrialJournal: one CSV row per execution event in QSMC_trial_<login>.csv (in the terminal's Files folder); display only, a write failure never affects an order
 InpEnableTrialJournal=true

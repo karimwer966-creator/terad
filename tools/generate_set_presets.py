@@ -272,6 +272,7 @@ EA_REASONS = {
     "InpDeviationPoints": "slippage allowance for a market fill",
     "InpMinRRAtFill": "re-check RR at the price actually paid, not the planned zone edge",
     "InpMaxSignalAgeBars": "only the bar that just closed is tradable (a signal is stale one bar later)",
+    "InpEnableTrialJournal": "one CSV row per execution event in QSMC_trial_<login>.csv (in the terminal's Files folder); display only, a write failure never affects an order",
     "InpSessionStartHour": "session start, SERVER clock (10:00 as configured)",
     "InpSessionEndHour": "session end, SERVER clock (18:00 as configured)",
     "InpCooldownAfterLossMin": "60 minutes of silence after a loss",
@@ -340,6 +341,8 @@ EA_OVERRIDES = {
     "InpDeviationPoints": "30",
     "InpMinRRAtFill": "1.20",
     "InpMaxSignalAgeBars": "1",
+    # equal to the compiled default, but the demo preset is what an operator
+    # loads, so the preset must say what the trial file is and that it is inert.
     "InpEnableTrialJournal": "true",
     "InpSessionStartHour": "10",
     "InpSessionEndHour": "18",

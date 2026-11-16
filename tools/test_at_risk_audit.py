@@ -161,8 +161,16 @@ check("if(daily_cap<=0.0 || daily_cap>HardMaxDailyPercent()) daily_cap=HardMaxDa
       "C1 a disabled percent stop is not replaced by the 10% HARD ceiling")
 check("double daily_cap=EffectiveDailyPercent();" in dgu,
       "C1 the guard asks the resolver")
-check(re.search(r"double pct=EffectiveDailyPercent\(\);\s*\n\s*if\(pct<=0\.0\) return 0\.0;",
-                fn_body("DayFloorEquity")) is not None,
+# v6.6.24: the floor arithmetic moved to QSMC_ExecutionRules.mqh
+# (QER_DayFloorEquity) so tools/test_execution_rules.py can execute it. The
+# contract is the same and is pinned in both places: the EA must CALL it, and
+# the header must keep the disabled-stays-disabled branch.
+_RULES = (ROOT / "MQL5" / "Include" / "QSMC" / "QSMC_ExecutionRules.mqh").read_text(
+    encoding="utf-8", errors="replace")
+check("QER_DayFloorEquity(base,DayStopMoney(),EffectiveDailyPercent())"
+      in fn_body("DayFloorEquity"),
+      "C1 the guard asks the single floor helper")
+check(re.search(r"if\(eff_pct<=0\.0\) return 0\.0;", _RULES) is not None,
       "C1 a disabled guard produces no floor, so nothing can trip it")
 
 hb = fn_body("DiagnosticHeartbeat")
