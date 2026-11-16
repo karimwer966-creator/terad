@@ -1388,6 +1388,9 @@ string DayGuardKey(const string leaf)
 double DayStopMoney();
 double DayFloorEquity(const double base);
 string DayStopDescription(const double base);
+// v6.6.24 (F-001): defined below with the ownership lane, called from
+// DayGuardLoad() once per server day.
+void SweepStaleLaneGlobals();
 
 void DayGuardLoad(const int day)
   {
@@ -1429,6 +1432,9 @@ void DayGuardLoad(const int day)
       // v6.6.16: literal leaf call for the static contract (TRADES reset on a new server day).
       GlobalVariableSet(DayGuardKey("TRADES"),0.0);
       GlobalVariablesFlush();
+      // v6.6.24 (F-001): once per server day is the right frequency - the lane
+      // namespace is per bar, and a week-old claim can never be executed again.
+      SweepStaleLaneGlobals();
       Print("[QSMC_AT] day guard: new baseline ",
             DoubleToString(g_day_start_equity,2)," (equity) for server day ",
             TimeToString((datetime)((long)day*86400),TIME_DATE),
@@ -1939,6 +1945,35 @@ void ReleaseExecutionLane(const string key)
    if(!InpOwnExecutionLane) return;
    string gv=OwnerGlobalName(key);
    if(GlobalVariableCheck(gv)) GlobalVariableDel(gv);
+  }
+
+// v6.6.24 (F-001): the lane is claimed per (account, symbol, signal bar) and
+// nothing used to remove it - so the terminal accumulated one global variable
+// per signal bar for the life of the installation, and ReleaseExecutionLane()
+// was never called at all. A claim is only meaningful while its bar is young
+// (InpMaxSignalAgeBars is 1, i.e. one closed bar). This sweep, run once per
+// server day from the day guard, drops claims older than a week. It cannot
+// release a live claim: a claim older than 7 days refers to a bar that is
+// thousands of bars old and can never be executed again.
+void SweepStaleLaneGlobals()
+  {
+   if(!InpOwnExecutionLane) return;
+   string prefix=QSMC_EXEC_OWNER_PREFIX+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"_";
+   int removed=0;
+   //--- Count DOWN: GlobalVariableDel() renumbers the list, and deleting a
+   //--- lower index would otherwise skip the entry that took its place.
+   for(int i=GlobalVariablesTotal()-1;i>=0;i--)
+     {
+      string name=GlobalVariableName(i);
+      if(name=="" || StringFind(name,prefix)!=0) continue;
+      if(TimeCurrent()-GlobalVariableTime(name)>7*86400)
+        {
+         if(GlobalVariableDel(name)) removed++;
+        }
+     }
+   if(removed>0)
+      Print("[QSMC_AT] lane sweep: released ",IntegerToString(removed),
+            " stale execution-lane global(s) older than 7 days");
   }
 
 // One machine-readable line per execution decision, in the same shape the
@@ -2854,6 +2889,7 @@ void HandleSignal(SQsigSignal &s)
          // number used to stay 0 while orders were failing, which read as
          // "nothing was ever evaluated".
          MarkSeen(key,s.bar_time,s.dir);
+         ReleaseExecutionLane(key);   // v6.6.24 (F-001): abandoned, so unclaim
          g_refused++;
         }
       else
