@@ -308,7 +308,7 @@ for tag in ("hyg_after", "hyg_before"):
 print("=== C  signal registry and layer policy, executed")
 rc, out = run("hyg_after", "selftest")
 check(rc == 0 and "PASS QSR_SelfTest" in out, "C1 QSR_SelfTest: 16 lifecycle / identity / capacity checks pass", out.strip())
-check("PASS QCL_SelfTest" in out, "C2 QCL_SelfTest: 15 classification / policy checks pass", out.strip())
+check("PASS QCL_SelfTest" in out, "C2 QCL_SelfTest: 16 classification / policy checks pass", out.strip())
 rc, out = run("hyg_after", "layers", *FAMILIES)
 layers = dict(l.split("=") for l in out.strip().split("\n") if "=" in l)
 unknown = sorted(k for k, v in layers.items() if v == "UNKNOWN")
