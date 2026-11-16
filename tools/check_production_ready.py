@@ -69,6 +69,9 @@ CHECKS = [
     ("set-presets", [sys.executable, "tools/generate_set_presets.py", "--check"]),
     ("autotrader-contract", [sys.executable, "tools/test_autotrader_contract.py"]),
     ("execution-safety", [sys.executable, "tools/test_execution_safety.py"]),
+    # v6.6.24: the pure execution rules, compiled and run natively (breakers +
+    # the twelve RunEntryReview conditions + the per-identity retry budget).
+    ("execution-rules", [sys.executable, "tools/test_execution_rules.py"]),
     ("diag-bridge", [sys.executable, "tools/test_diag_bridge.py"]),
     ("historical-atr", [sys.executable, "tools/test_historical_atr_contract.py"]),
     ("volatility-window", [sys.executable, "tools/test_volatility_window.py"]),

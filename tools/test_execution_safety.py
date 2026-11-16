@@ -254,7 +254,12 @@ check("InpSessionStartHour" in code and "InpSessionEndHour" in code,
       "D7a the session window is an explicit input pair, not an implicit hour test")
 check("bool SessionOpenNow(string &why)" in code,
       "D7b one function decides the session, so the gate and the journal cannot disagree")
-check("inside=(h>=InpSessionStartHour || h<InpSessionEndHour)" in code,
+# v6.6.24: the window arithmetic moved into the pure rules header, so the wrap
+# case is pinned where it now lives AND the EA is pinned to call it.
+RULES = ROOT / "MQL5" / "Include" / "QSMC" / "QSMC_ExecutionRules.mqh"
+rules = RULES.read_text(encoding="utf-8", errors="replace")
+check("return (hour>=start || hour<end);" in rules and
+      "QER_SessionInside(h,InpSessionStartHour,InpSessionEndHour)" in code,
       "D7c a window may wrap midnight (Asia / NY-only mandates), not only sit inside one day")
 check("if(!SessionOpenNow(dis))" in code and "Note(key,dis);" in code,
       "D7d a closed window REFUSES the entry and prints the reason")

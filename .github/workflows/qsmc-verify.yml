@@ -112,6 +112,14 @@ jobs:
       - name: Execution safety (retry class, symbol-scoped keys, RR at fill, BE throttle)
         run: python3 tools/test_execution_safety.py 2>&1 | tee out/test_execution_safety.log
 
+      # v6.6.24. The EA's breaker arithmetic and the twelve RunEntryReview
+      # conditions now live in a side-effect-free header, so this step COMPILES
+      # and EXECUTES them natively (g++ with asan/ubsan) instead of reading the
+      # source. A boundary such as "eq < floor" instead of "eq <= floor" is
+      # invisible to a source contract and expensive in production.
+      - name: Execution rules (day/drawdown/streak/cooldown floors + 12 review conditions)
+        run: python3 tools/test_execution_rules.py 2>&1 | tee out/test_execution_rules.log
+
       - name: Diagnostic bridge (the indicator's verdict -> the companion's heartbeat)
         run: python3 tools/test_diag_bridge.py 2>&1 | tee out/test_diag_bridge.log
 

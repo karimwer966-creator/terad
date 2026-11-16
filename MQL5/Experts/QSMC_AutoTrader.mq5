@@ -140,6 +140,12 @@
 #property strict
 
 #include <Trade/Trade.mqh>
+//--- v6.6.24: the pure execution rules (day/drawdown/streak/cooldown floors,
+//--- the twelve entry-review conditions, the per-signal retry budget). They are
+//--- side-effect free so tools/test_execution_rules.py can compile and execute
+//--- the same text natively. Behaviour is unchanged: each call replaces the
+//--- expression that used to be inline here.
+#include <QSMC/QSMC_ExecutionRules.mqh>
 
 //--- Buffer indices of the CORE signal export (nadir2.mq5 OnInit).
 //--- A contract test asserts the indicator still binds these exact slots.
@@ -1459,11 +1465,10 @@ void DayGuardLoad(const int day)
 //+------------------------------------------------------------------+
 double DayStopMoney()
   {
-   if(InpMaxDailyLossMoney<=0.0) return 0.0;          // 0 = money stop off
-   double hard=0.0;
-   if(g_day_start_equity>0.0)
-      hard=g_day_start_equity*HardMaxDailyPercent()/100.0;
-   return (hard>0.0 ? MathMin(InpMaxDailyLossMoney,hard) : InpMaxDailyLossMoney);
+   // v6.6.24: the arithmetic moved to QSMC_ExecutionRules.mqh (QER_DayStopMoney)
+   // so the native suite can execute it. Same expression, same operands:
+   // 0 = money stop off; otherwise min(input, HARD% of the frozen baseline).
+   return QER_DayStopMoney(InpMaxDailyLossMoney,g_day_start_equity,HardMaxDailyPercent());
   }
 
 // 2026-11-06 audit (C2): the guard had no name for its own state. A disabled
@@ -1481,12 +1486,9 @@ string DayStopState()
 // The equity at which the guard trips, or 0.0 when every stop is disabled.
 double DayFloorEquity(const double base)
   {
-   if(base<=0.0) return 0.0;
-   double money=DayStopMoney();
-   if(money>0.0) return base-money;
-   double pct=EffectiveDailyPercent();
-   if(pct<=0.0) return 0.0;                    // DISABLED: no floor, nothing trips
-   return base*(1.0-pct/100.0);
+   // v6.6.24: QER_DayFloorEquity - money stop wins; a DISABLED percent stop is a
+   // 0.0 floor (nothing can trip it), never the loosest allowed ceiling.
+   return QER_DayFloorEquity(base,DayStopMoney(),EffectiveDailyPercent());
   }
 
 string DayStopDescription(const double base)
@@ -1521,7 +1523,7 @@ void DayGuardUpdate()
       double bal=AccountInfoDouble(ACCOUNT_BALANCE);
       double dd_pct=(g_day_start_equity>0.0 ? (g_day_start_equity-eq)/g_day_start_equity*100.0 : 0.0);
       double loss_money=g_day_start_equity-eq;
-      if(eq<=floor_eq && !g_day_blocked)
+      if(QER_DailyTripped(floor_eq,eq) && !g_day_blocked)
         {
          g_day_blocked=true;
          GlobalVariableSet(DayGuardKey("BLOCKED"),1.0);
@@ -1670,9 +1672,9 @@ void SessionGuardUpdate()
      {
       double eq=AccountInfoDouble(ACCOUNT_EQUITY);
       double bal=AccountInfoDouble(ACCOUNT_BALANCE);
-      double floor_eq=dd_ref*(1.0-dd_cap/100.0);
+      double floor_eq=QER_DrawdownFloor(dd_ref,dd_cap);
       double dd_pct=(dd_ref>0.0 ? (dd_ref-eq)/dd_ref*100.0 : 0.0);
-      if(eq<=floor_eq)
+      if(QER_DrawdownTripped(dd_ref,dd_cap,eq))
         {
          g_drawdown_blocked=true;
          Print("[QSMC_AT GUARD] BREAKER_STATE=TRIPPED | BREAKER_REASON=ACCOUNT_DRAWDOWN",
@@ -1692,7 +1694,7 @@ void SessionGuardUpdate()
    if(InpStopAfterConsecLoss>0 && !g_loss_streak_blocked)
      {
       g_consec_losses=CountConsecutiveLosses();
-      if(g_consec_losses>=InpStopAfterConsecLoss)
+      if(QER_LossStreakTripped(g_consec_losses,InpStopAfterConsecLoss))
         {
          g_loss_streak_blocked=true;
          Print("[QSMC_AT GUARD] BREAKER_STATE=TRIPPED | BREAKER_REASON=CONSECUTIVE_LOSSES",
@@ -1718,11 +1720,9 @@ bool SessionOpenNow(string &why)
    MqlDateTime st;
    TimeToStruct(TimeCurrent(),st);
    int h=st.hour;
-   bool inside;
-   if(InpSessionStartHour<InpSessionEndHour)
-      inside=(h>=InpSessionStartHour && h<InpSessionEndHour);
-   else
-      inside=(h>=InpSessionStartHour || h<InpSessionEndHour);  // wraps midnight
+   // v6.6.24: QER_SessionInside is the same half-open window test, including
+   // the wrap-around case, and is executed by tools/test_execution_rules.py.
+   bool inside=QER_SessionInside(h,InpSessionStartHour,InpSessionEndHour);
    if(inside) return true;
    why="outside the session window "+IntegerToString(InpSessionStartHour)+":00-"+
        IntegerToString(InpSessionEndHour)+":00 server ("+IntegerToString(h)+":00 now)";
@@ -1790,6 +1790,13 @@ bool CooldownActive(string &why)
                  HistoryDealGetDouble(t,DEAL_SWAP);
       if(net<0.0)
         {
+         // v6.6.24: the decision is QER_CooldownTripped(age, minutes), which is
+         // inclusive at the window edge - exactly the inclusive window
+         // HistorySelect(from,now) below already selected. A close stamped in the
+         // future (server clock skew) keeps the cooldown ON.
+         long age=(long)TimeCurrent()-(long)HistoryDealGetInteger(t,DEAL_TIME);
+         if(!QER_CooldownTripped(true,age,InpCooldownAfterLossMin))
+            return false;   // the loss is already outside the window
          why="inside the "+IntegerToString(InpCooldownAfterLossMin)+
              "-minute cooldown after a losing close (net "+
              DoubleToString(net,2)+")";
@@ -2099,13 +2106,13 @@ string RunEntryReview(const SQsigSignal &s,const string sym,const double price,
 
    // R1 class
    string cls_why="";
-   bool ok1=ClassAllowed(s.cls,cls_why);
+   bool ok1=QER_ClassOk(ClassAllowed(s.cls,cls_why));
    ReviewLine(0,ok1,ok1 ? ClassName(s.cls)+" executable (mult "+DoubleToString(RiskMultiplierForClass(s.cls),2)+"x)" : cls_why);
    if(!ok1 && first_fail=="") first_fail=ReviewName(0);
 
    // R2 account
    string env=TradeEnvBlock(buy);
-   bool ok2=(env=="");
+   bool ok2=QER_AccountOk(env);
    ReviewLine(1,ok2,ok2 ? (RealProfileActive()?"REAL authorized":"DEMO armed") : env);
    if(!ok2 && first_fail=="") first_fail=ReviewName(1);
 
@@ -2115,7 +2122,7 @@ string RunEntryReview(const SQsigSignal &s,const string sym,const double price,
    if(InpMaxDataAgeSeconds>0)
      {
       long age=(long)TimeCurrent()-(long)SymbolInfoInteger(sym,SYMBOL_TIME);
-      ok3=(age<=InpMaxDataAgeSeconds);
+      ok3=QER_TickAgeOk(age,InpMaxDataAgeSeconds);
       age_txt=IntegerToString(age)+"s old (cap "+IntegerToString(InpMaxDataAgeSeconds)+"s)";
      }
    ReviewLine(2,ok3,age_txt);
@@ -2125,15 +2132,11 @@ string RunEntryReview(const SQsigSignal &s,const string sym,const double price,
    double sp_pts=MathAbs((SymbolInfoDouble(sym,SYMBOL_ASK)-SymbolInfoDouble(sym,SYMBOL_BID))
                          /MathMax(SymbolInfoDouble(sym,SYMBOL_POINT),1e-12));
    double stop_pts=MathAbs(price-s.sl)/MathMax(SymbolInfoDouble(sym,SYMBOL_POINT),1e-12);
-   bool abs_ok=((int)sp_pts<=InpMaxSpreadPoints);
-   bool share_ok=true;
+   //--- v6.6.24: the absolute cap AND the share-of-stop cap live in
+   //--- QER_SpreadOk, which also hands back the measured share for the line
+   //--- below (0.0 when the share cap is off).
    double share=0.0;
-   if(InpMaxSpreadFracOfStop>0.0 && stop_pts>0.0)
-     {
-      share=sp_pts/stop_pts;
-      share_ok=(share<=InpMaxSpreadFracOfStop);
-     }
-   bool ok4=(abs_ok && share_ok);
+   bool ok4=QER_SpreadOk(sp_pts,InpMaxSpreadPoints,stop_pts,InpMaxSpreadFracOfStop,share);
    ReviewLine(3,ok4,StringFormat("%.0f pts (abs cap %d) = %.1f%% of a %.0f-pt stop (share cap %.0f%%)",
                                  sp_pts,InpMaxSpreadPoints,share*100.0,stop_pts,
                                  InpMaxSpreadFracOfStop*100.0));
@@ -2142,13 +2145,13 @@ string RunEntryReview(const SQsigSignal &s,const string sym,const double price,
    // R5 session: the SAME resolver the entry path uses, so the review can
    // never disagree with the gate that already ran.
    string sess_why="";
-   bool ok5=SessionOpenNow(sess_why);
+   bool ok5=QER_SessionOk(SessionOpenNow(sess_why));
    ReviewLine(4,ok5,ok5 ? "inside the session window" : sess_why);
    if(!ok5 && first_fail=="") first_fail=ReviewName(4);
 
    // R6 daily cap
    int max_day=MaxTradesPerDayNow();
-   bool ok6=(max_day<=0 || TradesToday()<max_day);
+   bool ok6=QER_TradesTodayOk(TradesToday(),max_day);
    ReviewLine(5,ok6,IntegerToString(TradesToday())+" of "+
               (max_day<=0?"unlimited":IntegerToString(max_day))+" today");
    if(!ok6 && first_fail=="") first_fail=ReviewName(5);
@@ -2156,13 +2159,12 @@ string RunEntryReview(const SQsigSignal &s,const string sym,const double price,
    // R7 open positions
    int max_pos=MaxOpenPositionsNow();
    int open_n=OpenCount(sym);
-   bool ok7=(open_n<max_pos);
+   bool ok7=QER_OpenPositionsOk(open_n,max_pos);
    ReviewLine(6,ok7,IntegerToString(open_n)+" of "+IntegerToString(max_pos)+" open on "+sym);
    if(!ok7 && first_fail=="") first_fail=ReviewName(6);
 
    // R8 geometry on the CURRENT price
-   bool shape=(buy ? (s.sl<price && s.tp>price) : (s.sl>price && s.tp<price));
-   bool ok8=(shape && s.sl>0.0 && s.tp>0.0);
+   bool ok8=QER_GeometryOk(s.sl,s.tp,price,buy);
    ReviewLine(7,ok8,StringFormat("sl %.5f / price %.5f / tp %.5f",s.sl,price,s.tp));
    if(!ok8 && first_fail=="") first_fail=ReviewName(7);
 
@@ -2171,24 +2173,24 @@ string RunEntryReview(const SQsigSignal &s,const string sym,const double price,
    double dist=MathAbs(price-s.sl);
    double reward=(buy ? s.tp-price : price-s.tp);
    double rr=(dist>0.0 ? reward/dist : 0.0);
-   bool ok9=(InpMinRRAtFill<=0.0 || rr+1e-9>=InpMinRRAtFill);
+   bool ok9=QER_RROk(rr,InpMinRRAtFill);
    ReviewLine(8,ok9,StringFormat("RR %.2f at fill (floor %.2f)",rr,InpMinRRAtFill));
    if(!ok9 && first_fail=="") first_fail=ReviewName(8);
 
    // R10 broker stops level
-   bool ok10=StopsDistanceOK(sym,price,s.sl,s.tp);
+   bool ok10=QER_StopsOk(StopsDistanceOK(sym,price,s.sl,s.tp));
    ReviewLine(9,ok10,"broker stops/freeze level accepts this SL/TP");
    if(!ok10 && first_fail=="") first_fail=ReviewName(9);
 
    // R11 size
-   bool ok11=(lots>0.0);
+   bool ok11=QER_SizeOk(lots);
    ReviewLine(10,ok11,StringFormat("%.2f lots = %.2f%% of equity at the stop (class %.2fx of base %.2f%%)",
                                    lots,ScaledRiskPercent(s.cls),RiskMultiplierForClass(s.cls),
                                    EffectiveRiskPercent()));
    if(!ok11 && first_fail=="") first_fail=ReviewName(10);
 
    // R12 opposite exposure
-   bool ok12=(opposite==0 || InpCloseOnOpposite);
+   bool ok12=QER_OppositeOk(opposite,InpCloseOnOpposite);
    ReviewLine(11,ok12,ok12 ? "no opposite position of this magic"
                             : "opposite position #"+IntegerToString((long)opposite)+" is live");
    if(!ok12 && first_fail=="") first_fail=ReviewName(11);
