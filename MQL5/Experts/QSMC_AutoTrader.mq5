@@ -1898,8 +1898,18 @@ double ScaledRiskPercent(const int cls)
 // The first EA to claim an identity owns it; the second declines and says so.
 string OwnerGlobalName(const string key)
   {
+   // v6.6.24 (F-002): the MAGIC is NOT part of the name any more - it is the
+   // VALUE. It used to be in both, which made the ownership test dead code:
+   // the name carried InpMagic, the value was InpMagic, so
+   // `owner!=(long)InpMagic` could never be true and a SECOND QSMC executor
+   // with a different magic claimed the same signal bar without ever being
+   // seen by the first. The name is now (prefix, login, sanitised symbol, key)
+   // - the identity of the BAR, not of the EA - and the value names the owner.
+   // One EA on one chart behaves exactly as before: it finds no foreign claim.
+   // The symbol belongs in the name because bars align across symbols, and a
+   // claim on XAUUSD must not block the same bar time on EURUSD.
    return QSMC_EXEC_OWNER_PREFIX+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+
-          "_"+IntegerToString(InpMagic)+"_"+key;
+          "_"+KeySafe(_Symbol)+"_"+key;
   }
 
 bool ClaimExecutionLane(const string key,const datetime bar_time,const int dir)
