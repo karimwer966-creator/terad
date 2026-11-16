@@ -120,6 +120,13 @@ jobs:
       - name: Execution rules (day/drawdown/streak/cooldown floors + 12 review conditions)
         run: python3 tools/test_execution_rules.py 2>&1 | tee out/test_execution_rules.log
 
+      # v6.6.24 / F-008. "piercing" and "dark cloud" demanded a close both above
+      # and below the same price, so two of the four named reversal patterns
+      # could never fire. The geometry is now pure and this step executes it,
+      # including a sweep proving the old expressions were unsatisfiable.
+      - name: Candle reversal geometry (piercing / dark cloud, proven satisfiable)
+        run: python3 tools/test_candle_patterns.py 2>&1 | tee out/test_candle_patterns.log
+
       - name: Diagnostic bridge (the indicator's verdict -> the companion's heartbeat)
         run: python3 tools/test_diag_bridge.py 2>&1 | tee out/test_diag_bridge.log
 

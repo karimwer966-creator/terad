@@ -72,6 +72,9 @@ CHECKS = [
     # v6.6.24: the pure execution rules, compiled and run natively (breakers +
     # the twelve RunEntryReview conditions + the per-identity retry budget).
     ("execution-rules", [sys.executable, "tools/test_execution_rules.py"]),
+    # v6.6.24: the two-bar reversal geometry, compiled and run natively. Two of
+    # the four named patterns were unsatisfiable in v6.6.23.
+    ("candle-patterns", [sys.executable, "tools/test_candle_patterns.py"]),
     ("diag-bridge", [sys.executable, "tools/test_diag_bridge.py"]),
     ("historical-atr", [sys.executable, "tools/test_historical_atr_contract.py"]),
     ("volatility-window", [sys.executable, "tools/test_volatility_window.py"]),

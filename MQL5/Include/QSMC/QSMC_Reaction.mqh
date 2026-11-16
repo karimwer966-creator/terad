@@ -26,6 +26,9 @@
 #define __QSMC_REACTION_MQH__
 
 #include <QSMC/QSMC_Types.mqh>
+//--- v6.6.24 (F-008): pure two-bar reversal geometry, executed by
+//--- tools/test_candle_patterns.py. Header-only, no dependencies.
+#include <QSMC/QSMC_CandlePatterns.mqh>
 #include <QSMC/QSMC_MarketData.mqh>
 
 #define QSMC_MSS_LOOKBACK 12
@@ -79,8 +82,11 @@ private:
                       upper<=MathMax(body*0.75,DBL_EPSILON) &&
                       (r_c-r_l)/range>=0.62);
          //--- piercing: opens below the prior close, closes above the
-         //--- midpoint of the prior bearish body
-         bool piercing=(p_c<p_o && up && r_c>p_o && r_c<(p_o+p_c)*0.5);
+         //--- midpoint of the prior bearish body (v6.6.24 / F-008: the old
+         //--- expression required r_c>p_o AND r_c<mid while the prior bar is
+         //--- bearish, i.e. mid<p_o - unsatisfiable. Geometry moved to
+         //--- QSMC_CandlePatterns.mqh so it can be executed by a test.)
+         bool piercing=QCP_Piercing(p_o,p_c,r_o,r_c);
          //--- three-bar morning star
          if(i<2) return (bull_engulf || hammer || piercing);
          double b2o=bars.O(i-2), b2c=bars.C(i-2);
@@ -98,7 +104,9 @@ private:
          bool shooting=(upper>=body*m_wick_mult &&
                         lower<=MathMax(body*0.75,DBL_EPSILON) &&
                         (r_c-r_l)/range<=0.38);
-         bool dark_cloud=(p_c>p_o && dn && r_c<p_o && r_c>(p_o+p_c)*0.5);
+         //--- v6.6.24 / F-008: same defect on the bearish side (prior bar
+         //--- bullish => mid>p_o, so "r_c<p_o AND r_c>mid" was impossible).
+         bool dark_cloud=QCP_DarkCloud(p_o,p_c,r_o,r_c);
          if(i<2) return (bear_engulf || shooting || dark_cloud);
          double b2o=bars.O(i-2), b2c=bars.C(i-2);
          double m_o=bars.O(i-1), m_h=bars.H(i-1), m_l=bars.L(i-1), m_c=bars.C(i-1);
