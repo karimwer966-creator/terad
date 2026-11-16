@@ -138,6 +138,9 @@ NEEDED = (["QSMC_%s.mqh" % n for n in
              # v6.6.22 chart hygiene: one identity per setup, and the layer policy
              # nadir2.mq5's display choke point consults
              "SignalRegistry", "ChartLayers",
+             # v6.6.24: the EA's breaker/review arithmetic and the two-bar
+             # reversal geometry, extracted so they can be executed by tests.
+             "ExecutionRules", "CandlePatterns",
              # v6.6.22 SMC + Volume Profile decision engine (display only): the
              # modules of MQL5/Indicators/QSMC_SmcVpEngine.mq5. They are headers of
              # this layer, so G4 holds them to the same rules: no trade API, and

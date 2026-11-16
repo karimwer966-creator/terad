@@ -188,7 +188,7 @@ check(re.search(r"#property indicator_buffers\s+26", RAW) is not None,
 check(re.search(r"#property indicator_plots\s+7", RAW) is not None,
       "H indicator_plots is still 7")
 check(re.search(r'QSMC_VERSION_TEXT\s+"v6\.6\.23"', RAW) is not None,
-      "H the version triple is v6.6.23 (v6.6.23 bias arbitration + report fixes; chart hygiene from v6.6.22)")
+      "H the version triple is v6.6.24 (v6.6.24 audit release)")
 check(RAW.count("\n") - RAW.count("\r\n") == 0, "H the file is still pure CRLF")
 
 print("")

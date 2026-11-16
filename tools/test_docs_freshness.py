@@ -418,15 +418,15 @@ check("indicator_buffers 26" in DOC_FLAT or "indicator_buffers` 26" in DOC_FLAT,
 # pair now in force - not the historical value.
 _VERSION_TEXT = re.search(r'QSMC_VERSION_TEXT\s+"(v[\d.]+)"', RAW)
 _PROP = re.search(r'#property version\s+"([\d.]+)"', RAW)
-check(_VERSION_TEXT is not None and _VERSION_TEXT.group(1) == "v6.6.23",
-      "D QSMC_VERSION_TEXT is v6.6.23 (v6.6.23: bias arbitration + report fixes, "
-      "chart hygiene carried from v6.6.22); AUDIT-G1's one-triple rule still holds",
+check(_VERSION_TEXT is not None and _VERSION_TEXT.group(1) == "v6.6.24",
+      "D QSMC_VERSION_TEXT is v6.6.24 (v6.6.24 audit release); AUDIT-G1's "
+      "one-triple rule still holds",
       str(_VERSION_TEXT.group(1) if _VERSION_TEXT else None))
-check(_PROP is not None and _PROP.group(1) == "6.623",
-      "D #property version is \"6.623\" - the X.(Y+Z) form G1 requires",
+check(_PROP is not None and _PROP.group(1) == "6.624",
+      "D #property version is \"6.624\" - the X.(Y+Z) form G1 requires",
       str(_PROP.group(1) if _PROP else None))
-check("v6.6.23" in DOC_FLAT and '"6.623"' in DOC_FLAT,
-      "D the doc reports the triple in force: v6.6.23 / \"6.623\"",
+check("v6.6.24" in DOC_FLAT and '"6.624"' in DOC_FLAT,
+      "D the doc reports the triple in force: v6.6.24 / \"6.624\"",
       "the doc still states an older release as current")
 
 # six module self-tests, 9+9+9+9+10+10 = 56 in-file checks

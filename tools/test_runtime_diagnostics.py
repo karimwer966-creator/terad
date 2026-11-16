@@ -50,9 +50,9 @@ def compile_run(source, label):
 
 check(HOST.read_bytes().count(b"\n") == HOST.read_bytes().count(b"\r\n"),
       "canonical host remains pure CRLF")
-check('#property version   "6.623"' in TEXT and
-      '#define QSMC_VERSION_TEXT "v6.6.23"' in TEXT,
-      "host identity is v6.6.23 (v6.6.23 bias arbitration + report fixes; chart hygiene from v6.6.22)")
+check('#property version   "6.624"' in TEXT and
+      '#define QSMC_VERSION_TEXT "v6.6.24"' in TEXT,
+      "host identity is v6.6.24 (v6.6.24 audit release)")
 check(TEXT == (ROOT / "MQL5/Indicators/nadir2.mq5").read_text(encoding="utf-8"),
       "deployment copy is synchronized")
 

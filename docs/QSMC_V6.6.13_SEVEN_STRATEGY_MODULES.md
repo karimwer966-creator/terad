@@ -522,7 +522,7 @@ and did not add one.
 | Existing score state | `g_score.` 74, `final_score` 21, `setup_quality_score` 6 — unchanged | Phase 6 suite |
 | Closed-bar idioms | `rates_total-2` ×12, `ArraySize(g_buf_c)-2` ×3, `g_rates_total-2` ×8 — unchanged | Phases 5 & 6 suites |
 | Dashboard card | **13 candidate rows under the 11-row cap** — no module added a row | `test_dashboard_clarity.py` + Phases 6 & 7 |
-| Version triple | `v6.6.23` / `"6.623"` — moved at v6.6.13 (AUDIT-G1, §11.10) and carried forward by every release since | `check_release_gate.py` G1 |
+| Version triple | `v6.6.24` / `"6.624"` — moved at v6.6.13 (AUDIT-G1, §11.10) and carried forward by every release since | `check_release_gate.py` G1 |
 | Sizing | text only; one formatter; both branches disclaim; no division by zero | Phase 7 suite |
 | Symbol-agnostic | no literal price level in any module core | Phases 2, 3, 5, 7 suites |
 | Enums | 47, all appended — none renumbered (43 at v6.6.13, +2 at v6.6.21, +2 at v6.6.22) | Phase 5 suite |
