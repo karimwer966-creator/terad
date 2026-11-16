@@ -22,6 +22,24 @@
 //|  EA can never act on a forming candle. It trades the CORE         |
 //|  published signal only - not the tactical preview mark, not ZRE.  |
 //|                                                                   |
+//|  SHIPPING STATE (read this before attaching)                       |
+//|  ------------------------------------------                       |
+//|  The compiled defaults are: InpEnableTrading=true,                 |
+//|  InpDryRun=false, InpDemoOnly=true, an EMPTY                        |
+//|  InpRealAccountConfirm. On a DEMO account that means the EA really  |
+//|  sends orders with no .set file at all; on a REAL account OnInit    |
+//|  refuses to start unless all three confirmation inputs are typed    |
+//|  literally. The attach banner prints the resolved state             |
+//|  ("state ARMED: DEMO account, live orders") so the truth is one     |
+//|  line away, never assumed.                                          |
+//|                                                                     |
+//|  Changing any of those defaults is a RELEASE decision, not a code   |
+//|  edit: tools/check_release_gate.py pins the shipping trio in        |
+//|  required_defaults and tools/package_production.py prints it into   |
+//|  the packaged manifest, and the presets under presets/ mirror the   |
+//|  compiled values (tools/test_defaults_match_preset.py enforces the  |
+//|  mirror). Flip all of them together or none.                        |
+//|                                                                     |
 //|  FIXED SIZE, FIXED PIP LADDER (opt-in, off by default)            |
 //|  --------------------------------------------------               |
 //|  InpLotMode=QSMC_LOT_FIXED with InpFixedLots=0.05 takes the same   |
@@ -338,6 +356,10 @@ input bool   InpResetBreakersAtInit  = false;  // SAFETY RESET: when true at EA 
 input int    InpPinTimeframeMinutes  = 15;     // TIMEFRAME PIN: 0 = off. 15 = this EA only runs on an M15 chart (the QSMC profile timeframe) and refuses any other. It never switches the chart itself.
 input int    InpMaxDataAgeSeconds    = 30;     // refuse entries when the last tick is older than this (stale feed / disconnect); 0 = off
 input int    InpMaxSignalAgeBars     = 2;      // ignore a signal older than this many closed bars
+                                               // 1 = only the bar that just closed. 2 is the shipped
+                                               // value for the DEMO presets; on M15 that accepts a
+                                               // 30-minute-old signal, so lower it if you want the
+                                               // entry to be as fresh as the indicator's own state.
 input int    InpMinStopPoints        = 20;     // refuse a stop closer than this
 input int    InpMaxStopPoints        = 5000;   // refuse a stop wider than this
 input bool   InpCloseOnOpposite      = false;  // close this magic's position on an opposite signal
