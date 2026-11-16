@@ -1,4 +1,4 @@
-# QSMC v6.6.13 — the execution companion (`QSMC_AutoTrader.mq5`)
+# QSMC v6.6.24 — the execution companion (`QSMC_AutoTrader.mq5`)
 
 ## 0. العربية — باختصار
 
@@ -200,6 +200,50 @@ each file goes (one EA per chart) and which timeframe suits which pip ladder.
 | `InpVerbose` | `false` | add the repeated "still skipped" polls |
 | `InpHeartbeatSeconds` | `300` | print a read-only diagnostic line every N seconds; `0` disables it |
 | `InpHeartbeatLookback` | `200` | how many closed bars the heartbeat scans for any published CORE signal |
+| `InpEnableTrialJournal` | `true` | write the trial CSV (v6.6.24, §3b). Read-only instrumentation: it can never refuse, delay or change an order |
+
+### 3b. The trial journal — `InpEnableTrialJournal` (v6.6.24)
+
+Every execution event the EA already decides is also written to one CSV, so a demo
+trial can be judged from data instead of from memory. The file is
+`QSMC_trial_<login>.csv` in the terminal's `Files` folder (one file per account,
+unexpected rows cannot leak between accounts), append-only, one header line only
+into an empty file.
+
+Columns, in this order:
+
+`time_server, symbol, tf, magic, signal_bar_time, dir, class, score, entry_signal,
+sl, tp, spread_points, lots, risk_money, retcode, event, note`
+
+| `event` | written when | what `note` carries |
+| --- | --- | --- |
+| `signal_seen` | a CORE signal passed the freshness check | the bar it came from |
+| `order_sent` | **before** `OrderSend` | the exact request |
+| `order_refused` | an EA filter or the broker refused | the reason / retcode |
+| `fill` | the position exists | position, deal, entry, server SL/TP, `slip_points`, `PARTIAL` |
+| `partial_close` | a partial close succeeded | the ticket and the risk |
+| `sl_move` | break-even or a trailing move | old → new stop |
+| `close` | the position is flat | profit, `R`, and the out-deals rebuilt from deal history |
+| `breaker_trip` | daily loss / drawdown / consecutive-loss guard trips | which breaker |
+
+**Logging cannot affect trading.** Every entry point returns immediately when the
+switch is off or the handle is invalid; the `FileWrite` return value is counted and
+never acted on; five consecutive write errors disable the journal with one `Print`;
+there is no `Sleep`, no retry loop and no allocation in the order path. A full disk
+costs you the diary, not the trade.
+
+Judging the trial is a separate, offline step:
+
+```bash
+python3 tools/analyze_trial.py path/to/QSMC_trial_<login>.csv   # funnel, refusals, breakers, R
+python3 tools/preflight_demo.py                                 # 24 attach-readiness checks, GO/NO-GO
+```
+
+`tools/analyze_trial.py` compares the result against owner thresholds in
+`tools/trial_acceptance.json` and prints **INCONCLUSIVE — sample size too small to
+conclude** below the sample floor. That sentence is the point: a 6-trade demo proves
+nothing, and the tool says so instead of printing a green check. The week-by-week
+sequence is `docs/DEMO_TRIAL_RUNBOOK.md`.
 
 ### The heartbeat: silence is the failure you will actually meet
 
@@ -438,6 +482,8 @@ CORE signal for that bar — the dashboard's `NEEDS:` row names the blocker, see
 
 ```bash
 python3 tools/test_autotrader_contract.py   # buffer map, switches, sizing arithmetic
+python3 tools/test_defaults_match_preset.py # the compiled defaults and the .set are one object
+python3 tools/preflight_demo.py             # 24 checks before an attach; prints GO / NO-GO
 python3 tools/check_release_gate.py         # G4 boundary + G8 how it ships
 python3 tools/mql5_rules.py --quiet         # MQL5 dialect rules, including this unit
 python3 tools/static_check.py               # balance / includes / forbidden constructs

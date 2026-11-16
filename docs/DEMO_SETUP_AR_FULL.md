@@ -4,8 +4,8 @@
 
 | الملف | لمن | المحتوى |
 |---|---|---|
-| `presets/nadir2_PRODUCTION_XAUUSD.set` | المؤشر `nadir2` | **519 مُدخلاً** = كل مُدخلات المؤشر، منها 71 قيمة مُفعَّلة/مضبوطة |
-| `presets/QSMC_AutoTrader_DEMO_0.10_200.set` | الإكسبرت | **51 مُدخلاً** = كل مُدخلات الـEA، منها 34 قيمة مضبوطة (0.10 لوت / 200 خسارة) |
+| `presets/nadir2_PRODUCTION_XAUUSD.set` | المؤشر `nadir2` | **542 مُدخلاً** = كل مُدخلات المؤشر، منها 71 قيمة مُفعَّلة/مضبوطة |
+| `presets/QSMC_AutoTrader_DEMO_0.10_200.set` | الإكسبرت | **68 مُدخلاً** = كل مُدخلات الـEA، منها 36 قيمة مضبوطة (0.10 لوت / 200 خسارة، وسجل التجربة) |
 
 > **مهم:** الملفان يُنتَجان من `tools/generate_set_presets.py` مباشرةً من تعريفات المُدخلات في الشفرة، والبوابة الآلية تفشل إن انحرف أي ملف عن الشفرة. لا تعدّلهما يدوياً — عدّل الشفرة أو جدول التجاوزات ثم أعد التوليد.
 
@@ -154,7 +154,16 @@ InpResetBreakersAtInit=true                       ← يمسح day_base القد
 ```
 أي `INIT REFUSED` / `TIMEFRAME PIN REFUSED` / `LOT CHECK` فاشل ⇒ **لا تتداول**؛ السبب مكتوب في السطر نفسه.
 
-**هـ. بعد أول ربط:** أعِد `InpResetBreakersAtInit=false` واضغط `Save`.
+**هـ. سطر سجل التجربة (v6.6.24):** بعد خطوة (د) يجب أن ترى
+```
+[QSMC_AT JOURNAL] <terminal data folder>/MQL5/Files/QSMC_trial_<login>.csv open, N bytes already in the file (rows are appended, never rewritten)
+```
+`says open 0 bytes` = ملف جديد (أول تشغيل) وسيُكتب سطر العناوين تلقائيًا.
+`DISABLED: cannot open … | TRADING IS NOT AFFECTED` = اذهب إلى
+`File → Open Data Folder → MQL5/Files` وتأكد أن المجلد قابل للكتابة؛ **التداول يعمل بلا سجل**، لكن التجربة لن تُحكَّم بلا CSV.
+`disabled by InpEnableTrialJournal=false` = الافتراضي `true`، فلا تُطفئه طوال التجربة.
+
+**و. بعد أول ربط:** أعِد `InpResetBreakersAtInit=false` واضغط `Save`.
 
 ---
 
@@ -163,6 +172,7 @@ InpResetBreakersAtInit=true                       ← يمسح day_base القد
 - في نافذة إعدادات المؤشر: `InpGateProfile` = `QSMC_GATE_PRACTICAL`، و`InpEnableAllModules` = `true`، و`InpMaxLiquidityKeep` = `40` (وليس 4)، و`InpEMASlow` = `200` (وليس 2). هذه الأربعة تكشف أي تحميل ناقص.
 - في `Journal`: `[QSMC_INIT]` يعرض `Caps: Struct 30 Liq 40 FVG 25 Zones 20` و`Causal graph: max 160`.
 - في `Experts`: سطر `GUARD ... loss_money=0.00/200.00 ... ARMED`.
+- في `Experts`: سطر `[QSMC_AT JOURNAL] ... open` (v6.6.24) — إن غاب فلا CSV ولن تُحكَّم التجربة.
 
 ---
 
@@ -170,5 +180,6 @@ InpResetBreakersAtInit=true                       ← يمسح day_base القد
 
 - **لم أُصرّف ولم أُشغّل MT5.** 43/43 فحصاً في البوابة تثبت الشكل والعقود فقط.
 - **لا وعد بربحية.** 0.10 لوت على الذهب ≈ 10 دولار لكل دولار حركة؛ راجع حسابك مقابل ميزانية 200 قبل التفعيل.
-- الحساب الحقيقي يحتاج `InpDemoOnly=false` **و** كتابة رقم الحساب في `InpRealAccountConfirm`، وهذا قرار منفصل موثّق في `docs/QSMC_GO_LIVE_RUNBOOK.md`.
+- الحساب الحقيقي مغلق افتراضيًا: الفئة تُكتشف من `ACCOUNT_TRADE_MODE`، ويحتاج `EXECUTION_REAL` إلى `InpAllowRealTrading=true` **و** رقم الحساب في `InpRealAccountConfirm` **و** اسم الخادم في `InpRealServerConfirm` — قرار منفصل موثّق في `docs/QSMC_GO_LIVE_RUNBOOK.md`.
+- **الحكم على التجربة:** `python3 tools/analyze_trial.py <مسار CSV>`، وبعد ثمانية أسابيع على الأقل `docs/DEMO_TRIAL_RUNBOOK.md`. أي نتيجة قبل 100 صفقة تُطبع «العينة أصغر من أن تُستنتج». 
 - الخيار (ب) في القسم 3 (تغيير الافتراضيات) يغيّر سلوك المنتج لكل مستخدم — لم أفعله بلا قرارك.
