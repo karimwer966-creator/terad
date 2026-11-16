@@ -451,8 +451,8 @@ for pat, label in ((r"(?m)^input int\s+InpRXNMinConfirmedScore\s*=\s*68;", "68")
 check("InpEnableAllModules" not in body(GRP, SESS + 1),
       "J the overlay is NOT folded into InpEnableAllModules: that switch is pinned "
       "to the seven strategy modules, and an advisory overlay is not an eighth one")
-check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
-      "J 583 input lines (574 + the 9 OBS1 lines)",
+check(len(re.findall(r"(?m)^input\s", TEXT)) >= 583,
+      "J no input was removed: at least the 583 of OBS1 (574 + the journal's nine)",
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
 # These were literal counts of a snapshot (3 597 braces, 43 454 lines, 44
 # enums). A literal count is a pin that cannot survive a release: it fails for
@@ -475,9 +475,13 @@ check("\n" not in RAW.replace("\r\n", ""), "J no bare LF: CRLF everywhere")
 check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) >= SNAP_ENUMS,
       "J no enum was removed (%d present, %d when SC1 landed) - appended, never "
       "renumbered" % (len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)), SNAP_ENUMS))
-check(len(re.findall(r"(?m)^#include", TEXT)) == 6
-      and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
-      and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes")
+INCS = re.findall(r"(?m)^#include\s+<([^>]+)>", TEXT)
+check(INCS == ["QSMC/QSMC_Root.mqh", "QSMC/QSMC_LiquidityValue.mqh",
+               "QSMC/QSMC_UnifiedDecision.mqh", "QSMC/QSMC_IncidentSafety.mqh",
+               "QSMC/QSMC_SignalRegistry.mqh", "QSMC/QSMC_ChartLayers.mqh",
+               "QSMC/QSMC_InstanceIdentity.mqh", "QSMC/QSMC_InputFingerprint.mqh"],
+      "J exactly the eight declared includes, in order (v6.6.22 added "
+      "SignalRegistry and ChartLayers)", "got %r" % (INCS,))
 check(len(re.findall(r"(?m)^#property indicator_buffers", TEXT)) == 1,
       "J no buffers added, so no plot index moved (the EA reads 7-12)")
 cs = [i + 1 for i, l in enumerate(LINES) if "PA_ZoneAt(" in l

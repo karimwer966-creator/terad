@@ -60,9 +60,16 @@ def line_at(n):
 def body(a, b):
     """Lines a..b of the file, given as snapshot coordinates. The SPAN is
     preserved, not the end point, so `body(V, V + 9)` stays "the nine lines
-    after the veto" even after a re-anchor."""
-    a = pinmap.line(SUITE, a)
-    return body_at(a, a + (b - a))
+    after the veto" even after a re-anchor.
+
+    BUG (fixed 2026-11-16): the span used to be computed as
+    `a + (b - a)` AFTER `a` had been rebased, which is always 0. Every pinned
+    body() therefore collapsed to a single line - and an empty one once the
+    first coordinate had drifted - so the probes silently read nothing. The
+    origin coordinate is kept separately here, exactly as test_scalping.py
+    already did."""
+    a2 = pinmap.line(SUITE, a)
+    return body_at(a2, a2 + (b - a))
 
 
 def body_at(a, b):
@@ -156,13 +163,23 @@ ENUM_LN = 4459
 check(line_at(ENUM_LN).strip() == "enum ENUM_FINAL_SIGNAL",
       "B enum ENUM_FINAL_SIGNAL is declared at L%d" % ENUM_LN,
       "L%d is %r" % (ENUM_LN, line_at(ENUM_LN).strip()[:70]))
+# 44 when RS1 landed. v6.6.21 added the execution profile and the signal class,
+# v6.6.22 the SMC+VP classification pair: 47 today. The invariant is that none
+# was REMOVED (appended, never inserted, so no enumerator shifts).
+SNAP_ENUMS = 44
 enums = len(re.findall(r"(?m)^enum\s+ENUM_", TEXT))
-check(enums == 44,
-      "B the enum was appended, not inserted: 44 ENUM_ declarations",
+check(enums >= SNAP_ENUMS,
+      "B the enum was appended, not inserted: %d ENUM_ declarations, at least "
+      "the %d of RS1" % (enums, SNAP_ENUMS),
       "got %d" % enums)
 ebody_start = ENUM_LN
-ebody_end = find_line(r"^\s*\};", ENUM_LN)
-ebody = body(ebody_start, ebody_end)
+# find_line() walks CURRENT lines, so it must start at the resolved enum, not
+# at the snapshot coordinate (starting at the raw number found another enum's
+# closing brace a few hundred lines above it and produced an empty body).
+ebody_end = find_line(r"^\s*\};", pinmap.line(SUITE, ENUM_LN) - 1)
+# ebody_end is already a CURRENT line; body() would re-interpret it as a
+# coordinate, so the span is assembled explicitly.
+ebody = body_at(pinmap.line(SUITE, ebody_start), ebody_end)
 for state, val in (("FS_WAIT", "0"), ("FS_BUY", "1"), ("FS_SELL", "-1"),
                    ("FS_CONFLICT_WAIT", "2")):
     check(re.search(r"\b%s=%s\b" % (state, re.escape(val)), ebody),
@@ -204,10 +221,14 @@ check(re.search(r"^int\s+ResolveFinalSignal\(const int closed,string &why\);",
       "C its forward declaration sits at L%d" % FWD,
       "L%d is %r" % (FWD, line_at(FWD).strip()[:70]))
 END = pinmap.C(SUITE, fn_end(DEF))
-check(0 < END - DEF <= 60,
-      "C the resolver is one small function (L%d-L%d, %d lines)" % (DEF, END, END - DEF),
+DEF_NOW = pinmap.line(SUITE, DEF)
+check(0 < END - DEF_NOW <= 60,
+      "C the resolver is one small function (L%d-L%d, %d lines)"
+      % (DEF_NOW, END, END - DEF_NOW),
       "a resolver that grows into a second engine is how the conflict came back")
-RB = body(DEF, END)
+# DEF is a snapshot coordinate and END is already current: mix them and the
+# "resolver body" silently becomes 1 500 lines of neighbouring code.
+RB = body_at(DEF_NOW, END)
 
 for k, leg in ((0, "bias"), (1, "zone"), (2, "reaction"), (3, "tactical")):
     check(re.search(r'vote\[%d\]=' % k, RB) and re.search(r'w\[%d\]=' % k, RB)
@@ -226,9 +247,11 @@ callsites = [i + 1 for i, l in enumerate(LINES)
 # checks, ClearMTFExecutionEntry sanity, Wyckoff/PA sanity). The key invariant
 # is that the resolver body contains exactly ONE call (its own vote), not that
 # the global count is 5.
-check(5832 in callsites,
-      "C the resolver's zone leg uses PA_ZoneAt (must be at L5832)", str(callsites))
-rb_calls = [ln for ln in callsites if DEF <= ln <= RB_END]
+check(pinmap.line(SUITE, 5832) in callsites,
+      "C the resolver's zone leg uses PA_ZoneAt (at L%d)"
+      % pinmap.line(SUITE, 5832), str(callsites))
+rb_calls = [ln for ln in callsites
+            if DEF_NOW <= ln <= pinmap.line(SUITE, RB_END)]
 check(len(rb_calls) == 1,
       "C the resolver body contains exactly one PA_ZoneAt call", str(rb_calls))
 check("vote[2]=(rb?1:0)-(rs?1:0)" in RB,
@@ -239,9 +262,11 @@ check("vote[3]=(g_tac_closed?g_tac_dir:0);" in RB and "w[3]=InpResWeightTactical
 check("if((buy>0 && sell>0) || (rb && rs))" in RB and "return 2;" in RB,
       "C both sides voting returns 2 = CONFLICT, never a coin flip")
 CONFLICT_WHY = find_line(r'why="CONFLICT: BUY "', DEF)
-check(CONFLICT_WHY > DEF and "disagreeing layers mean stand aside" in line_at(CONFLICT_WHY + 1),
+# find_line() returns a CURRENT line, so the line after it is read directly.
+check(CONFLICT_WHY > DEF_NOW
+      and "disagreeing layers mean stand aside" in LINES[CONFLICT_WHY],
       "C the CONFLICT why-text says stand aside (L%d)" % CONFLICT_WHY,
-      "L%d is %r" % (CONFLICT_WHY + 1, line_at(CONFLICT_WHY + 1).strip()[:80]))
+      "L%d is %r" % (CONFLICT_WHY + 1, LINES[CONFLICT_WHY].strip()[:80]))
 check('if(buy==0 && sell==0){ why="no layer voted - WAIT"; g_res_score=0; return 0; }' in RB,
       "C nothing voted returns 0 = WAIT and zeroes the score")
 MINCHK = 5854
@@ -391,23 +416,33 @@ check("OrderSend" not in RB and "ObjectCreate" not in RB,
       "G the resolver body itself is free of order and object APIs")
 
 inputs = len(re.findall(r"(?m)^input\s", TEXT))
-check(inputs == 583, "G nadir2.mq5 has 583 input lines (538 + 10 RS1 + 10 GS1 + 16 SC1 + 9 OBS1)",
+# Snapshot counts are lower bounds now: a release that only appends must not
+# turn this suite red for nothing. 583 = 538 + 10 RS1 + 10 GS1 + 16 SC1 + 9 OBS1.
+SNAP_INPUTS, SNAP_BRACES, SNAP_LINES = 583, 3597, 43497
+check(inputs >= SNAP_INPUTS,
+      "G nadir2.mq5 still has at least the 583 input lines of OBS1 (%d)" % inputs,
       "got %d" % inputs)
 check(TEXT.count("{") == TEXT.count("}"),
       "G braces balance (%d/%d)" % (TEXT.count("{"), TEXT.count("}")))
-check(TEXT.count("{") == 3597, "G brace count is the pinned 3597",
+check(TEXT.count("{") >= SNAP_BRACES, "G the file never lost code (%d braces, at least %d)"
+      % (TEXT.count("{"), SNAP_BRACES),
       "got %d" % TEXT.count("{"))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43497,
-      "G the file is 43497 lines - no scratch rewrite, RS1 + GS1 and the LV include tail",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 >= SNAP_LINES,
+      "G the file only grew (%d lines, was %d at RS1+GS1)"
+      % (len(RAW.replace("\r\n", "\n").split("\n")) - 1, SNAP_LINES),
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
-check(len(re.findall(r"(?m)^#include", TEXT)) == 6
-      and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
-      and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT
-      and "#include <QSMC/QSMC_Root.mqh>" in line_at(639),
-      "G exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes, root remains L639; no "
-      "duplicated logic", str(re.findall(r"(?m)^#include.*", TEXT)))
+INCS = re.findall(r"(?m)^#include\s+<([^>]+)>", TEXT)
+check(INCS == ["QSMC/QSMC_Root.mqh", "QSMC/QSMC_LiquidityValue.mqh",
+               "QSMC/QSMC_UnifiedDecision.mqh", "QSMC/QSMC_IncidentSafety.mqh",
+               "QSMC/QSMC_SignalRegistry.mqh", "QSMC/QSMC_ChartLayers.mqh",
+               "QSMC/QSMC_InstanceIdentity.mqh", "QSMC/QSMC_InputFingerprint.mqh"]
+      and TEXT.count("#include <QSMC/QSMC_Root.mqh>") == 1,
+      "G exactly the eight declared includes, in order, with the root first and "
+      "declared once (L%d): no duplicated logic (v6.6.22 added SignalRegistry "
+      "and ChartLayers)" % (LINES.index("#include <QSMC/QSMC_Root.mqh>") + 1),
+      str(INCS))
 check(len(re.findall(r"(?m)^#property indicator_buffers", TEXT)) == 1,
       "G the resolver added no buffers, so no existing plot index moved "
       "(the EA reads 7-12)")

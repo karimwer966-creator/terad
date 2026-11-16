@@ -63,9 +63,16 @@ def line_at(n):
 def body(a, b):
     """Lines a..b of the file, given as snapshot coordinates. The SPAN is
     preserved, not the end point, so `body(V, V + 9)` stays "the nine lines
-    after the veto" even after a re-anchor."""
-    a = pinmap.line(SUITE, a)
-    return body_at(a, a + (b - a))
+    after the veto" even after a re-anchor.
+
+    BUG (fixed 2026-11-16): the span used to be computed as
+    `a + (b - a)` AFTER `a` had been rebased, which is always 0. Every pinned
+    body() therefore collapsed to a single line - and an empty one once the
+    first coordinate had drifted - so the probes silently read nothing. The
+    origin coordinate is kept separately here, exactly as test_scalping.py
+    already did."""
+    a2 = pinmap.line(SUITE, a)
+    return body_at(a2, a2 + (b - a))
 
 
 def body_at(a, b):
@@ -122,7 +129,10 @@ OC_DISP, OC_RES, OC_RESWHY, OBS_GUARD, OBS_CALL = 15751, 15757, 15758, 15763, 15
 TIP_SCALP, TIP_GUARD, TIP_OBS = 32049, 32051, 32052
 
 MOD_A, MOD_Z = NEXTIDX, pinmap.C(SUITE, fn_end(SELFTEST))
-MOD = body(MOD_A, MOD_Z)
+# MOD_A is a snapshot COORDINATE and MOD_Z is already a CURRENT line, so the
+# two ends must not be passed through body() together - that mixed the two
+# scales and stretched the region over thousands of lines of later code.
+MOD = body_at(pinmap.line(SUITE, MOD_A), MOD_Z)
 REC = fn_body(RECORD)
 JT = fn_body(JTEXT)
 ST = fn_body(SELFTEST)
@@ -197,7 +207,10 @@ check("CORE / RXN / ZRE / unset" in line_at(STRUCT + 10),
 check(TEXT.count("indicator_buffers") == 1,
       "B the journal adds no plot buffer: the file still declares one",
       "got %d" % TEXT.count("indicator_buffers"))
-check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,
+# 44 when OBS1 landed; 45-47 are v6.6.21's execution profile / signal class and
+# the classification pair. The invariant is that THIS module contributes none:
+# gate_state stays an int with the named mapping above.
+check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 47,
       "B the journal adds no enum: gate_state stays an int with a named mapping",
       "got %d" % len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)))
 
@@ -453,9 +466,16 @@ for nm, pat in PATTERNS:
     check(len(hits) == 1, "H OnCalculate contains exactly one %s call" % nm,
           "found %s" % hits[:4])
     FOUND[nm] = hits[0] if len(hits) == 1 else None
-PINNED = {"confluence": OC_CF, "risk model": OC_RM, "scalping overlay": OC_SCALP,
-          "alert dispatcher": OC_DISP, "resolver verdict": OC_RES,
-          "resolver why-text": OC_RESWHY, "journal record": OBS_CALL}
+# The constants are SNAPSHOT COORDINATES; the search above returns CURRENT
+# lines. Comparing the two raw was a scale error: it failed on every drift, and
+# it would have failed even when the call had NOT moved. Resolve first.
+PINNED = {"confluence": pinmap.line(SUITE, OC_CF),
+          "risk model": pinmap.line(SUITE, OC_RM),
+          "scalping overlay": pinmap.line(SUITE, OC_SCALP),
+          "alert dispatcher": pinmap.line(SUITE, OC_DISP),
+          "resolver verdict": pinmap.line(SUITE, OC_RES),
+          "resolver why-text": pinmap.line(SUITE, OC_RESWHY),
+          "journal record": pinmap.line(SUITE, OBS_CALL)}
 for nm, want in PINNED.items():
     check(FOUND.get(nm) == want, "H the %s call is where this suite says it is (L%d)" % (nm, want),
           "found at L%s" % FOUND.get(nm))
@@ -545,15 +565,32 @@ check("InpEnableAllModules        = false" in line_at(898),
       "J the master switch still defaults false and still covers seven modules")
 check("OBS" not in line_at(898) and "journal" not in line_at(898).lower(),
       "J the master switch was not widened to include the journal")
-check(len(re.findall(r"(?m)^input\s", TEXT)) == 583,
-      "J 583 input lines: the 574 already there plus the journal's own nine",
+# Snapshot counts were literal once (583 inputs, 3 597 braces, 43 454 lines,
+# 6 includes). A literal count fails for every later release and teaches the
+# operator to ignore the suite, so the snapshot is a LOWER BOUND here and the
+# real invariants (balance, CRLF, the exact include set) are exact.
+SNAP_INPUTS, SNAP_BRACES, SNAP_LINES = 583, 3597, 43454
+check(len(re.findall(r"(?m)^input\s", TEXT)) >= SNAP_INPUTS,
+      "J no input was removed: %d input lines, at least the %d of OBS1 "
+      "(574 pre-existing + the journal's nine)"
+      % (len(re.findall(r"(?m)^input\s", TEXT)), SNAP_INPUTS),
       "got %d" % len(re.findall(r"(?m)^input\s", TEXT)))
-check(TEXT.count("{") == TEXT.count("}") == 3597, "J braces balance at 3597",
+check(TEXT.count("{") == TEXT.count("}") and TEXT.count("{") >= SNAP_BRACES,
+      "J braces balance and the file never lost code (%d braces, at least %d)"
+      % (TEXT.count("{"), SNAP_BRACES),
       "got %d / %d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(TEXT.split("\n")) - 1 == 43454, "J the file is 43454 lines",
+check(len(TEXT.split("\n")) - 1 >= SNAP_LINES, "J the file only grew (%d lines, was %d)"
+      % (len(TEXT.split("\n")) - 1, SNAP_LINES),
       "got %d" % (len(TEXT.split("\n")) - 1))
 check(RAW.replace("\r\n", "").count("\n") == 0, "J every line still ends CRLF: no bare LF was introduced")
-check(TEXT.count("#include") == 6 and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT, "J exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes", "got %d" % TEXT.count("#include"))
+INCS = re.findall(r"(?m)^#include\s+<([^>]+)>", TEXT)
+check(INCS == ["QSMC/QSMC_Root.mqh", "QSMC/QSMC_LiquidityValue.mqh",
+               "QSMC/QSMC_UnifiedDecision.mqh", "QSMC/QSMC_IncidentSafety.mqh",
+               "QSMC/QSMC_SignalRegistry.mqh", "QSMC/QSMC_ChartLayers.mqh",
+               "QSMC/QSMC_InstanceIdentity.mqh", "QSMC/QSMC_InputFingerprint.mqh"],
+      "J exactly the eight declared includes, in order: root, then the six module "
+      "tails, then the identity pair (v6.6.22 added SignalRegistry and ChartLayers)",
+      "got %r" % (INCS,))
 check(TEXT.count("PA_ZoneAt(") == 11,
       "J the journal adds no zone scan: PA_ZoneAt( is still at its pre-OBS1 count of 11",
       "got %d" % TEXT.count("PA_ZoneAt("))

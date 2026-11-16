@@ -17,10 +17,10 @@
      "wide": "InpObsTooltipBars>InpObsJournalBars))\n{\nPrint(\"Invalid Quantum SMC decision journal: keep 10-500 closed bars and show no more than you keep\");\nreturn INIT_PARAMETERS_INCORRECT;\n}"
     },
     "14575": {
-     "line": 14988,
+     "line": 15146,
      "line_text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Decision journal: ON | display and audit only | \"",
-     "text": "if(InpEnableDecisionJournal)\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal: ON | display and audit only | \"\n\"one row per closed bar | keeps \",InpObsJournalBars,\" shows \",InpObsTooltipBars);",
-     "wide": "}\nif(InpEnableDecisionJournal)\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal: ON | display and audit only | \"\n\"one row per closed bar | keeps \",InpObsJournalBars,\" shows \",InpObsTooltipBars);\n"
+     "text": "if(!QSMC_IsReaderSilent())\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal: ON | display and audit only | \"\n\"one row per closed bar | keeps \",InpObsJournalBars,\" shows \",InpObsTooltipBars);",
+     "wide": "{\nif(!QSMC_IsReaderSilent())\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal: ON | display and audit only | \"\n\"one row per closed bar | keeps \",InpObsJournalBars,\" shows \",InpObsTooltipBars);\n}"
     },
     "14578": {
      "line": 14992,
@@ -35,22 +35,22 @@
      "wide": "CF_Clear();\nRM_Clear();\nif(InpMTEERunSelfTest)\n{\nstring mtee_fail=\"\";"
     },
     "14970": {
-     "line": null,
-     "line_text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: PASS (10/10)\");",
-     "text": "if(SCALP_SelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: PASS (10/10)\");\nelse",
-     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Risk model self-test: FAIL - \",mtee_fail);\nif(SCALP_SelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: PASS (10/10)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: FAIL - \",mtee_fail);"
+     "line": 15560,
+     "line_text": "QSMC_InitPass(\" Scalping strategies self-test: PASS (10/10)\");",
+     "text": "if(SCALP_SelfTest(mtee_fail))\nQSMC_InitPass(\" Scalping strategies self-test: PASS (10/10)\");\nelse",
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Risk model self-test: FAIL - \",mtee_fail);\nif(SCALP_SelfTest(mtee_fail))\nQSMC_InitPass(\" Scalping strategies self-test: PASS (10/10)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: FAIL - \",mtee_fail);"
     },
     "14974": {
-     "line": null,
-     "line_text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: PASS (11/11)\");",
-     "text": "if(OBS_SelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: PASS (11/11)\");\nelse",
-     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: FAIL - \",mtee_fail);\nif(OBS_SelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: PASS (11/11)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: FAIL - \",mtee_fail);"
+     "line": 15564,
+     "line_text": "QSMC_InitPass(\" Decision journal self-test: PASS (11/11)\");",
+     "text": "if(OBS_SelfTest(mtee_fail))\nQSMC_InitPass(\" Decision journal self-test: PASS (11/11)\");\nelse",
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: FAIL - \",mtee_fail);\nif(OBS_SelfTest(mtee_fail))\nQSMC_InitPass(\" Decision journal self-test: PASS (11/11)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: FAIL - \",mtee_fail);"
     },
     "14976": {
-     "line": 15395,
+     "line": 15566,
      "line_text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: FAIL - \",mtee_fail);",
      "text": "else\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: FAIL - \",mtee_fail);\nif(QSMC_DeclutterSelfTest(mtee_fail))",
-     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: PASS (11/11)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: FAIL - \",mtee_fail);\nif(QSMC_DeclutterSelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: PASS (11/11)\");"
+     "wide": "QSMC_InitPass(\" Decision journal self-test: PASS (11/11)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: FAIL - \",mtee_fail);\nif(QSMC_DeclutterSelfTest(mtee_fail))\nQSMC_InitPass(\" Declutter cap self-test: PASS (11/11)\");"
     },
     "15112": {
      "line": 15578,
@@ -59,49 +59,49 @@
      "wide": "// MAIN - OnCalculate with chronological enforcement & delta rendering\n//====================================================================\nint OnCalculate(const int rates_total, const int prev_calculated,\nconst datetime &time[], const double &open[], const double &high[],\nconst double &low[], const double &close[], const long &tick_volume[],"
     },
     "15726": {
-     "line": 16228,
+     "line": 16406,
      "line_text": "if(is_new_bar || detection_updated) CF_Update(closed,rates_total);",
      "text": "// scored is what makes the summary a summary rather than a stale echo.\nif(is_new_bar || detection_updated) CF_Update(closed,rates_total);\n// AUDIT-RM1 Risk Model: display-only advisory. It runs AFTER CF_Update",
      "wide": "// mean-reversion verdict, alongside P3/SB/WY above. Scoring the same bar they\n// scored is what makes the summary a summary rather than a stale echo.\nif(is_new_bar || detection_updated) CF_Update(closed,rates_total);\n// AUDIT-RM1 Risk Model: display-only advisory. It runs AFTER CF_Update\n// because it attaches a plan to the side the confluence engine named, and"
     },
     "15731": {
-     "line": 16233,
+     "line": 16411,
      "line_text": "if(is_new_bar || detection_updated) RM_Update(closed,rates_total);",
      "text": "// adopted instead of re-derived. No buffer, no drawing, no order.\nif(is_new_bar || detection_updated) RM_Update(closed,rates_total);\n// AUDIT-SC1: the scalping overlay reads only what the modules above already",
      "wide": "// AFTER TopDown_Update() above so the chain's own entry/SL/TP1 can be\n// adopted instead of re-derived. No buffer, no drawing, no order.\nif(is_new_bar || detection_updated) RM_Update(closed,rates_total);\n// AUDIT-SC1: the scalping overlay reads only what the modules above already\n// published for this CLOSED bar. Advisory: it never writes the resolver verdict,"
     },
     "15735": {
-     "line": 16237,
+     "line": 16415,
      "line_text": "if(InpEnableScalping && (is_new_bar || detection_updated)) SCALP_Update(closed,rates_total);",
      "text": "// the alert primary, or any setup, and it sends no order.\nif(InpEnableScalping && (is_new_bar || detection_updated)) SCALP_Update(closed,rates_total);\n// v6.3.0 Zone Reaction Engine: closed-bar, observational, no entry authority.",
      "wide": "// published for this CLOSED bar. Advisory: it never writes the resolver verdict,\n// the alert primary, or any setup, and it sends no order.\nif(InpEnableScalping && (is_new_bar || detection_updated)) SCALP_Update(closed,rates_total);\n// v6.3.0 Zone Reaction Engine: closed-bar, observational, no entry authority.\n// Runs after MVP_Update so the active profile levels are current."
     },
     "15751": {
-     "line": 16253,
+     "line": 16431,
      "line_text": "AlertDispatcherFinalize(rates_total);",
      "text": "// One closed-bar arbiter for Core/ZRE/RXN directional alerts; no live-preview alert path.\nAlertDispatcherFinalize(rates_total);\n// AUDIT-RS1: one verdict for every surface. Reads only the closed-bar",
      "wide": "RXN_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);\n// One closed-bar arbiter for Core/ZRE/RXN directional alerts; no live-preview alert path.\nAlertDispatcherFinalize(rates_total);\n// AUDIT-RS1: one verdict for every surface. Reads only the closed-bar\n// globals published above; writes g_final_*. Nothing else observes it."
     },
     "15757": {
-     "line": 16259,
+     "line": 16437,
      "line_text": "g_final_signal=ResolveFinalSignal(closed,rs_why);",
      "text": "string rs_why=\"\";\ng_final_signal=ResolveFinalSignal(closed,rs_why);\ng_final_why=rs_why;",
      "wide": "{\nstring rs_why=\"\";\ng_final_signal=ResolveFinalSignal(closed,rs_why);\ng_final_why=rs_why;\n}"
     },
     "15758": {
-     "line": 16260,
+     "line": 16438,
      "line_text": "g_final_why=rs_why;",
      "text": "g_final_signal=ResolveFinalSignal(closed,rs_why);\ng_final_why=rs_why;\n}",
      "wide": "string rs_why=\"\";\ng_final_signal=ResolveFinalSignal(closed,rs_why);\ng_final_why=rs_why;\n}\n// AUDIT-OBS1: recorded LAST, so every layer has already published for this"
     },
     "15763": {
-     "line": 16265,
+     "line": 16443,
      "line_text": "if(InpEnableDecisionJournal && (is_new_bar || detection_updated || prev_calculated==0))",
      "text": "// nothing, draws nothing and sends nothing.\nif(InpEnableDecisionJournal && (is_new_bar || detection_updated || prev_calculated==0))\nOBS_Record(closed,rates_total);",
      "wide": "// closed bar. It reads their state and writes only the journal: it decides\n// nothing, draws nothing and sends nothing.\nif(InpEnableDecisionJournal && (is_new_bar || detection_updated || prev_calculated==0))\nOBS_Record(closed,rates_total);\nRXN_Draw();"
     },
     "15764": {
-     "line": 16266,
+     "line": 16444,
      "line_text": "OBS_Record(closed,rates_total);",
      "text": "if(InpEnableDecisionJournal && (is_new_bar || detection_updated || prev_calculated==0))\nOBS_Record(closed,rates_total);\nRXN_Draw();",
      "wide": "// nothing, draws nothing and sends nothing.\nif(InpEnableDecisionJournal && (is_new_bar || detection_updated || prev_calculated==0))\nOBS_Record(closed,rates_total);\nRXN_Draw();\n// Directional Scenario Engine: reads the finished ZRE/RXN snapshots and Core"
@@ -346,10 +346,10 @@
    "base": "22ba1bda74757af0b4e5f962790ad27f44b852f9",
    "pins": {
     "1285": {
-     "line": null,
-     "line_text": "input int InpMaxChartObjects = 0; // hard cap on QSMC_* chart objects per pass (0 = 1200, 900 with Clean)",
-     "text": "input int InpLabelFontSize = 0; // chart label font (0 = per-element default, 7 recommended with Clean)\ninput int InpMaxChartObjects = 0; // hard cap on QSMC_* chart objects per pass (0 = 1200, 900 with Clean)\ninput int InpMaxZonesPerSide = 5; // demand / supply boxes drawn per side (Clean forces 2)",
-     "wide": "input double InpProximityMaxATR = 0.35; // ...within this many ATR of the opposing edge\ninput int InpLabelFontSize = 0; // chart label font (0 = per-element default, 7 recommended with Clean)\ninput int InpMaxChartObjects = 0; // hard cap on QSMC_* chart objects per pass (0 = 1200, 900 with Clean)\ninput int InpMaxZonesPerSide = 5; // demand / supply boxes drawn per side (Clean forces 2)\ninput bool InpDeclutterMode = true; // Clean preset: fewer zones, small labels, capped objects"
+     "line": 1294,
+     "line_text": "input int InpMaxChartObjects = 500; // hard cap on QSMC_* chart objects per pass (v6.6.15: 500 to de-clutter the Sniper/RXN label stack; was 0 -> 1200)",
+     "text": "input int InpLabelFontSize = 0; // chart label font (0 = per-element default, 7 recommended with Clean)\ninput int InpMaxChartObjects = 500; // hard cap on QSMC_* chart objects per pass (v6.6.15: 500 to de-clutter the Sniper/RXN label stack; was 0 -> 1200)\ninput int InpMaxZonesPerSide = 5; // demand / supply boxes drawn per side (Clean forces 2)",
+     "wide": "input double InpProximityMaxATR = 0.35; // ...within this many ATR of the opposing edge\ninput int InpLabelFontSize = 0; // chart label font (0 = per-element default, 7 recommended with Clean)\ninput int InpMaxChartObjects = 500; // hard cap on QSMC_* chart objects per pass (v6.6.15: 500 to de-clutter the Sniper/RXN label stack; was 0 -> 1200)\ninput int InpMaxZonesPerSide = 5; // demand / supply boxes drawn per side (Clean forces 2)\ninput bool InpDeclutterMode = true; // Clean preset: fewer zones, small labels, capped objects"
     },
     "1287": {
      "line": 1296,
@@ -370,22 +370,22 @@
      "wide": "CF_Clear();\nRM_Clear();\nif(InpMTEERunSelfTest)\n{\nstring mtee_fail=\"\";"
     },
     "14959": {
-     "line": null,
-     "line_text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: PASS (11/11)\");",
-     "text": "if(OBS_SelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: PASS (11/11)\");\nelse",
-     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: FAIL - \",mtee_fail);\nif(OBS_SelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: PASS (11/11)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: FAIL - \",mtee_fail);"
+     "line": 15564,
+     "line_text": "QSMC_InitPass(\" Decision journal self-test: PASS (11/11)\");",
+     "text": "if(OBS_SelfTest(mtee_fail))\nQSMC_InitPass(\" Decision journal self-test: PASS (11/11)\");\nelse",
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: FAIL - \",mtee_fail);\nif(OBS_SelfTest(mtee_fail))\nQSMC_InitPass(\" Decision journal self-test: PASS (11/11)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: FAIL - \",mtee_fail);"
     },
     "14963": {
-     "line": null,
-     "line_text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: PASS (11/11)\");",
-     "text": "if(QSMC_DeclutterSelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: PASS (11/11)\");\nelse",
-     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: FAIL - \",mtee_fail);\nif(QSMC_DeclutterSelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: PASS (11/11)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: FAIL - \",mtee_fail);"
+     "line": 15568,
+     "line_text": "QSMC_InitPass(\" Declutter cap self-test: PASS (11/11)\");",
+     "text": "if(QSMC_DeclutterSelfTest(mtee_fail))\nQSMC_InitPass(\" Declutter cap self-test: PASS (11/11)\");\nelse",
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Decision journal self-test: FAIL - \",mtee_fail);\nif(QSMC_DeclutterSelfTest(mtee_fail))\nQSMC_InitPass(\" Declutter cap self-test: PASS (11/11)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: FAIL - \",mtee_fail);"
     },
     "14965": {
-     "line": 15399,
+     "line": 15570,
      "line_text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: FAIL - \",mtee_fail);",
      "text": "else\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: FAIL - \",mtee_fail);\n}",
-     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: PASS (11/11)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: FAIL - \",mtee_fail);\n}\nif(InpUseZRE)"
+     "wide": "QSMC_InitPass(\" Declutter cap self-test: PASS (11/11)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Declutter cap self-test: FAIL - \",mtee_fail);\n}\nif(InpUseZRE)"
     },
     "15097": {
      "line": 15578,
@@ -400,7 +400,7 @@
      "wide": "}\n\nif(InpSmartObjectManagement) SmartObjectCleanup(is_new_bar);\n\nbool needs_full_redraw=(is_new_bar || prev_calculated==0);"
     },
     "15749": {
-     "line": 16266,
+     "line": 16444,
      "line_text": "OBS_Record(closed,rates_total);",
      "text": "if(InpEnableDecisionJournal && (is_new_bar || detection_updated || prev_calculated==0))\nOBS_Record(closed,rates_total);\nRXN_Draw();",
      "wide": "// nothing, draws nothing and sends nothing.\nif(InpEnableDecisionJournal && (is_new_bar || detection_updated || prev_calculated==0))\nOBS_Record(closed,rates_total);\nRXN_Draw();\n// Directional Scenario Engine: reads the finished ZRE/RXN snapshots and Core"
@@ -1030,15 +1030,15 @@
     },
     "627": {
      "line": 627,
-     "line_text": "#property indicator_buffers 21 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)",
-     "text": "#property indicator_chart_window\n#property indicator_buffers 21 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)\n#property indicator_plots 7",
-     "wide": "#define QSMC_VERSION_TEXT \"v6.6.20\"\n#property indicator_chart_window\n#property indicator_buffers 21 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)\n#property indicator_plots 7\n//+------------------------------------------------------------------+"
+     "line_text": "#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)",
+     "text": "#property indicator_chart_window\n#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7",
+     "wide": "#define QSMC_VERSION_TEXT \"v6.6.22\"\n#property indicator_chart_window\n#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7\n//+------------------------------------------------------------------+"
     },
     "628": {
      "line": 628,
      "line_text": "#property indicator_plots 7",
-     "text": "#property indicator_buffers 21 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)\n#property indicator_plots 7\n//+------------------------------------------------------------------+",
-     "wide": "#property indicator_chart_window\n#property indicator_buffers 21 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs, INDICATOR_CALCULATIONS), 19-20 verdict codes (CORE_VERDICT/ZRE_VERDICT, INDICATOR_CALCULATIONS)\n#property indicator_plots 7\n//+------------------------------------------------------------------+\n//| v6.6.0 SIGNAL ARBITRATION LAYER |"
+     "text": "#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7\n//+------------------------------------------------------------------+",
+     "wide": "#property indicator_chart_window\n#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7\n//+------------------------------------------------------------------+\n//| v6.6.0 SIGNAL ARBITRATION LAYER |"
     },
     "747": {
      "line": 747,
@@ -1277,16 +1277,16 @@
      "wide": "return INIT_PARAMETERS_INCORRECT;\n}\nif(InpEnableScalping && (InpScalpStopATR<=0.0 || InpScalpTargetATR<=0.0 ||\nInpScalpMaxSpreadATR<=0.0 || InpScalpMinScore<0 || InpScalpMinScore>100 ||\nSCALP_RR(InpScalpStopATR,InpScalpTargetATR)<InpScalpMinRR))"
     },
     "14549": {
-     "line": 14968,
+     "line": 15126,
      "line_text": "if(InpEnableScalping)",
-     "text": "}\nif(InpEnableScalping)\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Scalping overlay: ON | advisory | display only | \"",
-     "wide": "return INIT_PARAMETERS_INCORRECT;\n}\nif(InpEnableScalping)\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Scalping overlay: ON | advisory | display only | \"\n\"closed-bar only | no orders | weights \",IntegerToString(SCALP_WeightsSum()),\"/100\");"
+     "text": "}\nif(InpEnableScalping)\n{",
+     "wide": "return INIT_PARAMETERS_INCORRECT;\n}\nif(InpEnableScalping)\n{\nif(!QSMC_IsReaderSilent())"
     },
     "14954": {
-     "line": 15388,
+     "line": 15559,
      "line_text": "if(SCALP_SelfTest(mtee_fail))",
-     "text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Risk model self-test: FAIL - \",mtee_fail);\nif(SCALP_SelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: PASS (10/10)\");",
-     "wide": "else\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Risk model self-test: FAIL - \",mtee_fail);\nif(SCALP_SelfTest(mtee_fail))\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Scalping strategies self-test: PASS (10/10)\");\nelse"
+     "text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Risk model self-test: FAIL - \",mtee_fail);\nif(SCALP_SelfTest(mtee_fail))\nQSMC_InitPass(\" Scalping strategies self-test: PASS (10/10)\");",
+     "wide": "else\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Risk model self-test: FAIL - \",mtee_fail);\nif(SCALP_SelfTest(mtee_fail))\nQSMC_InitPass(\" Scalping strategies self-test: PASS (10/10)\");\nelse"
     },
     "15720": {
      "line": 16237,
@@ -1610,181 +1610,193 @@
   "test_weighted_gates": {
    "base": "dd610017d4853d612b3cf5c429c86704e9bcef86",
    "pins": {
-    "14568": {
-     "line": 14940,
+    "15098": {
+     "line": 15098,
      "line_text": "if(InpUseWeightedGates &&",
      "text": "// an edited weight can never silently rescale what PUBLISH means.\nif(InpUseWeightedGates &&\nInpWGWeightLevel+InpWGWeightEvidence+InpWGWeightProximity+",
      "wide": "// AUDIT-GS1: same rule as the resolver - refuse rather than renormalise, so\n// an edited weight can never silently rescale what PUBLISH means.\nif(InpUseWeightedGates &&\nInpWGWeightLevel+InpWGWeightEvidence+InpWGWeightProximity+\nInpWGWeightAlignment+InpWGWeightRoom!=100)"
     },
-    "14575": {
-     "line": 14947,
+    "15105": {
+     "line": 15105,
      "line_text": "if(InpUseWeightedGates && (InpWGMinScore<0 || InpWGMinScore>100))",
      "text": "}\nif(InpUseWeightedGates && (InpWGMinScore<0 || InpWGMinScore>100))\n{",
      "wide": "return INIT_PARAMETERS_INCORRECT;\n}\nif(InpUseWeightedGates && (InpWGMinScore<0 || InpWGMinScore>100))\n{\nPrint(\"Invalid Quantum SMC InpWGMinScore: it must be between 0 and 100\");"
     },
-    "32084": {
-     "line": 32736,
+    "33511": {
+     "line": 33511,
      "line_text": "\"Weighted gate: \"+(g_wgate_why==\"\"?\"none\":g_wgate_why)+\"\\n\":\"\")+",
      "text": "(InpUseWeightedGates?\n\"Weighted gate: \"+(g_wgate_why==\"\"?\"none\":g_wgate_why)+\"\\n\":\"\")+\n(InpEnableScalping?",
      "wide": "\"Resolver: \"+(g_final_why==\"\"?\"none\":g_final_why)+\"\\n\":\"\")+\n(InpUseWeightedGates?\n\"Weighted gate: \"+(g_wgate_why==\"\"?\"none\":g_wgate_why)+\"\\n\":\"\")+\n(InpEnableScalping?\n\"Scalp: \"+(g_sc_why==\"\"?\"none\":g_sc_why)+\"\\n\":\"\")+"
     },
-    "40053": {
-     "line": 40713,
-     "line_text": "string base=AlertBaseKey(a);",
-     "text": "if(g_alert_sent_ids[i]==exact_key) return false;\nstring base=AlertBaseKey(a);\nint cooldown=(int)MathMax(0,MathMin(10000,InpAlertCooldownBars));",
-     "wide": "for(int i=0;i<QSMC_ALERT_RING_SIZE;i++)\nif(g_alert_sent_ids[i]==exact_key) return false;\nstring base=AlertBaseKey(a);\nint cooldown=(int)MathMax(0,MathMin(10000,InpAlertCooldownBars));\nfor(int i=0;i<QSMC_ALERT_RING_SIZE;i++)"
+    "41587": {
+     "line": 41587,
+     "line_text": "bool WeightedGateAllows(const SAlertCandidate &c,const datetime bar_time,string &why)",
+     "text": "//--------------------------------------------------------------------\nbool WeightedGateAllows(const SAlertCandidate &c,const datetime bar_time,string &why)\n{",
+     "wide": "// state only, writes only g_wgate_*, and sends no order.\n//--------------------------------------------------------------------\nbool WeightedGateAllows(const SAlertCandidate &c,const datetime bar_time,string &why)\n{\nwhy=\"\";"
     },
-    "40055": {
-     "line": 40715,
-     "line_text": "for(int i=0;i<QSMC_ALERT_RING_SIZE;i++)",
-     "text": "int cooldown=(int)MathMax(0,MathMin(10000,InpAlertCooldownBars));\nfor(int i=0;i<QSMC_ALERT_RING_SIZE;i++)\n{",
-     "wide": "string base=AlertBaseKey(a);\nint cooldown=(int)MathMax(0,MathMin(10000,InpAlertCooldownBars));\nfor(int i=0;i<QSMC_ALERT_RING_SIZE;i++)\n{\nif(g_alert_cooldown[i].key!=base) continue;"
-    },
-    "40058": {
-     "line": 40718,
-     "line_text": "if(g_alert_cooldown[i].last_event_id==exact_key) return false;",
-     "text": "if(g_alert_cooldown[i].key!=base) continue;\nif(g_alert_cooldown[i].last_event_id==exact_key) return false;\nif(cooldown>0 && a.closed_index-g_alert_cooldown[i].last_bar_index<cooldown) return false;",
-     "wide": "{\nif(g_alert_cooldown[i].key!=base) continue;\nif(g_alert_cooldown[i].last_event_id==exact_key) return false;\nif(cooldown>0 && a.closed_index-g_alert_cooldown[i].last_bar_index<cooldown) return false;\n}"
-    },
-    "40061": {
-     "line": 40721,
-     "line_text": "return true;",
-     "text": "}\nreturn true;\n}",
-     "wide": "if(cooldown>0 && a.closed_index-g_alert_cooldown[i].last_bar_index<cooldown) return false;\n}\nreturn true;\n}\n"
-    },
-    "40063": {
-     "line": 40723,
-     "line_text": "",
-     "text": "}\n\nvoid AlertCooldownCommit(const SAlertCandidate &a,const string exact_key)",
-     "wide": "return true;\n}\n\nvoid AlertCooldownCommit(const SAlertCandidate &a,const string exact_key)\n{"
-    },
-    "40093": {
-     "line": 40753,
-     "line_text": "string old=g_primary_mark_names[g_primary_mark_pos];",
-     "text": "string base=PFX+\"PRIMARY_\"+IntegerToString((long)a.bar_time);\nstring old=g_primary_mark_names[g_primary_mark_pos];\nif(old!=\"\")",
-     "wide": "{\nstring base=PFX+\"PRIMARY_\"+IntegerToString((long)a.bar_time);\nstring old=g_primary_mark_names[g_primary_mark_pos];\nif(old!=\"\")\n{"
-    },
-    "40158": {
-     "line": 40818,
+    "41593": {
+     "line": 41593,
      "line_text": "if(!c.valid || c.direction==0 || c.bar_time<=0 || c.closed_index<0)",
      "text": "// ---- hard vetoes: tested first, reported first, never weighted away ----\nif(!c.valid || c.direction==0 || c.bar_time<=0 || c.closed_index<0)\n{",
      "wide": "g_wgate_score=0;\n// ---- hard vetoes: tested first, reported first, never weighted away ----\nif(!c.valid || c.direction==0 || c.bar_time<=0 || c.closed_index<0)\n{\nwhy=\"HARD VETO: invalid candidate data (no direction or no closed bar) - WAIT\";"
     },
-    "40164": {
-     "line": 40824,
+    "41596": {
+     "line": 41596,
+     "line_text": "g_wgate_veto=true;",
+     "text": "why=\"HARD VETO: invalid candidate data (no direction or no closed bar) - WAIT\";\ng_wgate_veto=true;\nreturn false;",
+     "wide": "{\nwhy=\"HARD VETO: invalid candidate data (no direction or no closed bar) - WAIT\";\ng_wgate_veto=true;\nreturn false;\n}"
+    },
+    "41599": {
+     "line": 41599,
      "line_text": "if(!(g_is_backtest && InpIgnoreSpreadInBacktest) && g_spread>(long)InpMaxSpreadPts)",
      "text": "}\nif(!(g_is_backtest && InpIgnoreSpreadInBacktest) && g_spread>(long)InpMaxSpreadPts)\n{",
      "wide": "return false;\n}\nif(!(g_is_backtest && InpIgnoreSpreadInBacktest) && g_spread>(long)InpMaxSpreadPts)\n{\nwhy=\"HARD VETO: spread \"+IntegerToString((int)g_spread)+\" pts above InpMaxSpreadPts \"+"
     },
-    "40171": {
-     "line": 40831,
+    "41603": {
+     "line": 41603,
+     "line_text": "g_wgate_veto=true;",
+     "text": "IntegerToString((int)InpMaxSpreadPts)+\" - WAIT\";\ng_wgate_veto=true;\nreturn false;",
+     "wide": "why=\"HARD VETO: spread \"+IntegerToString((int)g_spread)+\" pts above InpMaxSpreadPts \"+\nIntegerToString((int)InpMaxSpreadPts)+\" - WAIT\";\ng_wgate_veto=true;\nreturn false;\n}"
+    },
+    "41606": {
+     "line": 41606,
      "line_text": "if(MTF_SniperIsNewsBlackout(bar_time))",
      "text": "}\nif(MTF_SniperIsNewsBlackout(bar_time))\n{",
      "wide": "return false;\n}\nif(MTF_SniperIsNewsBlackout(bar_time))\n{\nwhy=\"HARD VETO: high-impact news blackout (Golden Rule 6) - WAIT\";"
     },
-    "40177": {
-     "line": 40837,
-     "line_text": "// ---- weighted evidence legs ----",
-     "text": "}\n// ---- weighted evidence legs ----\nint min_level=(int)MathMax(2,MathMin(5,InpRXNAlertMinLevel));",
-     "wide": "return false;\n}\n// ---- weighted evidence legs ----\nint min_level=(int)MathMax(2,MathMin(5,InpRXNAlertMinLevel));\ndouble maxd=InpAlertMaxDistanceATR;"
+    "41609": {
+     "line": 41609,
+     "line_text": "g_wgate_veto=true;",
+     "text": "why=\"HARD VETO: high-impact news blackout (Golden Rule 6) - WAIT\";\ng_wgate_veto=true;\nreturn false;",
+     "wide": "{\nwhy=\"HARD VETO: high-impact news blackout (Golden Rule 6) - WAIT\";\ng_wgate_veto=true;\nreturn false;\n}"
     },
-    "40207": {
-     "line": 40867,
-     "line_text": "",
-     "text": "}\n\nvoid AlertDispatcherFinalize(const int rates_total)",
-     "wide": "return true;\n}\n\nvoid AlertDispatcherFinalize(const int rates_total)\n{"
+    "41617": {
+     "line": 41617,
+     "line_text": "if(c.level>=min_level) { got+=InpWGWeightLevel; have+=\"level \"; }",
+     "text": "int got=0; string have=\"\"; string miss=\"\";\nif(c.level>=min_level) { got+=InpWGWeightLevel; have+=\"level \"; }\nelse miss+=\"level<\"+IntegerToString(min_level)+\" \";",
+     "wide": "if(!MathIsValidNumber(maxd) || maxd<0.0) maxd=2.0;\nint got=0; string have=\"\"; string miss=\"\";\nif(c.level>=min_level) { got+=InpWGWeightLevel; have+=\"level \"; }\nelse miss+=\"level<\"+IntegerToString(min_level)+\" \";\nif(c.score>=InpWGMinEvidenceScore){ got+=InpWGWeightEvidence; have+=\"evidence \"; }"
     },
-    "40236": {
-     "line": 40896,
+    "41619": {
+     "line": 41619,
+     "line_text": "if(c.score>=InpWGMinEvidenceScore){ got+=InpWGWeightEvidence; have+=\"evidence \"; }",
+     "text": "else miss+=\"level<\"+IntegerToString(min_level)+\" \";\nif(c.score>=InpWGMinEvidenceScore){ got+=InpWGWeightEvidence; have+=\"evidence \"; }\nelse miss+=\"score \"+IntegerToString(c.score)+\"<\"+",
+     "wide": "if(c.level>=min_level) { got+=InpWGWeightLevel; have+=\"level \"; }\nelse miss+=\"level<\"+IntegerToString(min_level)+\" \";\nif(c.score>=InpWGMinEvidenceScore){ got+=InpWGWeightEvidence; have+=\"evidence \"; }\nelse miss+=\"score \"+IntegerToString(c.score)+\"<\"+\nIntegerToString(InpWGMinEvidenceScore)+\" \";"
+    },
+    "41622": {
+     "line": 41622,
+     "line_text": "if(c.distance_atr<=maxd) { got+=InpWGWeightProximity; have+=\"proximity \"; }",
+     "text": "IntegerToString(InpWGMinEvidenceScore)+\" \";\nif(c.distance_atr<=maxd) { got+=InpWGWeightProximity; have+=\"proximity \"; }\nelse miss+=\"distance \"+DoubleToString(c.distance_atr,2)+\"ATR>\"+",
+     "wide": "else miss+=\"score \"+IntegerToString(c.score)+\"<\"+\nIntegerToString(InpWGMinEvidenceScore)+\" \";\nif(c.distance_atr<=maxd) { got+=InpWGWeightProximity; have+=\"proximity \"; }\nelse miss+=\"distance \"+DoubleToString(c.distance_atr,2)+\"ATR>\"+\nDoubleToString(maxd,2)+\" \";"
+    },
+    "41625": {
+     "line": 41625,
+     "line_text": "if(c.alignment>0) { got+=InpWGWeightAlignment; have+=\"alignment \"; }",
+     "text": "DoubleToString(maxd,2)+\" \";\nif(c.alignment>0) { got+=InpWGWeightAlignment; have+=\"alignment \"; }\nelse miss+=\"alignment \"+IntegerToString(c.alignment)+\" \";",
+     "wide": "else miss+=\"distance \"+DoubleToString(c.distance_atr,2)+\"ATR>\"+\nDoubleToString(maxd,2)+\" \";\nif(c.alignment>0) { got+=InpWGWeightAlignment; have+=\"alignment \"; }\nelse miss+=\"alignment \"+IntegerToString(c.alignment)+\" \";\nif(c.opposing_room_atr<0.0 || c.opposing_room_atr>=InpWGMinRoomATR)"
+    },
+    "41627": {
+     "line": 41627,
+     "line_text": "if(c.opposing_room_atr<0.0 || c.opposing_room_atr>=InpWGMinRoomATR)",
+     "text": "else miss+=\"alignment \"+IntegerToString(c.alignment)+\" \";\nif(c.opposing_room_atr<0.0 || c.opposing_room_atr>=InpWGMinRoomATR)\n{ got+=InpWGWeightRoom; have+=\"room \"; }",
+     "wide": "if(c.alignment>0) { got+=InpWGWeightAlignment; have+=\"alignment \"; }\nelse miss+=\"alignment \"+IntegerToString(c.alignment)+\" \";\nif(c.opposing_room_atr<0.0 || c.opposing_room_atr>=InpWGMinRoomATR)\n{ got+=InpWGWeightRoom; have+=\"room \"; }\nelse miss+=\"opposing room \"+DoubleToString(c.opposing_room_atr,2)+\"ATR \";"
+    },
+    "41638": {
+     "line": 41638,
+     "line_text": "why=(c.direction>0?\"BUY\":\"SELL\")+\" PUBLISH \"+IntegerToString(got)+\"/100 from \"+have+",
+     "text": "}\nwhy=(c.direction>0?\"BUY\":\"SELL\")+\" PUBLISH \"+IntegerToString(got)+\"/100 from \"+have+\n\"- a weighted confluence count, not a probability\";",
+     "wide": "return false;\n}\nwhy=(c.direction>0?\"BUY\":\"SELL\")+\" PUBLISH \"+IntegerToString(got)+\"/100 from \"+have+\n\"- a weighted confluence count, not a probability\";\nreturn true;"
+    },
+    "41671": {
+     "line": 41671,
      "line_text": "string gs_why=\"\";",
      "text": "AlertCandidateInit(best_alert); AlertCandidateInit(best_other);\nstring gs_why=\"\";\nfor(int i=0;i<g_alert_candidate_count;i++)",
      "wide": "AlertCandidateInit(best_any); AlertCandidateInit(best_near);\nAlertCandidateInit(best_alert); AlertCandidateInit(best_other);\nstring gs_why=\"\";\nfor(int i=0;i<g_alert_candidate_count;i++)\n{"
     },
-    "40250": {
-     "line": 40910,
+    "41685": {
+     "line": 41685,
      "line_text": "bool gs_evidence=InpUseWeightedGates",
      "text": "// evidence.\nbool gs_evidence=InpUseWeightedGates\n?WeightedGateAllows(c,bar_time,gs_why)",
      "wide": "// stay hard either way because they are delivery and de-duplication, not\n// evidence.\nbool gs_evidence=InpUseWeightedGates\n?WeightedGateAllows(c,bar_time,gs_why)\n:(c.alert_eligible && c.distance_atr<=maxd);"
     },
-    "40266": {
-     "line": 40926,
-     "line_text": "if(best_alert.valid) WeightedGateAllows(best_alert,bar_time,wfinal);",
-     "text": "string wfinal=\"\";\nif(best_alert.valid) WeightedGateAllows(best_alert,bar_time,wfinal);\nelse wfinal=(g_wgate_why!=\"\"?g_wgate_why:",
-     "wide": "{\nstring wfinal=\"\";\nif(best_alert.valid) WeightedGateAllows(best_alert,bar_time,wfinal);\nelse wfinal=(g_wgate_why!=\"\"?g_wgate_why:\n\"no candidate reached the weighted gate - WAIT\");"
+    "41698": {
+     "line": 41698,
+     "line_text": "if(InpUseWeightedGates)",
+     "text": "// not of whichever candidate the loop happened to test last.\nif(InpUseWeightedGates)\n{",
+     "wide": "// AUDIT-GS1: keep the weighted decision of the candidate that actually won,\n// not of whichever candidate the loop happened to test last.\nif(InpUseWeightedGates)\n{\nstring wfinal=\"\";"
     },
-    "4477": {
-     "line": 4643,
+    "4714": {
+     "line": 4714,
      "line_text": "int g_wgate_score=0; // weighted evidence points of the tested candidate, 0-100",
      "text": "// looking at. Written only by WeightedGateAllows(), read only for display.\nint g_wgate_score=0; // weighted evidence points of the tested candidate, 0-100\nstring g_wgate_why=\"\"; // the legs it earned, or the hard veto that stopped it",
      "wide": "// AUDIT-GS1: the weighted gate decision for the candidate the dispatcher is\n// looking at. Written only by WeightedGateAllows(), read only for display.\nint g_wgate_score=0; // weighted evidence points of the tested candidate, 0-100\nstring g_wgate_why=\"\"; // the legs it earned, or the hard veto that stopped it\nbool g_wgate_veto=false; // true only for data/spread/news - never for evidence"
     },
-    "4478": {
-     "line": 4644,
+    "4715": {
+     "line": 4715,
      "line_text": "string g_wgate_why=\"\"; // the legs it earned, or the hard veto that stopped it",
      "text": "int g_wgate_score=0; // weighted evidence points of the tested candidate, 0-100\nstring g_wgate_why=\"\"; // the legs it earned, or the hard veto that stopped it\nbool g_wgate_veto=false; // true only for data/spread/news - never for evidence",
      "wide": "// looking at. Written only by WeightedGateAllows(), read only for display.\nint g_wgate_score=0; // weighted evidence points of the tested candidate, 0-100\nstring g_wgate_why=\"\"; // the legs it earned, or the hard veto that stopped it\nbool g_wgate_veto=false; // true only for data/spread/news - never for evidence\n// AUDIT-SC1: the scalping overlay's advisory verdict for the last CLOSED bar."
     },
-    "4479": {
-     "line": 4645,
+    "4716": {
+     "line": 4716,
      "line_text": "bool g_wgate_veto=false; // true only for data/spread/news - never for evidence",
      "text": "string g_wgate_why=\"\"; // the legs it earned, or the hard veto that stopped it\nbool g_wgate_veto=false; // true only for data/spread/news - never for evidence\n// AUDIT-SC1: the scalping overlay's advisory verdict for the last CLOSED bar.",
      "wide": "int g_wgate_score=0; // weighted evidence points of the tested candidate, 0-100\nstring g_wgate_why=\"\"; // the legs it earned, or the hard veto that stopped it\nbool g_wgate_veto=false; // true only for data/spread/news - never for evidence\n// AUDIT-SC1: the scalping overlay's advisory verdict for the last CLOSED bar.\n// Written only by SCALP_Update(), read only for display. It never writes the"
     },
-    "861": {
+    "870": {
      "line": 870,
      "line_text": "input group \"====== Weighted Gate Scoring (AUDIT-GS1, evidence weighted, vetoes hard) ======\"",
      "text": "input int InpResMinScore = 60; // weighted points a lone side needs = CONFIRMED\ninput group \"====== Weighted Gate Scoring (AUDIT-GS1, evidence weighted, vetoes hard) ======\"\ninput bool InpUseWeightedGates = false; // OFF = the existing hard-AND chain, unchanged",
      "wide": "input int InpResWeightTactical = 20; // resolver weight: tactical trigger cross\ninput int InpResMinScore = 60; // weighted points a lone side needs = CONFIRMED\ninput group \"====== Weighted Gate Scoring (AUDIT-GS1, evidence weighted, vetoes hard) ======\"\ninput bool InpUseWeightedGates = false; // OFF = the existing hard-AND chain, unchanged\ninput int InpWGWeightLevel = 25; // weight: level reached the alert minimum"
     },
-    "862": {
+    "871": {
      "line": 871,
      "line_text": "input bool InpUseWeightedGates = false; // OFF = the existing hard-AND chain, unchanged",
      "text": "input group \"====== Weighted Gate Scoring (AUDIT-GS1, evidence weighted, vetoes hard) ======\"\ninput bool InpUseWeightedGates = false; // OFF = the existing hard-AND chain, unchanged\ninput int InpWGWeightLevel = 25; // weight: level reached the alert minimum",
      "wide": "input int InpResMinScore = 60; // weighted points a lone side needs = CONFIRMED\ninput group \"====== Weighted Gate Scoring (AUDIT-GS1, evidence weighted, vetoes hard) ======\"\ninput bool InpUseWeightedGates = false; // OFF = the existing hard-AND chain, unchanged\ninput int InpWGWeightLevel = 25; // weight: level reached the alert minimum\ninput int InpWGWeightEvidence = 25; // weight: evidence score reached InpWGMinEvidenceScore"
     },
-    "863": {
+    "872": {
      "line": 872,
      "line_text": "input int InpWGWeightLevel = 25; // weight: level reached the alert minimum",
      "text": "input bool InpUseWeightedGates = false; // OFF = the existing hard-AND chain, unchanged\ninput int InpWGWeightLevel = 25; // weight: level reached the alert minimum\ninput int InpWGWeightEvidence = 25; // weight: evidence score reached InpWGMinEvidenceScore",
      "wide": "input group \"====== Weighted Gate Scoring (AUDIT-GS1, evidence weighted, vetoes hard) ======\"\ninput bool InpUseWeightedGates = false; // OFF = the existing hard-AND chain, unchanged\ninput int InpWGWeightLevel = 25; // weight: level reached the alert minimum\ninput int InpWGWeightEvidence = 25; // weight: evidence score reached InpWGMinEvidenceScore\ninput int InpWGWeightProximity = 20; // weight: distance to the zone within InpAlertMaxDistanceATR"
     },
-    "864": {
+    "873": {
      "line": 873,
      "line_text": "input int InpWGWeightEvidence = 25; // weight: evidence score reached InpWGMinEvidenceScore",
      "text": "input int InpWGWeightLevel = 25; // weight: level reached the alert minimum\ninput int InpWGWeightEvidence = 25; // weight: evidence score reached InpWGMinEvidenceScore\ninput int InpWGWeightProximity = 20; // weight: distance to the zone within InpAlertMaxDistanceATR",
      "wide": "input bool InpUseWeightedGates = false; // OFF = the existing hard-AND chain, unchanged\ninput int InpWGWeightLevel = 25; // weight: level reached the alert minimum\ninput int InpWGWeightEvidence = 25; // weight: evidence score reached InpWGMinEvidenceScore\ninput int InpWGWeightProximity = 20; // weight: distance to the zone within InpAlertMaxDistanceATR\ninput int InpWGWeightAlignment = 15; // weight: HTF + D1 signed context agrees"
     },
-    "865": {
+    "874": {
      "line": 874,
      "line_text": "input int InpWGWeightProximity = 20; // weight: distance to the zone within InpAlertMaxDistanceATR",
      "text": "input int InpWGWeightEvidence = 25; // weight: evidence score reached InpWGMinEvidenceScore\ninput int InpWGWeightProximity = 20; // weight: distance to the zone within InpAlertMaxDistanceATR\ninput int InpWGWeightAlignment = 15; // weight: HTF + D1 signed context agrees",
      "wide": "input int InpWGWeightLevel = 25; // weight: level reached the alert minimum\ninput int InpWGWeightEvidence = 25; // weight: evidence score reached InpWGMinEvidenceScore\ninput int InpWGWeightProximity = 20; // weight: distance to the zone within InpAlertMaxDistanceATR\ninput int InpWGWeightAlignment = 15; // weight: HTF + D1 signed context agrees\ninput int InpWGWeightRoom = 15; // weight: room to the opposing zone not exhausted"
     },
-    "866": {
+    "875": {
      "line": 875,
      "line_text": "input int InpWGWeightAlignment = 15; // weight: HTF + D1 signed context agrees",
      "text": "input int InpWGWeightProximity = 20; // weight: distance to the zone within InpAlertMaxDistanceATR\ninput int InpWGWeightAlignment = 15; // weight: HTF + D1 signed context agrees\ninput int InpWGWeightRoom = 15; // weight: room to the opposing zone not exhausted",
      "wide": "input int InpWGWeightEvidence = 25; // weight: evidence score reached InpWGMinEvidenceScore\ninput int InpWGWeightProximity = 20; // weight: distance to the zone within InpAlertMaxDistanceATR\ninput int InpWGWeightAlignment = 15; // weight: HTF + D1 signed context agrees\ninput int InpWGWeightRoom = 15; // weight: room to the opposing zone not exhausted\ninput int InpWGMinScore = 60; // weighted points a candidate needs to be published"
     },
-    "867": {
+    "876": {
      "line": 876,
      "line_text": "input int InpWGWeightRoom = 15; // weight: room to the opposing zone not exhausted",
      "text": "input int InpWGWeightAlignment = 15; // weight: HTF + D1 signed context agrees\ninput int InpWGWeightRoom = 15; // weight: room to the opposing zone not exhausted\ninput int InpWGMinScore = 60; // weighted points a candidate needs to be published",
      "wide": "input int InpWGWeightProximity = 20; // weight: distance to the zone within InpAlertMaxDistanceATR\ninput int InpWGWeightAlignment = 15; // weight: HTF + D1 signed context agrees\ninput int InpWGWeightRoom = 15; // weight: room to the opposing zone not exhausted\ninput int InpWGMinScore = 60; // weighted points a candidate needs to be published\ninput int InpWGMinEvidenceScore = 68; // evidence floor for the evidence leg (mirrors the"
     },
-    "868": {
+    "877": {
      "line": 877,
      "line_text": "input int InpWGMinScore = 60; // weighted points a candidate needs to be published",
      "text": "input int InpWGWeightRoom = 15; // weight: room to the opposing zone not exhausted\ninput int InpWGMinScore = 60; // weighted points a candidate needs to be published\ninput int InpWGMinEvidenceScore = 68; // evidence floor for the evidence leg (mirrors the",
      "wide": "input int InpWGWeightAlignment = 15; // weight: HTF + D1 signed context agrees\ninput int InpWGWeightRoom = 15; // weight: room to the opposing zone not exhausted\ninput int InpWGMinScore = 60; // weighted points a candidate needs to be published\ninput int InpWGMinEvidenceScore = 68; // evidence floor for the evidence leg (mirrors the\n// existing 68; changes no shipped threshold)"
     },
-    "869": {
+    "878": {
      "line": 878,
      "line_text": "input int InpWGMinEvidenceScore = 68; // evidence floor for the evidence leg (mirrors the",
      "text": "input int InpWGMinScore = 60; // weighted points a candidate needs to be published\ninput int InpWGMinEvidenceScore = 68; // evidence floor for the evidence leg (mirrors the\n// existing 68; changes no shipped threshold)",
      "wide": "input int InpWGWeightRoom = 15; // weight: room to the opposing zone not exhausted\ninput int InpWGMinScore = 60; // weighted points a candidate needs to be published\ninput int InpWGMinEvidenceScore = 68; // evidence floor for the evidence leg (mirrors the\n// existing 68; changes no shipped threshold)\ninput double InpWGMinRoomATR = 1.0; // room to the opposing zone, in ATR units"
     },
-    "871": {
+    "880": {
      "line": 880,
      "line_text": "input double InpWGMinRoomATR = 1.0; // room to the opposing zone, in ATR units",
      "text": "// existing 68; changes no shipped threshold)\ninput double InpWGMinRoomATR = 1.0; // room to the opposing zone, in ATR units\ninput group \"====== Scalping Strategies (AUDIT-SC1, M1-M5, display only, advisory) ======\"",

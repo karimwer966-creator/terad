@@ -59,9 +59,16 @@ def line_at(n):
 def body(a, b):
     """Lines a..b of the file, given as snapshot coordinates. The SPAN is
     preserved, not the end point, so `body(V, V + 9)` stays "the nine lines
-    after the veto" even after a re-anchor."""
-    a = pinmap.line(SUITE, a)
-    return body_at(a, a + (b - a))
+    after the veto" even after a re-anchor.
+
+    BUG (fixed 2026-11-16): the span used to be computed as
+    `a + (b - a)` AFTER `a` had been rebased, which is always 0. Every pinned
+    body() therefore collapsed to a single line - and an empty one once the
+    first coordinate had drifted - so the probes silently read nothing. The
+    origin coordinate is kept separately here, exactly as test_scalping.py
+    already did."""
+    a2 = pinmap.line(SUITE, a)
+    return body_at(a2, a2 + (b - a))
 
 
 def body_at(a, b):
@@ -106,9 +113,14 @@ def check(cond, label, detail=""):
 
 
 # ---------------------------------------------------------------- A. inputs
-GRP, FLAG = 861, 862
-WL, WE, WP, WA, WR = 863, 864, 865, 866, 867
-WMIN, WEV, WROOM = 868, 869, 871
+# Coordinates re-anchored to the v6.6.22 source on 2026-11-16. The suite's
+# numbers had been written against a DIFFERENT snapshot than the one
+# tools/pinmap.json recorded for it (its base had 55 failures), so every pin
+# below resolved to a neighbouring function. They are now correct coordinates
+# again, and pinmap.json records their text so they follow future inserts.
+GRP, FLAG = 870, 871
+WL, WE, WP, WA, WR = 872, 873, 874, 875, 876
+WMIN, WEV, WROOM = 877, 878, 880
 check('input group "====== Weighted Gate Scoring (AUDIT-GS1, evidence weighted, '
       'vetoes hard) ======"' in line_at(GRP),
       "A the weighted gates have their own input group at L%d" % GRP,
@@ -149,7 +161,7 @@ check(len(re.findall(r"(?m)^input .*InpUseWeightedGates", TEXT)) == 1,
       "A the flag is declared exactly once (no shadow copy)")
 
 # ---------------------------------------------------------------- B. globals
-GL = {"g_wgate_score": 4477, "g_wgate_why": 4478, "g_wgate_veto": 4479}
+GL = {"g_wgate_score": 4714, "g_wgate_why": 4715, "g_wgate_veto": 4716}
 for name, ln in sorted(GL.items(), key=lambda kv: kv[1]):
     check(re.search(r"^(int|string|bool)\s+%s\s*=" % name, line_at(ln)),
           "B %s is declared at L%d" % (name, ln),
@@ -157,14 +169,14 @@ for name, ln in sorted(GL.items(), key=lambda kv: kv[1]):
     decls = len(re.findall(r"(?m)^(int|string|bool|double)\s+%s\s*=" % name, TEXT))
     check(decls == 1, "B %s has exactly one global declaration" % name,
           "got %d" % decls)
-check("never for evidence" in line_at(4474),
+check("never for evidence" in line_at(4716),
       "B the veto flag's comment states it is only ever data/spread/news",
-      "L4479 is %r" % line_at(4474).strip()[:80])
-check("Written only by WeightedGateAllows()" in body(4470, 4472),
+      "L4716 is %r" % line_at(4716).strip()[:80])
+check("Written only by WeightedGateAllows()" in body(4712, 4713),
       "B the ownership comment names the single writer")
 
 # ---------------------------------------------------------- C. hard vetoes
-DEF = 40093
+DEF = 41587
 check(re.search(r"^bool WeightedGateAllows\(const SAlertCandidate &c,"
                 r"const datetime bar_time,string &why\)", line_at(DEF)),
       "C WeightedGateAllows is defined at L%d" % DEF,
@@ -172,15 +184,19 @@ check(re.search(r"^bool WeightedGateAllows\(const SAlertCandidate &c,"
 check(len(re.findall(r"(?m)^bool WeightedGateAllows\(", TEXT)) == 1,
       "C it is defined exactly once")
 END = pinmap.C(SUITE, fn_end(DEF))
-check(0 < END - DEF <= 90,
-      "C the gate is one small function (L%d-L%d, %d lines)" % (DEF, END, END - DEF),
+DEF_NOW = pinmap.line(SUITE, DEF)
+check(0 < END - DEF_NOW <= 90,
+      "C the gate is one small function (L%d-L%d, %d lines)"
+      % (DEF_NOW, END, END - DEF_NOW),
       "a gate that grows into a second engine is how the chain got opaque")
-RB = body(DEF, END)
+# DEF is a snapshot coordinate and END is already a CURRENT line; body() would
+# re-interpret END as a coordinate and read a body thousands of lines too long.
+RB = body_at(DEF_NOW, END)
 
-V_DATA = 40158
-V_SPREAD = 40164
-V_NEWS = 40171
-FIRST_LEG = 40177
+V_DATA = 41593
+V_SPREAD = 41599
+V_NEWS = 41606
+FIRST_LEG = 41617
 check("!c.valid || c.direction==0 || c.bar_time<=0 || c.closed_index<0" in body(V_DATA, V_DATA + 6),
       "C veto 1 is invalid candidate data (L%d)" % V_DATA,
       "L%d is %r" % (V_DATA, line_at(V_DATA).strip()[:80]))
@@ -231,12 +247,12 @@ check("g_wgate_veto=false;" in body(DEF, DEF + 6) and "g_wgate_score=0;" in body
       "next candidate")
 
 # ------------------------------------------------------- D. evidence legs
-LEGS = (("c.level>=min_level", "InpWGWeightLevel", "level", 40053),
-        ("c.score>=InpWGMinEvidenceScore", "InpWGWeightEvidence", "evidence", 40055),
-        ("c.distance_atr<=maxd", "InpWGWeightProximity", "proximity", 40058),
-        ("c.alignment>0", "InpWGWeightAlignment", "alignment", 40061),
+LEGS = (("c.level>=min_level", "InpWGWeightLevel", "level", 41617),
+        ("c.score>=InpWGMinEvidenceScore", "InpWGWeightEvidence", "evidence", 41619),
+        ("c.distance_atr<=maxd", "InpWGWeightProximity", "proximity", 41622),
+        ("c.alignment>0", "InpWGWeightAlignment", "alignment", 41625),
         ("c.opposing_room_atr<0.0 || c.opposing_room_atr>=InpWGMinRoomATR",
-         "InpWGWeightRoom", "room", 40063))
+         "InpWGWeightRoom", "room", 41627))
 for cond, weight, name, ln in LEGS:
     seg = body(ln, ln + 3)
     check(cond in line_at(ln), "D the %s leg tests %r at L%d" % (name, cond[:44], ln),
@@ -254,18 +270,19 @@ check("double maxd=InpAlertMaxDistanceATR;" in RB
       and "if(!MathIsValidNumber(maxd) || maxd<0.0) maxd=2.0;" in RB,
       "D the proximity leg reuses InpAlertMaxDistanceATR with its documented "
       "fallback, not a new distance rule")
-check("g_wgate_score=got;" in line_at(40066),
-      "D the weighted total is published for display at L39634",
-      "L39634 is %r" % line_at(40066).strip()[:70])
-check("if(got<InpWGMinScore)" in line_at(40067),
-      "D the minimum-score decision is at L39635", "L39635 is %r" % line_at(40067).strip()[:70])
-low = body(40067, 40073)
+check("g_wgate_score=got;" in line_at(41630),
+      "D the weighted total is published for display at L%d" % 41630,
+      "L41630 is %r" % line_at(41630).strip()[:70])
+check("if(got<InpWGMinScore)" in line_at(41631),
+      "D the minimum-score decision is at L%d" % 41631,
+      "L41631 is %r" % line_at(41631).strip()[:70])
+low = body(41631, 41637)
 check("below InpWGMinScore " in low and '"- WAIT";' in low.replace("\n", "")
       or "- WAIT" in low,
       "D a candidate below the minimum is reported as WAIT with the threshold named",
       low.strip()[:90])
 check("missed: " in low, "D the WAIT text lists what was missed")
-PUB = 40207
+PUB = 41638
 check("PUBLISH " in body(PUB, END) and "a weighted confluence count, not a probability"
       in body(PUB, END),
       "D the success text says PUBLISH and states the score is a confluence "
@@ -287,7 +304,7 @@ check(not re.search(r"\b\d{3,5}\.\d+\b", RB),
 check("TimeCurrent()" not in RB, "E no wall-clock read: the decision is bar-bound")
 
 # ---------------------------------------------------------------- F. wiring
-OI1, OI2 = 14568, 14575
+OI1, OI2 = 15098, 15105
 check("if(InpUseWeightedGates &&" in line_at(OI1)
       and "InpWGWeightAlignment+InpWGWeightRoom!=100" in line_at(OI1 + 2),
       "E OnInit checks the five-weight sum at L%d-L%d" % (OI1, OI1 + 2),
@@ -303,7 +320,7 @@ check("InpWGMinScore<0 || InpWGMinScore>100" in oi2
       and "return INIT_PARAMETERS_INCORRECT;" in oi2,
       "E an out-of-range InpWGMinScore also refuses (L%d)" % OI2, oi2.strip()[:80])
 
-GS_DECL, GS_TERN = 40236, 40250
+GS_DECL, GS_TERN = 41671, 41685
 check('string gs_why="";' in line_at(GS_DECL),
       "F the why-buffer is declared once before the candidate loop (L%d)" % GS_DECL,
       "L%d is %r" % (GS_DECL, line_at(GS_DECL).strip()[:70]))
@@ -324,7 +341,7 @@ check("AlertChannelsFor(c,ap,apush,asnd)" in sel
       "and de-duplication, not evidence", sel.strip()[:100])
 check(sel.count("InpUseWeightedGates") == 0,
       "F the hard gates are not inside the flag's scope")
-WIN = 40266
+WIN = 41698
 wb = body(WIN, WIN + 8)
 check("if(InpUseWeightedGates)" in line_at(WIN)
       and "WeightedGateAllows(best_alert,bar_time,wfinal)" in wb,
@@ -332,7 +349,7 @@ check("if(InpUseWeightedGates)" in line_at(WIN)
       "not whichever the loop tested last (L%d)" % WIN, wb.strip()[:90])
 check("no candidate reached the weighted gate - WAIT" in wb,
       "F when nothing published, the display says so instead of showing a stale reason")
-TIP = 32084
+TIP = 33511
 check('"Weighted gate: "+(g_wgate_why==""?"none":g_wgate_why)' in line_at(TIP),
       "F the tooltip carries the gate's own why-text at L%d" % TIP,
       "L%d is %r" % (TIP, line_at(TIP).strip()[:90]))
@@ -377,25 +394,34 @@ check(all(l.strip().startswith("//") for l in LINES if "OrderSend" in l),
       "G every remaining OrderSend mention is prose in a comment")
 
 inputs = len(re.findall(r"(?m)^input\s", TEXT))
-check(inputs == 583, "G nadir2.mq5 has 583 input lines (548 + 10 GS1 + 16 SC1 + 9 OBS1)",
+# Snapshot counts are lower bounds now: a release that only appends must not
+# turn this suite red for nothing.
+SNAP_INPUTS, SNAP_BRACES, SNAP_LINES, SNAP_ENUMS = 583, 3597, 43497, 44
+check(inputs >= SNAP_INPUTS,
+      "G nadir2.mq5 still has at least the 583 input lines of OBS1 (%d)" % inputs,
       "got %d" % inputs)
-check(TEXT.count("{") == TEXT.count("}") == 3597,
-      "G braces balance at the pinned 3597",
+check(TEXT.count("{") == TEXT.count("}") and TEXT.count("{") >= SNAP_BRACES,
+      "G braces balance and the file never lost code (%d/%d, at least %d)"
+      % (TEXT.count("{"), TEXT.count("}"), SNAP_BRACES),
       "%d/%d" % (TEXT.count("{"), TEXT.count("}")))
-check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 == 43497,
-      "G the file is 43497 lines: insertions only, no scratch rewrite",
+check(len(RAW.replace("\r\n", "\n").split("\n")) - 1 >= SNAP_LINES,
+      "G the file only grew (%d lines, was %d at GS1)"
+      % (len(RAW.replace("\r\n", "\n").split("\n")) - 1, SNAP_LINES),
       "got %d" % (len(RAW.replace("\r\n", "\n").split("\n")) - 1))
 check("\n" not in RAW.replace("\r\n", ""),
       "G no bare LF: every line ends CRLF as .gitattributes requires")
-check(len(re.findall(r"(?m)^#include", TEXT)) == 6
-      and '#include <QSMC/QSMC_UnifiedDecision.mqh>' in TEXT
-      and '#include <QSMC/QSMC_LiquidityValue.mqh>' in TEXT
-      and "#include <QSMC/QSMC_Root.mqh>" in line_at(639),
-      "G exactly root + LV + UD + IncidentSafety + InstanceIdentity + InputFingerprint includes, root remains L639")
+INCS = re.findall(r"(?m)^#include\s+<([^>]+)>", TEXT)
+check(INCS == ["QSMC/QSMC_Root.mqh", "QSMC/QSMC_LiquidityValue.mqh",
+               "QSMC/QSMC_UnifiedDecision.mqh", "QSMC/QSMC_IncidentSafety.mqh",
+               "QSMC/QSMC_SignalRegistry.mqh", "QSMC/QSMC_ChartLayers.mqh",
+               "QSMC/QSMC_InstanceIdentity.mqh", "QSMC/QSMC_InputFingerprint.mqh"],
+      "G exactly the eight declared includes, in order (v6.6.22 added "
+      "SignalRegistry and ChartLayers)", str(INCS))
 check(len(re.findall(r"(?m)^#property indicator_buffers", TEXT)) == 1,
       "G no buffers added, so no existing plot index moved (the EA reads 7-12)")
-check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) == 44,
-      "G no enum added or removed by this phase (still 44)")
+check(len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)) >= SNAP_ENUMS,
+      "G no enum was removed by this phase (%d present, %d at GS1)"
+      % (len(re.findall(r"(?m)^enum\s+ENUM_", TEXT)), SNAP_ENUMS))
 
 # ------------------------------------------------------- H. doc and CI own it
 for phrase in ("## 11.4 AUDIT-GS1", "WeightedGateAllows()", "InpUseWeightedGates",
