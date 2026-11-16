@@ -499,8 +499,15 @@ int       g_invalid_dir_seen_n=0;
 // (not by a gate), and how many times. A permanent retcode never retries; a
 // transient one retries on the next poll, bounded by InpOrderRetryMax and by
 // InpMaxSignalAgeBars, so a broken broker cannot turn into an order flood.
-string    g_retry_key="";
-int       g_retry_count=0;
+//--- v6.6.24 (F-003): the retry budget is tracked PER SIGNAL IDENTITY in a
+//--- small bounded table. It used to be a single (key,count) slot and ANY other
+//--- key reset the counter - so two signals alternating their transient
+//--- failures (A, B, A, B ...) restarted the budget forever and
+//--- InpOrderRetryMax was never reached. The table is fixed-size (it cannot
+//--- grow with uptime); a new identity evicts the oldest slot.
+string    g_retry_keys[QER_RETRY_SLOTS];
+int       g_retry_counts[QER_RETRY_SLOTS];
+int       g_retry_cursor=0;
 
 // Break-even throttle: PositionModify used to be re-sent on EVERY tick while the
 // broker kept refusing it, with the failure silent. One ticket, one attempt per
@@ -2831,13 +2838,26 @@ void HandleSignal(SQsigSignal &s)
         }
       else
         {
-         if(key!=g_retry_key) { g_retry_key=key; g_retry_count=0; }
-         g_retry_count++;
-         if(g_retry_count>=(int)MathMax(1,InpOrderRetryMax))
+         //--- v6.6.24 (F-003) per-identity budget. The identity is SignalKey()
+         //--- (bar time + direction), i.e. one closed bar's idea. A NEW bar is a
+         //--- new identity with a fresh budget; an OLD identity keeps the count
+         //--- it earned, so alternating signals can no longer reset themselves.
+         int slot=QER_RetryFind(g_retry_keys,QER_RETRY_SLOTS,key);
+         if(slot<0)
            {
-            Print("[QSMC_AT] giving up on ",key," after ",IntegerToString(g_retry_count),
-                  " transient failures - the signal is marked seen so it cannot flood the server");
+            slot=QER_RetryNextSlot(QER_RETRY_SLOTS,g_retry_cursor);
+            g_retry_cursor++;
+            g_retry_keys[slot]=key;
+            g_retry_counts[slot]=0;
+           }
+         g_retry_counts[slot]++;
+         if(!QER_RetryAllows(g_retry_counts[slot],InpOrderRetryMax))
+           {
+            Print("[QSMC_AT] giving up on ",key," after ",IntegerToString(g_retry_counts[slot]),
+                  " transient failures (InpOrderRetryMax=",IntegerToString(InpOrderRetryMax),
+                  ") - the signal is marked seen so it cannot flood the server");
             MarkSeen(key,s.bar_time,s.dir);
+            ReleaseExecutionLane(key);   // v6.6.24 (F-001): we will never take this bar
            }
         }
       return;

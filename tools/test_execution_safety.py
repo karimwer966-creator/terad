@@ -86,7 +86,7 @@ fail_block = noc[noc.index("ORDER FAILED"):]
 fail_block = fail_block[:fail_block.index("void ProcessSignals")]
 check("if(!RetcodeIsTransient(rc))" in fail_block,
       "D1 a permanent refusal is the ONLY path that marks the signal seen")
-check("g_retry_count>=(int)MathMax(1,InpOrderRetryMax)" in fail_block,
+check("!QER_RetryAllows(g_retry_counts[slot],InpOrderRetryMax)" in fail_block,
       "D1 retries are bounded, so a broken broker cannot become an order flood")
 check(fail_block.count("MarkSeen(") >= 2,
       "D1 the give-up path also marks seen, so the signal cannot age out mid-flood")
@@ -644,7 +644,7 @@ check("if(SeenBefore(key,bt,dir)) continue;" in code,
       "D11 scenario 6: the seen-key is consulted before any decision")
 check("MarkSeen(key,s.bar_time,s.dir);" in code,
       "D11 scenario 6: every outcome path marks seen (confirmed, repaired, unconfirmed, rejected)")
-check("g_retry_count>=(int)MathMax(1,InpOrderRetryMax)" in code,
+check("!QER_RetryAllows(g_retry_counts[slot],InpOrderRetryMax)" in code,
       "D11 scenario 6: transient retries are bounded (no duplicate flood)")
 # scenario 7: invalid SL/TP prevents entry
 check("s.sl = NormalizeDouble(s.sl, _Digits);" in code and
