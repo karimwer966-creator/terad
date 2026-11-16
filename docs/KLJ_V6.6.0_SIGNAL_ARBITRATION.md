@@ -679,6 +679,14 @@ An independent re-implementation of R1-R7. **If the two harnesses ever disagree,
 | `reason` | why the state is what it is |
 | `blocked_by` | `; `-joined `GATE: reason` list |
 
+> **v6.6.24 (T9) - limited room is a hard reject, not a state.** `LIMITED ROOM`
+> stays in the journal's state vocabulary because the integer is published
+> (`SIG_LIMITED_ROOM = 6`, arbiter ordering, buffer 22 mapping) and cannot be
+> renumbered. But `CRoomGate` no longer *produces* it: every branch of that gate
+> returns `GATE_FAIL`, so a room shortfall refuses the entry outright. There is no
+> smaller size and no lower class that makes the reward exist. A downgrade value
+> that nothing can read is how a hard reject silently becomes a soft one later.
+
 Audit query you can run on it: `SELECT count(*) WHERE published=1 GROUP BY day` for the reduction, and `SELECT count(*) WHERE dir>0 AND zone_role='RESISTANCE' AND published=1` for the R1 violation count (target 0 — note an *acceptance* BUY at resistance is legitimate, so also check `evidence`/`reason`).
 
 ---
