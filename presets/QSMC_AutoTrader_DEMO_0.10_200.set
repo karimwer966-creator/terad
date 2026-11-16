@@ -120,3 +120,7 @@ InpModerateRiskMultiplier=0.5
 InpStrongRiskMultiplier=1.0
 InpOwnExecutionLane=true
 InpPrintEntryReview=true
+; InpEnableTrialJournal: one CSV row per execution event in
+; MQL5/Files/QSMC_trial_<login>.csv (display only; a write failure never
+; affects an order). On for the demo trial, it is how the trial is judged.
+InpEnableTrialJournal=true

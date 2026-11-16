@@ -416,6 +416,10 @@ input double InpModerateRiskMultiplier= 0.50;  // risk multiplier for MODERATE_V
 input double InpStrongRiskMultiplier  = 1.00;  // risk multiplier for STRONG_VALID
 input bool   InpOwnExecutionLane      = true;  // claim a cross-EA ownership global per signal identity; a second EA declines instead of doubling
 input bool   InpPrintEntryReview       = true;  // print the 12-line [QSMC_ENTRY_REVIEW] checklist before every order attempt
+//--- R1 (v6.6.24): one CSV row per execution event in
+//--- MQL5/Files/QSMC_trial_<login>.csv. Display only: a write failure
+//--- disables the journal and NEVER affects an order.
+input bool   InpEnableTrialJournal    = true;
 
 //+------------------------------------------------------------------+
 //| State                                                            |
@@ -562,6 +566,245 @@ string DirText(const int dir)
 string SignalKey(const datetime bar_time,const int dir)
   {
    return (IntegerToString((long)bar_time)+"|"+DirText(dir));
+  }
+
+//--- ClassName() is defined further down; the journal needs only its name.
+string ClassName(const int cls);
+
+//====================================================================
+// R1 (v6.6.24): TRIAL JOURNAL - one CSV row per execution event.
+//
+// WHY
+// A demo trial is judged on numbers that the Experts tab cannot give after the
+// fact: how many signals were seen, how many became orders, how many were
+// refused and WHY, what the spread was, what the fill paid, where the stop
+// moved, what each close returned in R, and which breaker tripped. Without
+// those rows the only honest conclusion after eight weeks is "it felt busy".
+//
+// CONTRACT
+//   * path: MQL5/Files/QSMC_trial_<login>.csv  (per account, appended)
+//   * columns: time_server,symbol,tf,magic,signal_bar_time,dir,class,score,
+//     entry_signal,sl,tp,spread_points,lots,risk_money,retcode,event,note
+//   * events: signal_seen, order_sent, order_refused, fill, partial_close,
+//     sl_move, close, breaker_trip
+//   * LOGGING NEVER TOUCHES TRADING. Every entry point returns immediately when
+//     the journal is disabled or the handle is invalid; FileWrite's return value
+//     is counted, never acted on; after five consecutive write errors the
+//     journal disables itself and says so ONCE. No Sleep, no retry loop, no
+//     exception path: a full disk must not stop an order from being managed.
+//   * the file is opened once in OnInit and closed in OnDeinit. An open failure
+//     is reported and trading continues.
+//====================================================================
+#define QSMC_JRN_WATCH 16
+
+int       g_jrn_handle=INVALID_HANDLE;
+string    g_jrn_path="";
+int       g_jrn_rows=0;
+int       g_jrn_errors=0;
+int       g_jrn_consec_errors=0;
+bool      g_jrn_off=false;
+
+struct SJournalWatch
+  {
+   ulong    ticket;
+   datetime bar_time;
+   int      dir;
+   double   entry;
+   double   risk_money;
+   double   lots;
+  };
+SJournalWatch g_jw[QSMC_JRN_WATCH];
+int           g_jw_n=0;
+
+string JournalPath()
+  {
+   return ("QSMC_trial_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+".csv");
+  }
+
+//--- CSV-safe cell: quoted, and every character that could break a column
+//--- (comma, quote, CR, LF) replaced. A note is prose; the schema is not.
+string JournalCell(const string v)
+  {
+   string t=v;
+   StringReplace(t,"\"","'");
+   StringReplace(t,",",";");
+   StringReplace(t,"\r"," ");
+   StringReplace(t,"\n"," ");
+   return ("\""+t+"\"");
+  }
+
+string JournalSpreadPoints()
+  {
+   double p=SymbolInfoDouble(_Symbol,SYMBOL_POINT);
+   if(!(p>0.0)) return ("0");
+   double sp=(SymbolInfoDouble(_Symbol,SYMBOL_ASK)-SymbolInfoDouble(_Symbol,SYMBOL_BID))/p;
+   if(!MathIsValidNumber(sp)) return ("0");
+   return (DoubleToString(sp,0));
+  }
+
+void JournalInit()
+  {
+   g_jrn_off=false;
+   if(!InpEnableTrialJournal)
+     {
+      g_jrn_off=true;
+      Print("[QSMC_AT JOURNAL] disabled by InpEnableTrialJournal=false");
+      return;
+     }
+   g_jrn_path=JournalPath();
+   g_jrn_handle=FileOpen(g_jrn_path,FILE_READ|FILE_WRITE|FILE_CSV|FILE_ANSI,',');
+   if(g_jrn_handle==INVALID_HANDLE)
+     {
+      g_jrn_off=true;
+      Print("[QSMC_AT JOURNAL] DISABLED: cannot open ",g_jrn_path,
+            " error ",IntegerToString(GetLastError()),
+            " | TRADING IS NOT AFFECTED - the trial will have no CSV");
+      return;
+     }
+   long size=FileSize(g_jrn_handle);
+   if(size<=0)
+     {
+      FileWrite(g_jrn_handle,"time_server","symbol","tf","magic","signal_bar_time",
+                "dir","class","score","entry_signal","sl","tp","spread_points",
+                "lots","risk_money","retcode","event","note");
+     }
+   FileSeek(g_jrn_handle,0,SEEK_END);
+   Print("[QSMC_AT JOURNAL] ",g_jrn_path," open, ",IntegerToString(size),
+         " bytes already in the file (rows are appended, never rewritten)");
+  }
+
+void JournalClose()
+  {
+   if(g_jrn_handle!=INVALID_HANDLE) FileClose(g_jrn_handle);
+   g_jrn_handle=INVALID_HANDLE;
+  }
+
+//--- The single write path. Nothing else in the EA calls FileWrite.
+void JournalRow(const string event_name,const datetime sig_bar,const int dir,
+                const int cls,const double score,const double entry,
+                const double sl,const double tp,const double lots,
+                const double risk_money,const long retcode,const string note)
+  {
+   if(g_jrn_off || g_jrn_handle==INVALID_HANDLE) return;
+   int tf=(int)(PeriodSeconds(_Period)/60);
+   int w=FileWrite(g_jrn_handle,
+                   JournalCell(TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS)),
+                   JournalCell(_Symbol),
+                   JournalCell(IntegerToString(tf)),
+                   JournalCell(IntegerToString(InpMagic)),
+                   JournalCell(sig_bar>0 ? TimeToString(sig_bar,TIME_DATE|TIME_SECONDS) : ""),
+                   JournalCell(DirText(dir)),
+                   JournalCell(ClassName(cls)),
+                   JournalCell(DoubleToString(score,0)),
+                   JournalCell(entry>0.0 ? DoubleToString(entry,_Digits) : ""),
+                   JournalCell(sl>0.0 ? DoubleToString(sl,_Digits) : ""),
+                   JournalCell(tp>0.0 ? DoubleToString(tp,_Digits) : ""),
+                   JournalCell(JournalSpreadPoints()),
+                   JournalCell(lots>0.0 ? DoubleToString(lots,2) : ""),
+                   JournalCell(risk_money>0.0 ? DoubleToString(risk_money,2) : ""),
+                   JournalCell(retcode!=0 ? IntegerToString(retcode) : ""),
+                   JournalCell(event_name),
+                   JournalCell(note));
+   if(w<0)
+     {
+      g_jrn_errors++;
+      g_jrn_consec_errors++;
+      if(g_jrn_consec_errors>=5)
+        {
+         g_jrn_off=true;
+         Print("[QSMC_AT JOURNAL] DISABLED after ",IntegerToString(g_jrn_errors),
+               " write errors (last error ",IntegerToString(GetLastError()),
+               ") | TRADING IS NOT AFFECTED");
+        }
+      return;
+     }
+   g_jrn_consec_errors=0;
+   g_jrn_rows++;
+  }
+
+void JournalSignal(const SQsigSignal &s,const string event_name,const string note)
+  {
+   JournalRow(event_name,s.bar_time,s.dir,s.cls,s.score,s.entry,s.sl,s.tp,
+              0.0,0.0,0,note);
+  }
+
+void JournalOrder(const SQsigSignal &s,const string event_name,const double lots,
+                  const double risk_money,const long retcode,const string note)
+  {
+   JournalRow(event_name,s.bar_time,s.dir,s.cls,s.score,s.entry,s.sl,s.tp,
+              lots,risk_money,retcode,note);
+  }
+
+//--- Events that belong to the ACCOUNT, not to a signal (breaker trips, close
+//--- rows reconstructed from the position watch). Profit and R go in the note:
+//--- the risk_money column keeps meaning RISK, never outcome.
+void JournalPlain(const string event_name,const datetime sig_bar,const int dir,
+                  const double lots,const long retcode,const string note)
+  {
+   JournalRow(event_name,sig_bar,dir,QSMC_CLASS_NONE,0.0,0.0,0.0,0.0,
+              lots,0.0,retcode,note);
+  }
+
+//--- Watch list: the tickets this EA opened, with the money it risked on each,
+//--- so a close can be reported in R even though SL/TP closes happen at the
+//--- SERVER and never come back through this EA.
+void JournalWatchAdd(const ulong ticket,const datetime sig_bar,const int dir,
+                     const double entry,const double risk_money,const double lots)
+  {
+   if(ticket==0) return;
+   if(g_jw_n>=QSMC_JRN_WATCH)
+     {
+      for(int k=1;k<QSMC_JRN_WATCH;k++) g_jw[k-1]=g_jw[k];
+      g_jw_n=QSMC_JRN_WATCH-1;
+     }
+   g_jw[g_jw_n].ticket=ticket;
+   g_jw[g_jw_n].bar_time=sig_bar;
+   g_jw[g_jw_n].dir=dir;
+   g_jw[g_jw_n].entry=entry;
+   g_jw[g_jw_n].risk_money=risk_money;
+   g_jw[g_jw_n].lots=lots;
+   g_jw_n++;
+  }
+
+double JournalClosedProfit(const ulong ticket,long &out_deals)
+  {
+   out_deals=0;
+   if(!HistorySelectByPosition(ticket)) return (0.0);
+   double net=0.0;
+   for(int i=0;i<HistoryDealsTotal();i++)
+     {
+      ulong t=HistoryDealGetTicket(i);
+      if(t==0) continue;
+      if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(t,DEAL_ENTRY)!=DEAL_ENTRY_OUT) continue;
+      net+=HistoryDealGetDouble(t,DEAL_PROFIT)+
+           HistoryDealGetDouble(t,DEAL_COMMISSION)+
+           HistoryDealGetDouble(t,DEAL_SWAP);
+      out_deals++;
+     }
+   return net;
+  }
+
+//--- Called once per poll, AFTER position management, so it cannot disturb the
+//--- selection state another loop is using.
+void JournalWatchScan()
+  {
+   if(g_jw_n<=0) return;
+   int i=0;
+   while(i<g_jw_n)
+     {
+      if(PositionSelectByTicket(g_jw[i].ticket)) { i++; continue; }
+      long deals=0;
+      double net=JournalClosedProfit(g_jw[i].ticket,deals);
+      if(deals<=0) { i++; continue; }   // history not posted yet: retry next poll
+      double r=(g_jw[i].risk_money>0.0 ? net/g_jw[i].risk_money : 0.0);
+      JournalPlain("close",g_jw[i].bar_time,g_jw[i].dir,g_jw[i].lots,0,
+                   "ticket="+IntegerToString((long)g_jw[i].ticket)+
+                   " profit="+DoubleToString(net,2)+" "+AccountInfoString(ACCOUNT_CURRENCY)+
+                   " R="+DoubleToString(r,2)+
+                   " out_deals="+IntegerToString(deals));
+      for(int k=i;k<g_jw_n-1;k++) g_jw[k]=g_jw[k+1];
+      g_jw_n--;
+     }
   }
 
 // Terminal global names are stored in a terminal-wide file, and broker symbols
@@ -1552,6 +1795,11 @@ void DayGuardUpdate()
          g_day_blocked=true;
          GlobalVariableSet(DayGuardKey("BLOCKED"),1.0);
          GlobalVariablesFlush();
+         JournalPlain("breaker_trip",0,0,0,0,
+                      "DAILY_LOSS baseline="+DoubleToString(g_day_start_equity,2)+
+                      " floor="+DoubleToString(floor_eq,2)+
+                      " equity="+DoubleToString(eq,2)+
+                      " stop="+DayStopState());
          // v6.6.16 (audit A): structured trip line with every required field.
          Print("[QSMC_AT GUARD] BREAKER_STATE=TRIPPED | BREAKER_REASON=DAILY_LOSS",
                " | DAY_BASELINE=",DoubleToString(g_day_start_equity,2),
@@ -1701,6 +1949,11 @@ void SessionGuardUpdate()
       if(QER_DrawdownTripped(dd_ref,dd_cap,eq))
         {
          g_drawdown_blocked=true;
+         JournalPlain("breaker_trip",0,0,0,0,
+                      "ACCOUNT_DRAWDOWN hwm="+DoubleToString(dd_ref,2)+
+                      " floor="+DoubleToString(floor_eq,2)+
+                      " equity="+DoubleToString(eq,2)+
+                      " limit="+DoubleToString(dd_cap,2)+"%");
          Print("[QSMC_AT GUARD] BREAKER_STATE=TRIPPED | BREAKER_REASON=ACCOUNT_DRAWDOWN",
                " | HWM_BASELINE=",DoubleToString(dd_ref,2),
                " | HWM_SOURCE=",(g_equity_hwm>0.0 ? "equity high-water mark" : "session baseline (legacy)"),
@@ -1721,6 +1974,9 @@ void SessionGuardUpdate()
       if(QER_LossStreakTripped(g_consec_losses,InpStopAfterConsecLoss))
         {
          g_loss_streak_blocked=true;
+         JournalPlain("breaker_trip",0,0,0,0,
+                      "CONSECUTIVE_LOSSES count="+IntegerToString(g_consec_losses)+
+                      " limit="+IntegerToString(InpStopAfterConsecLoss));
          Print("[QSMC_AT GUARD] BREAKER_STATE=TRIPPED | BREAKER_REASON=CONSECUTIVE_LOSSES",
                " | count=",IntegerToString(g_consec_losses),
                " | limit=",IntegerToString(InpStopAfterConsecLoss),
@@ -2601,6 +2857,7 @@ void HandleSignal(SQsigSignal &s)
      }
    if(InpDryRun)
      {
+      JournalOrder(s,"order_refused",lots,risk_money,0,"DRY RUN (InpDryRun=true): nothing sent, no entry budget consumed");
       Print("[QSMC_AT] DRY RUN ",DirText(s.dir)," ",sym," ",DoubleToString(lots,2),
             " lots @ ",DoubleToString(price,_Digits)," sl ",DoubleToString(s.sl,_Digits),
             " tp ",DoubleToString(s.tp,_Digits)," risk ",DoubleToString(risk_money,2),
@@ -2650,6 +2907,7 @@ void HandleSignal(SQsigSignal &s)
    if(review_fail!="")
      {
       NoteClass(key,"ENTRY REVIEW BLOCKED: "+review_fail,REJECT_TRANSIENT);
+      JournalOrder(s,"order_refused",lots,risk_money,0,"entry review blocked by "+review_fail);
       SignalAudit("REVIEW",key,s.cls,s.score,s.reliability,s.rr1,"BLOCKED",review_fail);
       g_refused++;
       return;
@@ -2662,10 +2920,17 @@ void HandleSignal(SQsigSignal &s)
    if(pre_submit!="")
      {
       Print("[QSMC_AT] REFUSED to submit ",DirText(s.dir)," ",sym,": ",pre_submit);
+      JournalOrder(s,"order_refused",lots,risk_money,0,"pre-submit account gate: "+pre_submit);
       MarkSeen(key,s.bar_time,s.dir);
       g_refused++;
       return;
      }
+
+   //--- R1: the request is about to leave. Recorded BEFORE the call, so an
+   //--- order that never returns (terminal killed mid-send) still leaves a row.
+   JournalOrder(s,"order_sent",lots,risk_money,0,
+                "requested @ "+DoubleToString(price,_Digits)+
+                " comment="+InpTradeComment);
 
    bool ok=false;
    if(buy)
@@ -2763,6 +3028,16 @@ void HandleSignal(SQsigSignal &s)
          CountOneTrade();
          g_sent++;
          if(filled_partial) g_partial++;
+         JournalOrder(s,"fill",pos_vol,risk_money,rc,
+                      "position="+IntegerToString((long)pos_ticket)+
+                      " deal="+IntegerToString((long)deal_ticket)+
+                      " entry="+DoubleToString(pos_entry,_Digits)+
+                      " server_sl="+DoubleToString(pos_sl,_Digits)+
+                      " server_tp="+DoubleToString(pos_tp,_Digits)+
+                      (filled_partial ? " PARTIAL" : ""));
+         //--- R1: remember the ticket and the money risked on it, so a close by
+         //--- SL/TP at the SERVER can still be reported in R.
+         JournalWatchAdd(pos_ticket,s.bar_time,s.dir,pos_entry,risk_money,pos_vol);
          return;
         }
 
@@ -2850,6 +3125,9 @@ void HandleSignal(SQsigSignal &s)
       // New entries are blocked until a re-attach - the operator must see the
       // journal, review, and make a fresh decision to trade.
       g_emergency_lockout = true;
+      JournalOrder(s,"order_refused",pos_vol,risk_money,rc,
+                   "protection NOT verified on position "+IntegerToString((long)pos_ticket)+
+                   "; emergency lockout, new entries blocked until re-attach");
       MarkSeen(key,s.bar_time,s.dir);
       CountOneTrade();          // the exposure happened; it consumed an entry slot
       g_unprotected++;
@@ -2877,6 +3155,8 @@ void HandleSignal(SQsigSignal &s)
             " (trades today=",IntegerToString(TradesToday())," of ",
             IntegerToString(MaxTradesPerDayNow()),") and the trade is counted",
             " UNCONFIRMED, never sent - VERIFY THE POSITION IN THE TERMINAL NOW");
+      JournalOrder(s,"order_refused",lots,risk_money,rc,
+                   "UNCONFIRMED fill class: server accepted, EA cannot see the position");
       MarkSeen(key,s.bar_time,s.dir);
       CountOneTrade();
       g_unconfirmed++;
@@ -2894,6 +3174,9 @@ void HandleSignal(SQsigSignal &s)
       // transient"). One requote - the most common server answer on a fast bar -
       // therefore destroyed a valid signal for good, and the journal showed
       // "signals 1, sent 0, refused 0" with no order and no retry.
+      JournalOrder(s,"order_refused",lots,risk_money,rc,
+                   (RetcodeIsTransient(rc) ? "transient, retry budget spent; "
+                                           : "permanent; ")+g_trade.ResultRetcodeDescription());
       if(!RetcodeIsTransient(rc))
         {
          // Counted as a refusal, not as "no signal": the heartbeat's "refused"
@@ -2942,6 +3225,7 @@ void HandleSignal(SQsigSignal &s)
             " (trades today=",IntegerToString(TradesToday())," of ",
             IntegerToString(MaxTradesPerDayNow()),") and the trade is counted",
             " UNCONFIRMED, never sent - VERIFY THE POSITION IN THE TERMINAL NOW");
+      JournalOrder(s,"order_refused",lots,risk_money,rc,"unexpected retcode class");
       MarkSeen(key,s.bar_time,s.dir);
       CountOneTrade();
       g_unconfirmed++;
@@ -3079,6 +3363,11 @@ void ProcessSignals()
       // A build that does not bind buffers 21..25 leaves these at 0.0, which
       // resolves to STRONG_VALID below - never to a permissive class.
       ReadClassification(shift,s);
+      //--- R1: every signal that reaches the executor is recorded, whatever
+      //--- happens to it afterwards. This is the row that makes "signals seen"
+      //--- and "orders sent" comparable after the trial.
+      string jrn_why="";
+      JournalSignal(s,"signal_seen",ClassAllowed(s.cls,jrn_why) ? "" : ("class not allowed: "+jrn_why));
 
       // The class this EA may execute. Refusing here (before any order-side
       // work) keeps "not allowed" and "could not be sized" out of the trade log
@@ -3881,6 +4170,11 @@ void ManageOpenPositions()
          else if(g_trade.PositionClosePartial(ticket,part))
            {
             PosMarkPartial(ticket,risk);
+            JournalPlain("partial_close",0,(buy?1:-1),part,0,
+                         "ticket="+IntegerToString((long)ticket)+
+                         " closed="+DoubleToString(part,2)+
+                         " remaining="+DoubleToString(remain,2)+
+                         " at="+DoubleToString(InpPartialCloseAtR,2)+"R");
             Print("[QSMC_AT] banked ",DoubleToString(pct,0),"% (",DoubleToString(part,2),
                   " lots) of #",IntegerToString((long)ticket)," at ",
                   DoubleToString(InpPartialCloseAtR,2),"R; ",
@@ -3923,7 +4217,12 @@ void ManageOpenPositions()
       g_be_ticket=ticket;
       g_be_last_try=TimeCurrent();
       if(g_trade.PositionModify(ticket,new_sl,tp))
+        {
+         JournalPlain("sl_move",0,(buy?1:-1),PositionGetDouble(POSITION_VOLUME),0,
+                      "ticket="+IntegerToString((long)ticket)+
+                      " reason=break-even new_sl="+DoubleToString(new_sl,_Digits));
          Print("[QSMC_AT] stop moved to break-even on #",IntegerToString((long)ticket));
+        }
       else if(g_be_warned_ticket!=ticket)
         {
          g_be_warned_ticket=ticket;
@@ -4778,6 +5077,8 @@ int OnInit()
          " | partial ",(InpPartialCloseAtR>0.0 ?
             DoubleToString(InpPartialClosePercent,0)+"% at "+DoubleToString(InpPartialCloseAtR,2)+"R" : "off"),
          " | break-even at ",(InpBreakEvenAtR>0.0 ? DoubleToString(InpBreakEvenAtR,2)+"R" : "off"));
+   //--- R1: open the trial journal. A failure disables the CSV, never trading.
+   JournalInit();
    Print("[QSMC_AT] trial guards (effective after HARD clamps): ",
          " risk/trade ",DoubleToString(eff_risk,2),"% (HARD<=",DoubleToString(HardMaxRiskPercent(),2),"%)",
          " | daily cap ",(DayStopState()=="MONEY"
@@ -4802,6 +5103,8 @@ int OnInit()
 
 void OnDeinit(const int reason)
   {
+   //--- R1: close the CSV handle. Rows already written are flushed by FileClose.
+   JournalClose();
    EventKillTimer();
    PurgeStaleSignalGlobals();   // do not leave a year of seen-keys behind
    PurgeLadderGlobals();        // and no dead ticket memory either
@@ -4831,6 +5134,10 @@ void OnTick()
    ProcessSignals();
    ManageOpenPositions();
    DiagnosticHeartbeat();
+   //--- R1: a position closed by the SERVER (SL/TP) never comes back through
+   //--- this EA, so the row is reconstructed from history here, after the
+   //--- management loop, where the position selection is free.
+   JournalWatchScan();
   }
 
 void OnTimer()
@@ -4843,6 +5150,10 @@ void OnTimer()
    ProcessSignals();
    ManageOpenPositions();
    DiagnosticHeartbeat();
+   //--- R1: a position closed by the SERVER (SL/TP) never comes back through
+   //--- this EA, so the row is reconstructed from history here, after the
+   //--- management loop, where the position selection is free.
+   JournalWatchScan();
   }
 //+------------------------------------------------------------------+
 

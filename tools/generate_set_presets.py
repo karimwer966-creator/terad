@@ -340,6 +340,7 @@ EA_OVERRIDES = {
     "InpDeviationPoints": "30",
     "InpMinRRAtFill": "1.20",
     "InpMaxSignalAgeBars": "1",
+    "InpEnableTrialJournal": "true",
     "InpSessionStartHour": "10",
     "InpSessionEndHour": "18",
     "InpCooldownAfterLossMin": "60",
