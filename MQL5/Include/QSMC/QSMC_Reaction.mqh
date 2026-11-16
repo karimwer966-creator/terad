@@ -26,6 +26,9 @@
 #define __QSMC_REACTION_MQH__
 
 #include <QSMC/QSMC_Types.mqh>
+//--- v6.6.24 (F-008): pure two-bar reversal geometry, executed by
+//--- tools/test_candle_patterns.py. Header-only, no dependencies.
+#include <QSMC/QSMC_CandlePatterns.mqh>
 #include <QSMC/QSMC_MarketData.mqh>
 
 #define QSMC_MSS_LOOKBACK 12
@@ -79,8 +82,11 @@ private:
                       upper<=MathMax(body*0.75,DBL_EPSILON) &&
                       (r_c-r_l)/range>=0.62);
          //--- piercing: opens below the prior close, closes above the
-         //--- midpoint of the prior bearish body
-         bool piercing=(p_c<p_o && up && r_c>p_o && r_c<(p_o+p_c)*0.5);
+         //--- midpoint of the prior bearish body (v6.6.24 / F-008: the old
+         //--- expression required r_c>p_o AND r_c<mid while the prior bar is
+         //--- bearish, i.e. mid<p_o - unsatisfiable. Geometry moved to
+         //--- QSMC_CandlePatterns.mqh so it can be executed by a test.)
+         bool piercing=QCP_Piercing(p_o,p_c,r_o,r_c);
          //--- three-bar morning star
          if(i<2) return (bull_engulf || hammer || piercing);
          double b2o=bars.O(i-2), b2c=bars.C(i-2);
@@ -98,7 +104,9 @@ private:
          bool shooting=(upper>=body*m_wick_mult &&
                         lower<=MathMax(body*0.75,DBL_EPSILON) &&
                         (r_c-r_l)/range<=0.38);
-         bool dark_cloud=(p_c>p_o && dn && r_c<p_o && r_c>(p_o+p_c)*0.5);
+         //--- v6.6.24 / F-008: same defect on the bearish side (prior bar
+         //--- bullish => mid>p_o, so "r_c<p_o AND r_c>mid" was impossible).
+         bool dark_cloud=QCP_DarkCloud(p_o,p_c,r_o,r_c);
          if(i<2) return (bear_engulf || shooting || dark_cloud);
          double b2o=bars.O(i-2), b2c=bars.C(i-2);
          double m_o=bars.O(i-1), m_h=bars.H(i-1), m_l=bars.L(i-1), m_c=bars.C(i-1);
@@ -282,9 +290,14 @@ public:
         }
 
       //--- E3 volume expansion
+      //--- v6.6.24 (F-009): a MISSING baseline is a missing feature, not a
+      //--- confirmation. The old second branch granted QEV_VOLUME whenever the
+      //--- median was <=0 ("no baseline: not refuted"), so on a series with no
+      //--- usable volume history every bar earned volume evidence for free -
+      //--- the one place in this detector where absent data scored. Absent data
+      //--- now scores nothing and is named through out.missing below.
       double med=bars.MedianVolume(bar_index-1,m_volume_lookback);
       if(med>0.0 && (double)bars.V(bar_index)>=med*cfg.volume_mult) mask|=QEV_VOLUME;
-      else if(med<=0.0 && bars.V(bar_index)>0) mask|=QEV_VOLUME;   // no baseline: not refuted
 
       //--- E4 displacement away from the level
       if(reject)

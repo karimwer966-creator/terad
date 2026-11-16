@@ -241,15 +241,19 @@ check("double HardMaxRiskPercent(){ return 0.50; }" in EA_CODE and
       "B7 the HARD ceilings are 0.50% risk / 2.00% day / 8.00% DD, above every preset")
 check("input double InpMaxDailyLossMoney    = 0.00;" in EA,
       "B7 the day stop can be expressed in MONEY (0 = off, so nothing changes by default)")
-check("double money=DayStopMoney();" in EA_CODE and
-      "if(money>0.0) return base-money;" in EA_CODE,
+# v6.6.24: the arithmetic moved to QSMC_ExecutionRules.mqh (QER_DayFloorEquity /
+# QER_DayStopMoney). The EA must call them; the header must keep the money-wins
+# rule and the HARD cap.
+_RULES = (ROOT / "MQL5" / "Include" / "QSMC" / "QSMC_ExecutionRules.mqh").read_text(
+    encoding="utf-8", errors="replace")
+check("QER_DayFloorEquity(base,DayStopMoney(),EffectiveDailyPercent())" in EA_CODE and
+      "if(stop_money>0.0) return base-stop_money;" in _RULES,
       "B7 when a money stop is set it WINS over the percentage stop")
-check("return (hard>0.0 ? MathMin(InpMaxDailyLossMoney,hard) : InpMaxDailyLossMoney);"
-      in EA_CODE,
+check("if(hard>0.0) return (inp_money<hard ? inp_money : hard);" in _RULES,
       "B7 a fat-fingered money stop is still capped by HARD% of the day baseline")
 check("if(InpMaxDailyLossMoney<0.0 || InpFixedLotsMaxRiskPercent<0.0)" in EA_CODE,
       "B7 a negative money stop is refused at init")
-check("if(eq<=floor_eq && !g_day_blocked)" in EA_CODE and
+check("QER_DailyTripped(floor_eq,eq) && !g_day_blocked" in EA_CODE and
       "DayFloorEquity(g_day_start_equity)" in EA_CODE,
       "B7 the trip test uses the single floor helper (percent or money)")
 check("DAILY_LOSS_MONEY=" in EA and "AccountInfoString(ACCOUNT_CURRENCY)" in EA_CODE,

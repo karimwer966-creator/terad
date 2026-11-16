@@ -1,6 +1,6 @@
 # دليل التشغيل الإنتاجي — QSMC (nadir2 + QSMC_AutoTrader)
 
-**آخر تحديث:** 2026-11-09 (توحيد DEMO & REAL) · **الإصدار:** v6.6.20
+**آخر تحديث:** 2026-11-16 (تدقيق v6.6.24) · **الإصدار:** v6.6.24
 
 > **2026-11-09 الوضعان الموحّدان:** يكتشف الـEA فئة الحساب **تلقائيًا** من `ACCOUNT_TRADE_MODE`
 > (`DEMO`→`EXECUTION_DEMO`، `REAL`→`EXECUTION_REAL`، `CONTEST` أو أي قيمة غير معروفة→رفض).
@@ -128,13 +128,14 @@ iCustom(_Symbol,_Period,InpIndicatorName)   // بلا أي إدخال
 | `InpDeviationPoints` | 20 | أقصى انزلاق مقبول | 30 |
 | `InpMaxOpenPositions` | 1 | صفقات هذا الـmagic على هذا الرمز | 1 |
 | `InpMaxDailyLossPercent` | 3.00 % | إيقاف اليوم **محفوظ** لا يُصفَّر بإعادة التحميل | 5 % |
-| `InpMaxSignalAgeBars` | 2 | عمر الإشارة المسموح | 3 |
+| `InpMaxSignalAgeBars` | 1 | عمر الإشارة المسموح | 2 |
 | `InpMinStopPoints` / `InpMaxStopPoints` | 20 / 5000 | حدود الوقف | حسب الرمز |
 | `InpMinRRAtFill` | 1.00 | مكافأة:مخاطرة عند **سعر التنفيذ** | لا تُنزله |
 | `InpOrderRetryMax` | 3 | محاولات الفشل العابر لكل إشارة | 5 |
 | `InpCloseOnOpposite` | `false` | إغلاق العكس قبل الدخول (يفشل ⇒ لا دخول) | — |
 | `InpPollSeconds` | 2 | دورة الفحص | — |
 | `InpHeartbeatSeconds` | 300 | سطر تشخيصي دوري (`0` = إيقاف) | لا تُوقفه في الإنتاج |
+| `InpEnableTrialJournal` | `true` | سجل CSV لكل حدث تنفيذ (v6.6.24) — للقراءة فقط، لا يمنع صفقة | اتركه `true` طوال التجربة |
 
 ### المؤشر — `nadir2.mq5` (القيم التي يتداولها الـEA)
 
@@ -200,7 +201,7 @@ iCustom(_Symbol,_Period,InpIndicatorName)   // بلا أي إدخال
 
 | السطر | متى | إن لم يظهر |
 |---|---|---|
-| `QSMC v6.623 execution companion ON …` | عند التحميل | لم يُشغّل الـEA / Algo Trading مطفأ |
+| `QSMC v6.624 execution companion ON …` | عند التحميل | لم يُشغّل الـEA / Algo Trading مطفأ |
 | `envelope: risk<= … \| daily loss stop … (persisted)` | عند التحميل | نسخة قديمة من الملف |
 | `state INERT / DRY RUN / BLOCKED / ARMED` | عند التحميل | — |
 | `day guard: new baseline … for server day …` | مرة كل يوم | الساعة/الخادم غير متصل |

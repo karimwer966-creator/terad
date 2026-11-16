@@ -253,11 +253,11 @@ check(ea.index("RunEntryReview(s,sym,price,lots,opposite,buy)") <
 check('review_fail!=""' in ea and "ENTRY REVIEW BLOCKED: " in ea,
       "a failed review blocks the order and names the condition")
 # The review must use the SAME resolvers as the gates, or it can disagree with them.
-check("bool ok5=SessionOpenNow(sess_why);" in ea,
+check("bool ok5=QER_SessionOk(SessionOpenNow(sess_why));" in ea,
       "R5 calls the same session resolver the entry path uses")
 check("string env=TradeEnvBlock(buy);" in ea,
       "R2 calls the same account gate the entry path uses")
-check("bool ok10=StopsDistanceOK(sym,price,s.sl,s.tp);" in ea,
+check("bool ok10=QER_StopsOk(StopsDistanceOK(sym,price,s.sl,s.tp));" in ea,
       "R10 calls the same broker-stops resolver the entry path uses")
 
 print("-" * 74)

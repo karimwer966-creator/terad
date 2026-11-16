@@ -48,8 +48,8 @@ def body(signature):
 
 
 check("\r\n" in RAW and "\n" not in RAW.replace("\r\n", ""), "host remains pure CRLF")
-check('#property version   "6.623"' in TEXT and
-      '#define QSMC_VERSION_TEXT "v6.6.23"' in TEXT, "release identity is v6.6.23")
+check('#property version   "6.624"' in TEXT and
+      '#define QSMC_VERSION_TEXT "v6.6.24"' in TEXT, "release identity is v6.6.24")
 
 init = TEXT[TEXT.index("int OnInit()"):TEXT.index("void OnDeinit(")]
 role = init.index("g_qsmc_silent_reader=1")

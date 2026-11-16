@@ -111,7 +111,7 @@ def parse_set(path):
 ea_text = io.open(EA, encoding="utf-8", errors="replace").read()
 ENUMS = parse_enums(ea_text)
 inputs = parse_inputs(ea_text)
-check(len(inputs) == 67, "the companion declares 67 inputs (59 in v6.6.20 + 7 execution profile + 1 entry-review switch)", len(inputs))
+check(len(inputs) == 68, "the companion declares 68 inputs (59 in v6.6.20 + 7 execution profile + 1 entry-review switch + 1 trial-journal switch)", len(inputs))
 
 # ---------------------------------------------------------------------------
 # 1. the demo preset exists and is a complete picture of the compiled defaults
@@ -170,7 +170,7 @@ envelope = {
     "InpMinStopPoints": "20",
     "InpMaxStopPoints": "5000",
     "InpMaxOpenPositions": "1",
-    "InpMaxSignalAgeBars": "2",
+    "InpMaxSignalAgeBars": "1",
     "InpMaxDataAgeSeconds": "30",
 }
 for name, want in sorted(envelope.items()):

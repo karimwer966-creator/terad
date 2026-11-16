@@ -89,7 +89,7 @@ InpMaxSpreadFracOfStop=0.10
 InpDeviationPoints=30
 InpMaxOpenPositions=1
 InpMaxDataAgeSeconds=30
-InpMaxSignalAgeBars=2
+InpMaxSignalAgeBars=1
 InpMinStopPoints=20
 InpMaxStopPoints=5000
 InpCloseOnOpposite=false
@@ -122,3 +122,7 @@ InpModerateRiskMultiplier=0.50
 InpStrongRiskMultiplier=1.00
 InpOwnExecutionLane=true
 InpPrintEntryReview=true
+; InpEnableTrialJournal: one CSV row per execution event in
+; MQL5/Files/QSMC_trial_<login>.csv (display only; a write failure never
+; affects an order). On for the demo trial, it is how the trial is judged.
+InpEnableTrialJournal=true

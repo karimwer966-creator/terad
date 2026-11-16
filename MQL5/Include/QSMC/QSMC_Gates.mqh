@@ -314,7 +314,16 @@ public:
                                      const SQsmcArbConfig &cfg,const CZoneRegistry &zones,
                                      string &reason,int &downgrade_state)
      {
-      reason=""; downgrade_state=(int)SIG_LIMITED_ROOM;
+      //--- v6.6.24 (T9): this gate has NO downgrade path. Every branch below
+      //--- returns GATE_FAIL, so the downgrade_state it used to publish
+      //--- (SIG_LIMITED_ROOM) was unreachable - a value nothing could ever read,
+      //--- and one that invited a future edit to "downgrade" limited room
+      //--- instead of refusing it. A room failure is a HARD REJECT: the reward
+      //--- is not there, and no smaller size or lower class makes it there.
+      //--- SIG_LIMITED_ROOM stays in ENUM_SIG_STATE because the value is part of
+      //--- the published state space (arbiter ordering, buffer 22 mapping); it is
+      //--- simply never produced by this gate.
+      reason=""; downgrade_state=(int)SIG_NONE;
       if(c.dir==0) { reason="no direction"; return GATE_FAIL; }
       double risk=(c.dir>0 ? c.entry-c.sl : c.sl-c.entry);
       if(!(risk>0.0) || !MathIsValidNumber(risk))

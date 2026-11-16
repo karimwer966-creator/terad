@@ -25,6 +25,10 @@ Run:  python3 tools/test_arbiter.py
 from __future__ import annotations
 import sys
 from dataclasses import dataclass, field, replace
+from pathlib import Path
+
+# v6.6.24: T9 reads the shipped gate source, so the suite needs the repo root.
+ROOT = Path(__file__).resolve().parents[1]
 from typing import List, Optional, Tuple
 
 # ---------------------------------------------------------------- constants
@@ -872,6 +876,37 @@ def run(verbose=False):
     check("T16d an agreeing consensus still passes", res_a == "PASS", res_a)
 
     # ---- T10 data not ready ---------------------------------------------
+    # --- T9 (v6.6.24): limited room is a HARD REJECT, never a downgrade.
+    # The gate used to publish SIGNAL_LIMITED_ROOM as its downgrade value while
+    # every one of its branches returned FAIL - a value no caller could read, and
+    # an invitation to "soften" it later. The reference model and the shipped
+    # header must agree on both halves: the verdict AND the absence of a downgrade.
+    c_room = Cand(direction=1, entry=100.0, sl=99.0, tp1=100.5, rr=0.5, room=-1.0,
+                  bar_closed=True, bar_index=40, reaction=Reaction())
+    verdict, why = gate_room(c_room, 1.0, cfg)
+    check("T9 limited room returns FAIL (never a downgrade)", verdict == "FAIL", verdict)
+    check("T9 the limited-room reason names the RR shortfall", "LIMITED ROOM" in why, why)
+    gates_src = (ROOT / "MQL5" / "Include" / "QSMC" / "QSMC_Gates.mqh").read_text(
+        encoding="utf-8", errors="replace")
+    room_src = gates_src[gates_src.index("class CRoomGate"):]
+    room_src = room_src[:room_src.index("};")]
+    check("T9 CRoomGate publishes no SIG_LIMITED_ROOM downgrade",
+          "(int)SIG_LIMITED_ROOM" not in room_src and "=SIG_LIMITED_ROOM" not in room_src,
+          "comment mentions are fine; a published value is not")
+    check("T9 CRoomGate still has exactly one exit shape (GATE_FAIL only)",
+          room_src.count("return GATE_FAIL;") >= 3 and "return GATE_PASS;" in room_src,
+          "fails=%d" % room_src.count("return GATE_FAIL;"))
+
+    # --- F-009 (v6.6.24): a missing volume baseline is NOT evidence.
+    reaction_src = (ROOT / "MQL5" / "Include" / "QSMC" / "QSMC_Reaction.mqh").read_text(
+        encoding="utf-8", errors="replace")
+    check("F-009 absent volume baseline never earns QEV_VOLUME (no 'not refuted' branch)",
+          "else if(med<=0.0" not in reaction_src)
+    check("F-009 volume evidence still requires a measured baseline and an expansion",
+          "med>0.0 && (double)bars.V(bar_index)>=med*cfg.volume_mult" in reaction_src)
+    check("F-009 an absent group is still NAMED through out.missing",
+          "out.missing=QSMC_MissingEvidence(mask)" in reaction_src)
+
     ar = Arbiter(cfg)
     check("T10 no signal without data (series empty -> no closed bar)",
           flat(2, 100.0, 0.1).closed_index < 1, "closed_index=%d" % flat(2, 100.0, 0.1).closed_index)

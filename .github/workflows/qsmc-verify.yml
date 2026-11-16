@@ -112,6 +112,29 @@ jobs:
       - name: Execution safety (retry class, symbol-scoped keys, RR at fill, BE throttle)
         run: python3 tools/test_execution_safety.py 2>&1 | tee out/test_execution_safety.log
 
+      # v6.6.24. The EA's breaker arithmetic and the twelve RunEntryReview
+      # conditions now live in a side-effect-free header, so this step COMPILES
+      # and EXECUTES them natively (g++ with asan/ubsan) instead of reading the
+      # source. A boundary such as "eq < floor" instead of "eq <= floor" is
+      # invisible to a source contract and expensive in production.
+      - name: Execution rules (day/drawdown/streak/cooldown floors + 12 review conditions)
+        run: python3 tools/test_execution_rules.py 2>&1 | tee out/test_execution_rules.log
+
+      # v6.6.24 / F-008. "piercing" and "dark cloud" demanded a close both above
+      # and below the same price, so two of the four named reversal patterns
+      # could never fire. The geometry is now pure and this step executes it,
+      # including a sweep proving the old expressions were unsatisfiable.
+      - name: Candle reversal geometry (piercing / dark cloud, proven satisfiable)
+        run: python3 tools/test_candle_patterns.py 2>&1 | tee out/test_candle_patterns.log
+
+      # v6.6.24 (R3). The mechanical half of "is this build safe to attach to a
+      # DEMO account": one version everywhere, presets bound, no order API
+      # reachable from the indicator layer, one magic per QSMC executor, the
+      # account-mode gate intact, the HARD ceilings, and the shipping risk
+      # defaults. It is NOT a compile and NOT a backtest.
+      - name: Demo preflight (version, presets, G4, magic, ceilings, defaults)
+        run: python3 tools/preflight_demo.py 2>&1 | tee out/preflight_demo.log
+
       - name: Diagnostic bridge (the indicator's verdict -> the companion's heartbeat)
         run: python3 tools/test_diag_bridge.py 2>&1 | tee out/test_diag_bridge.log
 

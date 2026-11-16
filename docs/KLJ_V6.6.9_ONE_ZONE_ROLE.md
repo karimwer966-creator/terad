@@ -98,3 +98,27 @@ python3 tools/check_release_gate.py       # GO
   direction.
 * No claim about profitability, win rate, or the quality of any of these
   signals. The score is evidence strength, not probability.
+
+## 7. v6.6.24 (T8): keys are built from the POST-merge zone id
+
+`UD_MergeZones()` unions near-touching same-side zones and then rewrites the
+surviving zone's id as the geometric id of the union
+(`ZRE_ZoneId(side, union_lo, union_hi)`), keeping the strength of the strongest
+constituent and recounting touches on the union. Two consequences that the rest
+of the code must respect, and that are now pinned by a test in
+`tools/test_unified_decision_runtime.py`:
+
+* the merged id is **independent of the order the constituents arrived in**, and
+  it is **never** the id of a constituent (asserted: union of `a`+`b`+`c`,
+  lo=100 hi=103 -> `1:100:103`, and it equals neither `a`, `b` nor `c`);
+* every cooldown, dedupe and alert key must therefore be built from the
+  **post-merge** id. A key captured before the merge names a zone that no longer
+  exists, so the next bar re-alerts the same union under a new name — the
+  classic "the same idea alerted four times" defect.
+
+**One-time key reset on upgrade.** Because the geometric id of a union differs
+from the ids the pre-v6.6.24 build used, the first session after the upgrade
+starts with an empty key space: a zone that was alerted on the previous build
+can alert once more on the first bar of the new one. That is expected, it
+happens once, and it does not consume an entry budget — the executor's own
+`InpMagic`-scoped seen keys are unaffected by this change.

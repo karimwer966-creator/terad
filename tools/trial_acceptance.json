@@ -1,0 +1,31 @@
+{
+  "_readme": [
+    "ACCEPTANCE THRESHOLDS FOR THE DEMO TRIAL OF QSMC v6.6.24.",
+    "",
+    "THE OWNER EDITS THE FOUR NUMBERS BELOW BEFORE THE TRIAL STARTS and does not",
+    "touch them afterwards. A threshold moved mid-trial turns an experiment into",
+    "a story. tools/analyze_trial.py reads this file, applies it to the EA's CSV",
+    "journal (MQL5/Files/QSMC_trial_<login>.csv) and prints PASS / FAIL /",
+    "INCONCLUSIVE per line.",
+    "",
+    "These are RISK-PROCESS thresholds, not a profit target. Passing them means",
+    "'the execution behaved as designed on this sample', never 'this is",
+    "profitable'. Nothing here is a forecast, a win rate or a promise.",
+    "",
+    "The defaults are the values agreed in the v6.6.24 audit brief; they are",
+    "deliberately tight because the trial exists to catch defects, not to",
+    "accumulate a track record."
+  ],
+  "min_trades": 30,
+  "max_dd_r": 6,
+  "min_expectancy_r": 0.0,
+  "max_avg_slippage_points": 20,
+  "min_sample_for_conclusion": 100,
+  "notes": {
+    "min_trades": "Fewer closed trades than this and every statistic below is noise. analyze_trial.py still prints the numbers and marks the verdict INCONCLUSIVE rather than PASS.",
+    "max_dd_r": "Worst peak-to-trough drawdown of the cumulative R curve, in R. Zero means a straight line up (possible on 3 trades, meaningless). This is the number the owner checks FIRST: a strategy with positive expectancy and a 9R drawdown is not tradable at this account size.",
+    "min_expectancy_r": "Mean R per closed trade. 0.0 means break-even before costs; the trial must at least not lose money in R terms to continue.",
+    "max_avg_slippage_points": "Mean |fill price - planned entry price| in points, from the fill rows. Above this, the plan being tested is not the plan being executed and the trial is measuring the broker, not the strategy.",
+    "min_sample_for_conclusion": "Below this many closed trades the tool prints 'sample size too small to conclude' even when every threshold passes. That sentence is part of the deliverable, not a caveat."
+  }
+}

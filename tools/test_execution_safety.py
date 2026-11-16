@@ -86,7 +86,7 @@ fail_block = noc[noc.index("ORDER FAILED"):]
 fail_block = fail_block[:fail_block.index("void ProcessSignals")]
 check("if(!RetcodeIsTransient(rc))" in fail_block,
       "D1 a permanent refusal is the ONLY path that marks the signal seen")
-check("g_retry_count>=(int)MathMax(1,InpOrderRetryMax)" in fail_block,
+check("!QER_RetryAllows(g_retry_counts[slot],InpOrderRetryMax)" in fail_block,
       "D1 retries are bounded, so a broken broker cannot become an order flood")
 check(fail_block.count("MarkSeen(") >= 2,
       "D1 the give-up path also marks seen, so the signal cannot age out mid-flood")
@@ -98,9 +98,12 @@ check(old_shape is None,
       "D1 the 'not marked ... MarkSeen()' contradiction is gone (comment matches code)")
 
 # ------------------------------------------------------- D2 cross-chart suppression
-glob = ea[ea.index("string GlobName"):ea.index("bool SeenBefore")]
-check("_Symbol" in glob,
-      "D2 the terminal-global key carries the symbol (two charts cannot suppress each other)")
+# v6.6.24 (F-011): the namespace now has one definition, so the symbol check
+# follows it there instead of looking for the literal inside GlobName().
+glob = ea[ea.index("string SeenNamespace"):ea.index("bool SeenBefore")]
+check("KeySafe(_Symbol)" in glob and "ACCOUNT_LOGIN" in glob,
+      "D2 the terminal-global key carries the symbol and the account (two charts / "
+      "two logins cannot suppress each other)")
 check("GlobalVariableCheck(GlobName(bar_time,dir))" in code,
       "D2 the reload guard still reads the same key (no second, symbol-less key survives)")
 
@@ -254,12 +257,25 @@ check("InpSessionStartHour" in code and "InpSessionEndHour" in code,
       "D7a the session window is an explicit input pair, not an implicit hour test")
 check("bool SessionOpenNow(string &why)" in code,
       "D7b one function decides the session, so the gate and the journal cannot disagree")
-check("inside=(h>=InpSessionStartHour || h<InpSessionEndHour)" in code,
+# v6.6.24: the window arithmetic moved into the pure rules header, so the wrap
+# case is pinned where it now lives AND the EA is pinned to call it.
+RULES = ROOT / "MQL5" / "Include" / "QSMC" / "QSMC_ExecutionRules.mqh"
+rules = RULES.read_text(encoding="utf-8", errors="replace")
+check("return (hour>=start || hour<end);" in rules and
+      "QER_SessionInside(h,InpSessionStartHour,InpSessionEndHour)" in code,
       "D7c a window may wrap midnight (Asia / NY-only mandates), not only sit inside one day")
 check("if(!SessionOpenNow(dis))" in code and "Note(key,dis);" in code,
       "D7d a closed window REFUSES the entry and prints the reason")
 check("InpMaxTradesPerDay" in code and "void CountOneTrade()" in code,
       "D7e entries per day are capped and counted")
+# F-011 (v6.6.24): the seen-key namespace must have ONE definition, or the
+# purge and the writer disagree again and the purge silently matches nothing.
+check("string SeenNamespace()" in code,
+      "F-011 the seen-key namespace is defined once")
+check(code.count("SeenNamespace()") >= 3,
+      "F-011 both GlobName() and the purge use that one definition")
+check('string pfx="QSMC_AT_"+IntegerToString(InpMagic)' not in code,
+      "F-011 the login-less purge prefix is gone (it could never match)")
 check('DayGuardKey("TRADES")' in noc,
       "D7f the daily count is persisted in the day-guard namespace, so a reload cannot reset it")
 check('GlobalVariableSet(DayGuardKey("TRADES"),0.0);' in noc,
@@ -639,7 +655,7 @@ check("if(SeenBefore(key,bt,dir)) continue;" in code,
       "D11 scenario 6: the seen-key is consulted before any decision")
 check("MarkSeen(key,s.bar_time,s.dir);" in code,
       "D11 scenario 6: every outcome path marks seen (confirmed, repaired, unconfirmed, rejected)")
-check("g_retry_count>=(int)MathMax(1,InpOrderRetryMax)" in code,
+check("!QER_RetryAllows(g_retry_counts[slot],InpOrderRetryMax)" in code,
       "D11 scenario 6: transient retries are bounded (no duplicate flood)")
 # scenario 7: invalid SL/TP prevents entry
 check("s.sl = NormalizeDouble(s.sl, _Digits);" in code and

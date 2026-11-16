@@ -1,6 +1,6 @@
 # Index — every document, by what it is for
 
-73 documents accumulated across eleven releases. This file is the map: which ones
+74 documents accumulated across eleven releases. This file is the map: which ones
 are **instructions** (true today, follow them), which ones are **architecture**
 (explain the code as it is now), which ones are **QATS** (a separate product), and
 which ones are **frozen history** (true on the date printed inside them, and not a
@@ -24,6 +24,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`DEMO_READY_AR_0.10_LOT_200_STOP.md`](DEMO_READY_AR_0.10_LOT_200_STOP.md) | إعداد الديمو الجاهز (0.10 / 200) |
 | [`DEMO_AUTO_DEFAULTS_2026-11-09.md`](DEMO_AUTO_DEFAULTS_2026-11-09.md) | what the compiled defaults arm, and why |
 | [`QSMC_SCALPER_M5_RUNBOOK_AR.md`](QSMC_SCALPER_M5_RUNBOOK_AR.md) | سكالبنج M5: الإعداد، الأوقات، وحدود الخطر |
+| [`DEMO_TRIAL_RUNBOOK.md`](DEMO_TRIAL_RUNBOOK.md) | the v6.6.24 demo trial: pre-attach, week 0 dry run, weeks 1–8, stop conditions, how to read `analyze_trial.py` |
 
 ## 2. Operate and read the chart
 
@@ -60,6 +61,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`KLJ_V6.6.0_SIGNAL_ARBITRATION.md`](KLJ_V6.6.0_SIGNAL_ARBITRATION.md) | arbitration layer, line by line |
 | [`KLJ_V6.6.0_PART_C.md`](KLJ_V6.6.0_PART_C.md) | data layer (Phase 6) |
 | [`KLJ_V6.6.9_ONE_ZONE_ROLE.md`](KLJ_V6.6.9_ONE_ZONE_ROLE.md) | one zone, one role |
+| [`BUFFER_DIFF_v6.6.23_v6.6.24.md`](BUFFER_DIFF_v6.6.23_v6.6.24.md) | how to dump buffers 7..12 / 21..25 and read the diff between two builds |
 | [`AI_PROMPT_FIX_SIGNALS.md`](AI_PROMPT_FIX_SIGNALS.md) | a ready-to-run prompt describing a signal defect |
 
 ## 4. Reports of this repository's own work
@@ -67,6 +69,8 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | Document | What it records |
 |---|---|
 | [`PRODUCTION_REVIEW_2026-11-16_AR.md`](PRODUCTION_REVIEW_2026-11-16_AR.md) | مراجعة كل ملف + الترتيب + ربط الإعدادات (هذه الدورة) |
+| [`AUDIT_v6.6.24.md`](AUDIT_v6.6.24.md) | the v6.6.24 full-repository audit: findings by class, INVALID items with evidence, the demo-trial deliverables |
+| [`PRODUCTION_REVIEW_v6.6.24_AR.md`](PRODUCTION_REVIEW_v6.6.24_AR.md) | التقرير العربي لدورة v6.6.24: العيوب الأحد عشر، فصل (أ) عن (ب)، أدوات التجربة R1–R5، والخطوات اليدوية الست |
 | [`QSMC_LINKS_REPAIR_2026-11-16_AR.md`](QSMC_LINKS_REPAIR_2026-11-16_AR.md) | إصلاح الروابط بين الأجزاء (الدورة السابقة) |
 | [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md) | خريطة المستودع: كل مجلد وماذا يحتوي |
 

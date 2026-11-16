@@ -86,6 +86,13 @@ int main(){
  assert(out[0].touches==1&&drop.empty()&&tail.size()==1&&tail[0].side==-1);
  std::vector<SZREZone> o2={b},d2={a},t2={c,opp};UD_MergeZones(o2,d2,t2,ctx,h,l);
  assert(o2[0].id==out[0].id&&o2[0].strength==out[0].strength);
+ // T8 (v6.6.24): the id of a merged zone is the GEOMETRIC id of the union, so
+ // it is identical whichever constituent arrived first and it is NOT the id of
+ // any constituent. Every cooldown/dedupe key must therefore be built from the
+ // post-merge id: a key captured before the merge names a zone that no longer
+ // exists, and the next bar would re-alert the same union under a new name.
+ assert(out[0].id==ZRE_ZoneId(1,100,103));
+ assert(out[0].id!="a"&&out[0].id!="b"&&out[0].id!="c");
  // Render paths from opposite ends of a merged chain share one display slot.
  g_zre_zones=out;g_zre_sig={{100,101,true},{102.1,103,true},{102.1,103,false}};
  std::vector<int> selected={0};assert(UD_PathDuplicate(1,selected,1)==0);
