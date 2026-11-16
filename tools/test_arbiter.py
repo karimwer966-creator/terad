@@ -897,6 +897,16 @@ def run(verbose=False):
           room_src.count("return GATE_FAIL;") >= 3 and "return GATE_PASS;" in room_src,
           "fails=%d" % room_src.count("return GATE_FAIL;"))
 
+    # --- F-009 (v6.6.24): a missing volume baseline is NOT evidence.
+    reaction_src = (ROOT / "MQL5" / "Include" / "QSMC" / "QSMC_Reaction.mqh").read_text(
+        encoding="utf-8", errors="replace")
+    check("F-009 absent volume baseline never earns QEV_VOLUME (no 'not refuted' branch)",
+          "else if(med<=0.0" not in reaction_src)
+    check("F-009 volume evidence still requires a measured baseline and an expansion",
+          "med>0.0 && (double)bars.V(bar_index)>=med*cfg.volume_mult" in reaction_src)
+    check("F-009 an absent group is still NAMED through out.missing",
+          "out.missing=QSMC_MissingEvidence(mask)" in reaction_src)
+
     ar = Arbiter(cfg)
     check("T10 no signal without data (series empty -> no closed bar)",
           flat(2, 100.0, 0.1).closed_index < 1, "closed_index=%d" % flat(2, 100.0, 0.1).closed_index)

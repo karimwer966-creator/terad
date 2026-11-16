@@ -290,9 +290,14 @@ public:
         }
 
       //--- E3 volume expansion
+      //--- v6.6.24 (F-009): a MISSING baseline is a missing feature, not a
+      //--- confirmation. The old second branch granted QEV_VOLUME whenever the
+      //--- median was <=0 ("no baseline: not refuted"), so on a series with no
+      //--- usable volume history every bar earned volume evidence for free -
+      //--- the one place in this detector where absent data scored. Absent data
+      //--- now scores nothing and is named through out.missing below.
       double med=bars.MedianVolume(bar_index-1,m_volume_lookback);
       if(med>0.0 && (double)bars.V(bar_index)>=med*cfg.volume_mult) mask|=QEV_VOLUME;
-      else if(med<=0.0 && bars.V(bar_index)>0) mask|=QEV_VOLUME;   // no baseline: not refuted
 
       //--- E4 displacement away from the level
       if(reject)
