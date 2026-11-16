@@ -36,7 +36,8 @@ template<class... T> bool ObjectCreate(T...){creates++;return object_exists=true
 template<class... T> bool ObjectDelete(T...){deletes++;object_exists=false;return true;}
 template<class... T> void ObjectSetInteger(T...){}
 template<class... T> void ObjectSetString(T...){}
-template<class... T> void Print(T...){}
+int prints=0;
+template<class... T> void Print(T...){prints++;}
 string TimeToString(datetime t){return std::to_string(t);}
 string DoubleToString(double x,int){return std::to_string(x);}
 string PFX="TEST_";
@@ -52,7 +53,8 @@ datetime g_mvp_built_time=0;
 struct Pool {int availability_bar=0,parent_pool_availability_bar=0;
 string id,type,parent_pool_id;double parent_level=0;};
 std::vector<Pool> g_liquidity;
-double PMI_ATRAt(int,int){reads++;return atr_value;}
+int last_atr_period=-1;
+double PMI_ATRAt(int,int period){reads++;last_atr_period=period;return atr_value;}
 bool QSMC_SilentReader(){return false;}
 '''
 TESTS = r'''
@@ -61,7 +63,7 @@ void bar(int b,double o=100,double h=101,double l=99,double c=100,bool reset=fal
  g_mvp_built_time=g_buf_t[b]; LV_Update(b,reset);
 }
 void fresh(){
- InpEnableLiquidityValue=true;InpUseMasterVolumeProfile=true;InpTopDownMinRR=1.5;
+ InpEnableLiquidityValue=true;InpUseMasterVolumeProfile=true;InpTopDownMinRR=1.5;InpATRPeriod=2;
  g_mvp_active=0;g_mvp_count=1;g_mvp.assign(1,Profile());atr_value=1;
  g_rates_total=100;g_liquidity.clear();
  for(int i=0;i<100;i++) {g_buf_t[i]=1000+i*60;g_buf_o[i]=100;g_buf_h[i]=101;g_buf_l[i]=99;g_buf_c[i]=100;}
@@ -109,6 +111,32 @@ int main(){
  fresh();g_liquidity.clear();bar(3);assert(g_lv_phase==0);
  fresh();sweep();g_lv_phase=0;g_liquidity[0].type="EQH";
  g_lv_last=g_buf_t[2];bar(3,100,101,99,100.5);assert(g_lv_phase==0);
+ // v6.6.24 A: the journal answers to InpLVJournal alone, not to InpArbVerboseLog,
+ // and it is written before the label (a chart that refuses the object still logs).
+ fresh();sweep();InpLVJournal=true;InpArbVerboseLog=false;prints=0;
+ bar(4,100.5,102,100.4,101.5);assert(prints>=1);
+ InpLVJournal=false;prints=0;bar(5,101.2,102,101,101.5);assert(prints==0);
+ InpArbVerboseLog=true;
+ // v6.6.24 B: PMI_ATRAt receives the period that was validated, not the raw input.
+ fresh();InpATRPeriod=1;sweep();assert(last_atr_period==2);
+ InpATRPeriod=0;g_lv_last=0;sweep();assert(last_atr_period==2);
+ fresh();InpATRPeriod=14;g_lv_last=g_buf_t[19];bar(20,100.5,102,100.4,101.5);assert(last_atr_period==14);
+ // v6.6.24 C: a bounds failure must not cache the bar - the recovery bar is evaluated.
+ fresh();sweep();g_rates_total=4;LV_Update(3,false);
+ assert(g_lv_status=="DATA UNAVAILABLE / BAR BOUNDS" && g_lv_last==0);
+ g_rates_total=100;LV_Update(3,false);assert(g_lv_last==g_buf_t[3]);
+ // v6.6.24 D: the reason names the missing input instead of always the master VP.
+ fresh();g_mvp_built_time=0;LV_Update(4,false);assert(g_lv_status=="WAIT / PROFILE NOT BUILT ON THIS BAR");
+ fresh();InpUseMasterVolumeProfile=false;bar(4);assert(g_lv_status=="DATA UNAVAILABLE / ENABLE MASTER VP");
+ fresh();InpTopDownMinRR=0;bar(4);assert(g_lv_status=="DATA UNAVAILABLE / INVALID MIN RR");
+ // v6.6.24 E: a sweep that already printed through the POC is refused, not armed.
+ fresh();g_mvp[0].poc=100.5;g_mvp[0].vah=120;g_lv_last=0;
+ bar(2,100,101,99,100,true);assert(g_lv_poc==100.5&&g_lv_profile);
+ Pool p2;p2.id="P";p2.type="EQL";p2.availability_bar=1;
+ Pool s2;s2.id="S";s2.type="SSL TAKEN";s2.parent_pool_id="P";
+ s2.parent_pool_availability_bar=1;s2.availability_bar=3;s2.parent_level=100;
+ g_liquidity={p2,s2};bar(3,100,101,99,100.5);
+ assert(g_lv_phase==0 && g_lv_status=="REJECT / SWEEP ALREADY AT POC");
  std::cout<<"PASS: actual header state-machine runtime scenarios (stubbed MT5 I/O)\n";
 }
 '''

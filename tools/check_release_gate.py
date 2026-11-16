@@ -12,7 +12,8 @@ checks the things that only matter *before deployment*:
   G4  nothing in this layer can trade, send a request, or delete a file -
       with ONE reviewed exception: MQL5/Experts/QSMC_AutoTrader.mq5, the
       execution companion, which is the only file allowed to reach the trade API
-  G5  no log line can fire per bar unless the operator asked for verbosity
+  G5  no log line can fire per bar unless the operator asked for it (any bool input
+      that ships false and is tested positively)
   G6  no TODO / FIXME / "not implemented" left in the shipped path
   G7  the CI gate covers this script (a gate nobody runs is a suggestion)
 
@@ -643,11 +644,38 @@ else:
 # "Flood" has one meaning here: a line printed from the per-bar path. That is a
 # specific set of functions in the library headers, so the rule checks those and
 # says nothing about init/deinit/one-shot reporting, which is legitimate output.
+#
+# The guard the rule used to demand was one particular flag (InpArbVerboseLog). The
+# invariant is really "the operator asked for this line", and any diagnostic input
+# that ships `false` is such an ask: an operator who switches on InpLVJournal is
+# asking for one monitor row per closed bar. So the gate collects every bool input
+# declared with a `false` default and accepts a body that references one of them
+# POSITIVELY - `if(!InpX)` and `InpX==false` do not count, because those fire when
+# the operator did not ask.
 BAR_PATH = ("Refresh", "BuildContext", "FinalizeBar", "TacticalObserve", "SetZones",
             "ApplyExternalBias", "Evaluate", "Score", "Decide", "Publish", "Advance",
             "Observe", "Update", "Check", "Scan", "Render", "Draw")
 HDR_RE = re.compile(r"(?:^|\n)\s*(?:const\s+)?[A-Za-z_][\w:]*\s*(?:\*+\s*)?"
                     r"(?P<name>~?[A-Za-z_]\w*)\s*\([^;{)]*\)\s*(?:const\s*)?\{")
+FALSE_BOOL_INPUT = re.compile(r"input\s+bool\s+(?P<name>Inp\w+)\s*=\s*false\s*;")
+false_bool_inputs = set()
+for path in LIBRARY:
+    for m in FALSE_BOOL_INPUT.finditer(read(path)):
+        false_bool_inputs.add(m.group("name"))
+
+
+def asked_by_operator(body):
+    for name in false_bool_inputs:
+        if not re.search(r"\b" + re.escape(name) + r"\b", body):
+            continue
+        if re.search(r"!\s*" + re.escape(name) + r"\b", body):
+            continue
+        if re.search(r"\b" + re.escape(name) + r"\s*==\s*false", body):
+            continue
+        return name
+    return ""
+
+
 g5_checked = 0
 for path in [f for f in LIBRARY if f.endswith(".mqh")]:
     src = strip_noise(read(path))
@@ -665,13 +693,13 @@ for path in [f for f in LIBRARY if f.endswith(".mqh")]:
         base = next((n for n in BAR_PATH if fname == n or fname.endswith(n)), "")
         if not base:
             continue
-        if "InpArbVerboseLog" in body:
+        if "InpArbVerboseLog" in body or asked_by_operator(body):
             continue
         if "once" in body.lower() or "m_log_" in body or "m_last_print" in body:
             continue
-        fail("G5 %s:%d  %s() is on the per-bar path and logs without an "
-             "InpArbVerboseLog guard - on an M1 chart that is ~39 000 lines a month, "
-             "and a flooded Journal is how a real warning gets missed"
+        fail("G5 %s:%d  %s() is on the per-bar path and logs without a diagnostic "
+             "input guard - no default-false input gates it, so on an M1 chart that is "
+             "~39 000 lines a month and a flooded Journal is how a real warning is missed"
              % (os.path.relpath(path, ROOT), src[:pos].count("\n") + 1, fname))
 NOTES.append("G5 %d log call sites in the headers checked against the per-bar path"
              % g5_checked)
