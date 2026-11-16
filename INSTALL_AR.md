@@ -1,8 +1,34 @@
-# تثبيت QSMC v6.6.20 للإنتاج — خطوة بخطوة
+# تثبيت QSMC v6.6.22 للإنتاج — خطوة بخطوة
 
 **الحالة الآلية:** `OFFLINE GO` من `python3 tools/check_production_ready.py`، و`GO (0 warnings)` من `python3 tools/check_release_gate.py`.
 
 **ما لا يثبته هذا تلقائيًا:** ترجمة MetaEditor (F7)، الربحية، أو زمن شبكة الوسيط. لا يوجد MetaEditor في بيئة البناء. لذلك لا تنتقل إلى حساب حقيقي قبل إكمال سلّم demo في `docs/QSMC_GO_LIVE_RUNBOOK.md`.
+
+---
+
+## 0. البداية السريعة — أول عشر دقائق
+
+اختر ما تريده أولًا، فلكل هدف ملف واحد:
+
+| تريد | حمّل على الشارت | صفات الملف |
+|---|---|---|
+| ترى التحليل فقط، بلا تداول | `presets/QSMC_v6.6.20_production_chart.set` **للمؤشر**، ولا ترفق الـEA | عرضي، لا يغيّر أي بوابة دخول |
+| تراقب كل شيء ولا يُرسل أي أمر | `presets/QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set` **للـEA** | المفتاح مطفأ + دراي-رَن |
+| ديمو يتداول فعلًا (الوضع الافتراضي) | `presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set` | مسلَّح على ديمو فقط، الحقيقي مرفوض |
+| سكالبنج M5 | `presets/QSMC_AutoTrader_v6.6.22_SCALP_M5.set` | M5، 0.25 %، 08:00–20:00، 6 دخولات/يوم |
+
+الخطوات الستّ:
+
+1. **انسخ** ملفات MQL5 إلى `File → Open Data Folder` (القسم 1).
+2. **اضغط F7** على `nadir2.mq5` ثم `QSMC_AutoTrader.mq5` حتى تصل إلى **0 errors** (القسم 2).
+3. **أرفق المؤشر** على شارت XAUUSD، ثم `Indicator List → Properties → Load` واختر إعداد المؤشر.
+4. **أرفق الـEA** على نفس الرمز/الفريم، ثم `Inputs → Load` واختر إعداد الـEA من الجدول أعلاه.
+5. **اقرأ سطرين** في تبويب Experts: `[QSMC_AT] QSMC v6.622 execution companion ON` و`iCustom handshake OK`. إن ظهر إصدار أقدم أو fallback متكرر، توقّف وأعد النسخ/الترجمة.
+6. **راقب 24 ساعة** واقرأ `docs/STAGED_GO_LIVE_LADDER_v6.6.14.md` قبل أي خطوة تالية.
+
+**قاعدة واحدة لا تُخترق:** لا تغيّر مدخلات القرار على الشارت المرئي وتظنّ أن الـEA يتداولها. الـEA يقرأ نسخة `iCustom` بافتراضيات المؤشر المترجمة (القسم 4).
+
+**أين تجد الباقي:** خريطة المستودع `docs/PROJECT_MAP_AR.md` · فهرس الوثائق `docs/INDEX.md` · قراءة الشارت `docs/QSMC_CHART_READING_AR.md` · «لماذا لا توجد صفقات» `docs/QSMC_WHY_NO_TRADES.md`.
 
 ---
 
@@ -13,7 +39,7 @@
 ```text
 MQL5/Indicators/nadir2.mq5
 MQL5/Indicators/QSMC_ScannerProbe.mq5        (اختياري)
-MQL5/Include/QSMC/*.mqh                     (23 ملفًا)
+MQL5/Include/QSMC/*.mqh                     (31 ملفًا)
 MQL5/Scripts/QSMC_ArbiterTest.mq5
 MQL5/Experts/QSMC_AutoTrader.mq5            (اختياري للتنفيذ)
 MQL5/Experts/KLJ_DataFeeder.mq5             (اختياري، يصل معطلًا)
@@ -90,7 +116,7 @@ InpPinTimeframeMinutes=15   (شارت M15 فقط)
 3. ابحث عن:
 
 ```text
-[QSMC_AT] QSMC v6.620 execution companion ON
+[QSMC_AT] QSMC v6.622 execution companion ON
 [QSMC_AT] iCustom handshake OK ... silent EA_READER
 ```
 
@@ -122,7 +148,7 @@ presets/QSMC_v6.6.20_latency_diagnosis.set
 
 ---
 
-## 5b. قراءة سجل الإقلاع/الإيقاف في v6.6.20
+## 5b. قراءة سجل الإقلاع/الإيقاف في v6.6.22
 
 - شعار المؤشر يقول `LIVE MARKET | ANALYSIS ONLY (no orders)`؛ هذا لا يعني أن الـEA أرسل أمرًا. حالة التنفيذ تُقرأ من سطر الـEA نفسه (`INERT` / `DRY RUN` / `BLOCKED`).
 - انتظار ATR/ADX الأولي قد يظهر كـ `not ready` أو `partial history` مع دور النسخة والخطأ وعدد القيم المحسوبة. ابحث بعدها عن `READY`. إذا تكرر `WARNING` بعد نفاد المحاولات، أرسل السطر كاملًا ولا تغيّر بوابات الدخول عشوائيًا.
@@ -137,7 +163,7 @@ presets/QSMC_v6.6.20_latency_diagnosis.set
 شغّل على demo أو paper على الأقل دورة كاملة من الإشارات/الـheartbeats، وراقب:
 
 - لا توجد أخطاء ترجمة أو runtime.
-- الشعار v6.6.20.
+- الشعار v6.6.22.
 - handshake صحيح.
 - لا يوجد تسريب كائنات/مقابض عند الإزالة.
 - قواطعDaily/DD/consecutive تعمل كما هو موثق.
@@ -162,14 +188,16 @@ presets/QSMC_v6.6.20_latency_diagnosis.set
 ## 8. أوامر التحقق الآلية (من جذر المستودع)
 
 ```bash
-python3 tools/check_production_ready.py
-python3 tools/check_release_gate.py
+python3 tools/check_repo_layout.py --verbose   # الترتيب: الجذر، المرآة، المسارات، الإصدارات، الفهرس
+python3 tools/check_presets.py                 # كل إعداد أمام مصدره (9 ملفات)
+python3 tools/check_release_gate.py            # GO / NO-GO
+python3 tools/check_production_ready.py        # 63 فحصًا: كل الحزم + البوابات
 ```
 
 النتيجة المتوقعة على Linux أو CI (حيث `g++` موجود):
 
 ```text
-OFFLINE GO: 57/57 curated checks passed.
+OFFLINE GO: 63/63 curated checks passed.
 GO (with 0 warning(s)) - mechanical invariants hold.
 ```
 
@@ -178,7 +206,7 @@ GO (with 0 warning(s)) - mechanical invariants hold.
 اثنا عشر فحصًا لا تكتفي بقراءة المصدر: تُترجم كود MQL5 الحقيقي (دوال من المؤشر، والـ EA، ومحرّك SMC + Volume Profile، بعد استبدال واجهة MT5) بمترجم C++ وتُشغّله، وتحتاج `g++`. إن لم يكن مثبتًا على الجهاز:
 
 - تُطبع `SKIP` وتخرج الفحوص بالرمز `77` — لا `PASS` ولا `FAIL`؛
-- يصبح الحكم `OFFLINE GO (PARTIAL): 45/57 verified, 12 SKIPPED` مع أسماء الفحوص المتخطاة؛
+- يصبح الحكم `OFFLINE GO (PARTIAL): 51/63 verified, 12 SKIPPED` مع أسماء الفحوص المتخطاة؛
 - هذه الفحوص **لم تُتحقق على جهازك**، والحكم لا يغطيها؛ اقرأ نتيجة CI على Linux، أو ثبّت MSYS2/MinGW-w64 (مع AddressSanitizer) وأعد التشغيل؛
 - `--require-native` يحوّل التخطي إلى `NO-GO` صريح، وهو ما يستخدمه CI حتى لا يمر مشغّل بلا مترجم بصمت.
 
