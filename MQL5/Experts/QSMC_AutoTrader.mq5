@@ -584,6 +584,19 @@ string KeySafe(const string s)
    return out;
   }
 
+//--- ONE definition of the seen-key namespace (v6.6.24 / F-011).
+//--- GlobName() and PurgeStaleSignalGlobals() used to build this string
+//--- separately and they DISAGREED: the purge prefix omitted the account login
+//--- that GlobName() includes, so SetStringFind never matched and the purge
+//--- removed nothing. Every signal key ever written therefore stayed in the
+//--- terminal for the life of the installation, which is the exact leak the
+//--- purge was written to prevent.
+string SeenNamespace()
+  {
+   return ("QSMC_AT_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"_"+
+           IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_");
+  }
+
 string GlobName(const datetime bar_time,const int dir)
   {
    // The SYMBOL is part of the name, and that is a defect fix, not decoration.
@@ -596,9 +609,7 @@ string GlobName(const datetime bar_time,const int dir)
    // outlive a login switch inside one terminal session, and a magic number that
    // is reused on two accounts (which the presets do) would otherwise make the
    // second account believe it had already traded a bar it never saw.
-   return ("QSMC_AT_"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"_"+
-           IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_"+
-           IntegerToString((long)bar_time)+"_"+(dir>0 ? "B" : "S"));
+   return (SeenNamespace()+IntegerToString((long)bar_time)+"_"+(dir>0 ? "B" : "S"));
   }
 
 // A transient retcode means the REQUEST never became an ORDER (requote, price
@@ -3937,7 +3948,8 @@ void ManageOpenPositions()
 //+------------------------------------------------------------------+
 void PurgeStaleSignalGlobals()
   {
-   string pfx="QSMC_AT_"+IntegerToString(InpMagic)+"_"+KeySafe(_Symbol)+"_";
+   // v6.6.24 (F-011): the SAME namespace GlobName() writes into, login included.
+   string pfx=SeenNamespace();
    long cutoff=(long)TimeCurrent()-86400;
    int removed=0;
    for(int i=GlobalVariablesTotal()-1;i>=0;i--)
