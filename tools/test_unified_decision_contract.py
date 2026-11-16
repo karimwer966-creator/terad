@@ -22,7 +22,10 @@ class UnifiedContract(unittest.TestCase):
         self.assertIn('e.confirmation_bar<=e.created_bar',HEADER)
         self.assertIn('if(authority!=1 && authority!=-1) return',HEADER)
         self.assertIn('if(InpUnifiedDecision) return UD_Verdict(closed,why)',MAIN)
-        self.assertIn('#define QSMC_ALERT_SRC_CORE 3',MAIN)
+        # T7: the id is defined once, in QSMC_Types.mqh, and consumed here.
+        TYPES=(ROOT/'MQL5/Include/QSMC/QSMC_Types.mqh').read_text()
+        self.assertIn('#define QSMC_ALERT_SRC_CORE 3',TYPES)
+        self.assertIn('a.source=QSMC_ALERT_SRC_CORE',MAIN)
 
     def test_same_snapshot_before_dispatch_and_render(self):
         dispatcher=body('void AlertDispatcherFinalize(const int rates_total)\n')

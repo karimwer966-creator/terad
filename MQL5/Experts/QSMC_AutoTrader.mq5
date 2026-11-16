@@ -135,7 +135,7 @@
 //|  and checked by tools/test_diag_bridge.py.                        |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
-#property version   "6.622"
+#property version   "6.623"
 #property description "Companion execution EA for the QSMC indicator. Ships inert; no strategy claim."
 #property strict
 
@@ -4535,7 +4535,7 @@ int OnInit()
    double eff_daily=EffectiveDailyPercent();
    double eff_dd=EffectiveDDPct();
 
-   Print("[QSMC_AT] QSMC v6.622 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
+   Print("[QSMC_AT] QSMC v6.623 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",(InpLotMode==QSMC_LOT_FIXED

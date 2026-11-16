@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.622"
+#property version   "6.623"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -622,7 +622,7 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.15).
-#define QSMC_VERSION_TEXT "v6.6.22"
+#define QSMC_VERSION_TEXT "v6.6.23"
 #property indicator_chart_window
 #property indicator_buffers 26   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)
 #property indicator_plots   7
@@ -4162,21 +4162,12 @@ struct SZRELifecycleMemo
 // One shared observational alert candidate. ZRE and RXN feed this record;
 // only the dispatcher publishes a directional scenario. It carries no setup
 // ownership and cannot authorize an entry.
-//--- v6.6.23 T7: the alert dispatcher has its OWN source id space.
-//--- It is NOT ENUM_SIG_SOURCE (where 1=CORE, 2=ZRE, 3=RXN): here 3 is CORE.
-//--- QSMC_ALERT_SRC_CORE is defined once, here, and QSMC_UnifiedDecision.mqh
-//--- consumes it (it carries a matching fallback for standalone use).
-#define QSMC_ALERT_SRC_NONE 0
-#define QSMC_ALERT_SRC_ZRE  1
-#define QSMC_ALERT_SRC_RXN  2
-#define QSMC_ALERT_SRC_CORE 3
-
 struct SAlertCandidate
 {
    bool     valid;
    bool     scenario_candidate;
    bool     alert_eligible;
-   int      source;              // QSMC_ALERT_SRC_*: 1=ZRE, 2=RXN, 3=CORE
+   int      source;              // 1=ZRE, 2=RXN, 3=CORE legacy
    int      direction;           // +1 BUY, -1 SELL, 0 non-directional zone state
    int      level;               // comparable RXN-level rank; ZRE reaction maps to 2
    int      score;               // evidence/strength, not probability

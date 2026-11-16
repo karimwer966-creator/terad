@@ -1,4 +1,4 @@
-# تثبيت QSMC v6.6.22 للإنتاج — خطوة بخطوة
+# تثبيت QSMC v6.6.23 للإنتاج — خطوة بخطوة
 
 **الحالة الآلية:** `OFFLINE GO` من `python3 tools/check_production_ready.py`، و`GO (0 warnings)` من `python3 tools/check_release_gate.py`.
 
@@ -23,7 +23,7 @@
 2. **اضغط F7** على `nadir2.mq5` ثم `QSMC_AutoTrader.mq5` حتى تصل إلى **0 errors** (القسم 2).
 3. **أرفق المؤشر** على شارت XAUUSD، ثم `Indicator List → Properties → Load` واختر إعداد المؤشر.
 4. **أرفق الـEA** على نفس الرمز/الفريم، ثم `Inputs → Load` واختر إعداد الـEA من الجدول أعلاه.
-5. **اقرأ سطرين** في تبويب Experts: `[QSMC_AT] QSMC v6.622 execution companion ON` و`iCustom handshake OK`. إن ظهر إصدار أقدم أو fallback متكرر، توقّف وأعد النسخ/الترجمة.
+5. **اقرأ سطرين** في تبويب Experts: `[QSMC_AT] QSMC v6.623 execution companion ON` و`iCustom handshake OK`. إن ظهر إصدار أقدم أو fallback متكرر، توقّف وأعد النسخ/الترجمة.
 6. **راقب 24 ساعة** واقرأ `docs/STAGED_GO_LIVE_LADDER_v6.6.14.md` قبل أي خطوة تالية.
 
 **قاعدة واحدة لا تُخترق:** لا تغيّر مدخلات القرار على الشارت المرئي وتظنّ أن الـEA يتداولها. الـEA يقرأ نسخة `iCustom` بافتراضيات المؤشر المترجمة (القسم 4).
@@ -78,7 +78,7 @@ MQL5/Experts/KLJ_DataFeeder.mq5             (اختياري، يصل معطلً�
 5. في Experts/Journal يجب أن ترى:
 
 ```text
-[QSMC_ARB] v6.6.22 arbitration layer ON | preset ...
+[QSMC_ARB] v6.6.23 arbitration layer ON | preset ...
 ```
 
 إذا رأيت `v6.6.19` أو أقدم، فأنت ما زلت تشغّل نسخة قديمة. أوقف كل شيء وأعد النسخ/الترجمة.
@@ -116,7 +116,7 @@ InpPinTimeframeMinutes=15   (شارت M15 فقط)
 3. ابحث عن:
 
 ```text
-[QSMC_AT] QSMC v6.622 execution companion ON
+[QSMC_AT] QSMC v6.623 execution companion ON
 [QSMC_AT] iCustom handshake OK ... silent EA_READER
 ```
 
@@ -148,7 +148,7 @@ presets/QSMC_v6.6.20_latency_diagnosis.set
 
 ---
 
-## 5b. قراءة سجل الإقلاع/الإيقاف في v6.6.22
+## 5b. قراءة سجل الإقلاع/الإيقاف في v6.6.23
 
 - شعار المؤشر يقول `LIVE MARKET | ANALYSIS ONLY (no orders)`؛ هذا لا يعني أن الـEA أرسل أمرًا. حالة التنفيذ تُقرأ من سطر الـEA نفسه (`INERT` / `DRY RUN` / `BLOCKED`).
 - انتظار ATR/ADX الأولي قد يظهر كـ `not ready` أو `partial history` مع دور النسخة والخطأ وعدد القيم المحسوبة. ابحث بعدها عن `READY`. إذا تكرر `WARNING` بعد نفاد المحاولات، أرسل السطر كاملًا ولا تغيّر بوابات الدخول عشوائيًا.
@@ -163,7 +163,7 @@ presets/QSMC_v6.6.20_latency_diagnosis.set
 شغّل على demo أو paper على الأقل دورة كاملة من الإشارات/الـheartbeats، وراقب:
 
 - لا توجد أخطاء ترجمة أو runtime.
-- الشعار v6.6.22.
+- الشعار v6.6.23.
 - handshake صحيح.
 - لا يوجد تسريب كائنات/مقابض عند الإزالة.
 - قواطعDaily/DD/consecutive تعمل كما هو موثق.

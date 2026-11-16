@@ -15,6 +15,19 @@ input int InpMessageCooldownBars = 10; // 0 disables diagnostic dedup; 1..1000 b
 // as "CORE" to anyone holding the dispatcher struct - the same integer with
 // two meanings (v6.6.23 T7). The host defines the macro next to the struct;
 // this fallback keeps the header usable on its own (and by the native test).
+//--- Fallbacks for all four ids so this header compiles standalone (the
+//--- native runtime test does not see QSMC_Types.mqh or nadir2.mq5). When
+//--- QSMC_Types.mqh is included first - as it is in the indicator - these are
+//--- skipped and the single definition there wins.
+#ifndef QSMC_ALERT_SRC_NONE
+#define QSMC_ALERT_SRC_NONE 0
+#endif
+#ifndef QSMC_ALERT_SRC_ZRE
+#define QSMC_ALERT_SRC_ZRE  1
+#endif
+#ifndef QSMC_ALERT_SRC_RXN
+#define QSMC_ALERT_SRC_RXN  2
+#endif
 #ifndef QSMC_ALERT_SRC_CORE
 #define QSMC_ALERT_SRC_CORE 3
 #endif

@@ -1,4 +1,4 @@
-# QSMC v6.6.22 — BUILD, RUN, VERIFY
+# QSMC v6.6.23 — BUILD, RUN, VERIFY
 
 Operational guide for `nadir2.mq5` + the `MQL5/Include/QSMC` arbitration layer.
 Design and root-cause analysis live in `docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md`;

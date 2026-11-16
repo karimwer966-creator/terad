@@ -33,7 +33,7 @@
 //|         "[QSMC_AT] day guard: new baseline <equity>" and ARMED.   |
 //+------------------------------------------------------------------+
 #property copyright "QSMC"
-#property version   "6.622"
+#property version   "6.623"
 #property strict
 #property script_show_inputs
 

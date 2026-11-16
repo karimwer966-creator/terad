@@ -701,8 +701,8 @@ check(code_only.count("int closed=ArraySize(g_buf_c)-2;") == 2,
       "lived in a dead function deleted in doc 11.14)")
 check(code_only.count("int closed=g_rates_total-2;") == 8,
       "D all 8 replay-path closed-bar sites are unchanged")
-check(TEXT.count('#property version   "6.622"') == 1, "D the version property is 6.622 (v6.6.22 chart hygiene release)")
-check(TEXT.count('"v6.6.22"') >= 1, "D the version text is v6.6.22 (v6.6.21 execution profile + entry review; v6.6.22 chart hygiene)")
+check(TEXT.count('#property version   "6.623"') == 1, "D the version property is 6.623 (v6.6.23 review release)")
+check(TEXT.count('"v6.6.23"') >= 1, "D the version text is v6.6.23 (v6.6.23 bias arbitration and report fixes; chart hygiene from v6.6.22)")
 check(len(re.findall(r'(?m)^#property indicator_buffers\s+26\b', TEXT)) == 1,
       "D indicator_buffers is 26 (21 shipped + 5 classification, v6.6.21)")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,

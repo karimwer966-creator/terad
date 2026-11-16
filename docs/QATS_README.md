@@ -206,7 +206,7 @@ It is not the MT5 Strategy Tester.
 > and its JSON carry the figures of the re-run. No conclusion changed; the note at the top of the
 > study document lists what moved.
 
-## QSMC indicator: a clean chart, and an SMC + Volume Profile decision engine (v6.6.22)
+## QSMC indicator: a clean chart, and an SMC + Volume Profile decision engine (v6.6.23)
 
 The repository also carries the QSMC indicator `nadir2.mq5` and its `MQL5/Include/QSMC`
 layer. Two display-side changes, neither of which can place an order:
@@ -272,7 +272,7 @@ docs/incident-20261101/                           preserved incident audit recor
 docs/PRODUCTION_AUDIT_2026-11-09_QUANTUM_EA.md    consolidation audit (v1.00)
 .github/workflows/quantum-verify.yml              CI: structural checks + host build + simulator
 
-nadir2.mq5, MQL5/Indicators/nadir2.mq5            the QSMC indicator (v6.6.22), two identical copies
+nadir2.mq5, MQL5/Indicators/nadir2.mq5            the QSMC indicator (v6.6.23), two identical copies
 MQL5/Indicators/QSMC_SmcVpEngine.mq5              SMC + Volume Profile decision engine (display only)
 MQL5/Include/QSMC/QSMC_Svp*.mqh                   its modules: core, liquidity, zones, volume profile, decision, chart
 MQL5/Include/QSMC/QSMC_SignalRegistry.mqh         one identity and one lifecycle per setup (both indicators)
