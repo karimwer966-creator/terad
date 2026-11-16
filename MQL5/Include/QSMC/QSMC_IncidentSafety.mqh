@@ -16,7 +16,12 @@ void QA_FilterCandidates(SZRECand &cands[],const SZREContext &ctx,const double &
    if(!have_h || !have_l) return;            // caller history is authoritative; do not evict
    for(int b=0;b<=ctx.closed;b++)
    {
-      if(!MathIsValidNumber(l[b]) || !MathIsValidNumber(h[b]) || l[b]<=0 || h[b]<l[b]) { ArrayResize(cands,0); return; }
+      // v6.6.24: EMPTY_VALUE is DBL_MAX and MathIsValidNumber(DBL_MAX) is TRUE, so a
+      // sentinel bar passed this test, pushed `high` to DBL_MAX and made every
+      // candidate look infinitely far from the range. Fail closed on it explicitly.
+      if(!MathIsValidNumber(l[b]) || !MathIsValidNumber(h[b]) ||
+         l[b]==EMPTY_VALUE || h[b]==EMPTY_VALUE || l[b]<=0 || h[b]<l[b])
+      { ArrayResize(cands,0); return; }
       low=MathMin(low,l[b]); high=MathMax(high,h[b]);
    }
    // v6.6.14 (H5): prefer ctx-preset values (set by ZRE_FillContext) when they
@@ -92,6 +97,10 @@ string QA_PriceDescription()
    {
       datetime now=TimeTradeServer();
       long age=(now>0?(long)now-(long)(tick.time_msc/1000):-1);
+      // v6.6.24: the tick clock may legitimately LEAD TimeTradeServer() by a fraction
+      // of a second. A negative age was printed as "(clock unknown)", i.e. a healthy
+      // feed was reported as an unknown clock once per render.
+      if(age<0 && now>0) age=0;
       text+="\nQUOTE BID="+DoubleToString(tick.bid,_Digits)+" ASK="+DoubleToString(tick.ask,_Digits)+
             " tick_ms="+IntegerToString(tick.time_msc)+" quote_age_s="+IntegerToString(age)+
             (age<0?" (clock unknown)":(age>300?" STALE":" (at render)"));
@@ -105,9 +114,14 @@ string QA_PriceDescription()
 }
 
 // Display-only: fit badge to the viewport, then avoid existing docked rectangles.
-// The object scan is cached by text+viewport; unchanged badges do not rescan.
+// The object scan is cached by text+viewport+object count; unchanged badges do not
+// rescan. v6.6.24: the chosen position is applied on EVERY call. QA_DrawCoreStatus()
+// used to set CORNER/XDISTANCE/YDISTANCE itself before calling this function, so a
+// cached (early-returning) call left the badge at that hard-coded anchor and undid the
+// collision avoidance one call after it had been computed.
 string g_qa_badge_full="",g_qa_badge_shown="";
 int g_qa_badge_cw=0,g_qa_badge_ch=0,g_qa_badge_objs=-1;
+int g_qa_badge_x=12,g_qa_badge_y=0;
 void QA_LayoutBadge(const string name,const string full)
 {
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS);
@@ -117,46 +131,57 @@ void QA_LayoutBadge(const string name,const string full)
    //--- placed while a second panel appeared stayed where it was and the two
    //--- rectangles overlapped. The object count is part of the key now: any
    //--- panel added or removed re-runs the collision pass once.
-   int objs=ObjectsTotal(0,-1,-1);
-   if(full==g_qa_badge_full && cw==g_qa_badge_cw && ch==g_qa_badge_ch &&
-      objs==g_qa_badge_objs &&
-      ObjectFind(0,name)>=0 && ObjectGetString(0,name,OBJPROP_TEXT)==g_qa_badge_shown)
-      return;
-   int available=(int)MathMax(20,cw-24),n=StringLen(full);
-   string shown=full;
-   while(n>4 && TextWidthPx(shown,"Consolas",9)>available)
-   { n--; shown=QSMC_ClipChars(full,n); }
-   int w=TextWidthPx(shown,"Consolas",9),h=18,x=12,y=(int)MathMax(0,ch-30-h);
-   for(int pass=0;pass<8;pass++)
+   // Main window, rectangle labels only: a subwindow object has its own pixel origin,
+   // so testing one against this badge produced collisions that do not exist.
+   int objs=ObjectsTotal(0,0,OBJ_RECTANGLE_LABEL);
+   bool cached=(full==g_qa_badge_full && cw==g_qa_badge_cw && ch==g_qa_badge_ch &&
+                objs==g_qa_badge_objs && g_qa_badge_shown!="" && ObjectFind(0,name)>=0);
+   string shown=g_qa_badge_shown;
+   int x=g_qa_badge_x,y=g_qa_badge_y;
+   if(!cached)
    {
-      bool moved=false;
-      for(int j=ObjectsTotal(0,-1,-1)-1;j>=0;j--)
+      int available=(int)MathMax(20,cw-24),n=StringLen(full);
+      shown=full;
+      while(n>4 && TextWidthPx(shown,"Consolas",9)>available)
+      { n--; shown=QSMC_ClipChars(full,n); }
+      int w=TextWidthPx(shown,"Consolas",9),h=18;
+      x=12; y=(int)MathMax(0,ch-30-h);
+      for(int pass=0;pass<8;pass++)
       {
-         string obj=ObjectName(0,j,-1,-1);
-         if(obj==name || (ENUM_OBJECT)ObjectGetInteger(0,obj,OBJPROP_TYPE)!=OBJ_RECTANGLE_LABEL) continue;
-         if(ObjectGetInteger(0,obj,OBJPROP_TIMEFRAMES)==OBJ_NO_PERIODS) continue;
-         int rw=(int)ObjectGetInteger(0,obj,OBJPROP_XSIZE),rh=(int)ObjectGetInteger(0,obj,OBJPROP_YSIZE);
-         int rx=(int)ObjectGetInteger(0,obj,OBJPROP_XDISTANCE),ry=(int)ObjectGetInteger(0,obj,OBJPROP_YDISTANCE);
-         int corner=(int)ObjectGetInteger(0,obj,OBJPROP_CORNER);
-         if(corner==CORNER_RIGHT_UPPER || corner==CORNER_RIGHT_LOWER) rx=cw-rx-rw;
-         if(corner==CORNER_LEFT_LOWER || corner==CORNER_RIGHT_LOWER) ry=ch-ry-rh;
-         if(x<rx+rw+4 && x+w+4>rx && y<ry+rh+4 && y+h+4>ry)
+         bool moved=false;
+         for(int j=objs-1;j>=0;j--)
          {
-            int above=ry-h-6;
-            if(above>=0) y=above;
-            else { x=(int)MathMax(0,cw-w-12); y=(int)MathMax(0,ch-h-12); }
-            moved=true; break;
+            string obj=ObjectName(0,j,0,OBJ_RECTANGLE_LABEL);
+            if(obj==name || (ENUM_OBJECT)ObjectGetInteger(0,obj,OBJPROP_TYPE)!=OBJ_RECTANGLE_LABEL) continue;
+            if(ObjectGetInteger(0,obj,OBJPROP_TIMEFRAMES)==OBJ_NO_PERIODS) continue;
+            int rw=(int)ObjectGetInteger(0,obj,OBJPROP_XSIZE),rh=(int)ObjectGetInteger(0,obj,OBJPROP_YSIZE);
+            int rx=(int)ObjectGetInteger(0,obj,OBJPROP_XDISTANCE),ry=(int)ObjectGetInteger(0,obj,OBJPROP_YDISTANCE);
+            int corner=(int)ObjectGetInteger(0,obj,OBJPROP_CORNER);
+            // The distance is measured from the chosen corner to the NEAR edge of the
+            // rectangle, so a right/bottom anchor needs the width/height folded back in.
+            if(corner==CORNER_RIGHT_UPPER || corner==CORNER_RIGHT_LOWER) rx=cw-rx-rw;
+            if(corner==CORNER_LEFT_LOWER || corner==CORNER_RIGHT_LOWER) ry=ch-ry-rh;
+            if(x<rx+rw+4 && x+w+4>rx && y<ry+rh+4 && y+h+4>ry)
+            {
+               int above=ry-h-6;
+               if(above>=0) y=above;
+               else { x=(int)MathMax(0,cw-w-12); y=(int)MathMax(0,ch-h-12); }
+               moved=true; break;
+            }
          }
+         if(!moved) break;
       }
-      if(!moved) break;
+      g_qa_badge_full=full; g_qa_badge_shown=shown;
+      g_qa_badge_cw=cw; g_qa_badge_ch=ch; g_qa_badge_objs=objs;
+      g_qa_badge_x=x; g_qa_badge_y=y;
    }
+   // Applied on every call, cached or not, so the position decided above can never be
+   // silently replaced by a caller that also sets OBJPROP_XDISTANCE.
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
    ObjectSetString(0,name,OBJPROP_FONT,"Consolas");
-   ObjectSetString(0,name,OBJPROP_TEXT,shown);
-   g_qa_badge_full=full; g_qa_badge_shown=shown;
-   g_qa_badge_cw=cw; g_qa_badge_ch=ch; g_qa_badge_objs=objs;
+   if(ObjectGetString(0,name,OBJPROP_TEXT)!=shown) ObjectSetString(0,name,OBJPROP_TEXT,shown);
 }
 
 void QA_DrawCoreStatus()
@@ -164,9 +189,10 @@ void QA_DrawCoreStatus()
    if(QSMC_IsReaderSilent() || !QSMC_PaintAllowed()) return;
    string name=PFX+"CORE_CURRENT_STATE";
    if(ObjectFind(0,name)<0 && !ObjectCreate(0,name,OBJ_LABEL,0,0,0)) return;
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
-   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,12); ObjectSetInteger(0,name,OBJPROP_YDISTANCE,30);
+   // v6.6.24: geometry belongs to QA_LayoutBadge() alone (see its comment). Setting a
+   // fixed corner/offset here re-applied them on every redraw, including the redraws
+   // where the layout function returned early on its cache.
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
    ObjectSetInteger(0,name,OBJPROP_COLOR,(g_qa_core.direction==0?clrSilver:clrGold));
    string full="CORE "+QA_CoreStatus()+(g_qa_core.direction!=0?" ENTRY CONFIRMED":" - no current entry");
@@ -183,16 +209,28 @@ bool QA_LabelAlive(const double lo,const double hi,const datetime born,const boo
    if(closed<0 || closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_atr_buf)) return false;
    double atr=g_atr_buf[closed],price=g_buf_c[closed];
    if(!MathIsValidNumber(atr) || atr<=0 || atr==EMPTY_VALUE || price<=0) return false;
-   int shift=iBarShift(_Symbol,(ENUM_TIMEFRAMES)_Period,born,false);
    int lifetime=(InpAdvisoryLabelLifetimeBars>0?InpAdvisoryLabelLifetimeBars:12);
    double distance=(MathIsValidNumber(InpAdvisoryLabelMaxDistanceATR) && InpAdvisoryLabelMaxDistanceATR>0?InpAdvisoryLabelMaxDistanceATR:3.0);
-   if(shift<1 || shift-1>lifetime) return false;
+   // v6.6.24: the age is found on the bar clock the rest of the host uses, walking back
+   // at most `lifetime` bars. iBarShift() is a terminal query per candidate per bar and
+   // returns -1 for a stamp outside the chart's series, which this function then read as
+   // "older than the lifetime" - so a history gap deleted every advisory label at once.
+   if(closed>=ArraySize(g_buf_t)) return false;
+   int age=-1;
+   for(int back=0;back<=lifetime && closed-back>=0;back++)
+      if(g_buf_t[closed-back]==born) { age=back; break; }
+   if(age<0) return false;
    return MathMax(0.0,MathMax(lo-price,price-hi))<=distance*atr;
 }
 
 void QA_ClearTacticalPaint()
 {
-   ObjectDelete(0,PFX+"MTF_ENTRY"); ObjectDelete(0,PFX+"MTF_ENTRY_TX");
+   // v6.6.24: object deletion is a chart side effect. The EA's private iCustom instance
+   // runs as a SILENT reader and must never delete the host chart's marks - it used to
+   // wipe MTF_ENTRY on every clear, so the visible chart lost its tactical paint every
+   // time the EA refreshed its hidden instance.
+   if(!QSMC_IsReaderSilent())
+   { ObjectDelete(0,PFX+"MTF_ENTRY"); ObjectDelete(0,PFX+"MTF_ENTRY_TX"); }
    EntryMarkClearTactical(); // only visual buffers, never Core 7..12
 }
 
