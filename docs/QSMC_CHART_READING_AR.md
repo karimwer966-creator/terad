@@ -95,12 +95,12 @@ PRIMARY  (قابل للتنفيذ)  >  SCENARIO (خطة شرطية)  >  RXN / WA
 الوضع الافتراضي هو `InpDisplayMode = FULL`: يعرض كل عائلات العرض معًا. لهذا ترى اثني عشر نصًا
 فوق الشموع. أضفتُ إعدادًا جاهزًا:
 
-**`presets/QSMC_clean_chart.set`**
+**`presets/QSMC_v6.6.20_production_chart.set`**
 
 | خطوة | كيف |
 |---|---|
 | 1 | كليك يمين على الشارت ← `Indicator List` ← `nadir2` ← `Properties` |
-| 2 | زر `Load` أسفل تبويب `Inputs` ← اختر `QSMC_clean_chart.set` |
+| 2 | زر `Load` أسفل تبويب `Inputs` ← اختر `QSMC_v6.6.20_production_chart.set` |
 | 3 | `OK` — انتظر إغلاق الشمعة الحالية |
 
 ما يفعله الإعداد: يُبقي **لوحة واحدة صغيرة**، أسهم الدخول المؤكدة، وخطوط SL/TP، وأقرب مستويين
@@ -149,4 +149,4 @@ PRIMARY  (قابل للتنفيذ)  >  SCENARIO (خطة شرطية)  >  RXN / WA
 هذا الملف يشرح **ما تقرأه**. الملف التالي يشرح **كيف يفكّر من يقرأ**:
 `docs/QSMC_TRADER_MIND_REVIEW_AR.md` — تسع خطوات للقرار، تقييم كل خطوة مقابل متداول محترف،
 والأربعة التي أُضيفت لتشبه سلوكه فعلًا (نافذة جلسة، سقف يومي، تهدئة بعد خسارة، ربح جزئي عند +R)
-مع الإعداد الجاهز `presets/QSMC_pro_execution.set`.
+مع الإعداد الجاهز `presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set`.

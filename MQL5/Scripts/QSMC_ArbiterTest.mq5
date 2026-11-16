@@ -1,6 +1,6 @@
 //+------------------------------------------------------------------+
 //|                                         QSMC_ArbiterTest.mq5     |
-//|  Offline harness for the v6.6.0 signal-arbitration layer.         |
+//|  Offline harness for the v6.6.22 signal-arbitration layer.         |
 //|                                                                   |
 //|  HOW TO RUN                                                       |
 //|   1. Copy this folder tree into your MT5 data folder:             |
@@ -44,7 +44,7 @@ input bool   InpDumpLines  = false;     // re-print every assertion at the end
 void OnStart()
   {
    Print("=========================================================");
-   Print(" QSMC_ArbiterTest - v6.6.0 signal arbitration harness");
+   Print(" QSMC_ArbiterTest - v6.6.22 signal arbitration harness");
    Print(" symbol ",_Symbol,"  tf ",QSMC_TFName((ENUM_TIMEFRAMES)_Period),
          "  point ",DoubleToString(_Point,_Digits),
          "  tick ",DoubleToString(SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE),_Digits));

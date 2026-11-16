@@ -31,13 +31,18 @@ from __future__ import print_function
 import io
 import os
 import re
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+from check_presets import enum_table, parse_enums, parse_input_list   # noqa: E402
 
 EA = os.path.join(ROOT, "MQL5", "Experts", "QSMC_AutoTrader.mq5")
-DEMO = os.path.join(ROOT, "tools", "fixtures", "legacy_presets", "QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set.txt")
-INERT = os.path.join(ROOT, "tools", "fixtures", "legacy_presets", "QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set.txt")
+DEMO = os.path.join(ROOT, "presets", "QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set")
+INERT = os.path.join(ROOT, "presets", "QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set")
 
 FAILS = []
 COUNT = [0]
@@ -53,15 +58,26 @@ def check(ok, name, detail=""):
 
 
 def parse_inputs(text):
-    out = {}
-    for m in re.finditer(r"^input\s+([A-Za-z_][\w]*)\s+([A-Za-z_]\w*)\s*=\s*([^;]+);",
-                         text, re.M):
-        out[m.group(2)] = (m.group(1), m.group(3).strip())
-    return out
+    """One entry per input, including `input int A = 9, B = 18;` (two inputs)."""
+    return {name: (typ, default) for name, typ, default in parse_input_list(text)}
 
 
 def same(typ, preset_value, code_value):
-    """Compare in the unit that matters: numbers numerically, everything else text."""
+    """Compare in the unit that matters.
+
+    Enums are compared as the INTEGER the terminal stores (the presets carry
+    numbers, the source carries enumerator names), doubles numerically, and
+    everything else textually.
+    """
+    if typ.startswith("ENUM_"):
+        table = enum_table(typ, ENUMS)
+        def num(token):
+            token = token.strip()
+            if re.fullmatch(r"[+-]?\d+", token):
+                return int(token)
+            return table.get(token)
+        a, b = num(preset_value), num(code_value)
+        return a is not None and a == b
     if typ in ("double", "int", "long"):
         try:
             return abs(float(preset_value) - float(code_value)) < 1e-9
@@ -93,6 +109,7 @@ def parse_set(path):
 
 
 ea_text = io.open(EA, encoding="utf-8", errors="replace").read()
+ENUMS = parse_enums(ea_text)
 inputs = parse_inputs(ea_text)
 check(len(inputs) == 67, "the companion declares 67 inputs (59 in v6.6.20 + 7 execution profile + 1 entry-review switch)", len(inputs))
 

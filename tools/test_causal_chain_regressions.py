@@ -18,6 +18,12 @@ from pathlib import Path
 import re
 import sys
 
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+from check_presets import enum_table, parse_enums, parse_input_list   # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / "nadir2.mq5"
 DEPLOYED = ROOT / "MQL5" / "Indicators" / "nadir2.mq5"
@@ -30,6 +36,14 @@ def check(ok, label):
     print(("PASS  " if ok else "FAIL  ") + label)
     if not ok:
         FAILURES.append(label)
+
+
+def enum_int(typ, token, enums):
+    """Names and integers are the same value; a .set must carry the integer."""
+    token = (token or "").strip()
+    if re.fullmatch(r"[+-]?\d+", token):
+        return int(token)
+    return enum_table(typ, enums).get(token)
 
 
 def definition(name):
@@ -117,7 +131,7 @@ check("structure_bar>=0 ? g_atr_buf[structure_bar] : g_atr" in FLAT,
 # auto-heal, and the retention caps are literal. The practical preset is loaded
 # by one click and used to ship InpDisplacementATR=0 with 3/4/2/2 caps and a
 # causal-graph cap of ONE event - structurally incapable of a CORE signal.
-preset = ROOT / "tools" / "fixtures" / "legacy_presets" / "nadir2_PRODUCTION_XAUUSD.set.txt"
+preset = ROOT / "presets" / "nadir2_PRODUCTION_XAUUSD.set"
 check(preset.is_file(), "B4 the practical XAUUSD preset still ships")
 if preset.is_file():
     raw = preset.read_bytes()
@@ -138,9 +152,10 @@ if preset.is_file():
     check(all(b";" not in ln.split(b"=", 1)[1] for ln in raw.split(b"\r\n")
               if ln.startswith(b"Inp") and b"=" in ln),
           "B4 no value line carries a trailing comment")
-    declared = set(re.findall(r"^\s*(?:sinput|input)\s+\w+\s+(\w+)\s*=", FLAT, re.M))
+    declared = {name for name, _typ, _d in parse_input_list(FLAT)}
     check(declared == set(vals),
-          "B4 preset and host input surface are the same set (%d inputs)" % len(declared))
+          "B4 preset and host input surface are the same set (%d inputs, "
+          "multi-declaration lines included)" % len(declared))
 
 # ------------------------------------------- B5 (one timeframe, operator ask)
 # The journal shows M1->M5->M15->H1->H4 cycling at 14:32-14:35; every change re-ran
@@ -260,12 +275,14 @@ check("if(InpLotMode==QSMC_LOT_FIXED && InpFixedLots<=0.0)" in EA_CODE,
 
 # The shipped demo preset carries his exact numbers. Under the unified DEMO &
 # REAL model it also cannot arm a real account: REAL stays fully disarmed.
-demo = ROOT / "tools" / "fixtures" / "legacy_presets" / "QSMC_AutoTrader_DEMO_0.10_200.set.txt"
+demo = ROOT / "presets" / "QSMC_AutoTrader_DEMO_0.10_200.set"
 check(demo.is_file(), "B7 the demo production preset ships")
 if demo.is_file():
     raw = demo.read_bytes()
     v = dict(re.findall(r"^(Inp\w+)=(.*?)\r*$", raw.decode("utf-8", "replace"), re.M))
-    check(v.get("InpLotMode") == "QSMC_LOT_FIXED" and v.get("InpFixedLots") == "0.10",
+    ea_enums = parse_enums(EA.replace("\r\n", "\n"))
+    check(enum_int("ENUM_QSMC_LOT_MODE", v.get("InpLotMode"), ea_enums) == 1 and
+          v.get("InpFixedLots") == "0.10",
           "B7 preset: 0.10 lots fixed")
     check(v.get("InpMaxDailyLossMoney") in ("200", "200.0", "200.00"),
           "B7 preset: daily stop 200 in account currency")
@@ -283,8 +300,7 @@ if demo.is_file():
     check(raw.count(b"\r\r\n") in (0, raw.count(b"\n")) and
           raw.count(b"\n") == raw.count(b"\r\n"),
           "B7 preset line endings are valid for the MT5 .set reader")
-    declared = set(re.findall(r"^\s*(?:sinput|input)\s+\w+\s+(\w+)\s*=",
-                              EA.replace("\r\n", "\n"), re.M))
+    declared = {name for name, _typ, _d in parse_input_list(EA.replace("\r\n", "\n"))}
     check(set(v) <= declared, "B7 every preset key exists in the EA")
 
 
@@ -296,8 +312,8 @@ if demo.is_file():
 # checked for drift in CI.
 gen = ROOT / "tools" / "generate_set_presets.py"
 check(gen.is_file(), "B8 the preset generator ships")
-nd = ROOT / "tools" / "fixtures" / "legacy_presets" / "nadir2_PRODUCTION_XAUUSD.set.txt"
-ea_p = ROOT / "tools" / "fixtures" / "legacy_presets" / "QSMC_AutoTrader_DEMO_0.10_200.set.txt"
+nd = ROOT / "presets" / "nadir2_PRODUCTION_XAUUSD.set"
+ea_p = ROOT / "presets" / "QSMC_AutoTrader_DEMO_0.10_200.set"
 check(nd.is_file() and ea_p.is_file(), "B8 both generated presets exist")
 check(not (ROOT / "presets" / "nadir2_PRACTICAL_XAUUSD.set").exists(),
       "B8 the corrupted practical preset is retired, so nobody loads it by habit")
@@ -309,7 +325,7 @@ for path, source, label in ((nd, "nadir2.mq5", "indicator"), (ea_p, None, "EA"))
     pairs = dict(re.findall(r"^(Inp\w+)=(.*?)\r$", raw.decode("utf-8"), re.M))
     src = (ROOT / ("nadir2.mq5" if source else "MQL5/Experts/QSMC_AutoTrader.mq5")
            ).read_text(encoding="utf-8", errors="replace")
-    declared = re.findall(r"^\s*(?:sinput|input)\s+\w+\s+(\w+)\s*=", src.replace("\r\n", "\n"), re.M)
+    declared = [name for name, _typ, _d in parse_input_list(src.replace("\r\n", "\n"))]
     check(set(declared) == set(pairs),
           "B8 %s preset covers EVERY declared input (%d), so MT5 shows no stale value"
           % (label, len(declared)))
@@ -322,7 +338,8 @@ for path, source, label in ((nd, "nadir2.mq5", "indicator"), (ea_p, None, "EA"))
 
 if nd.is_file():
     v = dict(re.findall(r"^(Inp\w+)=(.*?)\r$", nd.read_bytes().decode("utf-8"), re.M))
-    check(v.get("InpGateProfile") == "QSMC_GATE_PRACTICAL",
+    check(enum_int("ENUM_QSMC_GATE_PROFILE", v.get("InpGateProfile"),
+                   parse_enums(FLAT)) == 1,
           "B8 indicator preset selects PRACTICAL through the PROFILE input, "
           "not by faking the thresholds")
     check(v.get("InpEnableAllModules") == "true",

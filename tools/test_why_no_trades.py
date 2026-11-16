@@ -61,7 +61,7 @@ def check(ok, name, detail=""):
 # Real-shaped log lines (from the 2026-11-09 Experts tab, account redacted)
 # ---------------------------------------------------------------------------
 TS = "2026.11.09 12:07:55.070\t"
-ATTACH = (TS + "QSMC_AutoTrader (XAUUSD,M15)\t[QSMC_AT] QSMC v6.620 execution "
+ATTACH = (TS + "QSMC_AutoTrader (XAUUSD,M15)\t[QSMC_AT] QSMC v6.622 execution "
           "companion ON | XAUUSD PERIOD_M15 | magic 20261027 | mode RISK% risk "
           "0.10% | tp 1 | break-even 1.00R | DRY RUN | demo-only | closed-bar "
           "signals only, no martingale, no stop widening")

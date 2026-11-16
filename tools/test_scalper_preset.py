@@ -15,9 +15,15 @@ import re
 import sys
 from pathlib import Path
 
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+from check_presets import enum_table, parse_enums   # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 EA = ROOT / "MQL5/Experts/QSMC_AutoTrader.mq5"
-SCALP = ROOT / "tools/fixtures/legacy_presets/QSMC_AutoTrader_v6.6.22_SCALP_M5.set.txt"
+SCALP = ROOT / "presets/QSMC_AutoTrader_v6.6.22_SCALP_M5.set"
 
 FAILURES = []
 COUNT = [0]
@@ -86,8 +92,12 @@ ENVELOPE = {
 for k, want in ENVELOPE.items():
     check(demo.get(k) == want, "scalper %s = %s" % (k, want), demo.get(k))
 
-check(demo.get("InpTPLevel") == "QSMC_TP_LEVEL1",
-      "the scalper takes the NEAREST target, not TP3", demo.get("InpTPLevel"))
+# MT5 stores an enum as an integer, so the file carries `1`; the NAME is accepted
+# too so the assertion still reads as intent rather than as a magic number.
+_tp = (demo.get("InpTPLevel") or "").strip()
+_tp_value = int(_tp) if re.fullmatch(r"[+-]?\d+", _tp) else \
+    enum_table("ENUM_QSMC_TP_SOURCE", parse_enums(EA.read_text(encoding="utf-8", errors="replace"))).get(_tp)
+check(_tp_value == 1, "the scalper takes the NEAREST target, not TP3", demo.get("InpTPLevel"))
 
 # ------------------------------------------------------- safety invariants
 check(demo.get("InpEnableTrading") == "true", "the scalper preset is ARMED on demo")
@@ -131,7 +141,7 @@ check(demo.get("InpMagic") != "20261027",
       "the scalper uses its OWN magic, so it never manages the M15 plan's positions",
       demo.get("InpMagic"))
 check(demo.get("InpMagic") in ea or True, "magic is an input, not hard-coded")
-m15 = ROOT / "tools/fixtures/legacy_presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set.txt"
+m15 = ROOT / "presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set"
 if m15.is_file():
     other = parse_set(m15)
     check(other.get("InpMagic") != demo.get("InpMagic"),

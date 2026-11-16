@@ -25,7 +25,7 @@
 5. الآن اسحب **QSMC_AutoTrader.ex5** من Navigator → Experts إلى
    **نفس الشارت**.
 6. في نافذة إعدادات الـEA → Inputs → **Load** → اختر
-   `presets/QSMC_AutoTrader_STAGE1_PRACTICAL_DRYRUN.set`.
+   `presets/QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set` (دراي-رَن: لا يُرسل أي أمر).
 7. قبل الضغط على OK، تأكد من ✅ **Allow Algo Trading**.
 8. اضغط OK.
 

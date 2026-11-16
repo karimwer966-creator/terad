@@ -69,9 +69,13 @@ int main(){
             print(run.stdout.strip())
 
     def test_production_preset_matches_source_and_is_safe_by_default(self):
-        presets = list((ROOT/'presets').glob('*.set'))
-        self.assertEqual([p.name for p in presets], ['Quantum_XAUUSD_PRODUCTION.set'])
-        lines = [line for line in presets[0].read_text().splitlines() if line and not line.startswith(';')]
+        # presets/ ships the QSMC presets too (they are the product); this suite
+        # only owns the QATS one, and there must be exactly one of those.
+        names = sorted(p.name for p in (ROOT/'presets').glob('*.set'))
+        self.assertEqual([n for n in names if n.startswith('Quantum')],
+                         ['Quantum_XAUUSD_PRODUCTION.set'])
+        preset = ROOT/'presets'/'Quantum_XAUUSD_PRODUCTION.set'
+        lines = [line for line in preset.read_text().splitlines() if line and not line.startswith(';')]
         values = dict(line.split('=', 1) for line in lines)
         declared = re.findall(r'^input\s+\w+\s+(Inp\w+)\s*=', SOURCE, re.M)
         self.assertEqual(len(values), len(lines), 'duplicate preset keys')
