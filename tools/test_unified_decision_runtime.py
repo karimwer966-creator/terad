@@ -69,7 +69,7 @@ int main(){
  UD_Update(8);assert(g_ud.direction==0); // advisory evidence cannot authorize
  g_confirmed_signal_journal={{g_buf_t[9],8,2,true}};g_rxn_built_time=g_buf_t[8];
  UD_Update(8);assert(g_ud.direction==1&&g_ud.score==100);
- assert(UD_AlertAllows(3,1)&&!UD_AlertAllows(2,1)&&!UD_AlertAllows(3,-1));
+ assert(UD_AlertAllows(QSMC_ALERT_SRC_CORE,1)&&!UD_AlertAllows(QSMC_ALERT_SRC_RXN,1)&&!UD_AlertAllows(QSMC_ALERT_SRC_CORE,-1));
  g_confirmed_signal_journal.push_back({g_buf_t[9],8,2,false});UD_Update(8);assert(g_ud.direction==0);
  g_confirmed_signal_journal={{g_buf_t[8],7,2,true}};UD_Update(8);assert(g_ud.direction==0);
  string why;assert(UD_Verdict(7,why)==0&&g_res_score==0);
@@ -96,7 +96,9 @@ int main(){
  g_rates_total=13;assert(UD_LogAllows("a")); // three bars later
  InpMessageCooldownBars=0;assert(UD_LogAllows("a")&&UD_LogAllows("a"));
  InpMessageCooldownBars=3;clearlog();for(int i=0;i<UD_LOG_CAP;i++)assert(UD_LogAllows(std::to_string(i)));
- assert(!UD_LogAllows("overflow")&&!UD_LogAllows("0"));
+ // T6: a saturated table recycles its oldest key instead of muting new ones.
+ assert(UD_LogAllows("overflow"));
+ assert(!UD_LogAllows("overflow")); // repeat guard still applies to the newest key
  g_rates_total=16;assert(UD_LogAllows("overflow"));
  InpUnifiedDecision=false;assert(UD_AlertAllows(2,-1));
  std::cout<<"PASS actual unified header: authority, merges, cooldown, saturation and legacy mode\n";

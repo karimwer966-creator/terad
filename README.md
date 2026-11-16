@@ -1,4 +1,4 @@
-# QSMC — Quantum SMC Intelligence Engine **v6.6.22**
+# QSMC — Quantum SMC Intelligence Engine **v6.6.23**
 
 Two MQL5 products live in this repository. They are not the same product, they do
 not share a preset format contract, and only one of them is production-ready.

@@ -8,6 +8,29 @@ input double InpUnifiedMergeATR = 0.15; // same-side zone/path consolidation tol
 input int InpMessageCooldownBars = 10; // 0 disables diagnostic dedup; 1..1000 bars
 #endif
 #define UD_LOG_CAP 128
+// Alert source ids are a THIRD id space and they are NOT ENUM_SIG_SOURCE:
+// SAlertCandidate (nadir2.mq5) numbers 1=ZRE, 2=RXN, 3=CORE, while
+// ENUM_SIG_SOURCE numbers 1=CORE, 2=ZRE, 3=RXN. UD_AlertAllows() used to test
+// the bare literal 3, which read as "SRC_RXN" to anyone holding the enum and
+// as "CORE" to anyone holding the dispatcher struct - the same integer with
+// two meanings (v6.6.23 T7). The host defines the macro next to the struct;
+// this fallback keeps the header usable on its own (and by the native test).
+//--- Fallbacks for all four ids so this header compiles standalone (the
+//--- native runtime test does not see QSMC_Types.mqh or nadir2.mq5). When
+//--- QSMC_Types.mqh is included first - as it is in the indicator - these are
+//--- skipped and the single definition there wins.
+#ifndef QSMC_ALERT_SRC_NONE
+#define QSMC_ALERT_SRC_NONE 0
+#endif
+#ifndef QSMC_ALERT_SRC_ZRE
+#define QSMC_ALERT_SRC_ZRE  1
+#endif
+#ifndef QSMC_ALERT_SRC_RXN
+#define QSMC_ALERT_SRC_RXN  2
+#endif
+#ifndef QSMC_ALERT_SRC_CORE
+#define QSMC_ALERT_SRC_CORE 3
+#endif
 struct SUnifiedDecision
 {
    datetime bar;
@@ -68,7 +91,9 @@ int UD_Verdict(const int closed,string &why)
 bool UD_AlertAllows(const int source,const int direction)
 {
    if(!InpUnifiedDecision || direction==0) return true;
-   return source==3 && direction==g_ud.direction && g_ud.direction!=0;
+   //--- only the authoritative Core dispatcher may publish while the unified
+   //--- decision is waiting; advisory layers (ZRE/RXN) never authorize.
+   return source==QSMC_ALERT_SRC_CORE && direction==g_ud.direction && g_ud.direction!=0;
 }
 
 double UD_Tolerance(const double atr)
@@ -176,8 +201,12 @@ int UD_PathDuplicate(const int index,const int &selected[],const int count)
    return -1;
 }
 
-// Fixed-capacity cooldown. Live keys are never evicted: on saturation new keys
-// are suppressed until a slot expires, preserving the no-repeat guarantee.
+// Fixed-capacity cooldown. v6.6.23 T6: on saturation the OLDEST slot is
+// recycled instead of suppressing the new key. The old rule kept the no-repeat
+// guarantee but turned a full table into a silent mute: after 128 distinct
+// diagnostics every later message was dropped until a slot expired, so the
+// journal went quiet exactly when the chart was busiest. The guarantee now
+// covers the most recent UD_LOG_CAP keys, and a new key is never lost.
 string g_ud_log_keys[UD_LOG_CAP];
 datetime g_ud_log_times[UD_LOG_CAP];
 bool UD_LogAllows(const string key)
@@ -202,7 +231,14 @@ bool UD_LogAllows(const string key)
       if(g_ud_log_keys[i]==key && !expired) return false;
       if(expired && free_slot<0) free_slot=i;
    }
-   if(free_slot<0) return false;
+   if(free_slot<0)
+     {
+      //--- every slot is live: recycle the oldest one (ties go to the lowest
+      //--- index, so the choice is deterministic)
+      free_slot=0;
+      for(int i=1;i<UD_LOG_CAP;i++)
+         if(g_ud_log_times[i]<g_ud_log_times[free_slot]) free_slot=i;
+     }
    g_ud_log_keys[free_slot]=key; g_ud_log_times[free_slot]=now; return true;
 }
 #endif

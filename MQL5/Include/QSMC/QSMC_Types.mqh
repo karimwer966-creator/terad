@@ -75,6 +75,27 @@ enum ENUM_SIG_SOURCE
    SRC_TACTICAL = 4    // fast MTF execution trigger (non-authoritative)
   };
 
+//--- v6.6.23 T7: the ALERT DISPATCHER has its own source id space, and the
+//--- same integers mean different things in the two spaces:
+//---   ENUM_SIG_SOURCE      1=CORE, 2=ZRE, 3=RXN, 4=TACTICAL
+//---   SAlertCandidate      1=ZRE,  2=RXN, 3=CORE, 0=none
+//--- UD_AlertAllows() used to test the bare literal 3, which read as SRC_RXN
+//--- to anyone holding the enum above. The ids are named here, once; the host
+//--- struct in nadir2.mq5 and QSMC_UnifiedDecision.mqh both consume them (the
+//--- latter with a guarded fallback so it still builds standalone).
+#ifndef QSMC_ALERT_SRC_NONE
+#define QSMC_ALERT_SRC_NONE 0
+#endif
+#ifndef QSMC_ALERT_SRC_ZRE
+#define QSMC_ALERT_SRC_ZRE  1
+#endif
+#ifndef QSMC_ALERT_SRC_RXN
+#define QSMC_ALERT_SRC_RXN  2
+#endif
+#ifndef QSMC_ALERT_SRC_CORE
+#define QSMC_ALERT_SRC_CORE 3
+#endif
+
 // Independent evidence groups. Bit mask; >= InpArbMinEvidence required.
 #define QEV_NONE         0
 #define QEV_WICK         1    // rejection wick geometry
@@ -183,6 +204,10 @@ struct SGateCtx
    int              h4_bias;
    int              h1_bias;
    int              bias_score;        // signed weighted consensus, -100..+100
+   bool             bias_known;        // true = a D1/H4/H1 series (or an
+                                       // external bias) actually supplied a
+                                       // value; false = UNKNOWN, which is NOT
+                                       // neutral and can never license a trade
    ENUM_VOL_REGIME  regime;
    int              session_ok;        // 1 inside session, 0 outside, -1 disabled
   };
@@ -260,6 +285,9 @@ struct SQsmcArbConfig
    bool             allow_countertrend;
    int              countertrend_min_score;
    int              countertrend_extra_evidence;
+   bool             allow_neutral_bias; // known-neutral consensus may PASS only
+                                        // when this is explicitly true; the
+                                        // shipped preset sets it false
    //--- room (R4)
    double           min_rr;
    double           max_stop_atr;

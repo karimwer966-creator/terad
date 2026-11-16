@@ -107,13 +107,19 @@ string QA_PriceDescription()
 // Display-only: fit badge to the viewport, then avoid existing docked rectangles.
 // The object scan is cached by text+viewport; unchanged badges do not rescan.
 string g_qa_badge_full="",g_qa_badge_shown="";
-int g_qa_badge_cw=0,g_qa_badge_ch=0;
+int g_qa_badge_cw=0,g_qa_badge_ch=0,g_qa_badge_objs=-1;
 void QA_LayoutBadge(const string name,const string full)
 {
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS);
    if(cw<=0 || ch<=0) return;
+   //--- v6.6.23 T11: the cache key used to be text + viewport only, so a badge
+   //--- placed while a second panel appeared stayed where it was and the two
+   //--- rectangles overlapped. The object count is part of the key now: any
+   //--- panel added or removed re-runs the collision pass once.
+   int objs=ObjectsTotal(0,-1,-1);
    if(full==g_qa_badge_full && cw==g_qa_badge_cw && ch==g_qa_badge_ch &&
+      objs==g_qa_badge_objs &&
       ObjectFind(0,name)>=0 && ObjectGetString(0,name,OBJPROP_TEXT)==g_qa_badge_shown)
       return;
    int available=(int)MathMax(20,cw-24),n=StringLen(full);
@@ -150,7 +156,7 @@ void QA_LayoutBadge(const string name,const string full)
    ObjectSetString(0,name,OBJPROP_FONT,"Consolas");
    ObjectSetString(0,name,OBJPROP_TEXT,shown);
    g_qa_badge_full=full; g_qa_badge_shown=shown;
-   g_qa_badge_cw=cw; g_qa_badge_ch=ch;
+   g_qa_badge_cw=cw; g_qa_badge_ch=ch; g_qa_badge_objs=objs;
 }
 
 void QA_DrawCoreStatus()
@@ -170,7 +176,9 @@ void QA_DrawCoreStatus()
 
 bool QA_LabelAlive(const double lo,const double hi,const datetime born,const bool invalid)
 {
-   if(invalid || born<=0 || lo<=0 || hi<lo) return false;
+   //--- v6.6.23 T11: hi<=lo is a zero-height band - nothing to label, and the
+   //--- old '<' let a degenerate zone survive every call.
+   if(invalid || born<=0 || lo<=0 || hi<=lo) return false;
    int closed=g_rates_total-2;
    if(closed<0 || closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_atr_buf)) return false;
    double atr=g_atr_buf[closed],price=g_buf_c[closed];

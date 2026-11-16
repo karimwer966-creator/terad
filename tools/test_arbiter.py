@@ -24,7 +24,7 @@ Run:  python3 tools/test_arbiter.py
 
 from __future__ import annotations
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Optional, Tuple
 
 # ---------------------------------------------------------------- constants
@@ -75,6 +75,7 @@ class Cfg:
     w_h4: int = 30
     w_h1: int = 20
     allow_countertrend: bool = True
+    allow_neutral_bias: bool = True   # mirrors the permissive self-test CfgBase
     countertrend_min_score: int = 70
     countertrend_extra_evidence: int = 1
     min_rr: float = 1.50
@@ -422,9 +423,20 @@ def gate_location(c: Cand, price: float, atr: float, cfg: Cfg,
     return "PASS", ""
 
 
-def gate_bias(c: Cand, bias_score: int, d1: int, h4: int, h1: int, cfg: Cfg):
+def gate_bias(c: Cand, bias_score: int, d1: int, h4: int, h1: int, cfg: Cfg,
+              bias_known: bool = True):
+    """HTF_BIAS gate - v6.6.23 T1.
+
+    UNKNOWN bias (no D1/H4/H1 value at all) is NOT neutral: it can never pass.
+    A KNOWN but NEUTRAL consensus passes only when cfg.allow_neutral_bias is
+    explicitly true, mirroring CBiasGate in QSMC_Gates.mqh.
+    """
     if c.direction == 0:
         return "FAIL", "no direction"
+    if not bias_known:
+        return "DOWNGRADE", ("HTF bias unknown - no D1/H4/H1 series supplied a "
+                              "value, and an unknown timeframe is never counted "
+                              "as agreement")
     if bias_score > 0:
         agree = 1 if c.direction > 0 else -1
     elif bias_score < 0:
@@ -437,8 +449,13 @@ def gate_bias(c: Cand, bias_score: int, d1: int, h4: int, h1: int, cfg: Cfg):
         agree = 1 if h1 == c.direction else -1
     else:
         agree = 0
-    if agree >= 0:
+    if agree > 0:
         return "PASS", ""
+    if agree == 0:
+        if cfg.allow_neutral_bias:
+            return "PASS", ""
+        return "DOWNGRADE", ("HTF bias is KNOWN but neutral (D1=%d H4=%d H1=%d) - "
+                              "neutral is not agreement" % (d1, h4, h1))
     if not cfg.allow_countertrend:
         return "FAIL", "HTF bias opposes this direction and counter-trend is disabled"
     need = cfg.min_evidence + cfg.countertrend_extra_evidence
@@ -837,6 +854,22 @@ def run(verbose=False):
     ok_b2, cc_b2, why_b2 = ar3.publish(c_buy2, 101.40, ATR, [zres_old, deep_res], tactical=False)
     check("T11e the mirror: BUY in the CAUSAL role at a broken resistance is published",
           ok_b2 and cc_b2.state == SIG_CONFIRMED, why_b2 or STATE_NAME[cc_b2.state])
+
+    # ---- T16 UNKNOWN bias is not NEUTRAL bias (v6.6.23 T1) ---------------
+    ar = Arbiter(cfg)
+    c = mk_cand(Z_RES, +1, 101.40, ATR, [Z_RES, Z_SUP], cfg, buy_rxn, 38, 1_000_040)
+    res_u, why_u = gate_bias(c, 0, 0, 0, 0, cfg, bias_known=False)
+    check("T16a no HTF information at all is never a PASS",
+          res_u == "DOWNGRADE" and "unknown" in why_u, why_u)
+    cfg_strict = replace(cfg, allow_neutral_bias=False)
+    cfg_strict.allow_neutral_bias = False
+    res_n, why_n = gate_bias(c, 0, 0, 0, 0, cfg_strict)
+    check("T16b a known-neutral consensus is not a PASS under the shipped policy",
+          res_n == "DOWNGRADE" and "neutral" in why_n, why_n)
+    res_l, _ = gate_bias(c, 0, 0, 0, 0, cfg)
+    check("T16c the same consensus passes only when explicitly allowed", res_l == "PASS", res_l)
+    res_a, _ = gate_bias(c, 50, 1, 0, 0, cfg_strict)
+    check("T16d an agreeing consensus still passes", res_a == "PASS", res_a)
 
     # ---- T10 data not ready ---------------------------------------------
     ar = Arbiter(cfg)

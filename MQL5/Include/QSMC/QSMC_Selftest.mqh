@@ -126,6 +126,13 @@ private:
       cfg.allow_countertrend=true;
       cfg.countertrend_min_score=70;
       cfg.countertrend_extra_evidence=1;
+      //--- v6.6.23 T1: a KNOWN-NEUTRAL consensus passes only when the config
+      //--- says so. The scenarios below drive synthetic bars that carry no D1/
+      //--- H4/H1 series, and they deliberately set a neutral external bias
+      //--- (SetExternalBias(0,0,0)); they test location, geometry and timing,
+      //--- not the HTF policy, so they keep the permissive config. T16 asserts
+      //--- the two stricter paths with the shipped value (false).
+      cfg.allow_neutral_bias=true;
       cfg.min_rr=1.50;
       cfg.max_stop_atr=4.00;
       cfg.sl_buffer_atr=0.20;
@@ -189,6 +196,11 @@ public:
       T08_MultiChartSingleAlert();
       T09_CounterTrendDowngraded();
       T15_OneZoneRole();
+      T16_BiasUnknownIsNotNeutral();
+      T17_ExternalBiasContract();
+      T18_ReportNamesTheLoser();
+      T19_RefusedFactsAreNotCandidates();
+      T20_OneAlertPerBar();
       T10_DataNotReady();
 
       Say("---------------------------------------------------------");
@@ -939,6 +951,345 @@ public:
       Check(gr2==GATE_FAIL && StringFind(why2,"RESISTANCE")<0,
             "T15d the mirrored direction is not refused for its ROLE",
             why2);
+     }
+
+   //==================================================================
+   // T16 - UNKNOWN bias is not NEUTRAL bias (v6.6.23 T1).
+   //       Old behaviour: agree==0 returned GATE_PASS, so a chart with no
+   //       higher-timeframe information at all could publish CONFIRMED.
+   //       New behaviour: no known bias -> DOWNGRADE to WATCH; a known but
+   //       neutral consensus -> DOWNGRADE unless cfg.allow_neutral_bias.
+   //==================================================================
+   void              T16_BiasUnknownIsNotNeutral()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);
+      SSignalCandidate cand;
+      cand.valid=true;
+      cand.dir=+1;
+      cand.state=(int)SIG_CONFIRMED;
+      cand.bar_closed=true;
+      cand.score=90;
+      cand.zone_id="T16";
+      SGateCtx ctx;
+      ctx.data_ready=true;
+      ctx.atr=QST_ATR;
+      ctx.point=_Point;
+      ctx.price=100.0;
+      ctx.bias_score=0; ctx.d1_bias=0; ctx.h4_bias=0; ctx.h1_bias=0;
+      string why="";
+      int ds=(int)SIG_CONFIRMED;
+      CBiasGate gate;
+      CZoneRegistry reg;                 // the bias gate never reads it, but a
+                                         // reference parameter needs a real object
+
+      //--- (a) nothing known at all -> not PASS, capped at WATCH
+      ctx.bias_known=false;
+      ENUM_GATE_RESULT a=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(a==GATE_DOWNGRADE && ds==(int)SIG_WATCH && StringFind(why,"unknown")>=0,
+            "T16a no HTF information is never agreement: DOWNGRADE to WATCH",why);
+
+      //--- (b) known but neutral with the shipped policy (allow=false)
+      ctx.bias_known=true;
+      cfg.allow_neutral_bias=false;
+      why=""; ds=(int)SIG_CONFIRMED;
+      ENUM_GATE_RESULT b=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(b==GATE_DOWNGRADE && ds==(int)SIG_WATCH && StringFind(why,"neutral")>=0,
+            "T16b a known-neutral consensus does not license CONFIRMED either",why);
+
+      //--- (c) the same neutral consensus passes only when explicitly allowed
+      cfg.allow_neutral_bias=true;
+      why=""; ds=(int)SIG_CONFIRMED;
+      ENUM_GATE_RESULT c=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(c==GATE_PASS,"T16c neutral PASS requires an explicit config switch",why);
+
+      //--- (d) agreement still passes, and opposition still fails
+      ctx.d1_bias=+1;
+      ctx.bias_score=+50;
+      why=""; ds=(int)SIG_CONFIRMED;
+      ENUM_GATE_RESULT d=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(d==GATE_PASS,"T16d an agreeing known consensus still passes",why);
+
+      cfg.allow_countertrend=false;
+      ctx.bias_score=-50;
+      why="";
+      ENUM_GATE_RESULT e=gate.Evaluate(cand,ctx,cfg,reg,why,ds);
+      Check(e==GATE_FAIL && StringFind(why,"opposes")>=0,
+            "T16e an opposed consensus still fails with counter-trend disabled",why);
+     }
+
+   //==================================================================
+   // T17 - the external bias contract carries a known-flag per timeframe
+   //       (v6.6.23 T2). A host with no D1/H4/H1 data can now say so,
+   //       an unknown timeframe is removed from the weight sum instead of
+   //       voting neutral, and "nothing known" is UNKNOWN - not 0.
+   //==================================================================
+   void              T17_ExternalBiasContract()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);   // w_d1=50 w_h4=30 w_h1=20
+      CQuantumRoot r;
+      if(!NewRoot(r,cfg)) return;
+      SGateCtx ctx;
+
+      //--- (a) D1 and H4 agree short, H1 absent (the host's own call shape:
+      //---     h1_known=false), so the H1 weight must not enter the sum.
+      r.SetExternalBias(-1,-1,0,false);
+      r.GetContext(ctx);
+      Check(ctx.bias_known && ctx.htf_bias==-1 && ctx.bias_score==-100 &&
+            ctx.d1_bias==-1 && ctx.h4_bias==-1 && ctx.h1_bias==0,
+            "T17a D1+H4 short with H1 absent: known, -100, htf -1",
+            "known="+(string)ctx.bias_known+" score="+IntegerToString(ctx.bias_score)+
+            " htf="+IntegerToString(ctx.htf_bias));
+
+      //--- (b) H4 is NOT known: its +1 must be dropped from the numerator.
+      //---     with it: (-50+30+20)/100 = 0. without it: (-50+20)/70 = -43.
+      r.SetExternalBias(-1,+1,+1,true,true,false);
+      r.GetContext(ctx);
+      Check(ctx.bias_known && ctx.h4_bias==0 && ctx.h1_bias==1 &&
+            ctx.bias_score==-43,
+            "T17b an unknown H4 is excluded from the weight sum",
+            "score="+IntegerToString(ctx.bias_score)+
+            " h4="+IntegerToString(ctx.h4_bias));
+
+      //--- (c) nothing known at all -> UNKNOWN (T1 then refuses to license)
+      r.SetExternalBias(0,0,0,false,false,false);
+      r.GetContext(ctx);
+      Check(!ctx.bias_known && ctx.bias_score==0 && ctx.htf_bias==0,
+            "T17c no known timeframe is UNKNOWN, not a neutral consensus",
+            "known="+(string)ctx.bias_known+" htf="+IntegerToString(ctx.htf_bias));
+
+      //--- (d) one known timeframe that is neutral -> known-neutral
+      r.SetExternalBias(0,0,0,true,false,false);
+      r.GetContext(ctx);
+      Check(ctx.bias_known && ctx.bias_score==0 && ctx.htf_bias==0,
+            "T17d a known-neutral H1 stays KNOWN with a 0 consensus",
+            "known="+(string)ctx.bias_known+" score="+IntegerToString(ctx.bias_score));
+
+      //--- (e) the legacy 4-argument call keeps its meaning: value defaults
+      //---     to known, so the consensus is still computed.
+      r.SetExternalBias(+1,0,0);
+      r.GetContext(ctx);
+      Check(ctx.bias_known && ctx.htf_bias==1 && ctx.bias_score==50,
+            "T17e a 4-argument call is still D1/H4 known (50/100=+50)",
+            "score="+IntegerToString(ctx.bias_score));
+     }
+
+   //==================================================================
+   // T18 - the report names the loser (v6.6.23 T3).
+   //       Finalize() used to discard ev.reject_text and leave trace as
+   //       "no candidate survived the gates", so a silent bar could not
+   //       be explained from the journal at all.
+   //==================================================================
+   void              T18_ReportNamesTheLoser()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);
+      CSignalArbiter arb;
+      arb.Init(NULL,false,false);      // no history: the anti-spam gates are unused
+      SGateCtx ctx;
+      ctx.data_ready=true;
+      ctx.atr=QST_ATR;
+      ctx.point=_Point;
+      ctx.price=100.0;
+      ctx.tick_size=_Point;
+      ctx.closed_index=39;              // CfgBase.min_bars = 30
+      ctx.digits=(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS);
+      ctx.bar_time=D'2024.01.02 10:00';
+      ctx.bias_known=true;
+      ctx.bias_score=0; ctx.d1_bias=0; ctx.h4_bias=0; ctx.h1_bias=0;
+      ctx.session_ok=-1;
+
+      SSignalCandidate c;
+      c.valid=true;
+      c.dir=+1;
+      c.source=SRC_CORE;
+      c.state=(int)SIG_CONFIRMED;
+      c.bar_closed=true;
+      c.score=90;
+      c.zone_id="T18-NOT-IN-REGISTRY";
+      c.bar_index=38;
+      c.entry=100.00;
+      c.sl=99.00;
+      c.tp1=102.00;
+      c.rr=2.0;
+      arb.Submit(c,D'2024.01.02 10:00');
+
+      CZoneRegistry zones;             // deliberately empty: LOCATION refuses
+      CAlertManager alerts;            // never touched - nothing survives
+      SArbiterReport rep;
+      bool ok=arb.Finalize(ctx,cfg,zones,alerts,rep);
+      Check(!ok && rep.rejected==1 &&
+            StringFind(rep.trace,"first: DATA_QUALITY:")>=0,
+            "T18a the report keeps the first refusal instead of a bare no-survivor line",
+            rep.trace);
+      Check(StringFind(rep.trace,"1 rejected")>=0 && rep.reject_first!="",
+            "T18b the report counts the refusals",rep.trace);
+
+      //--- a bar without candidates still says exactly that, and the
+      //--- reject fields stay empty (no stale text from the previous bar).
+      SArbiterReport rep2;
+      arb.SetAuthoritativePending(false);
+      bool ok2=arb.Finalize(ctx,cfg,zones,alerts,rep2);
+      Check(!ok2 && rep2.trace=="no candidate" && rep2.reject_first=="",
+            "T18c a bar with no candidate keeps its own trace",rep2.trace);
+      arb.Shutdown();
+     }
+
+   //==================================================================
+   // T19 - a refused fact is not a candidate (v6.6.23 T4).
+   //       BuildTacticalCandidate() used to leave out.valid=true on two
+   //       rejection paths (no location fact / stop geometry), and
+   //       FinalizeBar() submits on (valid && dir!=0). A fact that never
+   //       had a direction from the market therefore reached the arbiter,
+   //       was counted as evaluated, and was refused with a message about
+   //       entry/stop prices it never had. The label also lost the real
+   //       reason. Both halves are asserted here: the refused fact must
+   //       not be submitted, and a real rejection must still publish.
+   //==================================================================
+   void              T19_RefusedFactsAreNotCandidates()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);
+
+      double o[],h[],l[],c[]; datetime t[]; long v[];
+      Flat(QST_BARS,105.0,QST_HALF,1000,
+           (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
+      SetBar(37,105.20,107.00,105.00,106.80,1000,o,h,l,c,v);   // approach
+      SetBar(38,106.80,109.40,106.70,107.10,2000,o,h,l,c,v);   // rejection bar
+      double eo[],eh[],el[],ec[]; datetime et[]; long ev[];
+      Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
+
+      SQZone zs[2];
+      MakeZone(zs[0],ZR_RESISTANCE,108.00,109.00,80);
+      MakeZone(zs[1],ZR_SUPPORT,90.00,91.00,78);
+
+      //--- (a) the fact cites a bar that never touched the zone
+      CQuantumRoot r;
+      if(!NewRoot(r,cfg)) { Check(false,"T19 setup a",""); return; }
+      if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
+        { Check(false,"T19 synthetic load a",""); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T19 context a",r.CtxDataReason()); return; }
+      r.SetZones(zs,2);
+      r.SetExternalBias(0,0,0);
+      STacticalFact f;
+      f.valid=true; f.bull=false; f.closed_confirm=true;
+      f.entry_price=108.50; f.exec_bar_time=t[37]; f.exec_tf=PERIOD_M1;
+      f.trigger=108.00; f.trigger_time=t[36]; f.core_owned=false; f.chase_atr=0.2;
+      r.TacticalObserve(f);
+      r.FinalizeBar(false);
+      Check(!r.ReportPublished() && r.ReportEvaluated()==0,
+            "T19a a fact with no location evidence is never submitted to the arbiter",
+            "evaluated="+IntegerToString(r.ReportEvaluated())+" trace="+r.ReportTrace());
+      Check(StringFind(r.LastText(),"did not reject or accept")>=0,
+            "T19b the chart says why the fact was refused, not 'no candidate survived'",
+            r.LastText());
+
+      //--- (b) the SAME data with the real rejection bar still publishes:
+      //---     the filter must not swallow legitimate candidates.
+      CQuantumRoot r2;
+      if(!NewRoot(r2,cfg)) { Check(false,"T19 setup b",""); return; }
+      if(!r2.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
+        { Check(false,"T19 synthetic load b",""); return; }
+      if(!r2.BuildContext(0.0)) { Check(false,"T19 context b",r2.CtxDataReason()); return; }
+      r2.SetZones(zs,2);
+      r2.SetExternalBias(0,0,0);
+      STacticalFact f2;
+      f2.valid=true; f2.bull=false; f2.closed_confirm=true;
+      f2.entry_price=c[38]; f2.exec_bar_time=t[38]; f2.exec_tf=PERIOD_M1;
+      f2.trigger=108.00; f2.trigger_time=t[37]; f2.core_owned=false; f2.chase_atr=0.2;
+      r2.TacticalObserve(f2);
+      r2.FinalizeBar(false);
+      Check(r2.ReportPublished() && r2.ReportEvaluated()==1,
+            "T19c a real closed-bar rejection is still submitted and published",
+            "evaluated="+IntegerToString(r2.ReportEvaluated())+" trace="+r2.ReportTrace());
+     }
+
+   //==================================================================
+   // T20 - one alert per bar, enforced inside the arbiter (v6.6.23 T5).
+   //       Before this, both promises lived only in the host:
+   //       auth_pending = g_alert_candidate_count>0 was recomputed per
+   //       call, so a second Finalize() in the same bar could release the
+   //       bar to the tactical path, and nothing stopped a second publish.
+   //==================================================================
+   void              T20_OneAlertPerBar()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);
+      SGateCtx ctx;
+      ctx.data_ready=true;
+      ctx.atr=QST_ATR;
+      ctx.point=_Point;
+      ctx.price=100.0;
+      ctx.tick_size=_Point;
+      ctx.closed_index=39;
+      ctx.digits=(int)SymbolInfoInteger(_Symbol,SYMBOL_DIGITS);
+      ctx.bar_time=D'2024.01.02 10:00';
+      ctx.bias_known=true;
+      ctx.bias_score=0;
+      ctx.session_ok=-1;
+
+      CZoneRegistry zones;             // empty: nothing can pass DATA_QUALITY
+      CAlertManager alerts;            // never touched
+      SSignalCandidate c;
+      c.valid=true; c.dir=+1; c.source=SRC_TACTICAL; c.state=(int)SIG_CONFIRMED;
+      c.bar_closed=true; c.score=90; c.zone_id="T20"; c.bar_index=38;
+      c.entry=100.0; c.sl=99.0; c.tp1=102.0; c.rr=2.0;
+
+      //--- (a) a claim on this bar is sticky, even after the host reports
+      //---     false again within the same bar
+      CSignalArbiter arb;
+      arb.Init(NULL,false,false);
+      SArbiterReport rep;
+      arb.SetAuthoritativePending(true);
+      arb.Submit(c,ctx.bar_time);
+      bool ok1=arb.Finalize(ctx,cfg,zones,alerts,rep);
+      Check(!ok1 && StringFind(rep.trace,"authoritative dispatcher owns this bar")>=0,
+            "T20a a claimed bar suppresses the tactical path",rep.trace);
+
+      arb.SetAuthoritativePending(false);        // the host forgot, same bar
+      arb.Submit(c,ctx.bar_time);
+      SArbiterReport rep2;
+      bool ok2=arb.Finalize(ctx,cfg,zones,alerts,rep2);
+      Check(!ok2 && StringFind(rep2.trace,"authoritative dispatcher owns this bar")>=0,
+            "T20b the claim is sticky for the whole bar",rep2.trace);
+
+      //--- (c) the next bar releases it
+      SGateCtx ctx2=ctx;
+      ctx2.bar_time=ctx.bar_time+60;
+      arb.Submit(c,ctx2.bar_time);
+      SArbiterReport rep3;
+      bool ok3=arb.Finalize(ctx2,cfg,zones,alerts,rep3);
+      Check(!ok3 && StringFind(rep3.trace,"authoritative dispatcher")<0,
+            "T20c a new bar releases the claim",rep3.trace);
+      arb.Shutdown();
+
+      //--- (d) no second publish on the same bar, through the root path
+      SQsmcArbConfig cfg2; CfgBase(cfg2);
+      double o[],h[],l[],c2[]; datetime t[]; long v[];
+      Flat(QST_BARS,105.0,QST_HALF,1000,
+           (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c2,t,v);
+      SetBar(37,105.20,107.00,105.00,106.80,1000,o,h,l,c2,v);
+      SetBar(38,106.80,109.40,106.70,107.10,2000,o,h,l,c2,v);
+      double eo[],eh[],el[],ec[]; datetime et[]; long ev[];
+      Copy6(QST_BARS,o,h,l,c2,t,v,eo,eh,el,ec,et,ev);
+      CQuantumRoot r;
+      if(!NewRoot(r,cfg2)) { Check(false,"T20 setup",""); return; }
+      if(!r.LoadSynthetic(o,h,l,c2,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
+        { Check(false,"T20 synthetic load",""); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T20 context",r.CtxDataReason()); return; }
+      SQZone zs[2];
+      MakeZone(zs[0],ZR_RESISTANCE,108.00,109.00,80);
+      MakeZone(zs[1],ZR_SUPPORT,90.00,91.00,78);
+      r.SetZones(zs,2);
+      r.SetExternalBias(0,0,0);
+      STacticalFact f;
+      f.valid=true; f.bull=false; f.closed_confirm=true;
+      f.entry_price=c2[38]; f.exec_bar_time=t[38]; f.exec_tf=PERIOD_M1;
+      f.trigger=108.00; f.trigger_time=t[37]; f.core_owned=false; f.chase_atr=0.2;
+      r.TacticalObserve(f);
+      r.FinalizeBar(false);
+      int published_once=(r.ReportPublished()?1:0);
+      r.FinalizeBar(false);                        // same bar, called again
+      Check(published_once==1 && r.Published()==1 &&
+            StringFind(r.ReportTrace(),"already published on this bar")>=0,
+            "T20d a second Finalize on the same bar cannot publish again",
+            r.ReportTrace());
      }
 
    //==================================================================

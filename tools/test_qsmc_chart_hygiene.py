@@ -131,7 +131,7 @@ check(RAW.count("\n") == RAW.count("\r\n") and RAW.count("\n") == 45002,
       "A12 the file is pure CRLF and 45002 lines (two include lines appended, nothing shifted)",
       "LF %d CRLF %d" % (RAW.count("\n"), RAW.count("\r\n")))
 check(io.open(MIRROR, encoding="utf-8", newline="").read() == RAW, "A13 MQL5/Indicators/nadir2.mq5 is byte-identical to the root copy")
-check('#define QSMC_VERSION_TEXT "v6.6.22"' in TEXT and '#property version   "6.622"' in TEXT, "A14 the build is v6.6.22")
+check('#define QSMC_VERSION_TEXT "v6.6.23"' in TEXT and '#property version   "6.623"' in TEXT, "A14 the build is v6.6.23")
 # 534 = the inputs nadir2.mq5 declared before v6.6.22 (the release gate's G3 parses the same number).
 NEW_INPUTS = ["InpChartProfile", "InpLayerPrimary", "InpLayerSecondary", "InpLayerVolumeProfile", "InpLayerVolumeDetail",
               "InpLayerOptional", "InpPrimaryMarkHistory", "InpSignalEpisodeGapBars"]

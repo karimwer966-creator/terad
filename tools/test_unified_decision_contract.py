@@ -22,12 +22,17 @@ class UnifiedContract(unittest.TestCase):
         self.assertIn('e.confirmation_bar<=e.created_bar',HEADER)
         self.assertIn('if(authority!=1 && authority!=-1) return',HEADER)
         self.assertIn('if(InpUnifiedDecision) return UD_Verdict(closed,why)',MAIN)
+        # T7: the id is defined once, in QSMC_Types.mqh, and consumed here.
+        TYPES=(ROOT/'MQL5/Include/QSMC/QSMC_Types.mqh').read_text()
+        self.assertIn('#define QSMC_ALERT_SRC_CORE 3',TYPES)
+        self.assertIn('a.source=QSMC_ALERT_SRC_CORE',MAIN)
 
     def test_same_snapshot_before_dispatch_and_render(self):
         dispatcher=body('void AlertDispatcherFinalize(const int rates_total)\n')
         self.assertLess(dispatcher.index('UD_Update(closed)'),dispatcher.index('UD_AlertAllows'))
         self.assertEqual(dispatcher.count('UD_AlertAllows(c.source,c.direction)'),3)
-        self.assertIn('return source==3 && direction==g_ud.direction',HEADER)
+        # T7: the id is named, not a bare 3 that reads as SRC_RXN elsewhere.
+        self.assertIn('return source==QSMC_ALERT_SRC_CORE && direction==g_ud.direction',HEADER)
         self.assertIn('arb.FinalizeBar(authoritative_pending || InpUnifiedDecision)',MAIN)
         self.assertIn('if(InpUseFinalResolver || InpUnifiedDecision)',MAIN)
         self.assertIn('(InpUnifiedDecision?g_ud.score:g_alert_primary.score)',MAIN)
@@ -45,7 +50,9 @@ class UnifiedContract(unittest.TestCase):
         for key in ['Lifecycle|','SignalDebug|','PMI|']:
             self.assertIn('UD_LogAllows("'+key,MAIN)
         self.assertIn('iBarShift(_Symbol,(ENUM_TIMEFRAMES)_Period',HEADER)
-        self.assertIn('if(free_slot<0) return false',HEADER)
+        # T6: a saturated table recycles its oldest slot instead of muting.
+        self.assertIn('if(free_slot<0)',HEADER)
+        self.assertIn('if(g_ud_log_times[i]<g_ud_log_times[free_slot]) free_slot=i',HEADER)
         for forbidden in ['OrderSend(', 'CTrade', 'Alert(', 'SendNotification(',
                           'BufBuy[', 'BufSell[', 'GlobalVariableSet(']:
             self.assertNotIn(forbidden,HEADER)

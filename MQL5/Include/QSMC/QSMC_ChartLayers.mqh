@@ -49,7 +49,7 @@ enum ENUM_QCL_LAYER
    QCL_LAYER_SYSTEM        = 6
 };
 
-input group "====== v6.6.22 CHART PROFILE / VISUAL LAYERS (AUDIT-CH1/CH2, display only) ======"
+input group "====== v6.6.23 CHART PROFILE / VISUAL LAYERS (AUDIT-CH1/CH2, display only) ======"
 input ENUM_QCL_PROFILE InpChartProfile         = QCL_PROFILE_CLEAN; // Chart profile (CLEAN = layered; LEGACY = previous behaviour)
 input bool             InpLayerPrimary         = true;  // Primary: decision card, active setup, entry/SL/TP, primary signal
 input bool             InpLayerSecondary       = true;  // Secondary: BOS/CHoCH, liquidity, active OB/FVG, S/R, PDH/PDL

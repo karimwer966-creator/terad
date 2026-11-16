@@ -113,6 +113,8 @@ private:
    bool              m_deinit_done;
    bool              m_cfg_locked;
    bool              m_bias_external;
+   bool              m_ext_d1_known;
+   bool              m_ext_h4_known;
    //--- INSTRUMENT IDENTITY. Set once in Init() from the caller's arguments and
    //--- read everywhere else. This root used to consult _Symbol/_Period inside
    //--- Refresh()/BuildContext(), which is harmless while one indicator instance
@@ -327,7 +329,8 @@ public:
                      CQuantumRoot()
      { m_ready=false; m_zone_src_n=0; m_tac_n=0; m_tac_bar_time=0;
        m_last_state=(int)SIG_NONE; m_last_text=""; m_bars=0; m_deinit_done=false;
-       m_cfg_locked=false; m_bias_external=false; m_ext_h1_known=true;
+       m_cfg_locked=false; m_bias_external=false;
+       m_ext_h1_known=true; m_ext_d1_known=true; m_ext_h4_known=true;
        m_ext_d1=0; m_ext_h4=0; m_ext_h1=0;
        m_structure_has_event=false; m_structure_ok=false; m_structure_seen_time=0;
        m_structure_left=2; m_structure_right=2;
@@ -458,7 +461,7 @@ public:
       // VISUAL instance already owns user-facing diagnostics). QSMC_SilentReader()
       // is forward-declared in nadir2.mq5 before this include.
       if(!QSMC_SilentReader())
-         Print("[QSMC_ARB] v6.6.22 arbitration layer ON | preset ",m_preset.EffectiveName(),
+         Print("[QSMC_ARB] v6.6.23 arbitration layer ON | preset ",m_preset.EffectiveName(),
                " | gates ",IntegerToString(m_arbiter.GateCount()),
                " | exec TF ",QSMC_TFName(m_exec_tf),
                " | tactical may confirm: ",(tactical_may_confirm?"YES":"NO (informational only)"),
@@ -584,6 +587,7 @@ public:
       m_ctx.data_reason="context not built";
       m_ctx.htf_bias=0; m_ctx.d1_bias=0; m_ctx.h4_bias=0; m_ctx.h1_bias=0;
       m_ctx.bias_score=0;
+      m_ctx.bias_known=false;      // UNKNOWN until a series or the host supplies one
       m_ctx.regime=VREG_UNKNOWN;
       m_ctx.session_ok=-1;
 
@@ -616,6 +620,9 @@ public:
       m_ctx.h4_bias=m_bias.H4();
       m_ctx.h1_bias=m_bias.H1();
       m_ctx.bias_score=m_bias.Score();
+      //--- CBiasGate separates NEUTRAL from UNKNOWN; a bias is only "known"
+      //--- when at least one HTF series was complete enough to produce it.
+      m_ctx.bias_known=(m_bias.KnownCount()>0);
 
       ApplyExternalBias();
       UpdateStructure(*ch,ci);
@@ -644,6 +651,7 @@ public:
       m_ctx.data_reason=reason;
       m_ctx.htf_bias=0; m_ctx.d1_bias=0; m_ctx.h4_bias=0; m_ctx.h1_bias=0;
       m_ctx.bias_score=0;
+      m_ctx.bias_known=false;
       m_ctx.regime=VREG_UNKNOWN;
       m_ctx.session_ok=-1;
       m_market_direction=0; m_market_direction_score=0;
@@ -702,13 +710,24 @@ public:
       return true;
      }
 
-   //--- d1/h4/h1 are +1 / -1 / 0. `h1_known=false` removes H1 from the
-   //--- weight sum instead of counting an unknown timeframe as neutral
-   //--- agreement: an unknown TF must never license a signal.
+   //--- d1/h4/h1 are +1 / -1 / 0 and every one of them carries its own
+   //--- "I actually have this series" flag (v6.6.23 T2).
+   //---
+   //--- The old signature had a known-flag for H1 only, while the internal
+   //--- provider had three: the same word "bias" therefore meant a different
+   //--- number depending on who wrote it, and a host with no D1/H4 data had no
+   //--- way to say so - its 0/0/0 was recorded as a known-neutral consensus.
+   //--- Now: an unknown timeframe is removed from the weight sum (never counted
+   //--- as neutral agreement), and if NO timeframe is known the consensus is
+   //--- UNKNOWN, which CBiasGate refuses to license (T1).
+   //--- The three default to true so every existing call keeps its meaning.
    void              SetExternalBias(const int d1,const int h4,const int h1,
-                                     const bool h1_known=true)
+                                     const bool h1_known=true,
+                                     const bool d1_known=true,
+                                     const bool h4_known=true)
      {
-      m_ext_d1=d1; m_ext_h4=h4; m_ext_h1=h1; m_ext_h1_known=h1_known;
+      m_ext_d1=d1; m_ext_h4=h4; m_ext_h1=h1;
+      m_ext_h1_known=h1_known; m_ext_d1_known=d1_known; m_ext_h4_known=h4_known;
       m_bias_external=true;
       ApplyExternalBias();
      }
@@ -719,21 +738,41 @@ public:
      {
       if(!m_bias_external) return;
       int d1=m_ext_d1, h4=m_ext_h4, h1=m_ext_h1;
-      int wsum=MathAbs(m_cfg.w_d1)+MathAbs(m_cfg.w_h4)+(m_ext_h1_known?MathAbs(m_cfg.w_h1):0);
-      if(wsum<1) wsum=1;
-      int score=(int)MathRound((double)(m_cfg.w_d1*d1+m_cfg.w_h4*h4+
-                (m_ext_h1_known?m_cfg.w_h1*h1:0))*100.0/(double)wsum);
-      if(score>100)  score=100;
-      if(score<-100) score=-100;
-      m_ctx.d1_bias=d1;
-      m_ctx.h4_bias=h4;
-      m_ctx.h1_bias=h1;
+      bool k1=m_ext_h1_known, kd=m_ext_d1_known, kh=m_ext_h4_known;
+      //--- only known timeframes enter the sum: an unknown TF is missing
+      //--- evidence, not a neutral vote (T1/T2 share this rule).
+      int wsum=(kd?MathAbs(m_cfg.w_d1):0)+(kh?MathAbs(m_cfg.w_h4):0)+(k1?MathAbs(m_cfg.w_h1):0);
+      bool any_known=(kd||kh||k1);
+      int score=0;
+      if(any_known && wsum>0)
+        {
+         int num=(kd?m_cfg.w_d1*d1:0)+(kh?m_cfg.w_h4*h4:0)+(k1?m_cfg.w_h1*h1:0);
+         score=(int)MathRound((double)num*100.0/(double)wsum);
+         if(score>100)  score=100;
+         if(score<-100) score=-100;
+        }
+      m_ctx.d1_bias=(kd?d1:0);
+      m_ctx.h4_bias=(kh?h4:0);
+      m_ctx.h1_bias=(k1?h1:0);
       m_ctx.bias_score=score;
-      if(score>0)          m_ctx.htf_bias=1;
-      else if(score<0)     m_ctx.htf_bias=-1;
-      else if(d1!=0)       m_ctx.htf_bias=d1;
-      else if(h4!=0)       m_ctx.htf_bias=h4;
-      else                 m_ctx.htf_bias=h1;
+      if(!any_known)
+        {
+         //--- nothing known: UNKNOWN, not neutral. htfbias stays 0 so
+         //--- UpdateMarketDirection() falls back to chart structure alone.
+         m_ctx.htf_bias=0;
+         m_ctx.bias_known=false;
+         UpdateMarketDirection();
+         return;
+        }
+      if(score>0)                  m_ctx.htf_bias=1;
+      else if(score<0)             m_ctx.htf_bias=-1;
+      else if(kd && d1!=0)         m_ctx.htf_bias=d1;
+      else if(kh && h4!=0)         m_ctx.htf_bias=h4;
+      else if(k1 && h1!=0)         m_ctx.htf_bias=h1;
+      else                         m_ctx.htf_bias=0;
+      //--- At least one timeframe was supplied, so 0/0/0 is a KNOWN-NEUTRAL
+      //--- consensus - which T1 then refuses to treat as agreement.
+      m_ctx.bias_known=true;
       UpdateMarketDirection();
      }
    bool              BiasExternal() const { return m_bias_external; }
@@ -864,7 +903,13 @@ public:
          out.bar_time=m_ctx.bar_time;
          out.bar_index=m_ctx.closed_index;
          out.bar_closed=true;
-         out.valid=true;
+         //--- v6.6.23 T4: valid=false. "valid" means "this is a candidate
+         //--- the arbiter should judge". A NO-TRADE fact derived from the
+         //--- MTF hint alone is not one: submitting it made the arbiter
+         //--- evaluate a direction nothing had justified (and, before T3,
+         //--- report it as a gate defeat). The dir/zone fields stay for the
+         //--- chart label, which is all this fact is good for.
+         out.valid=false;
          return (int)SIG_NO_TRADE;
         }
 
@@ -884,6 +929,7 @@ public:
          reason="NO_VALID_ZONE: "+zone_score.rejection;
          out.reason=reason; out.state=(int)SIG_NO_TRADE;
          out.zone_id=z.id; out.zone_role=z.role; out.distance_atr=hit.gap_atr;
+         out.valid=false;      // T4: a zone the scorer refused is not a candidate
          return (int)SIG_NO_TRADE;
         }
 
@@ -915,6 +961,13 @@ public:
                 " ATR exceeds the "+DoubleToString(m_cfg.max_stop_atr,2)+" ATR limit";
          out.reason=reason;
          out.state=(int)SIG_NO_TRADE;
+         //--- v6.6.23 T4: the candidate was already marked valid in step 4,
+         //--- and entry/sl are still 0 here, so FinalizeBar() submitted it
+         //--- and the arbiter refused it on "entry or stop is not a valid
+         //--- price" - a real refusal reported for a candidate that never
+         //--- had geometry. A refused fact is not a candidate.
+         out.valid=false;
+         out.entry=0.0; out.sl=0.0; out.tp1=0.0;
          return (int)SIG_NO_TRADE;
         }
 
@@ -944,16 +997,6 @@ public:
       return out.state;
      }
 
-   //--- Round to the symbol tick grid so TP/SL are always placeable.
-   double            RoundNear(const double anchor,const double v) const
-     {
-      double tick=m_ctx.tick_size;
-      if(!(tick>0.0)) tick=_Point;
-      double r=MathRound(v/tick)*tick;
-      if(!(r>0.0)) r=v;
-      return r;
-     }
-
    //=================================================================
    // 4. Finalize: evaluate everything recorded for this bar, publish
    // at most one signal, draw it, and journal it.
@@ -975,13 +1018,17 @@ public:
         }
 
       //--- submit every tactical fact recorded this bar
+      //--- v6.6.23 T4: only a candidate that survived BuildTacticalCandidate
+      //--- is submitted (out.valid is false on every rejection path now), and
+      //--- the reason it was refused is kept for the chart label below.
+      string tac_why="";
       for(int i=0;i<m_tac_n;i++)
         {
          SSignalCandidate c;
          string why="";
          BuildTacticalCandidate(m_tac[i],c,why);
-         if(c.valid && c.dir!=0)
-            m_arbiter.Submit(c,m_ctx.bar_time);
+         if(c.valid && c.dir!=0) m_arbiter.Submit(c,m_ctx.bar_time);
+         else if(tac_why=="" && why!="") tac_why=why;
         }
       m_tac_n=0;
 
@@ -1001,7 +1048,12 @@ public:
          m_render.ClearPrimary();
          //--- Explain the silence. Never a bare "NO TRADE".
          string why=m_rep.trace;
-         if(why=="") why="no candidate survived the gates";
+         if(why=="" || why=="no candidate") why=(tac_why!=""?tac_why:"no candidate survived the gates");
+         //--- v6.6.23 T3: when candidates WERE evaluated and every one was
+         //--- refused, say why in the journal. This is rare (a bar with
+         //--- candidates that all lost) so it is not gated behind the
+         //--- verbose switch - otherwise the operator sees a silent NO TRADE.
+         if(m_rep.evaluated>0) Print("[QSMC_ARB] no alert | ",why);
          m_last_state=(int)SIG_NO_TRADE;
          m_last_text=why;
          m_render.DrawSuppressed(why,m_ctx.bar_time,m_ctx.price,

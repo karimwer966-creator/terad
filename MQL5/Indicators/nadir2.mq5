@@ -611,7 +611,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.622"
+#property version   "6.623"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -622,7 +622,7 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.15).
-#define QSMC_VERSION_TEXT "v6.6.22"
+#define QSMC_VERSION_TEXT "v6.6.23"
 #property indicator_chart_window
 #property indicator_buffers 26   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)
 #property indicator_plots   7
@@ -22572,7 +22572,7 @@ void FireSetupAlert(const datetime bar_time)
    a.valid=true;
    a.scenario_candidate=true;
    a.alert_eligible=alert_enabled;
-   a.source=3;
+   a.source=QSMC_ALERT_SRC_CORE;   // authoritative Core dispatcher
    a.direction=(g_trade_setup.is_buy?1:-1);
    a.level=(int)RXN_LEVEL_EXECUTION_READY;
    a.score=(int)MathMax(0,MathMin(100,g_trade_setup.confidence));
@@ -38064,7 +38064,7 @@ void ZRE_AlertState(const SZREZone &z,const ENUM_ZRE_STATE state,const datetime 
    SAlertCandidate a;
    AlertCandidateInit(a);
    a.valid=true;
-   a.source=1;
+   a.source=QSMC_ALERT_SRC_ZRE;
    a.closed_index=closed;
    a.bar_time=bar_time;
    a.zone_id=z.id;
@@ -41168,7 +41168,7 @@ void AlertCandidateInit(SAlertCandidate &a)
    a.valid=false;
    a.scenario_candidate=false;
    a.alert_eligible=false;
-   a.source=0;
+   a.source=QSMC_ALERT_SRC_NONE;
    a.direction=0;
    a.level=0;
    a.score=0;
@@ -41892,7 +41892,7 @@ void RXN_Alert(const SRxnEvidence &e,const datetime bar_time)
    AlertCandidateInit(a);
    a.valid=true;
    a.scenario_candidate=true;
-   a.source=2;
+   a.source=QSMC_ALERT_SRC_RXN;
    a.direction=e.direction;
    a.level=e.level;
    a.score=e.reaction_score;
