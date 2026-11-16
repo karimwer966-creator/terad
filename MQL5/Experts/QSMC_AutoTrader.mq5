@@ -2805,12 +2805,22 @@ void HandleSignal(SQsigSignal &s)
       // The server accepted something but this EA cannot find the position.
       // Mark seen so a retry cannot stack a second exposure on top of one it
       // cannot see, count the entry slot, and NEVER count it as sent.
+      // v6.6.24 (F-004): the old line said "check the Journal before the next
+      // bar" and nothing else, which read as "this will be retried". It is not:
+      // the signal is MARKED SEEN (no retry, ever), the entry slot is CONSUMED
+      // (CountOneTrade) and the trade is counted UNCONFIRMED, not sent. The line
+      // now states all three, because an operator who believes a retry is
+      // coming will not go and look at the ticket.
       Print("[QSMC_AT] UNCONFIRMED ",DirText(s.dir)," ",sym,
             " retcode=",IntegerToString((long)rc)," ",rc_text,
             " | deal #",IntegerToString((long)deal_ticket),
             " | position #",IntegerToString((long)pos_ticket),
             " | volume ",DoubleToString(filled_vol,2),
-            " | the order was NOT counted as sent; check the Journal before the next bar");
+            " | the server accepted something this EA cannot see: the signal is",
+            " MARKED SEEN (it will NOT be retried), the entry slot is CONSUMED",
+            " (trades today=",IntegerToString(TradesToday())," of ",
+            IntegerToString(MaxTradesPerDayNow()),") and the trade is counted",
+            " UNCONFIRMED, never sent - VERIFY THE POSITION IN THE TERMINAL NOW");
       MarkSeen(key,s.bar_time,s.dir);
       CountOneTrade();
       g_unconfirmed++;
@@ -2871,7 +2881,10 @@ void HandleSignal(SQsigSignal &s)
             " unexpected retcode=",IntegerToString((long)rc)," ",rc_text,
             " | deal #",IntegerToString((long)deal_ticket),
             " | position #",IntegerToString((long)pos_ticket),
-            " | the order was NOT counted as sent");
+            " | the signal is MARKED SEEN (no retry), the entry slot is CONSUMED",
+            " (trades today=",IntegerToString(TradesToday())," of ",
+            IntegerToString(MaxTradesPerDayNow()),") and the trade is counted",
+            " UNCONFIRMED, never sent - VERIFY THE POSITION IN THE TERMINAL NOW");
       MarkSeen(key,s.bar_time,s.dir);
       CountOneTrade();
       g_unconfirmed++;
