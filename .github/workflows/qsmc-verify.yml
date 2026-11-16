@@ -127,6 +127,14 @@ jobs:
       - name: Candle reversal geometry (piercing / dark cloud, proven satisfiable)
         run: python3 tools/test_candle_patterns.py 2>&1 | tee out/test_candle_patterns.log
 
+      # v6.6.24 (R3). The mechanical half of "is this build safe to attach to a
+      # DEMO account": one version everywhere, presets bound, no order API
+      # reachable from the indicator layer, one magic per QSMC executor, the
+      # account-mode gate intact, the HARD ceilings, and the shipping risk
+      # defaults. It is NOT a compile and NOT a backtest.
+      - name: Demo preflight (version, presets, G4, magic, ceilings, defaults)
+        run: python3 tools/preflight_demo.py 2>&1 | tee out/preflight_demo.log
+
       - name: Diagnostic bridge (the indicator's verdict -> the companion's heartbeat)
         run: python3 tools/test_diag_bridge.py 2>&1 | tee out/test_diag_bridge.log
 

@@ -75,6 +75,10 @@ CHECKS = [
     # v6.6.24: the two-bar reversal geometry, compiled and run natively. Two of
     # the four named patterns were unsatisfiable in v6.6.23.
     ("candle-patterns", [sys.executable, "tools/test_candle_patterns.py"]),
+    # v6.6.24 (R3): the demo-trial preflight. Mechanical invariants only - one
+    # version, bound presets, no order API in the indicator layer, one magic,
+    # account-mode gate, HARD ceilings, shipping risk defaults.
+    ("demo-preflight", [sys.executable, "tools/preflight_demo.py", "--quiet"]),
     ("diag-bridge", [sys.executable, "tools/test_diag_bridge.py"]),
     ("historical-atr", [sys.executable, "tools/test_historical_atr_contract.py"]),
     ("volatility-window", [sys.executable, "tools/test_volatility_window.py"]),
