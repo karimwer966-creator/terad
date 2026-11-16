@@ -903,7 +903,13 @@ public:
          out.bar_time=m_ctx.bar_time;
          out.bar_index=m_ctx.closed_index;
          out.bar_closed=true;
-         out.valid=true;
+         //--- v6.6.23 T4: valid=false. "valid" means "this is a candidate
+         //--- the arbiter should judge". A NO-TRADE fact derived from the
+         //--- MTF hint alone is not one: submitting it made the arbiter
+         //--- evaluate a direction nothing had justified (and, before T3,
+         //--- report it as a gate defeat). The dir/zone fields stay for the
+         //--- chart label, which is all this fact is good for.
+         out.valid=false;
          return (int)SIG_NO_TRADE;
         }
 
@@ -923,6 +929,7 @@ public:
          reason="NO_VALID_ZONE: "+zone_score.rejection;
          out.reason=reason; out.state=(int)SIG_NO_TRADE;
          out.zone_id=z.id; out.zone_role=z.role; out.distance_atr=hit.gap_atr;
+         out.valid=false;      // T4: a zone the scorer refused is not a candidate
          return (int)SIG_NO_TRADE;
         }
 
@@ -954,6 +961,13 @@ public:
                 " ATR exceeds the "+DoubleToString(m_cfg.max_stop_atr,2)+" ATR limit";
          out.reason=reason;
          out.state=(int)SIG_NO_TRADE;
+         //--- v6.6.23 T4: the candidate was already marked valid in step 4,
+         //--- and entry/sl are still 0 here, so FinalizeBar() submitted it
+         //--- and the arbiter refused it on "entry or stop is not a valid
+         //--- price" - a real refusal reported for a candidate that never
+         //--- had geometry. A refused fact is not a candidate.
+         out.valid=false;
+         out.entry=0.0; out.sl=0.0; out.tp1=0.0;
          return (int)SIG_NO_TRADE;
         }
 
@@ -1014,13 +1028,17 @@ public:
         }
 
       //--- submit every tactical fact recorded this bar
+      //--- v6.6.23 T4: only a candidate that survived BuildTacticalCandidate
+      //--- is submitted (out.valid is false on every rejection path now), and
+      //--- the reason it was refused is kept for the chart label below.
+      string tac_why="";
       for(int i=0;i<m_tac_n;i++)
         {
          SSignalCandidate c;
          string why="";
          BuildTacticalCandidate(m_tac[i],c,why);
-         if(c.valid && c.dir!=0)
-            m_arbiter.Submit(c,m_ctx.bar_time);
+         if(c.valid && c.dir!=0) m_arbiter.Submit(c,m_ctx.bar_time);
+         else if(tac_why=="" && why!="") tac_why=why;
         }
       m_tac_n=0;
 
@@ -1040,7 +1058,7 @@ public:
          m_render.ClearPrimary();
          //--- Explain the silence. Never a bare "NO TRADE".
          string why=m_rep.trace;
-         if(why=="") why="no candidate survived the gates";
+         if(why=="" || why=="no candidate") why=(tac_why!=""?tac_why:"no candidate survived the gates");
          //--- v6.6.23 T3: when candidates WERE evaluated and every one was
          //--- refused, say why in the journal. This is rare (a bar with
          //--- candidates that all lost) so it is not gated behind the

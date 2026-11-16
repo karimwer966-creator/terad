@@ -199,6 +199,7 @@ public:
       T16_BiasUnknownIsNotNeutral();
       T17_ExternalBiasContract();
       T18_ReportNamesTheLoser();
+      T19_RefusedFactsAreNotCandidates();
       T10_DataNotReady();
 
       Say("---------------------------------------------------------");
@@ -1129,6 +1130,74 @@ public:
       Check(!ok2 && rep2.trace=="no candidate" && rep2.reject_first=="",
             "T18c a bar with no candidate keeps its own trace",rep2.trace);
       arb.Shutdown();
+     }
+
+   //==================================================================
+   // T19 - a refused fact is not a candidate (v6.6.23 T4).
+   //       BuildTacticalCandidate() used to leave out.valid=true on two
+   //       rejection paths (no location fact / stop geometry), and
+   //       FinalizeBar() submits on (valid && dir!=0). A fact that never
+   //       had a direction from the market therefore reached the arbiter,
+   //       was counted as evaluated, and was refused with a message about
+   //       entry/stop prices it never had. The label also lost the real
+   //       reason. Both halves are asserted here: the refused fact must
+   //       not be submitted, and a real rejection must still publish.
+   //==================================================================
+   void              T19_RefusedFactsAreNotCandidates()
+     {
+      SQsmcArbConfig cfg; CfgBase(cfg);
+
+      double o[],h[],l[],c[]; datetime t[]; long v[];
+      Flat(QST_BARS,105.0,QST_HALF,1000,
+           (datetime)(TimeCurrent()-(QST_BARS*60)),60,o,h,l,c,t,v);
+      SetBar(37,105.20,107.00,105.00,106.80,1000,o,h,l,c,v);   // approach
+      SetBar(38,106.80,109.40,106.70,107.10,2000,o,h,l,c,v);   // rejection bar
+      double eo[],eh[],el[],ec[]; datetime et[]; long ev[];
+      Copy6(QST_BARS,o,h,l,c,t,v,eo,eh,el,ec,et,ev);
+
+      SQZone zs[2];
+      MakeZone(zs[0],ZR_RESISTANCE,108.00,109.00,80);
+      MakeZone(zs[1],ZR_SUPPORT,90.00,91.00,78);
+
+      //--- (a) the fact cites a bar that never touched the zone
+      CQuantumRoot r;
+      if(!NewRoot(r,cfg)) { Check(false,"T19 setup a",""); return; }
+      if(!r.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
+        { Check(false,"T19 synthetic load a",""); return; }
+      if(!r.BuildContext(0.0)) { Check(false,"T19 context a",r.CtxDataReason()); return; }
+      r.SetZones(zs,2);
+      r.SetExternalBias(0,0,0);
+      STacticalFact f;
+      f.valid=true; f.bull=false; f.closed_confirm=true;
+      f.entry_price=108.50; f.exec_bar_time=t[37]; f.exec_tf=PERIOD_M1;
+      f.trigger=108.00; f.trigger_time=t[36]; f.core_owned=false; f.chase_atr=0.2;
+      r.TacticalObserve(f);
+      r.FinalizeBar(false);
+      Check(!r.ReportPublished() && r.ReportEvaluated()==0,
+            "T19a a fact with no location evidence is never submitted to the arbiter",
+            "evaluated="+IntegerToString(r.ReportEvaluated())+" trace="+r.ReportTrace());
+      Check(StringFind(r.LastText(),"did not reject or accept")>=0,
+            "T19b the chart says why the fact was refused, not 'no candidate survived'",
+            r.LastText());
+
+      //--- (b) the SAME data with the real rejection bar still publishes:
+      //---     the filter must not swallow legitimate candidates.
+      CQuantumRoot r2;
+      if(!NewRoot(r2,cfg)) { Check(false,"T19 setup b",""); return; }
+      if(!r2.LoadSynthetic(o,h,l,c,t,v,QST_BARS,eo,eh,el,ec,et,ev,QST_BARS))
+        { Check(false,"T19 synthetic load b",""); return; }
+      if(!r2.BuildContext(0.0)) { Check(false,"T19 context b",r2.CtxDataReason()); return; }
+      r2.SetZones(zs,2);
+      r2.SetExternalBias(0,0,0);
+      STacticalFact f2;
+      f2.valid=true; f2.bull=false; f2.closed_confirm=true;
+      f2.entry_price=c[38]; f2.exec_bar_time=t[38]; f2.exec_tf=PERIOD_M1;
+      f2.trigger=108.00; f2.trigger_time=t[37]; f2.core_owned=false; f2.chase_atr=0.2;
+      r2.TacticalObserve(f2);
+      r2.FinalizeBar(false);
+      Check(r2.ReportPublished() && r2.ReportEvaluated()==1,
+            "T19c a real closed-bar rejection is still submitted and published",
+            "evaluated="+IntegerToString(r2.ReportEvaluated())+" trace="+r2.ReportTrace());
      }
 
    //==================================================================
