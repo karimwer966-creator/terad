@@ -29,6 +29,30 @@
 
 #define QSR_CAPACITY 64
 
+// Host contract ids: same values and the same guards as QSMC_UnifiedDecision.mqh, so
+// the include order does not matter. Use the names, never bare 1/2/3: the alert
+// dispatcher numbers 1=ZRE, 2=RXN, 3=CORE while ENUM_SIG_SOURCE numbers 1=CORE - the
+// same integer with two meanings (v6.6.23 T7).
+#ifndef QSMC_ALERT_SRC_NONE
+#define QSMC_ALERT_SRC_NONE 0
+#endif
+#ifndef QSMC_ALERT_SRC_ZRE
+#define QSMC_ALERT_SRC_ZRE  1
+#endif
+#ifndef QSMC_ALERT_SRC_RXN
+#define QSMC_ALERT_SRC_RXN  2
+#endif
+#ifndef QSMC_ALERT_SRC_CORE
+#define QSMC_ALERT_SRC_CORE 3
+#endif
+// The host grade at which a ZRE/RXN candidate counts as CONFIRMED
+// (nadir2.mq5: RXN_LEVEL_CONFIRMED = 4). nadir2's QSMC_RunSelfTest() asserts that this
+// constant still equals the enum, because a header cannot see the enum (it is declared
+// below the includes).
+#ifndef QSR_HOST_LEVEL_CONFIRMED
+#define QSR_HOST_LEVEL_CONFIRMED 4
+#endif
+
 enum ENUM_QSR_STATE
 {
    QSR_STATE_NONE        = 0,   // empty slot
@@ -129,11 +153,29 @@ bool QSR_TransitionAllowed(const ENUM_QSR_STATE from,const ENUM_QSR_STATE to)
    return false;
 }
 
+// Age in seconds on the datetime clock. datetime is UNSIGNED in MQL5: a plain
+// subtraction wraps around to a huge positive number when the clock steps back, and
+// every live record then looks decades old and expires. Clamped, never negative.
+long QSR_AgeSeconds(const datetime now,const datetime since)
+{
+   if(now<=since) return 0;
+   return (long)(now-since);
+}
+
+// A separator inside an identity component would make two different signals share one
+// family key: ("SWEEP|MSS","Z1") and ("SWEEP","MSS|Z1") both read "SWEEP|MSS|Z1".
+string QSR_Clean(const string s)
+{
+   string t=s;
+   StringReplace(t,"|","/");
+   return t;
+}
+
 string QSR_Family(const string symbol,const int timeframe,const int direction,
                   const string setup_type,const string anchor_id)
 {
-   return symbol+"|"+IntegerToString(timeframe)+"|"+(direction>0?"BUY":"SELL")+"|"+
-          setup_type+"|"+anchor_id;
+   return QSR_Clean(symbol)+"|"+IntegerToString(timeframe)+"|"+(direction>0?"BUY":"SELL")+"|"+
+          QSR_Clean(setup_type)+"|"+QSR_Clean(anchor_id);
 }
 
 string QSR_Key(const string family,const datetime origin_time)
@@ -223,8 +265,8 @@ int QSR_Upsert(const string symbol,const int timeframe,const int direction,
                const datetime now,const ENUM_QSR_STATE state,bool &created)
 {
    created=false;
-   if(symbol=="" || setup_type=="" || anchor_id=="" || origin_time<=0 ||
-      (direction!=1 && direction!=-1) || !QSR_IsLive(state))
+   if(symbol=="" || setup_type=="" || anchor_id=="" || origin_time<=0 || now<=0 ||
+      timeframe<=0 || (direction!=1 && direction!=-1) || !QSR_IsLive(state))
       return -1;
    string family=QSR_Family(symbol,timeframe,direction,setup_type,anchor_id);
    string key=QSR_Key(family,origin_time);
@@ -269,7 +311,7 @@ int QSR_ExpireIdle(const datetime now,const int idle_seconds)
    for(int i=0;i<QSR_CAPACITY;i++)
    {
       if(!g_qsr[i].used || !QSR_IsLive(g_qsr[i].state)) continue;
-      if(now-g_qsr[i].last_seen>(datetime)idle_seconds)
+      if(QSR_AgeSeconds(now,g_qsr[i].last_seen)>(long)idle_seconds)
          if(QSR_SetState(i,QSR_STATE_EXPIRED,now,"not re-published")) n++;
    }
    return n;
@@ -290,12 +332,16 @@ bool QSR_Episode(const string symbol,const int timeframe,const int direction,
       (direction!=1 && direction!=-1) || !QSR_IsLive(state))
       return false;
    string family=QSR_Family(symbol,timeframe,direction,setup_type,anchor_id);
+   // v6.6.24: EVERY stale live episode of this family ends here, not only the newest.
+   // FindLiveFamily() returns the newest, so while a new record existed the older live
+   // ones were never re-examined: they stayed LIVE forever, inflating the live count
+   // and being counted again by every "is this family in play" question.
+   if(idle_seconds>0)
+      for(int i=0;i<QSR_CAPACITY;i++)
+         if(g_qsr[i].used && g_qsr[i].family==family && QSR_IsLive(g_qsr[i].state) &&
+            QSR_AgeSeconds(now,g_qsr[i].last_seen)>(long)idle_seconds)
+            QSR_SetState(i,QSR_STATE_EXPIRED,now,"not re-published");
    int idx=QSR_FindLiveFamily(family);
-   if(idx>=0 && idle_seconds>0 && now-g_qsr[idx].last_seen>(datetime)idle_seconds)
-   {
-      QSR_SetState(idx,QSR_STATE_EXPIRED,now,"not re-published");
-      idx=-1;
-   }
    if(idx>=0)
    {
       if(now>g_qsr[idx].last_seen) g_qsr[idx].last_seen=now;
@@ -317,9 +363,9 @@ bool QSR_Episode(const string symbol,const int timeframe,const int direction,
 //--- helpers for the alert dispatcher of nadir2.mq5 ----------------------------
 string QSR_SourceTag(const int source)
 {
-   if(source==1) return "ZRE";
-   if(source==2) return "RXN";
-   if(source==3) return "CORE";
+   if(source==QSMC_ALERT_SRC_ZRE)  return "ZRE";
+   if(source==QSMC_ALERT_SRC_RXN)  return "RXN";
+   if(source==QSMC_ALERT_SRC_CORE) return "CORE";
    return "SRC"+IntegerToString(source);
 }
 
@@ -327,7 +373,7 @@ string QSR_SourceTag(const int source)
 // host's own CONFIRMED rank (4) upwards. Below that it is a detected candidate.
 ENUM_QSR_STATE QSR_StateForLevel(const int source,const int level)
 {
-   if(source==3 || level>=4) return QSR_STATE_CONFIRMED;
+   if(source==QSMC_ALERT_SRC_CORE || level>=QSR_HOST_LEVEL_CONFIRMED) return QSR_STATE_CONFIRMED;
    return QSR_STATE_DETECTED;
 }
 
@@ -433,6 +479,28 @@ bool QSR_SelfTest(string &where)
    if(where=="" && (QSR_RingEvictSlot(0,16,16)!=0 || QSR_RingEvictSlot(5,16,3)!=2 ||
       QSR_RingEvictSlot(1,16,3)!=14 || QSR_RingEvictSlot(7,16,99)!=7 || QSR_RingEvictSlot(7,16,0)!=6))
       where="QSR-16 ring eviction window";
+   // 7. a clock that steps BACKWARDS must not expire a live signal: datetime is
+   //    unsigned, so age = now-last_seen wraps to a huge positive number
+   if(where=="")
+   {
+      QSR_Reset();
+      QSR_Upsert("XAUUSD",15,1,"RXN","ZC",5000,5000,QSR_STATE_DETECTED,created);
+      if(QSR_ExpireIdle(4000,2700)!=0 || QSR_CountLive()!=1)
+         where="QSR-17 a clock stepping backwards must not expire a live signal";
+   }
+   // 8. every stale live episode of a family ends, not only the newest
+   if(where=="")
+   {
+      QSR_Reset();
+      QSR_Upsert("XAUUSD",15,1,"RXN","ZB",1000,1000,QSR_STATE_DETECTED,created);
+      QSR_Upsert("XAUUSD",15,1,"RXN","ZB",2000,2000,QSR_STATE_DETECTED,created);
+      bool n5=QSR_Episode("XAUUSD",15,1,"RXN","ZB",10000,2700,QSR_STATE_DETECTED,origin);
+      if(!n5 || origin!=10000 || QSR_CountState(QSR_STATE_EXPIRED)!=2 || QSR_CountLive()!=1)
+         where="QSR-18 all stale live episodes of a family must expire";
+   }
+   // 9. a separator inside a component cannot merge two identities
+   if(where=="" && QSR_Family("X",15,1,"SWEEP|MSS","Z1")==QSR_Family("X",15,1,"SWEEP","MSS|Z1"))
+      where="QSR-19 a '|' inside a component must not collide with the separator";
    for(int i=0;i<QSR_CAPACITY;i++) g_qsr[i]=keep[i];
    g_qsr_created=c0; g_qsr_updated=u0; g_qsr_rejected=r0; g_qsr_evicted=e0; g_qsr_transitions=t0;
    return (where=="");
