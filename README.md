@@ -1,11 +1,11 @@
-# QSMC — Quantum SMC Intelligence Engine **v6.6.23**
+# QSMC — Quantum SMC Intelligence Engine **v6.6.24**
 
 Two MQL5 products live in this repository. They are not the same product, they do
 not share a preset format contract, and only one of them is production-ready.
 
 | Product | Files | State |
 |---|---|---|
-| **QSMC** (this repository's production product) | `nadir2.mq5` (canonical, mirrored to `MQL5/Indicators/`), `MQL5/Experts/QSMC_AutoTrader.mq5`, `MQL5/Include/QSMC/*.mqh`, 9 presets | offline-verified: 63/63 curated checks (64 suites + gates), 9/9 presets bound, layout 8/8. The MT5 compile and the field tests are the operator's step — see [`docs/STAGED_GO_LIVE_LADDER_v6.6.14.md`](docs/STAGED_GO_LIVE_LADDER_v6.6.14.md) |
+| **QSMC** (this repository's production product) | `nadir2.mq5` (canonical, mirrored to `MQL5/Indicators/`), `MQL5/Experts/QSMC_AutoTrader.mq5`, `MQL5/Include/QSMC/*.mqh`, 9 presets | offline-verified: 68/68 curated checks (67 suites + gates), 9/9 presets bound, layout 8/8, include graph 6/6. The MT5 compile and the field tests are the operator's step — see [`docs/STAGED_GO_LIVE_LADDER_v6.6.14.md`](docs/STAGED_GO_LIVE_LADDER_v6.6.14.md) |
 | **QATS** (separate, experimental) | `MQL5/Experts/QuantumAutonomousTradingSystem.mq5`, `presets/Quantum_XAUUSD_PRODUCTION.set` | **not production-ready**: no demonstrated edge. Read [`docs/QATS_README.md`](docs/QATS_README.md) first |
 
 > **Install (Arabic):** [`INSTALL_AR.md`](INSTALL_AR.md) · **Everything indexed:** [`docs/INDEX.md`](docs/INDEX.md) · **Repo map:** [`docs/PROJECT_MAP_AR.md`](docs/PROJECT_MAP_AR.md)
@@ -19,13 +19,13 @@ nadir2.mq5                          canonical host: 45 002 lines, 599 `input`
                                     in MQL5/Indicators/nadir2.mq5
 MQL5/Experts/QSMC_AutoTrader.mq5    the companion EA: 67 inputs, reads buffers 7-12
 MQL5/Experts/KLJ_DataFeeder.mq5     feed sanity companion, no trading
-MQL5/Include/QSMC/*.mqh             31 headers, aggregated by QSMC_Root.mqh
+MQL5/Include/QSMC/*.mqh             33 headers, aggregated by QSMC_Root.mqh
 MQL5/Indicators/QSMC_ScannerProbe.mq5, QSMC_SmcVpEngine.mq5
 MQL5/Scripts/QSMC_ArbiterTest.mq5, QSMC_ResetGuards.mq5
 presets/*.set                       9 files, each bound to its source (see below)
-tools/                              64 test suites, 88 Python files in total
+tools/                              67 test suites, 94 Python files in total
                                     (gates, generators, simulators, fixtures)
-docs/                               73 documents + docs/INDEX.md + docs/history/
+docs/                               79 documents + docs/INDEX.md + docs/history/
 ```
 
 ## Presets — one file per decision, all validated offline

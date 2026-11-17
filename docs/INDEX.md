@@ -44,7 +44,8 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 
 | Document | What it answers |
 |---|---|
-| [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) | every layer, its inputs and its authority |
+| [`ARCHITECTURE_AUDIT_v6.6.24.md`](ARCHITECTURE_AUDIT_v6.6.24.md) | the whole tree at v6.6.24: file inventory, the 33-header dependency graph, the 14 modules mapped onto real owners, rules 1–15 status, and why no `QME.mqh`/second EA exists (gate `tools/check_include_graph.py`) |
+| [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) | every layer, its inputs and its authority (documents **QATS**, the separate product) |
 | [`QSMC_V6.6.13_SEVEN_STRATEGY_MODULES.md`](QSMC_V6.6.13_SEVEN_STRATEGY_MODULES.md) | the pinned audit the test suites cite (ANCHORS/ORDER/GUARDS) |
 | [`QSMC_MARKET_STRUCTURE.md`](QSMC_MARKET_STRUCTURE.md) | BOS/CHoCH, swings, structure state machine |
 | [`QSMC_ZONE_SCORER.md`](QSMC_ZONE_SCORER.md) | zone scoring and the graded entry |

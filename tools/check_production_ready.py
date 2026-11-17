@@ -53,6 +53,11 @@ CHECKS = [
     # names a file which does not exist, a preset key the EA never declares).
     ("repo-layout", [sys.executable, "tools/check_repo_layout.py", "--verbose"]),
     ("preset-binding", [sys.executable, "tools/check_presets.py"]),
+    # The include layer is a textual splice, so its topology has no compiler.
+    # check_include_graph.py owns the graph; test_include_graph.py proves the
+    # gate rejects a cycle, a broken guard and a new context-coupled header.
+    ("include-graph", [sys.executable, "tools/check_include_graph.py", "--verbose"]),
+    ("include-graph-contracts", [sys.executable, "tools/test_include_graph.py"]),
     ("mql5-rules", [sys.executable, "tools/mql5_rules.py", "--quiet"]),
     ("static-check", [sys.executable, "tools/static_check.py"]),
     ("comment-integrity", [sys.executable, "tools/test_comment_integrity.py"]),
