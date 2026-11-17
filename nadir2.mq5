@@ -41671,7 +41671,7 @@ void AlertDispatcherFinalize(const int rates_total)
    string gs_why="";
    for(int i=0;i<g_alert_candidate_count;i++)
    {
-      SAlertCandidate c=g_alert_candidates[i]; if(!UD_AlertAllows(c.source,c.direction)) continue;
+      SAlertCandidate c=g_alert_candidates[i]; if(!UD_AlertAllows(c.source,c.direction,closed)) continue;
       if(!c.scenario_candidate || c.direction==0) continue;
       if(AlertCandidateBetter(c,best_any)) best_any=c;
       if(c.distance_atr<=maxd && AlertCandidateBetter(c,best_near)) best_near=c;
@@ -41708,7 +41708,7 @@ void AlertDispatcherFinalize(const int rates_total)
    {
       for(int i=0;i<g_alert_candidate_count;i++)
       {
-         SAlertCandidate c=g_alert_candidates[i]; if(!UD_AlertAllows(c.source,c.direction)) continue;
+         SAlertCandidate c=g_alert_candidates[i]; if(!UD_AlertAllows(c.source,c.direction,closed)) continue;
          if(!c.scenario_candidate || c.direction==0 || c.direction==g_alert_primary.direction) continue;
          if(AlertCandidateBetter(c,best_other)) best_other=c;
       }
@@ -41750,7 +41750,7 @@ void AlertDispatcherFinalize(const int rates_total)
    AlertCandidateInit(selected_info);
    for(int i=0;i<g_alert_candidate_count;i++)
    {
-      SAlertCandidate c=g_alert_candidates[i]; if(!UD_AlertAllows(c.source,c.direction)) continue;
+      SAlertCandidate c=g_alert_candidates[i]; if(!UD_AlertAllows(c.source,c.direction,closed)) continue;
       if(!c.alert_eligible || !AlertWithinMaxDistance(c)) continue;
       bool cp=false,cs=false,cn=false;
       if(!AlertChannelsFor(c,cp,cs,cn)) continue;

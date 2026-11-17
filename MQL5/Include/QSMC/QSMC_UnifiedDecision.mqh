@@ -65,7 +65,7 @@ void UD_Update(const int closed)
    {
       SConfirmedSignalJournalEntry e=g_confirmed_signal_journal[i];
       if(e.availability_time!=boundary || e.confirmation_bar!=closed ||
-         e.confirmation_bar<=e.created_bar) continue;
+         e.created_bar<0 || e.confirmation_bar<=e.created_bar) continue;
       int d=(e.is_buy?1:-1);
       if(direction!=0 && direction!=d) conflict=true;
       direction=d;
@@ -83,14 +83,22 @@ void UD_Update(const int closed)
 
 int UD_Verdict(const int closed,string &why)
 {
-   if(closed<0 || closed>=ArraySize(g_buf_t) || g_ud.bar!=g_buf_t[closed])
+   if(closed<0 || closed>=g_rates_total-1 || closed>=ArraySize(g_buf_t) ||
+      g_ud.bar<=0 || g_ud.bar!=g_buf_t[closed])
    { g_res_score=0; why="WAIT: unified snapshot unavailable"; return 0; }
    g_res_score=g_ud.score; why=g_ud.reasons; return g_ud.direction;
 }
 
-bool UD_AlertAllows(const int source,const int direction)
+// v6.6.24: `closed` is the last closed bar the DISPATCHER is publishing for. The gate
+// used to compare against g_ud.direction only, so a decision computed on an earlier bar
+// still authorized this one - the snapshot could be arbitrarily old and still say yes.
+// The host calls UD_Update(closed) at the top of AlertDispatcherFinalize(), before any
+// consumer below it, so no decision is ever lost by demanding the current bar.
+bool UD_AlertAllows(const int source,const int direction,const int closed)
 {
    if(!InpUnifiedDecision || direction==0) return true;
+   if(closed<0 || closed>=ArraySize(g_buf_t) || g_ud.bar<=0 || g_ud.bar!=g_buf_t[closed])
+      return false;              // stale or missing snapshot: fail closed
    //--- only the authoritative Core dispatcher may publish while the unified
    //--- decision is waiting; advisory layers (ZRE/RXN) never authorize.
    return source==QSMC_ALERT_SRC_CORE && direction==g_ud.direction && g_ud.direction!=0;
@@ -148,7 +156,8 @@ void UD_MergeZones(SZREZone &out[],SZREZone &dropped[],SZREZone &tail[],
          if(age>=0) first=(int)MathMax(first,ctx.closed-age);
          all[i].touches=ZRE_CountTouchEpisodes(lo,hi,ctx.touch_tol,first,ctx.closed-1,h,l);
          all[i].id=ZRE_ZoneId(all[i].side,lo,hi);
-         all[i].detail+=" | merged union; strength from strongest constituent; touches recounted";
+         if(StringFind(all[i].detail,"| merged union;")<0)
+            all[i].detail+=" | merged union; strength from strongest constituent; touches recounted";
          for(int p=j;p<n-1;p++) all[p]=all[p+1];
          n--; changed=true; break;
       }
@@ -171,10 +180,19 @@ void UD_MergeZones(SZREZone &out[],SZREZone &dropped[],SZREZone &tail[],
    }
 }
 
+bool UD_ValidSigIndex(const int index)
+{
+   return index>=0 && index<ArraySize(g_zre_sig);
+}
+
 // Resolve historical path geometry onto a current merged zone when available.
 // This collapses A-B-C chains even when raw A and C do not overlap directly.
+// v6.6.24: an out-of-range index in MQL5 is a runtime error that aborts OnCalculate,
+// not a no-op, so both callers below validate first.
 void UD_PathBand(const int index,double &lo,double &hi)
 {
+   lo=0; hi=0;
+   if(!UD_ValidSigIndex(index)) return;
    lo=g_zre_sig[index].zone_lo; hi=g_zre_sig[index].zone_hi;
    int side=(g_zre_sig[index].is_buy?1:-1);
    for(int z=0;z<ArraySize(g_zre_zones);z++)
@@ -190,10 +208,12 @@ void UD_PathBand(const int index,double &lo,double &hi)
 // One selected projection per merged same-side zone; strongest, then newest.
 int UD_PathDuplicate(const int index,const int &selected[],const int count)
 {
-   if(!InpUnifiedDecision) return -1;
+   if(!InpUnifiedDecision || !UD_ValidSigIndex(index)) return -1;
    double lo=0,hi=0; UD_PathBand(index,lo,hi);
-   for(int k=0;k<count;k++)
+   int n=(int)MathMin(count,ArraySize(selected));
+   for(int k=0;k<n;k++)
    {
+      if(!UD_ValidSigIndex(selected[k])) continue;
       double slo=0,shi=0; UD_PathBand(selected[k],slo,shi);
       if(UD_Near(lo,hi,(g_zre_sig[index].is_buy?1:-1),
                  slo,shi,(g_zre_sig[selected[k]].is_buy?1:-1),UD_Tolerance(g_atr))) return k;
@@ -207,6 +227,12 @@ int UD_PathDuplicate(const int index,const int &selected[],const int count)
 // diagnostics every later message was dropped until a slot expired, so the
 // journal went quiet exactly when the chart was busiest. The guarantee now
 // covers the most recent UD_LOG_CAP keys, and a new key is never lost.
+//
+// v6.6.24: expiry is computed on the host's bar clock. The rule was "shift = the bar
+// index of the stored stamp; expired = shift > cooldown", which cost up to 128 terminal
+// lookups per diagnostic AND never expired anything when that lookup returned -1 (a
+// stamp outside the chart's series, i.e. after every history reload): -1 is not
+// greater than the cooldown, so those keys stayed muted until the table filled.
 string g_ud_log_keys[UD_LOG_CAP];
 datetime g_ud_log_times[UD_LOG_CAP];
 bool UD_LogAllows(const string key)
@@ -218,18 +244,19 @@ bool UD_LogAllows(const string key)
    if(closed<0 || closed>=ArraySize(g_buf_t)) return false;
    datetime now=g_buf_t[closed];
    if(now<=0) return false;
+   // A stamp at or before `cutoff` is at least `cooldown` closed bars old. When the
+   // chart does not reach that far back, the oldest bar we do have is the horizon.
+   int cutoff=closed-cooldown;
+   datetime horizon=(cutoff>=0 ? g_buf_t[cutoff] : g_buf_t[0]);
    int free_slot=-1;
    for(int i=0;i<UD_LOG_CAP;i++)
    {
-      if(g_ud_log_times[i]>now) { g_ud_log_times[i]=0; g_ud_log_keys[i]=""; }
-      bool expired=(g_ud_log_times[i]==0);
-      if(!expired)
-      {
-         int shift=iBarShift(_Symbol,(ENUM_TIMEFRAMES)_Period,g_ud_log_times[i],true);
-         expired=(shift>cooldown); // shift 1 = latest closed, difference = shift-1
-      }
-      if(g_ud_log_keys[i]==key && !expired) return false;
-      if(expired && free_slot<0) free_slot=i;
+      if(g_ud_log_times[i]==0) { if(free_slot<0) free_slot=i; continue; }
+      // A stamp in the FUTURE means the clock stepped back; treat it as expired so the
+      // table keeps moving instead of pinning every key to a time that never arrives.
+      bool expired=(g_ud_log_times[i]>now || g_ud_log_times[i]<=horizon);
+      if(expired) { g_ud_log_times[i]=0; g_ud_log_keys[i]=""; if(free_slot<0) free_slot=i; continue; }
+      if(g_ud_log_keys[i]==key) return false;
    }
    if(free_slot<0)
      {

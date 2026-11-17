@@ -30,7 +30,9 @@ class UnifiedContract(unittest.TestCase):
     def test_same_snapshot_before_dispatch_and_render(self):
         dispatcher=body('void AlertDispatcherFinalize(const int rates_total)\n')
         self.assertLess(dispatcher.index('UD_Update(closed)'),dispatcher.index('UD_AlertAllows'))
-        self.assertEqual(dispatcher.count('UD_AlertAllows(c.source,c.direction)'),3)
+        # v6.6.24: the gate takes the bar it is publishing for, so a stale snapshot
+        # cannot authorize a newer bar. All three sites pass the same `closed`.
+        self.assertEqual(dispatcher.count('UD_AlertAllows(c.source,c.direction,closed)'),3)
         # T7: the id is named, not a bare 3 that reads as SRC_RXN elsewhere.
         self.assertIn('return source==QSMC_ALERT_SRC_CORE && direction==g_ud.direction',HEADER)
         self.assertIn('arb.FinalizeBar(authoritative_pending || InpUnifiedDecision)',MAIN)
@@ -49,7 +51,11 @@ class UnifiedContract(unittest.TestCase):
     def test_log_and_no_execution_side_effects(self):
         for key in ['Lifecycle|','SignalDebug|','PMI|']:
             self.assertIn('UD_LogAllows("'+key,MAIN)
-        self.assertIn('iBarShift(_Symbol,(ENUM_TIMEFRAMES)_Period',HEADER)
+        # v6.6.24: the cooldown is computed on the host bar clock; iBarShift per slot
+        # cost up to 128 terminal queries per diagnostic and never expired a stamp
+        # outside the chart's series (-1 is not > cooldown).
+        self.assertNotIn('iBarShift(',HEADER)
+        self.assertIn('datetime horizon=(cutoff>=0 ? g_buf_t[cutoff] : g_buf_t[0]);',HEADER)
         # T6: a saturated table recycles its oldest slot instead of muting.
         self.assertIn('if(free_slot<0)',HEADER)
         self.assertIn('if(g_ud_log_times[i]<g_ud_log_times[free_slot]) free_slot=i',HEADER)

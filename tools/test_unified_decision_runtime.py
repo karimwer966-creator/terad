@@ -29,6 +29,7 @@ double MathMax(double a,double b){return std::max(a,b);}
 double MathMin(double a,double b){return std::min(a,b);}
 bool MathIsValidNumber(double v){return std::isfinite(v);}
 int StringCompare(const string& a,const string& b){return a.compare(b);}
+int StringFind(const string& a,const string& b){size_t p=a.find(b);return p==string::npos?-1:int(p);}
 bool InpUnifiedDecision=true,InpUseHTFBias=true;
 double InpUnifiedMergeATR=.15,g_atr=1;
 int InpMessageCooldownBars=3,g_rates_total=10,g_htf_bias=1,g_res_score=0;
@@ -69,7 +70,12 @@ int main(){
  UD_Update(8);assert(g_ud.direction==0); // advisory evidence cannot authorize
  g_confirmed_signal_journal={{g_buf_t[9],8,2,true}};g_rxn_built_time=g_buf_t[8];
  UD_Update(8);assert(g_ud.direction==1&&g_ud.score==100);
- assert(UD_AlertAllows(QSMC_ALERT_SRC_CORE,1)&&!UD_AlertAllows(QSMC_ALERT_SRC_RXN,1)&&!UD_AlertAllows(QSMC_ALERT_SRC_CORE,-1));
+ assert(UD_AlertAllows(QSMC_ALERT_SRC_CORE,1,8)&&!UD_AlertAllows(QSMC_ALERT_SRC_RXN,1,8)&&!UD_AlertAllows(QSMC_ALERT_SRC_CORE,-1,8));
+ // v6.6.24: a decision from an EARLIER bar must not authorize this one, and a missing
+ // snapshot (UD_Update returned early) must fail closed rather than pass.
+ assert(!UD_AlertAllows(QSMC_ALERT_SRC_CORE,1,9));
+ g_ud.bar=0;assert(!UD_AlertAllows(QSMC_ALERT_SRC_CORE,1,8));
+ UD_Update(8);assert(UD_AlertAllows(QSMC_ALERT_SRC_CORE,1,8));
  g_confirmed_signal_journal.push_back({g_buf_t[9],8,2,false});UD_Update(8);assert(g_ud.direction==0);
  g_confirmed_signal_journal={{g_buf_t[8],7,2,true}};UD_Update(8);assert(g_ud.direction==0);
  string why;assert(UD_Verdict(7,why)==0&&g_res_score==0);
@@ -107,7 +113,14 @@ int main(){
  assert(UD_LogAllows("overflow"));
  assert(!UD_LogAllows("overflow")); // repeat guard still applies to the newest key
  g_rates_total=16;assert(UD_LogAllows("overflow"));
- InpUnifiedDecision=false;assert(UD_AlertAllows(2,-1));
+ // v6.6.24: a stamp in the future (clock stepped back) expires instead of pinning the key
+ clearlog();InpMessageCooldownBars=3;g_ud_log_keys[0]="fut";g_ud_log_times[0]=g_buf_t[25];
+ assert(UD_LogAllows("fut"));
+ InpUnifiedDecision=false;assert(UD_AlertAllows(2,-1,8));
+ // v6.6.24: rendering helpers must not index g_zre_sig out of range (MQL5 aborts
+ // OnCalculate on an array-out-of-range access, it does not return 0).
+ g_zre_sig.resize(2);assert(UD_PathDuplicate(5,selected,1)==-1);
+ std::vector<int> bad={9};assert(UD_PathDuplicate(1,bad,1)==-1);
  std::cout<<"PASS actual unified header: authority, merges, cooldown, saturation and legacy mode\n";
 }
 '''
