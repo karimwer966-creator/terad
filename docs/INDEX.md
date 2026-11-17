@@ -1,6 +1,6 @@
 # Index — every document, by what it is for
 
-74 documents accumulated across eleven releases. This file is the map: which ones
+75 documents accumulated across eleven releases. This file is the map: which ones
 are **instructions** (true today, follow them), which ones are **architecture**
 (explain the code as it is now), which ones are **QATS** (a separate product), and
 which ones are **frozen history** (true on the date printed inside them, and not a
@@ -71,6 +71,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`PRODUCTION_REVIEW_2026-11-16_AR.md`](PRODUCTION_REVIEW_2026-11-16_AR.md) | مراجعة كل ملف + الترتيب + ربط الإعدادات (هذه الدورة) |
 | [`AUDIT_v6.6.24.md`](AUDIT_v6.6.24.md) | the v6.6.24 full-repository audit: findings by class, INVALID items with evidence, the demo-trial deliverables |
 | [`PRODUCTION_REVIEW_v6.6.24_AR.md`](PRODUCTION_REVIEW_v6.6.24_AR.md) | التقرير العربي لدورة v6.6.24: العيوب الأحد عشر، فصل (أ) عن (ب)، أدوات التجربة R1–R5، والخطوات اليدوية الست |
+| [`REVIEW_INCLUDE_QSMC_v6.6.24_AR.md`](REVIEW_INCLUDE_QSMC_v6.6.24_AR.md) | مراجعة الطبقة الداخلية `Include/QSMC` (33 ملفًا): 23 عيبًا أُصلحت، وحكم على التغييرات المقترحة، وما لم يُراجَع صريحًا |
 | [`QSMC_LINKS_REPAIR_2026-11-16_AR.md`](QSMC_LINKS_REPAIR_2026-11-16_AR.md) | إصلاح الروابط بين الأجزاء (الدورة السابقة) |
 | [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md) | خريطة المستودع: كل مجلد وماذا يحتوي |
 

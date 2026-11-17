@@ -151,9 +151,19 @@ bool QCL_LayerEnabled(const ENUM_QCL_LAYER layer)
 }
 
 // The single question QSMC_DisplayAllowsObject() asks while the clean profile is on.
+//
+// A name that does not carry `prefix` is NOT ours. It must be allowed: the caller
+// of this header treats "not allowed" as "delete the object" (QSMC_DisplayAllowsObject
+// callers do exactly that), and QCL_LayerOf() reports a foreign name as UNKNOWN,
+// which the layer policy maps to OPTIONAL - off by default in CLEAN. Today every
+// object the host asks about is QSMC_-prefixed, so this changes nothing; the guard
+// is here so that the first caller who passes the operator's own trend line, or a
+// name from another EA, cannot delete it.
 bool QCL_AllowsName(const string name,const string prefix)
 {
-   return QCL_LayerEnabled(QCL_LayerOf(name,prefix));
+   int plen=StringLen(prefix);
+   if(plen<=0 || StringFind(name,prefix)!=0) return true;
+   return QCL_LayerEnabled(QCL_LayerOfTail(StringSubstr(name,plen)));
 }
 
 // How many primary-signal marks may stay on the chart (the current one included).
@@ -196,6 +206,7 @@ bool QCL_SelfTest(string &where)
    else if(!QCL_LayerVisible(QCL_LAYER_SYSTEM,false,false,false,false,false)) where="QCL-13 system is never hidden";
    else if(QCL_LayerVisible(QCL_LAYER_UNKNOWN,true,true,true,true,false)) where="QCL-14 unknown follows optional";
    else if(QCL_LayerVisible(QCL_LAYER_VOLUME_DETAIL,true,true,false,true,true)) where="QCL-15 detail needs the volume layer";
+   else if(!QCL_AllowsName("USER_TREND","QSMC_")) where="QCL-16 a foreign object is never hidden";
    return (where=="");
 }
 

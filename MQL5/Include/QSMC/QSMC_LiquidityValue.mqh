@@ -43,6 +43,11 @@ void LV_ClearSetup(const string reason)
 void LV_Publish()
 {
    if(QSMC_SilentReader()) return;
+   // v6.6.24: the journal answers to InpLVJournal alone. It used to be ANDed with
+   // InpArbVerboseLog, so an operator who wanted a monitor record had to switch on
+   // the arbiter's debug log as well; and the line was printed AFTER the object
+   // create, so a chart that refused the label also lost the record.
+   if(InpLVJournal) Print("LV_MONITOR | ",TimeToString(g_lv_last)," | ",g_lv_status);
    string name=PFX+"LV_STATUS";
    if(ObjectFind(0,name)<0 && !ObjectCreate(0,name,OBJ_LABEL,0,0,0)) return;
    g_lv_visible=true;
@@ -56,7 +61,6 @@ void LV_Publish()
    ObjectSetString(0,name,OBJPROP_TEXT,"Liquidity + Value [MONITOR]: "+g_lv_status);
    ObjectSetString(0,name,OBJPROP_TOOLTIP,
       "Closed bars only. Frozen pre-sweep value area. Confirmation = break of sweep candle, not a full MSS. No order.");
-   if(InpLVJournal && InpArbVerboseLog) Print("LV_MONITOR | ",TimeToString(g_lv_last)," | ",g_lv_status);
 }
 
 void LV_Update(const int closed,const bool reset)
@@ -73,7 +77,10 @@ void LV_Update(const int closed,const bool reset)
    if(closed<2 || closed>=g_rates_total-1 || closed>=ArraySize(g_buf_t) || closed>=ArraySize(g_buf_c) ||
       closed>=ArraySize(g_buf_o) || closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l))
    {
-      g_lv_profile=false; LV_ClearSetup("DATA UNAVAILABLE / BAR BOUNDS");
+      // v6.6.24: g_lv_last was NOT reset here, so the bar that failed the bounds test
+      // was remembered and `now==g_lv_last` skipped the very bar on which the arrays
+      // recovered. A monitor that misses the recovery bar reports the wrong setup.
+      g_lv_last=0; g_lv_profile=false; LV_ClearSetup("DATA UNAVAILABLE / BAR BOUNDS");
       LV_Hide(); return;
    }
    datetime now=g_buf_t[closed];
@@ -92,10 +99,26 @@ void LV_Update(const int closed,const bool reset)
          LV_PriceOK(g_buf_l[b]) && LV_PriceOK(g_buf_c[b]) && LV_PriceOK(g_buf_c[b-1]) &&
          g_buf_h[b]>=MathMax(g_buf_o[b],g_buf_c[b]) &&
          g_buf_l[b]<=MathMin(g_buf_o[b],g_buf_c[b]) && g_buf_h[b]>=g_buf_l[b];
-   double atr=(bars_ok?PMI_ATRAt(closed,InpATRPeriod):0.0);
+   // v6.6.24: the window below is validated with the CLAMPED period; PMI_ATRAt used to
+   // receive the raw input. With InpATRPeriod 0 or 1 the validation covered two bars
+   // while the ATR was computed over zero or one - a different number from the one the
+   // guard approved.
+   double atr=(bars_ok?PMI_ATRAt(closed,period):0.0);
    bool feed=InpUseMasterVolumeProfile && LV_PriceOK(atr) &&
       LV_PriceOK(InpTopDownMinRR) && g_mvp_built_time==now && LV_ProfileOK(g_mvp_active);
-   if(!feed) { g_lv_profile=false; LV_ClearSetup("DATA UNAVAILABLE / ENABLE MASTER VP"); }
+   if(!feed)
+   {
+      g_lv_profile=false;
+      // v6.6.24: name the input that is actually missing. The single "ENABLE MASTER VP"
+      // message also appeared when the master VP WAS on and the profile was merely not
+      // built on this bar, which sent the operator to the wrong switch.
+      string why="DATA UNAVAILABLE / INVALID VALUE AREA";
+      if(!InpUseMasterVolumeProfile)          why="DATA UNAVAILABLE / ENABLE MASTER VP";
+      else if(!bars_ok || !LV_PriceOK(atr))    why="DATA UNAVAILABLE / BAR DATA OR ATR";
+      else if(!LV_PriceOK(InpTopDownMinRR))    why="DATA UNAVAILABLE / INVALID MIN RR";
+      else if(g_mvp_built_time!=now)           why="WAIT / PROFILE NOT BUILT ON THIS BAR";
+      LV_ClearSetup(why);
+   }
    else if(g_lv_phase>0)
    {
       g_lv_age++;
@@ -148,6 +171,14 @@ void LV_Update(const int closed,const bool reset)
       if(buy && sell) LV_ClearSetup("CONFLICT / TWO-SIDED SWEEP");
       else if(buy || sell)
       {
+         // v6.6.24: a sweep bar that already printed through the POC has no room left.
+         // Arming it reserved the state for a bar or more with no possible confirmation:
+         // the next bar ended it with "TARGET REACHED / NO CHASE". Say so on the bar.
+         if((buy ? h>=g_lv_poc : l<=g_lv_poc))
+         {
+            g_lv_status="REJECT / SWEEP ALREADY AT POC";
+            LV_Publish(); return;
+         }
          g_lv_dir=(buy?1:-1); g_lv_phase=1; g_lv_age=0;
          g_lv_edge=(buy?g_lv_val:g_lv_vah); g_lv_target=g_lv_poc;
          g_lv_extreme=(buy?l:h); g_lv_trigger=(buy?h:l); g_lv_atr=atr;

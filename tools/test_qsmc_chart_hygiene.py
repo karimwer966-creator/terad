@@ -307,8 +307,20 @@ for tag in ("hyg_after", "hyg_before"):
 # ---------------------------------------------------------------- C  registry + layers
 print("=== C  signal registry and layer policy, executed")
 rc, out = run("hyg_after", "selftest")
-check(rc == 0 and "PASS QSR_SelfTest" in out, "C1 QSR_SelfTest: 16 lifecycle / identity / capacity checks pass", out.strip())
-check("PASS QCL_SelfTest" in out, "C2 QCL_SelfTest: 15 classification / policy checks pass", out.strip())
+check(rc == 0 and "PASS QSR_SelfTest" in out, "C1 QSR_SelfTest: 19 lifecycle / identity / capacity checks pass", out.strip())
+check("PASS QCL_SelfTest" in out, "C2 QCL_SelfTest: 16 classification / policy checks pass", out.strip())
+# C2a the header cannot see the host enum (it is declared below the includes), so the
+# host's CONFIRMED rank and the header's constant are two numbers that must agree. Pin
+# them against each other here instead of trusting a comment.
+REG = open(os.path.join(ROOT, "MQL5", "Include", "QSMC", "QSMC_SignalRegistry.mqh"), encoding="utf-8", errors="replace").read()
+host_rank = re.search(r"RXN_LEVEL_CONFIRMED\s*=\s*(\d+)", TEXT)
+hdr_rank = re.search(r"#define\s+QSR_HOST_LEVEL_CONFIRMED\s+(\d+)", REG)
+check(host_rank is not None and hdr_rank is not None and host_rank.group(1) == hdr_rank.group(1),
+      "C2a QSR_HOST_LEVEL_CONFIRMED equals the host's RXN_LEVEL_CONFIRMED",
+      "host=%s header=%s" % (host_rank.group(1) if host_rank else "?",
+                             hdr_rank.group(1) if hdr_rank else "?"))
+check("source==QSMC_ALERT_SRC_CORE" in REG and "level>=QSR_HOST_LEVEL_CONFIRMED" in REG,
+      "C2b the registry names the alert ids and the confirmed rank instead of bare 3 and 4")
 rc, out = run("hyg_after", "layers", *FAMILIES)
 layers = dict(l.split("=") for l in out.strip().split("\n") if "=" in l)
 unknown = sorted(k for k, v in layers.items() if v == "UNKNOWN")
