@@ -162,12 +162,14 @@ long QSR_AgeSeconds(const datetime now,const datetime since)
    return (long)(now-since);
 }
 
-// A separator inside an identity component would make two different signals share one
-// family key: ("SWEEP|MSS","Z1") and ("SWEEP","MSS|Z1") both read "SWEEP|MSS|Z1".
+// Escape components injectively: replacing '|' with '/' merged distinct raw
+// anchors such as "A|B" and "A/B". Escape '%' FIRST so literal escape text
+// cannot collide with an encoded separator. Plain existing keys are unchanged.
 string QSR_Clean(const string s)
 {
    string t=s;
-   StringReplace(t,"|","/");
+   StringReplace(t,"%","%25");
+   StringReplace(t,"|","%7C");
    return t;
 }
 
@@ -501,6 +503,11 @@ bool QSR_SelfTest(string &where)
    // 9. a separator inside a component cannot merge two identities
    if(where=="" && QSR_Family("X",15,1,"SWEEP|MSS","Z1")==QSR_Family("X",15,1,"SWEEP","MSS|Z1"))
       where="QSR-19 a '|' inside a component must not collide with the separator";
+   // Literal slash and literal escape text must remain distinct from '|'.
+   if(where=="" && (QSR_Clean("A|B")==QSR_Clean("A/B") ||
+                     QSR_Clean("A|B")==QSR_Clean("A%7CB") ||
+                     QSR_Clean("A%7CB")==QSR_Clean("A%257CB")))
+      where="QSR-20 identity encoding must be collision-free";
    for(int i=0;i<QSR_CAPACITY;i++) g_qsr[i]=keep[i];
    g_qsr_created=c0; g_qsr_updated=u0; g_qsr_rejected=r0; g_qsr_evicted=e0; g_qsr_transitions=t0;
    return (where=="");

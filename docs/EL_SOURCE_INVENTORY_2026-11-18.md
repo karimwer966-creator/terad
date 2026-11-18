@@ -1,0 +1,1189 @@
+# EL / QSMC source inventory and dependency evidence
+
+Generated from the checked-out working tree on 2026-11-18. This is a lexical inventory, not proof that each function has been behaviorally verified. The main report is `EL_ENGINEERING_REVIEW_2026-11-18.md`.
+
+## All MQL programs and headers
+
+| Path | Lines | Direct include dependencies |
+|---|---:|---|
+| `MQL5/Experts/KLJ_DataFeeder.mq5` | 524 | `QSMC/QSMC_DataProvider.mqh` |
+| `MQL5/Experts/QSMC_AutoTrader.mq5` | 5166 | `Trade/Trade.mqh`, `QSMC/QSMC_ExecutionRules.mqh`, `QSMC/QSMC_InstanceIdentity.mqh` |
+| `MQL5/Experts/QuantumAutonomousTradingSystem.mq5` | 5112 | `Trade/Trade.mqh` |
+| `MQL5/Include/QSMC/QSMC_AlertManager.mqh` | 376 | `QSMC/QSMC_Types.mqh`, `QSMC/QSMC_Gates.mqh` |
+| `MQL5/Include/QSMC/QSMC_Arbiter.mqh` | 461 | `QSMC/QSMC_Types.mqh`, `QSMC/QSMC_Gates.mqh`, `QSMC/QSMC_Zones.mqh`, `QSMC/QSMC_Reaction.mqh`, `QSMC/QSMC_AlertManager.mqh` |
+| `MQL5/Include/QSMC/QSMC_Bias.mqh` | 205 | `QSMC/QSMC_Types.mqh`, `QSMC/QSMC_MarketData.mqh` |
+| `MQL5/Include/QSMC/QSMC_CandlePatterns.mqh` | 74 |  |
+| `MQL5/Include/QSMC/QSMC_ChartLayers.mqh` | 214 |  |
+| `MQL5/Include/QSMC/QSMC_DataProvider.mqh` | 350 | `QSMC/QSMC_Types.mqh` |
+| `MQL5/Include/QSMC/QSMC_EarlyBreakDetector.mqh` | 247 | `QSMC/QSMC_Stats.mqh`, `QSMC/QSMC_Structure.mqh` |
+| `MQL5/Include/QSMC/QSMC_ExecutionRules.mqh` | 275 |  |
+| `MQL5/Include/QSMC/QSMC_Gates.mqh` | 506 | `QSMC/QSMC_Types.mqh`, `QSMC/QSMC_Zones.mqh` |
+| `MQL5/Include/QSMC/QSMC_IncidentSafety.mqh` | 237 |  |
+| `MQL5/Include/QSMC/QSMC_InputFingerprint.mqh` | 1212 |  |
+| `MQL5/Include/QSMC/QSMC_InstanceIdentity.mqh` | 107 |  |
+| `MQL5/Include/QSMC/QSMC_LiquidityValue.mqh` | 200 |  |
+| `MQL5/Include/QSMC/QSMC_MarketData.mqh` | 543 | `QSMC/QSMC_Types.mqh` |
+| `MQL5/Include/QSMC/QSMC_Preset.mqh` | 280 | `QSMC/QSMC_Types.mqh` |
+| `MQL5/Include/QSMC/QSMC_Reaction.mqh` | 380 | `QSMC/QSMC_Types.mqh`, `QSMC/QSMC_CandlePatterns.mqh`, `QSMC/QSMC_MarketData.mqh` |
+| `MQL5/Include/QSMC/QSMC_Renderer.mqh` | 210 | `QSMC/QSMC_Types.mqh` |
+| `MQL5/Include/QSMC/QSMC_Root.mqh` | 1121 | `QSMC/QSMC_Types.mqh`, `QSMC/QSMC_MarketData.mqh`, `QSMC/QSMC_Structure.mqh`, `QSMC/QSMC_Zones.mqh`, `QSMC/QSMC_ZoneScorer.mqh`, `QSMC/QSMC_Reaction.mqh`, `QSMC/QSMC_Bias.mqh`, `QSMC/QSMC_Preset.mqh`, `QSMC/QSMC_Gates.mqh`, `QSMC/QSMC_AlertManager.mqh`, `QSMC/QSMC_Arbiter.mqh`, `QSMC/QSMC_Stats.mqh`, `QSMC/QSMC_EarlyBreakDetector.mqh`, `QSMC/QSMC_Renderer.mqh` |
+| `MQL5/Include/QSMC/QSMC_Scanners.mqh` | 1025 | `QSMC/QSMC_Types.mqh`, `QSMC/QSMC_MarketData.mqh`, `QSMC/QSMC_Zones.mqh`, `QSMC/QSMC_Reaction.mqh`, `QSMC/QSMC_Bias.mqh` |
+| `MQL5/Include/QSMC/QSMC_Selftest.mqh` | 1341 | `QSMC/QSMC_Root.mqh` |
+| `MQL5/Include/QSMC/QSMC_SignalRegistry.mqh` | 517 |  |
+| `MQL5/Include/QSMC/QSMC_Stats.mqh` | 1213 | `QSMC/QSMC_Types.mqh`, `QSMC/QSMC_MarketData.mqh` |
+| `MQL5/Include/QSMC/QSMC_Structure.mqh` | 412 | `QSMC/QSMC_MarketData.mqh` |
+| `MQL5/Include/QSMC/QSMC_SvpChart.mqh` | 1259 | `QSMC/QSMC_SvpDecision.mqh`, `QSMC/QSMC_SignalRegistry.mqh` |
+| `MQL5/Include/QSMC/QSMC_SvpCore.mqh` | 542 |  |
+| `MQL5/Include/QSMC/QSMC_SvpDecision.mqh` | 669 | `QSMC/QSMC_SvpCore.mqh`, `QSMC/QSMC_SvpLiquidity.mqh`, `QSMC/QSMC_SvpZones.mqh`, `QSMC/QSMC_SvpVolumeProfile.mqh` |
+| `MQL5/Include/QSMC/QSMC_SvpLiquidity.mqh` | 531 | `QSMC/QSMC_SvpCore.mqh` |
+| `MQL5/Include/QSMC/QSMC_SvpVolumeProfile.mqh` | 730 | `QSMC/QSMC_SvpCore.mqh` |
+| `MQL5/Include/QSMC/QSMC_SvpZones.mqh` | 248 | `QSMC/QSMC_SvpCore.mqh` |
+| `MQL5/Include/QSMC/QSMC_Types.mqh` | 472 |  |
+| `MQL5/Include/QSMC/QSMC_UnifiedDecision.mqh` | 271 |  |
+| `MQL5/Include/QSMC/QSMC_ZoneScorer.mqh` | 138 | `QSMC/QSMC_Types.mqh` |
+| `MQL5/Include/QSMC/QSMC_Zones.mqh` | 412 | `QSMC/QSMC_Types.mqh` |
+| `MQL5/Indicators/QSMC_ScannerProbe.mq5` | 343 | `QSMC/QSMC_Preset.mqh`, `QSMC/QSMC_Scanners.mqh` |
+| `MQL5/Indicators/QSMC_SmcVpEngine.mq5` | 495 | `QSMC/QSMC_SvpChart.mqh` |
+| `MQL5/Indicators/nadir2.mq5` | 45110 | `QSMC/QSMC_Root.mqh`, `QSMC/QSMC_LiquidityValue.mqh`, `QSMC/QSMC_UnifiedDecision.mqh`, `QSMC/QSMC_IncidentSafety.mqh`, `QSMC/QSMC_SignalRegistry.mqh`, `QSMC/QSMC_ChartLayers.mqh`, `QSMC/QSMC_InstanceIdentity.mqh`, `QSMC/QSMC_InputFingerprint.mqh` |
+| `MQL5/Scripts/QSMC_ArbiterTest.mq5` | 68 | `QSMC/QSMC_Selftest.mqh` |
+| `MQL5/Scripts/QSMC_BufferDump.mq5` | 149 |  |
+| `MQL5/Scripts/QSMC_ResetGuards.mq5` | 158 |  |
+| `nadir2.mq5` | 45110 | `QSMC/QSMC_Root.mqh`, `QSMC/QSMC_LiquidityValue.mqh`, `QSMC/QSMC_UnifiedDecision.mqh`, `QSMC/QSMC_IncidentSafety.mqh`, `QSMC/QSMC_SignalRegistry.mqh`, `QSMC/QSMC_ChartLayers.mqh`, `QSMC/QSMC_InstanceIdentity.mqh`, `QSMC/QSMC_InputFingerprint.mqh` |
+
+Platform `Trade/` and other standard-library headers are terminal dependencies, not shipped repository files. Headers without direct includes can still depend on host globals; `QSMC_UnifiedDecision`, `QSMC_IncidentSafety`, and `QSMC_LiquidityValue` are explicitly context-coupled. Do not treat an empty include list as independence.
+
+## Complete tools, test, build and configuration inventory
+
+### tools
+
+- `tools/analyze_trial.py`
+- `tools/apply_qsmc_arb_patch.py`
+- `tools/check_include_graph.py`
+- `tools/check_presets.py`
+- `tools/check_production_ready.py`
+- `tools/check_release_gate.py`
+- `tools/check_repo_layout.py`
+- `tools/check_scenario_geometry.py`
+- `tools/fixtures/no_trades_2026-11-09.log`
+- `tools/fixtures/qats_v111_journal_sample.log`
+- `tools/generate_input_fingerprint.py`
+- `tools/generate_set_presets.py`
+- `tools/mql5_rules.py`
+- `tools/native_toolchain.py`
+- `tools/package_production.py`
+- `tools/pinmap.json`
+- `tools/pinmap.py`
+- `tools/pinmap_bases.json`
+- `tools/preflight_demo.py`
+- `tools/qats_backtest.py`
+- `tools/qats_journal_report.py`
+- `tools/qats_native.py`
+- `tools/qats_sim/mql5_chart.h`
+- `tools/qats_sim/mql5_shim.h`
+- `tools/qats_sim/qats_driver.inc`
+- `tools/qats_sim/qats_market.inc`
+- `tools/qats_sim/qats_scenarios.inc`
+- `tools/qats_sim/qats_selftest.inc`
+- `tools/smcvp_chart_svg.py`
+- `tools/smcvp_make_pictures.py`
+- `tools/smcvp_native.py`
+- `tools/smcvp_sim/engine_driver.inc`
+- `tools/smcvp_sim/hygiene_driver.inc`
+- `tools/static_check.py`
+- `tools/test_arbiter.py`
+- `tools/test_at_risk_audit.py`
+- `tools/test_autotrader_contract.py`
+- `tools/test_candle_patterns.py`
+- `tools/test_causal_chain_regressions.py`
+- `tools/test_comment_integrity.py`
+- `tools/test_compile_errors.py`
+- `tools/test_core_signal_diagnostics.py`
+- `tools/test_dashboard_clarity.py`
+- `tools/test_decision_journal.py`
+- `tools/test_declutter_cap.py`
+- `tools/test_defaults_match_preset.py`
+- `tools/test_diag_bridge.py`
+- `tools/test_display_authority.py`
+- `tools/test_docs_freshness.py`
+- `tools/test_early_break.py`
+- `tools/test_edgebook_contract.py`
+- `tools/test_el_data_integrity.py`
+- `tools/test_el_sniper_readiness.py`
+- `tools/test_execution_rules.py`
+- `tools/test_execution_safety.py`
+- `tools/test_gate_profile.py`
+- `tools/test_historical_atr_contract.py`
+- `tools/test_incident_compact.py`
+- `tools/test_include_graph.py`
+- `tools/test_input_fingerprint_parser.py`
+- `tools/test_instance_identity.py`
+- `tools/test_liquidity_value.py`
+- `tools/test_liquidity_value_runtime.py`
+- `tools/test_native_toolchain.py`
+- `tools/test_orderblock_lifecycle.py`
+- `tools/test_phase2_modules.py`
+- `tools/test_phase3_wyckoff.py`
+- `tools/test_phase4_priceaction.py`
+- `tools/test_phase5_meanreversion.py`
+- `tools/test_phase6_confluence.py`
+- `tools/test_phase7_riskmodel.py`
+- `tools/test_price_provenance.py`
+- `tools/test_qats_dual_direction.py`
+- `tools/test_qats_journal_report.py`
+- `tools/test_qats_limit_entry.py`
+- `tools/test_qats_native_build.py`
+- `tools/test_qsmc_chart_hygiene.py`
+- `tools/test_qsmc_smcvp.py`
+- `tools/test_quant_stats.py`
+- `tools/test_quantum_account_policy.py`
+- `tools/test_quantum_compile_regressions.py`
+- `tools/test_resolver.py`
+- `tools/test_resolver_runtime.py`
+- `tools/test_runtime_diagnostics.py`
+- `tools/test_scalper_preset.py`
+- `tools/test_scalping.py`
+- `tools/test_scanner_snapshot.py`
+- `tools/test_scanners.py`
+- `tools/test_signal_execution_profiles.py`
+- `tools/test_structure.py`
+- `tools/test_tactical_authority.py`
+- `tools/test_tick_performance.py`
+- `tools/test_unified_decision_contract.py`
+- `tools/test_unified_decision_runtime.py`
+- `tools/test_ux1_master_switch.py`
+- `tools/test_volatility_window.py`
+- `tools/test_weighted_gates.py`
+- `tools/test_wfa_robustness.py`
+- `tools/test_why_no_trades.py`
+- `tools/test_xau_execution_policy.py`
+- `tools/test_zone_provenance.py`
+- `tools/test_zone_scoring.py`
+- `tools/test_zre_signal_role.py`
+- `tools/trial_acceptance.json`
+- `tools/verify_quantum_ea.py`
+- `tools/wfa_demo.py`
+- `tools/wfa_harness.py`
+- `tools/wfa_stats.py`
+- `tools/why_no_trades.py`
+### .github/workflows
+
+- `.github/workflows/liquidity-value.yml`
+- `.github/workflows/qsmc-production.yml`
+- `.github/workflows/qsmc-verify.yml`
+- `.github/workflows/quantum-verify.yml`
+### presets
+
+- `presets/QSMC_AutoTrader_DEMO_0.10_200.set`
+- `presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set`
+- `presets/QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set`
+- `presets/QSMC_AutoTrader_v6.6.22_SCALP_M5.set`
+- `presets/QSMC_fixed005_tp100_200_300.set`
+- `presets/QSMC_v6.6.20_latency_diagnosis.set`
+- `presets/QSMC_v6.6.20_production_chart.set`
+- `presets/Quantum_XAUUSD_PRODUCTION.set`
+- `presets/nadir2_PRODUCTION_XAUUSD.set`
+
+## Canonical host function locator
+
+Both host copies are byte-identical. This list locates top-level function definitions, not declarations or calls. Overloads may occur. Locations refreshed after the Sniper continuation fixes.
+
+- `nadir2.mq5:646` — `QSMC_SilentReader`
+- `nadir2.mq5:1970` — `QSMC_IsReaderSilent`
+- `nadir2.mq5:1973` — `QSMC_InitPass`
+- `nadir2.mq5:2287` — `QSMC_PaintAllowed`
+- `nadir2.mq5:2294` — `QSMC_SetObjInt`
+- `nadir2.mq5:2299` — `QSMC_SetObjDbl`
+- `nadir2.mq5:2304` — `QSMC_SetObjStr`
+- `nadir2.mq5:2309` — `QSMC_MoveObj`
+- `nadir2.mq5:2316` — `QSMC_PerfReset`
+- `nadir2.mq5:2322` — `QSMC_PerfObserve`
+- `nadir2.mq5:2937` — `LoadInstrumentSpec`
+- `nadir2.mq5:3016` — `InstrumentTickSize`
+- `nadir2.mq5:3026` — `NormalizePriceToTick`
+- `nadir2.mq5:3035` — `InstrumentMinStopDistance`
+- `nadir2.mq5:3046` — `InstrumentClassName`
+- `nadir2.mq5:3076` — `BuildPrimeSieve`
+- `nadir2.mq5:3102` — `PrimeProximityScore`
+- `nadir2.mq5:3191` — `RelationNodeName`
+- `nadir2.mq5:3210` — `SeedRelationEdge`
+- `nadir2.mq5:3218` — `BuildInstitutionalRelationshipMatrix`
+- `nadir2.mq5:3272` — `InstitutionalRelationshipStrength`
+- `nadir2.mq5:3303` — `ClassifyMarketConflict`
+- `nadir2.mq5:3391` — `MergeSweepCandidates`
+- `nadir2.mq5:5246` — `CorePathInit`
+- `nadir2.mq5:5257` — `CorePathEventAvailable`
+- `nadir2.mq5:5270` — `CorePathTryBuild`
+- `nadir2.mq5:5318` — `CorePathTryIds`
+- `nadir2.mq5:5330` — `ResolveCoreCausalPath`
+- `nadir2.mq5:5586` — `AnalyzeClosedCandle`
+- `nadir2.mq5:5665` — `CandleConfirmsDirection`
+- `nadir2.mq5:5834` — `SelectExecutionTF`
+- `nadir2.mq5:5845` — `MTFEntryGrade`
+- `nadir2.mq5:5853` — `ClearMTFExecutionEntry`
+- `nadir2.mq5:5868` — `UpdateMTFExecutionEntry`
+- `nadir2.mq5:6085` — `ResolveFinalSignal`
+- `nadir2.mq5:6155` — `SCALP_SpreadRatio`
+- `nadir2.mq5:6162` — `SCALP_SpreadVeto`
+- `nadir2.mq5:6170` — `SCALP_RR`
+- `nadir2.mq5:6177` — `SCALP_WeightsSum`
+- `nadir2.mq5:6184` — `SCALP_ScoreSide`
+- `nadir2.mq5:6204` — `SCALP_Decide`
+- `nadir2.mq5:6216` — `SCALP_Votes`
+- `nadir2.mq5:6249` — `SCALP_Update`
+- `nadir2.mq5:6347` — `SCALP_SelfTest`
+- `nadir2.mq5:6414` — `OBS_NextIndex`
+- `nadir2.mq5:6424` — `OBS_GateStateName`
+- `nadir2.mq5:6435` — `OBS_GateState`
+- `nadir2.mq5:6446` — `OBS_Reason`
+- `nadir2.mq5:6463` — `OBS_SourceName`
+- `nadir2.mq5:6473` — `OBS_Record`
+- `nadir2.mq5:6516` — `OBS_JournalText`
+- `nadir2.mq5:6551` — `OBS_SelfTest`
+- `nadir2.mq5:7003` — `GenerateOBId`
+- `nadir2.mq5:7009` — `GenerateLiquidityId`
+- `nadir2.mq5:7014` — `GenerateFVGId`
+- `nadir2.mq5:7022` — `GenerateSetupId`
+- `nadir2.mq5:7034` — `FindOBIndexByUID`
+- `nadir2.mq5:7047` — `IsBlacklistEntryActive`
+- `nadir2.mq5:7069` — `IsBlacklisted`
+- `nadir2.mq5:7077` — `BlacklistSetup`
+- `nadir2.mq5:7116` — `LogLifecycle`
+- `nadir2.mq5:7121` — `IsSameIdeaAsBlacklisted`
+- `nadir2.mq5:7145` — `EnforceArrayLimits`
+- `nadir2.mq5:7211` — `ReevaluateFVGStateIncremental`
+- `nadir2.mq5:7231` — `ReevaluateFVGStateUpTo`
+- `nadir2.mq5:7239` — `SweepHasDisplacementOrVolume`
+- `nadir2.mq5:7304` — `SignalDrawStrength`
+- `nadir2.mq5:7310` — `InstitutionalLetterGrade`
+- `nadir2.mq5:7318` — `EntryKeySeen`
+- `nadir2.mq5:7328` — `EntryKeyCooling`
+- `nadir2.mq5:7344` — `EntryKeyAdd`
+- `nadir2.mq5:7368` — `EntryKeyRemoveBySetup`
+- `nadir2.mq5:7391` — `EntryMarkWriteAt`
+- `nadir2.mq5:7409` — `EntryMarkClearBar0Preview`
+- `nadir2.mq5:7426` — `EntryMarkTactical`
+- `nadir2.mq5:7460` — `EntryMarkClearTactical`
+- `nadir2.mq5:7478` — `EntryMarkObject`
+- `nadir2.mq5:7507` — `EntryMarkObjectsFor`
+- `nadir2.mq5:7516` — `EntryMarkDropObjectAt`
+- `nadir2.mq5:7524` — `DrawEntryLevelsFor`
+- `nadir2.mq5:7552` — `EntryMarkInvalidateLatest`
+- `nadir2.mq5:7581` — `MarkCoreSignal`
+- `nadir2.mq5:7599` — `NearestOpposingEdgeATR`
+- `nadir2.mq5:7618` — `DebugLogSignal`
+- `nadir2.mq5:7640` — `DrawEntrySignalVisuals`
+- `nadir2.mq5:7746` — `EntryMarkCoreFromSetup`
+- `nadir2.mq5:7769` — `EntryMarkCoreFromDirectSetup`
+- `nadir2.mq5:7810` — `QSMC_DeclutterExcess`
+- `nadir2.mq5:7822` — `QSMC_OldestSlot`
+- `nadir2.mq5:7839` — `QSMC_CountOwnedObjects`
+- `nadir2.mq5:7855` — `QSMC_DeleteOldestFamily`
+- `nadir2.mq5:7897` — `QSMC_DeclutterSelfTest`
+- `nadir2.mq5:7941` — `SmartObjectCleanup`
+- `nadir2.mq5:8008` — `PrepareDynamicRedraw`
+- `nadir2.mq5:8821` — `PMI_InitReplay`
+- `nadir2.mq5:8895` — `QSMC_PriorRefInit`
+- `nadir2.mq5:8908` — `QSMC_PriorClosedPeriodRaw`
+- `nadir2.mq5:9019` — `QSMC_PriorClosedPeriod`
+- `nadir2.mq5:9043` — `QSMC_PriorDayRef`
+- `nadir2.mq5:9048` — `QSMC_PriorWeekRef`
+- `nadir2.mq5:9054` — `QSMC_ClosedBar`
+- `nadir2.mq5:9069` — `PMI_IMin`
+- `nadir2.mq5:9070` — `PMI_IMax`
+- `nadir2.mq5:9075` — `PMI_CopyLevel`
+- `nadir2.mq5:9095` — `PMI_CopyPath`
+- `nadir2.mq5:9120` — `PMI_CopyStructEvent`
+- `nadir2.mq5:9141` — `PMI_HashString`
+- `nadir2.mq5:9159` — `PMI_LiquidityTypeCode`
+- `nadir2.mq5:9176` — `PMI_RegimeName`
+- `nadir2.mq5:9187` — `PMI_SessionName`
+- `nadir2.mq5:9196` — `PMI_PathStatusName`
+- `nadir2.mq5:9204` — `PMI_NoTradeText`
+- `nadir2.mq5:9257` — `PMI_StructDedupeEffectiveCapacity`
+- `nadir2.mq5:9271` — `PMI_StructDedupePackKey`
+- `nadir2.mq5:9288` — `PMI_StructDedupeMix64`
+- `nadir2.mq5:9296` — `PMI_StructDedupeFindBucket`
+- `nadir2.mq5:9310` — `PMI_StructDedupeContainsKey`
+- `nadir2.mq5:9326` — `PMI_StructDedupeContainsLinearWindow`
+- `nadir2.mq5:9338` — `PMI_StructDedupeClearIndex`
+- `nadir2.mq5:9360` — `PMI_StructDedupeRemoveBucket`
+- `nadir2.mq5:9394` — `PMI_StructDedupeUnlinkSlot`
+- `nadir2.mq5:9429` — `PMI_StructDedupeInsertRaw`
+- `nadir2.mq5:9473` — `PMI_StructDedupeReset`
+- `nadir2.mq5:9504` — `PMI_StructDedupeTimeframeSlot`
+- `nadir2.mq5:9512` — `PMI_StructDedupeLegacyScan`
+- `nadir2.mq5:9528` — `PMI_StructDedupeIsDuplicate`
+- `nadir2.mq5:9548` — `PMI_StructDedupeRecord`
+- `nadir2.mq5:9560` — `PMI_StructDedupeRebuild`
+- `nadir2.mq5:9597` — `QSMC_BiasWord`
+- `nadir2.mq5:9605` — `QSMC_HTFWeightedBias`
+- `nadir2.mq5:9649` — `PMI_ApplyConfig`
+- `nadir2.mq5:9673` — `PMI_ResetState`
+- `nadir2.mq5:9731` — `PMI_InitState`
+- `nadir2.mq5:9758` — `PMI_InitTFState`
+- `nadir2.mq5:9776` — `PMI_InitSweep`
+- `nadir2.mq5:9789` — `PMI_InitDisplacement`
+- `nadir2.mq5:9798` — `PMI_InitSequence`
+- `nadir2.mq5:9822` — `PMI_InitLocation`
+- `nadir2.mq5:9833` — `PMI_InitRegime`
+- `nadir2.mq5:9842` — `PMI_InitSession`
+- `nadir2.mq5:9851` — `PMI_InitDQ`
+- `nadir2.mq5:9861` — `PMI_InitPriceAction`
+- `nadir2.mq5:9871` — `SPMIStatInit`
+- `nadir2.mq5:9878` — `PMI_InitPath`
+- `nadir2.mq5:9895` — `PMI_InitSetup`
+- `nadir2.mq5:9915` — `PMI_SessionAtUTC`
+- `nadir2.mq5:9934` — `PMI_ServerToUTC`
+- `nadir2.mq5:9940` — `PMI_AlgeriaFromUTC`
+- `nadir2.mq5:9945` — `PMI_BuildSession`
+- `nadir2.mq5:9977` — `PMI_ValidateData`
+- `nadir2.mq5:10063` — `PMI_BuildPriceAction`
+- `nadir2.mq5:10113` — `PMI_ATRAt`
+- `nadir2.mq5:10129` — `PMI_ATRRatioAt`
+- `nadir2.mq5:10144` — `PMI_ATRPercentileAt`
+- `nadir2.mq5:10162` — `PMI_DirectionalEfficiency`
+- `nadir2.mq5:10174` — `PMI_ClassifyRegime`
+- `nadir2.mq5:10252` — `PMI_TFAt`
+- `nadir2.mq5:10267` — `PMI_LoadTFSeries`
+- `nadir2.mq5:10301` — `PMI_TFCollectSwings`
+- `nadir2.mq5:10333` — `PMI_TFSweepBefore`
+- `nadir2.mq5:10355` — `PMI_TFCollectStructureEvents`
+- `nadir2.mq5:10453` — `PMI_TFStateAtIndex`
+- `nadir2.mq5:10474` — `PMI_TFIndexAtBoundary`
+- `nadir2.mq5:10488` — `PMI_BuildTFState`
+- `nadir2.mq5:10570` — `PMI_ResolveContext`
+- `nadir2.mq5:10615` — `PMI_LevelStatusAt`
+- `nadir2.mq5:10655` — `PMI_AddLevel`
+- `nadir2.mq5:10694` — `PMI_BuildLiquidityLedger`
+- `nadir2.mq5:10804` — `PMI_NearestLevel`
+- `nadir2.mq5:10833` — `PMI_BuildSweep`
+- `nadir2.mq5:10935` — `PMI_BuildDisplacement`
+- `nadir2.mq5:11034` — `PMI_ClassifyChainState`
+- `nadir2.mq5:11062` — `PMI_BuildSequence`
+- `nadir2.mq5:11311` — `PMI_BuildLocation`
+- `nadir2.mq5:11369` — `PMI_AssembleMarketState`
+- `nadir2.mq5:11436` — `PMI_ResetEventRing`
+- `nadir2.mq5:11450` — `PMI_PushEvent`
+- `nadir2.mq5:11466` — `PMI_LastEventBefore`
+- `nadir2.mq5:11499` — `PMI_ChartBarForTime`
+- `nadir2.mq5:11522` — `PMI_NearestChartLiquidity`
+- `nadir2.mq5:11551` — `PMI_ChartPDAt`
+- `nadir2.mq5:11565` — `PMI_BuildFeatureVector`
+- `nadir2.mq5:11636` — `PMI_AppendSnapshot`
+- `nadir2.mq5:11674` — `PMI_BackfillSnapshots`
+- `nadir2.mq5:11734` — `PMI_NormDim`
+- `nadir2.mq5:11751` — `PMI_DimWeight`
+- `nadir2.mq5:11767` — `PMI_FeatureDistance`
+- `nadir2.mq5:11776` — `PMI_MeasureAnalogue`
+- `nadir2.mq5:11835` — `PMI_SearchAnalogues`
+- `nadir2.mq5:11884` — `PMI_Median`
+- `nadir2.mq5:11902` — `PMI_BuildStat`
+- `nadir2.mq5:11958` — `PMI_BuildConditionalStats`
+- `nadir2.mq5:11990` — `PMI_FreeNode`
+- `nadir2.mq5:12000` — `PMI_WalkTreeFree`
+- `nadir2.mq5:12008` — `DestroyMarketTree`
+- `nadir2.mq5:12017` — `PMI_NewNode`
+- `nadir2.mq5:12046` — `AnalyzeMarketNode`
+- `nadir2.mq5:12118` — `PMI_PrepareAxisCache`
+- `nadir2.mq5:12187` — `PMI_ChooseSplit`
+- `nadir2.mq5:12227` — `PMI_BuildNode`
+- `nadir2.mq5:12259` — `BuildMarketTree`
+- `nadir2.mq5:12276` — `PMI_TreeDigestWalk`
+- `nadir2.mq5:12307` — `PMI_TreeCausalityCheck`
+- `nadir2.mq5:12331` — `SearchRecursive`
+- `nadir2.mq5:12410` — `PMI_PathPush`
+- `nadir2.mq5:12421` — `PMI_PathStats`
+- `nadir2.mq5:12444` — `PMI_BuildPricePaths`
+- `nadir2.mq5:12611` — `PMI_ComputeConfluence`
+- `nadir2.mq5:12647` — `PMI_EvaluateNoTrade`
+- `nadir2.mq5:12694` — `PMI_AuthoritativeReady`
+- `nadir2.mq5:12703` — `PMI_BuildPredictiveSetup`
+- `nadir2.mq5:12792` — `PMI_BuildExplanation`
+- `nadir2.mq5:12854` — `PMI_LogEvent`
+- `nadir2.mq5:12868` — `PMI_OpenCSVIfNeeded`
+- `nadir2.mq5:12885` — `PMI_WriteCSVRow`
+- `nadir2.mq5:12921` — `PMI_CloseCSV`
+- `nadir2.mq5:12937` — `PMI_BuildWalkForwardReport`
+- `nadir2.mq5:13005` — `PMI_LevelSetHash`
+- `nadir2.mq5:13021` — `PMI_SequenceHash`
+- `nadir2.mq5:13033` — `PMI_StoreDigest`
+- `nadir2.mq5:13076` — `PMI_RederiveDigest`
+- `nadir2.mq5:13108` — `PMI_ReplayAudit`
+- `nadir2.mq5:13181` — `PMI_SelfTestExpect`
+- `nadir2.mq5:13201` — `PMI_RunSelfTests`
+- `nadir2.mq5:13238` — `PMI_StateDigestString`
+- `nadir2.mq5:13253` — `PMI_UpdateAll`
+- `nadir2.mq5:13376` — `PMI_TreeExtendRightmost`
+- `nadir2.mq5:13419` — `PMI_Init`
+- `nadir2.mq5:13465` — `PMI_Deinit`
+- `nadir2.mq5:13611` — `SigLog_RecInit`
+- `nadir2.mq5:13676` — `SigLog_Arm`
+- `nadir2.mq5:13720` — `SigLog_Advance`
+- `nadir2.mq5:13809` — `SigLog_Shift`
+- `nadir2.mq5:13822` — `SigLog_Copy`
+- `nadir2.mq5:13883` — `SigLog_ResName`
+- `nadir2.mq5:13891` — `SigLog_FillName`
+- `nadir2.mq5:13900` — `SigLog_OutcomeName`
+- `nadir2.mq5:13911` — `SigLog_GateAdd`
+- `nadir2.mq5:13928` — `SigLog_Clean`
+- `nadir2.mq5:13937` — `SigLog_Time`
+- `nadir2.mq5:13943` — `SigLog_CsvHeader`
+- `nadir2.mq5:13955` — `SigLog_CsvRow`
+- `nadir2.mq5:14033` — `SigLog_Expect`
+- `nadir2.mq5:14043` — `SigLog_Near`
+- `nadir2.mq5:14049` — `SigLog_TestRec`
+- `nadir2.mq5:14081` — `LegGeom_TooClose`
+- `nadir2.mq5:14087` — `LegGeom_TooOld`
+- `nadir2.mq5:14093` — `LegGeometry_SelfTest`
+- `nadir2.mq5:14115` — `SigLog_SelfTest`
+- `nadir2.mq5:14253` — `SigLog_Init`
+- `nadir2.mq5:14277` — `SigLog_SeenHas`
+- `nadir2.mq5:14285` — `SigLog_SeenAdd`
+- `nadir2.mq5:14293` — `SigLog_FindBar`
+- `nadir2.mq5:14307` — `SigLog_BufWrite`
+- `nadir2.mq5:14339` — `SigLog_BufWriteClass`
+- `nadir2.mq5:14353` — `SigLog_BufZero`
+- `nadir2.mq5:14361` — `SigLog_BufRegister`
+- `nadir2.mq5:14424` — `SigLog_PrepareBuffers`
+- `nadir2.mq5:14486` — `SigLog_FileName`
+- `nadir2.mq5:14499` — `SigLog_WriteLine`
+- `nadir2.mq5:14520` — `SigLog_WriteRow`
+- `nadir2.mq5:14527` — `SigLog_FillContext`
+- `nadir2.mq5:14545` — `SigLog_Track`
+- `nadir2.mq5:14566` — `SigLog_AddCore`
+- `nadir2.mq5:14625` — `SigLog_FillZRE`
+- `nadir2.mq5:14674` — `SigLog_ZREScoreReject`
+- `nadir2.mq5:14691` — `SigLog_CollectCore`
+- `nadir2.mq5:14715` — `SigLog_CollectZRE`
+- `nadir2.mq5:14747` — `SigLog_RemoveAt`
+- `nadir2.mq5:14757` — `SigLog_AdvanceAll`
+- `nadir2.mq5:14784` — `SigLog_Update`
+- `nadir2.mq5:14805` — `QSMC_ArbiterFeedAndFinalize`
+- `nadir2.mq5:14883` — `OnInit`
+- `nadir2.mq5:15673` — `OnDeinit`
+- `nadir2.mq5:15718` — `OnChartEvent`
+- `nadir2.mq5:15760` — `OnCalculate`
+- `nadir2.mq5:16491` — `CheckVisualAnchorTime`
+- `nadir2.mq5:16505` — `RunRuntimeDisplayNoLookaheadAudit`
+- `nadir2.mq5:16531` — `RunRuntimeCausalValidation`
+- `nadir2.mq5:16564` — `PipSize`
+- `nadir2.mq5:16581` — `OBMid`
+- `nadir2.mq5:16586` — `BuildOBPriceIndex`
+- `nadir2.mq5:16601` — `BuildOBStrengthIndex`
+- `nadir2.mq5:16617` — `BuildLiquidityPriorityIndex`
+- `nadir2.mq5:16641` — `UpdateSignalMask`
+- `nadir2.mq5:16680` — `CheckSignalPattern`
+- `nadir2.mq5:16684` — `AddGraphNode`
+- `nadir2.mq5:16694` — `ConnectGraphNodes`
+- `nadir2.mq5:16706` — `BuildMarketGraph`
+- `nadir2.mq5:16725` — `CausalTypeName`
+- `nadir2.mq5:16745` — `FindCausalEventById`
+- `nadir2.mq5:16753` — `LinkCausalEvents`
+- `nadir2.mq5:16762` — `RebuildCausalChildren`
+- `nadir2.mq5:16778` — `RollbackCausalGraphToSize`
+- `nadir2.mq5:16790` — `AddCausalEvent`
+- `nadir2.mq5:16867` — `FindCausalEventBySource`
+- `nadir2.mq5:16874` — `FindNearestCausalAncestor`
+- `nadir2.mq5:16943` — `FindParentEventOfType`
+- `nadir2.mq5:16950` — `IsCausallyConnected`
+- `nadir2.mq5:17009` — `LegNoteFail`
+- `nadir2.mq5:17015` — `ValidateDisplacementLeg`
+- `nadir2.mq5:17131` — `ValidateCausalOB`
+- `nadir2.mq5:17158` — `ValidateCausalFVGAsOf`
+- `nadir2.mq5:17227` — `BuildCausalEventGraph`
+- `nadir2.mq5:17498` — `MarkCausalAncestors`
+- `nadir2.mq5:17516` — `PruneCausalEventGraph`
+- `nadir2.mq5:17632` — `ValidateHTFAvailability`
+- `nadir2.mq5:17660` — `ValidateCausalGraphInvariants`
+- `nadir2.mq5:17920` — `CausalGraphFingerprint`
+- `nadir2.mq5:18073` — `RunCausalGraphChecks`
+- `nadir2.mq5:18090` — `ResolveCausalPath`
+- `nadir2.mq5:18159` — `CausalPathScore`
+- `nadir2.mq5:18177` — `SelectBestStructureAnchor`
+- `nadir2.mq5:18259` — `KnapsackOptimizeSignals`
+- `nadir2.mq5:18273` — `DynamicProgrammingConfidence`
+- `nadir2.mq5:18291` — `ScoreStructure`
+- `nadir2.mq5:18312` — `ScoreLiquidity`
+- `nadir2.mq5:18359` — `OBIsExpired`
+- `nadir2.mq5:18372` — `OBMarkExpired`
+- `nadir2.mq5:18395` — `OBStateLabel`
+- `nadir2.mq5:18407` — `ScoreOrderBlock`
+- `nadir2.mq5:18422` — `ScoreFVG`
+- `nadir2.mq5:18443` — `ScoreSession`
+- `nadir2.mq5:18452` — `ScoreHTF`
+- `nadir2.mq5:18458` — `DetectMarketRegime`
+- `nadir2.mq5:18477` — `RegimeScoreMultiplier`
+- `nadir2.mq5:18487` — `ContextualCandleScore`
+- `nadir2.mq5:18520` — `IndependentEvidenceScore`
+- `nadir2.mq5:18546` — `MaxPossibleValue`
+- `nadir2.mq5:18552` — `CalculateReliability`
+- `nadir2.mq5:18584` — `CalculateQualityGrade`
+- `nadir2.mq5:18596` — `GradeRank`
+- `nadir2.mq5:18604` — `GetInstitutionalGrade`
+- `nadir2.mq5:18620` — `CalculateRiskLevel`
+- `nadir2.mq5:18636` — `FindAlignedLiquiditySweep`
+- `nadir2.mq5:18666` — `IsInstitutionalLocation`
+- `nadir2.mq5:18693` — `PushTarget`
+- `nadir2.mq5:18697` — `GetClosedCurrentDayHighLow`
+- `nadir2.mq5:18718` — `DirectionalRR`
+- `nadir2.mq5:18727` — `ValidateTargetGeometry`
+- `nadir2.mq5:18735` — `NearestOpposingBarrier`
+- `nadir2.mq5:18793` — `FindInstitutionalTarget`
+- `nadir2.mq5:18970` — `AddReason`
+- `nadir2.mq5:18978` — `AddBlocker`
+- `nadir2.mq5:18987` — `CreateSetupBranchTransactional`
+- `nadir2.mq5:19058` — `ResetCausalHopReport`
+- `nadir2.mq5:19071` — `RecordCausalHop`
+- `nadir2.mq5:19085` — `TFName`
+- `nadir2.mq5:19101` — `ColorLerp`
+- `nadir2.mq5:19111` — `BlendAgainstChartBackground`
+- `nadir2.mq5:19134` — `MTFAlignmentPercent`
+- `nadir2.mq5:19165` — `MTF_KnownCount`
+- `nadir2.mq5:19176` — `MTF_UpCount`
+- `nadir2.mq5:19227` — `QSMC_DataHealthLevel`
+- `nadir2.mq5:19288` — `QSMC_DrawDataHealthBanner`
+- `nadir2.mq5:19308` — `QSMC_ClearDataHealthBanner`
+- `nadir2.mq5:19317` — `DirectionalWatchScore`
+- `nadir2.mq5:19336` — `DiagnoseDirectionalWatch`
+- `nadir2.mq5:19370` — `DiagnoseCausalChain`
+- `nadir2.mq5:19390` — `ApplyCausalDecisionState`
+- `nadir2.mq5:19426` — `ResetSignalGateAudit`
+- `nadir2.mq5:19452` — `GateAuditReject`
+- `nadir2.mq5:19474` — `GateAuditPct`
+- `nadir2.mq5:19484` — `SignalGateAuditLine`
+- `nadir2.mq5:19499` — `SignalGateLegDiagLine`
+- `nadir2.mq5:19524` — `SignalGateSourceLine`
+- `nadir2.mq5:19535` — `SignalGateRXNLine`
+- `nadir2.mq5:19545` — `SignalGateOutcomeLine`
+- `nadir2.mq5:19553` — `GateAuditTopBlocker`
+- `nadir2.mq5:19573` — `EffMinConfidenceScore`
+- `nadir2.mq5:19578` — `EffMinReliability`
+- `nadir2.mq5:19583` — `EffMinRR1`
+- `nadir2.mq5:19588` — `EffMaxStopATR`
+- `nadir2.mq5:19593` — `EffAnchorSearchBars`
+- `nadir2.mq5:19600` — `PrintGateProfileBanner`
+- `nadir2.mq5:19659` — `QSMC_SignalClassName`
+- `nadir2.mq5:19673` — `QSMC_ProfileName`
+- `nadir2.mq5:19686` — `QSMC_RiskMultForClass`
+- `nadir2.mq5:19695` — `QSMC_ClassAllowedBySwitch`
+- `nadir2.mq5:19708` — `QSMC_ProfileAllowsClass`
+- `nadir2.mq5:19721` — `QSMC_ClassifyByNumbers`
+- `nadir2.mq5:19741` — `QSMC_ClassifySignal`
+- `nadir2.mq5:19810` — `QSMC_RRAcceptFloor`
+- `nadir2.mq5:19822` — `PrintSignalExecutionProfileBanner`
+- `nadir2.mq5:19886` — `QSMC_ReviewName`
+- `nadir2.mq5:19906` — `QSMC_ReviewSet`
+- `nadir2.mq5:19918` — `QSMC_BuildEntryReview`
+- `nadir2.mq5:20066` — `QSMC_PrintEntryReview`
+- `nadir2.mq5:20092` — `QSMC_SignalAudit`
+- `nadir2.mq5:20145` — `GateProfileSlot`
+- `nadir2.mq5:20169` — `GateProfileReset`
+- `nadir2.mq5:20181` — `GateProfileNote`
+- `nadir2.mq5:20193` — `GateProfileNeed`
+- `nadir2.mq5:20209` — `GateProfilePublish`
+- `nadir2.mq5:20269` — `GateAuditTopReason`
+- `nadir2.mq5:20281` — `DiagBlockerCode`
+- `nadir2.mq5:20311` — `DiagPrefix`
+- `nadir2.mq5:20321` — `DiagPublishCoreState`
+- `nadir2.mq5:20360` — `SignalStateName`
+- `nadir2.mq5:20380` — `IsConfirmedSignalState`
+- `nadir2.mq5:20386` — `IsLegalSignalStateTransition`
+- `nadir2.mq5:20419` — `TryTransitionSignalState`
+- `nadir2.mq5:20564` — `AnalyzeCandleIntelligence`
+- `nadir2.mq5:20702` — `AnalyzeInstitutionalBehavior`
+- `nadir2.mq5:20789` — `BuildLiquidityPriceIndex`
+- `nadir2.mq5:20805` — `BinarySearchNearestLiquidity`
+- `nadir2.mq5:20870` — `QSMC_ApplyExecClassification`
+- `nadir2.mq5:20925` — `AppendConfirmedSignalJournal`
+- `nadir2.mq5:21001` — `RecordHistoricalSetup`
+- `nadir2.mq5:21066` — `ConfirmPendingDirectSetup`
+- `nadir2.mq5:21128` — `UpdateHistoricalOutcomes`
+- `nadir2.mq5:21224` — `UpdateStatisticalMetrics`
+- `nadir2.mq5:21325` — `BuildSetupExplanation`
+- `nadir2.mq5:21354` — `CalculateAITradeSetup`
+- `nadir2.mq5:22219` — `LifecycleInvalidateActive`
+- `nadir2.mq5:22269` — `ManageSetupLifecycle`
+- `nadir2.mq5:22560` — `FireSetupAlert`
+- `nadir2.mq5:22624` — `ApplyQuantInputConfig`
+- `nadir2.mq5:22684` — `SessionLocalDayStartServer`
+- `nadir2.mq5:22701` — `VWAPAnchorFor`
+- `nadir2.mq5:22733` — `QuantVolumeAt`
+- `nadir2.mq5:22773` — `ReplayClosedBarStates`
+- `nadir2.mq5:22878` — `QuantVolClassLabel`
+- `nadir2.mq5:22889` — `QuantDisplacementClassLabel`
+- `nadir2.mq5:22908` — `GetClosedHTFEMAForBoundary`
+- `nadir2.mq5:22953` — `ClassifyQuantRegime`
+- `nadir2.mq5:23019` — `ComputeQuantFeatures`
+- `nadir2.mq5:23357` — `ComputeEntryQuality`
+- `nadir2.mq5:23613` — `TheoreticalRiskMoney`
+- `nadir2.mq5:23640` — `UpdateAnalyticalScalePlan`
+- `nadir2.mq5:23986` — `DrawScaleLevel`
+- `nadir2.mq5:24000` — `CleanupScaleObjects`
+- `nadir2.mq5:24010` — `FireQuantAlert`
+- `nadir2.mq5:24048` — `UpdateQuantEngine`
+- `nadir2.mq5:24066` — `FillEMAAndVWAP`
+- `nadir2.mq5:24189` — `DayAnchor`
+- `nadir2.mq5:24197` — `LastSundayUTC`
+- `nadir2.mq5:24217` — `NthSundayUTC`
+- `nadir2.mq5:24230` — `IsEuropeDSTUTC`
+- `nadir2.mq5:24240` — `IsUSDSTUTC`
+- `nadir2.mq5:24255` — `BrokerUTCOffsetSecondsAt`
+- `nadir2.mq5:24267` — `ServerToUTC`
+- `nadir2.mq5:24271` — `SessionLocalTime`
+- `nadir2.mq5:24289` — `DateKey`
+- `nadir2.mq5:24295` — `HourInWindow`
+- `nadir2.mq5:24301` — `IsInSession`
+- `nadir2.mq5:24315` — `IsInKillZone`
+- `nadir2.mq5:24328` — `ChartEventBarAtTime`
+- `nadir2.mq5:24342` — `ChartClosedBarAtTime`
+- `nadir2.mq5:24356` — `FractalRightBars`
+- `nadir2.mq5:24361` — `PreviewFractalRightBars`
+- `nadir2.mq5:24367` — `IsPreviewFractalHigh`
+- `nadir2.mq5:24382` — `IsPreviewFractalLow`
+- `nadir2.mq5:24406` — `DetectStructure`
+- `nadir2.mq5:24540` — `AddBreakerBlock`
+- `nadir2.mq5:24560` — `DetectOrderBlocks`
+- `nadir2.mq5:24680` — `DetectZones`
+- `nadir2.mq5:24754` — `AdvanceFVGStatesTo`
+- `nadir2.mq5:24773` — `CapAndPruneFVGs`
+- `nadir2.mq5:24789` — `AddOrMergeFVG`
+- `nadir2.mq5:24829` — `TryDetectFVGAt`
+- `nadir2.mq5:24877` — `DetectFVG`
+- `nadir2.mq5:24931` — `DetectLiquidity`
+- `nadir2.mq5:25079` — `DetectDealingRange`
+- `nadir2.mq5:25101` — `GetOTEZone`
+- `nadir2.mq5:25125` — `ComputeClosedStructureBias`
+- `nadir2.mq5:25250` — `ComputeHTFBias`
+- `nadir2.mq5:25307` — `DetectJudasSwing`
+- `nadir2.mq5:25420` — `P3_PhaseName`
+- `nadir2.mq5:25439` — `P3_Decide`
+- `nadir2.mq5:25489` — `P3_Score`
+- `nadir2.mq5:25503` — `P3_Update`
+- `nadir2.mq5:25566` — `SB_LocalTime`
+- `nadir2.mq5:25574` — `SB_MinuteOfDay`
+- `nadir2.mq5:25581` — `SB_DayKey`
+- `nadir2.mq5:25590` — `SB_MinuteInWindow`
+- `nadir2.mq5:25600` — `SB_WindowAtMinute`
+- `nadir2.mq5:25613` — `SB_InWindow`
+- `nadir2.mq5:25632` — `SB_ChainComplete`
+- `nadir2.mq5:25655` — `SB_Score`
+- `nadir2.mq5:25667` — `SB_WindowName`
+- `nadir2.mq5:25679` — `SB_Update`
+- `nadir2.mq5:25795` — `SB_DrawEntryZone`
+- `nadir2.mq5:25818` — `SBP3_Clear`
+- `nadir2.mq5:25833` — `SBP3_SelfTest`
+- `nadir2.mq5:26006` — `WY_EventName`
+- `nadir2.mq5:26018` — `WY_RangeValid`
+- `nadir2.mq5:26038` — `WY_Detect`
+- `nadir2.mq5:26091` — `WY_Score`
+- `nadir2.mq5:26106` — `WY_BuildRange`
+- `nadir2.mq5:26143` — `WY_Update`
+- `nadir2.mq5:26267` — `WY_DrawRange`
+- `nadir2.mq5:26287` — `WY_Clear`
+- `nadir2.mq5:26302` — `WY_SelfTest`
+- `nadir2.mq5:26464` — `PA_InsideBarGeometry`
+- `nadir2.mq5:26474` — `PA_UnifyPattern`
+- `nadir2.mq5:26485` — `PA_UnifyStrength`
+- `nadir2.mq5:26502` — `PA_PatternDirection`
+- `nadir2.mq5:26514` — `PA_IsConflict`
+- `nadir2.mq5:26522` — `PA_ResolveDirection`
+- `nadir2.mq5:26534` — `PA_Score`
+- `nadir2.mq5:26549` — `PA_ZoneAt`
+- `nadir2.mq5:26619` — `PA_Update`
+- `nadir2.mq5:26693` — `PA_Clear`
+- `nadir2.mq5:26706` — `PA_SelfTest`
+- `nadir2.mq5:26897` — `MR_StdDevAroundVWAP`
+- `nadir2.mq5:26918` — `MR_BandSide`
+- `nadir2.mq5:26928` — `MR_Stretch`
+- `nadir2.mq5:26938` — `MR_FindConfirmedSwingPair`
+- `nadir2.mq5:26963` — `MR_DivergenceDir`
+- `nadir2.mq5:26984` — `MR_MacdDirection`
+- `nadir2.mq5:26996` — `MR_MacdConflicts`
+- `nadir2.mq5:27003` — `MR_ResolveDirection`
+- `nadir2.mq5:27017` — `MR_Score`
+- `nadir2.mq5:27032` — `MR_RefreshMACD`
+- `nadir2.mq5:27074` — `MR_Update`
+- `nadir2.mq5:27231` — `MR_Clear`
+- `nadir2.mq5:27249` — `MR_SelfTest`
+- `nadir2.mq5:27484` — `CF_Pillar`
+- `nadir2.mq5:27495` — `CF_Aggregate`
+- `nadir2.mq5:27514` — `CF_PickSide`
+- `nadir2.mq5:27526` — `CF_IsAmbiguous`
+- `nadir2.mq5:27534` — `CF_Contradicts`
+- `nadir2.mq5:27541` — `CF_CountContradictions`
+- `nadir2.mq5:27556` — `CF_StandAsideReason`
+- `nadir2.mq5:27582` — `CF_Update`
+- `nadir2.mq5:27733` — `CF_Clear`
+- `nadir2.mq5:27748` — `CF_SelfTest`
+- `nadir2.mq5:27971` — `RM_ClampRiskPct`
+- `nadir2.mq5:27979` — `RM_RewardRisk`
+- `nadir2.mq5:27991` — `RM_StopBehind`
+- `nadir2.mq5:28001` — `RM_StopDistanceOK`
+- `nadir2.mq5:28011` — `RM_FallbackTP`
+- `nadir2.mq5:28020` — `RM_TPsOrdered`
+- `nadir2.mq5:28040` — `RM_PositionSize`
+- `nadir2.mq5:28052` — `RM_Verdict`
+- `nadir2.mq5:28061` — `RM_SizeText`
+- `nadir2.mq5:28073` — `RM_PoolsAhead`
+- `nadir2.mq5:28120` — `RM_NearestPoolBehind`
+- `nadir2.mq5:28142` — `RM_Update`
+- `nadir2.mq5:28325` — `RM_Clear`
+- `nadir2.mq5:28341` — `RM_SelfTest`
+- `nadir2.mq5:28519` — `DetectKillZones`
+- `nadir2.mq5:28575` — `DrawHLine`
+- `nadir2.mq5:28591` — `LabelFontPx`
+- `nadir2.mq5:28600` — `DrawTextLabel`
+- `nadir2.mq5:28627` — `DrawFibLine`
+- `nadir2.mq5:28648` — `DrawZoneBox`
+- `nadir2.mq5:28675` — `ResetVisualZoneRegistry`
+- `nadir2.mq5:28679` — `DrawUniqueSMCZoneBox`
+- `nadir2.mq5:28708` — `DrawZones`
+- `nadir2.mq5:28734` — `DrawStructureAndOB`
+- `nadir2.mq5:28771` — `DrawBreakerZones`
+- `nadir2.mq5:28784` — `DrawFVGZones`
+- `nadir2.mq5:28800` — `DrawLiquidityMarkers`
+- `nadir2.mq5:28823` — `DrawKillZones`
+- `nadir2.mq5:28837` — `DrawPremiumDiscount`
+- `nadir2.mq5:28882` — `DrawProvisionalFractals`
+- `nadir2.mq5:28908` — `UpdateEarlyBreakPreview`
+- `nadir2.mq5:29007` — `D1HistoryAvailable`
+- `nadir2.mq5:29017` — `DrawPDHPDL`
+- `nadir2.mq5:29027` — `DrawPivotPoints`
+- `nadir2.mq5:29047` — `DrawCamarilla`
+- `nadir2.mq5:29067` — `DrawSessionHighLow`
+- `nadir2.mq5:29100` — `QSMC_PresetInt`
+- `nadir2.mq5:29108` — `QSMC_PresetDouble`
+- `nadir2.mq5:29116` — `QSMC_EffectiveMergeATR`
+- `nadir2.mq5:29121` — `ZRE_EffectiveApproachATR`
+- `nadir2.mq5:29126` — `ZRE_EffectiveBreakATR`
+- `nadir2.mq5:29131` — `ZRE_EffectivePenetrationATR`
+- `nadir2.mq5:29136` — `ZRE_EffectiveMinEvidence`
+- `nadir2.mq5:29141` — `ZRE_EffectiveMinScore`
+- `nadir2.mq5:29146` — `RXN_EffectiveTrackBars`
+- `nadir2.mq5:29151` — `RXN_EffectiveConfirmWindowBars`
+- `nadir2.mq5:29156` — `ConfluentSRMergeTolerance`
+- `nadir2.mq5:29162` — `MergeConfluentSRInto`
+- `nadir2.mq5:29184` — `ConsolidateConfluentSR`
+- `nadir2.mq5:29204` — `AddConfluentSRSource`
+- `nadir2.mq5:29245` — `BuildConfluentSRLevels`
+- `nadir2.mq5:29434` — `TextWidthPx`
+- `nadir2.mq5:29451` — `QSMC_ClipChars`
+- `nadir2.mq5:29464` — `SafeLeftPanelWidth`
+- `nadir2.mq5:29510` — `AddTradeLevelKeepOut`
+- `nadir2.mq5:29521` — `UpdateTradeLevelKeepOut`
+- `nadir2.mq5:29549` — `AvoidTradeLevelKeepOut`
+- `nadir2.mq5:29579` — `RedrawAllPanels`
+- `nadir2.mq5:29589` — `CompactChartLabelRegistry`
+- `nadir2.mq5:29605` — `RegisterChartLabel`
+- `nadir2.mq5:29629` — `ChartLabelPriority`
+- `nadir2.mq5:29641` — `ChartLabelSizePx`
+- `nadir2.mq5:29653` — `ChartLabelRectFree`
+- `nadir2.mq5:29666` — `QSMC_LabelFamily`
+- `nadir2.mq5:29676` — `QSMC_StructureLabelToken`
+- `nadir2.mq5:29686` — `QSMC_MergeNearbyChartLabels`
+- `nadir2.mq5:29746` — `ResolveChartLabelCollisions`
+- `nadir2.mq5:29858` — `DrawBattleAnnotations`
+- `nadir2.mq5:29889` — `DrawSetupZone`
+- `nadir2.mq5:29907` — `DrawTradeBox`
+- `nadir2.mq5:29922` — `DrawTradeLevels`
+- `nadir2.mq5:29944` — `CoreDashConfirmed`
+- `nadir2.mq5:29952` — `CoreDashLivePreview`
+- `nadir2.mq5:29959` — `CoreDashDirection`
+- `nadir2.mq5:29975` — `CoreDashHasCandidate`
+- `nadir2.mq5:29985` — `CoreDashHardBlocked`
+- `nadir2.mq5:29994` — `CoreDashState`
+- `nadir2.mq5:30006` — `CoreDashBlocker`
+- `nadir2.mq5:30026` — `CoreDashStructureType`
+- `nadir2.mq5:30036` — `CoreDashClosedRetest`
+- `nadir2.mq5:30045` — `CoreDashChain`
+- `nadir2.mq5:30064` — `CoreDashDataHealthToken`
+- `nadir2.mq5:30072` — `CoreDashBiasKnown`
+- `nadir2.mq5:30080` — `CoreDashBiasSign`
+- `nadir2.mq5:30091` — `CoreDashBiasLine`
+- `nadir2.mq5:30121` — `CoreDashConsiderLevel`
+- `nadir2.mq5:30137` — `CoreDashNearestRestingLevel`
+- `nadir2.mq5:30198` — `CoreDashVolumeLine`
+- `nadir2.mq5:30220` — `CoreDashLevelsLine`
+- `nadir2.mq5:30248` — `ScenarioTFInit`
+- `nadir2.mq5:30266` — `ScenarioContextInit`
+- `nadir2.mq5:30303` — `ScenarioDirectionTokenCode`
+- `nadir2.mq5:30311` — `ScenarioDirectionToken`
+- `nadir2.mq5:30320` — `ScenarioCopyClosedRates`
+- `nadir2.mq5:30402` — `ScenarioPlanInit`
+- `nadir2.mq5:30569` — `ScenarioPlanCopy`
+- `nadir2.mq5:30699` — `ScenarioStateName`
+- `nadir2.mq5:30721` — `ScenarioVerdictName`
+- `nadir2.mq5:30738` — `ScenarioStateColor`
+- `nadir2.mq5:30751` — `ScenarioLoadTF`
+- `nadir2.mq5:30818` — `ScenarioFindExecutionStructure`
+- `nadir2.mq5:30836` — `ScenarioBuildContext`
+- `nadir2.mq5:30967` — `ScenarioCopyRxnEvidence`
+- `nadir2.mq5:31080` — `ScenarioRxnForZone`
+- `nadir2.mq5:31103` — `ScenarioZoneAlreadyKnown`
+- `nadir2.mq5:31111` — `ScenarioNearestBarrier`
+- `nadir2.mq5:31140` — `ScenarioZonesOverlap`
+- `nadir2.mq5:31148` — `ScenarioEvaluateGeometry`
+- `nadir2.mq5:31405` — `ScenarioTopDownLegCausal`
+- `nadir2.mq5:31414` — `ScenarioTopDownSnapshotCausal`
+- `nadir2.mq5:31427` — `ScenarioChainMirror`
+- `nadir2.mq5:31487` — `ScenarioEvaluateM30M15`
+- `nadir2.mq5:31634` — `ScenarioLegTexts`
+- `nadir2.mq5:31658` — `ScenarioMarkLate`
+- `nadir2.mq5:31713` — `TacticalScenarioTerminal`
+- `nadir2.mq5:31742` — `TacticalScenarioLive`
+- `nadir2.mq5:31758` — `TacticalAuthorityName`
+- `nadir2.mq5:31773` — `TacticalAuthorityDecide`
+- `nadir2.mq5:31856` — `TacticalAuthorityGate`
+- `nadir2.mq5:31876` — `TacticalAuthoritySelfTest`
+- `nadir2.mq5:31956` — `ScenarioMarkLocation`
+- `nadir2.mq5:31977` — `ScenarioM5RetestScan`
+- `nadir2.mq5:32134` — `ScenarioRankScore`
+- `nadir2.mq5:32148` — `ScenarioMarkRelevant`
+- `nadir2.mq5:32279` — `ScenarioClassifyPlan`
+- `nadir2.mq5:32405` — `ScenarioBuildZonePlan`
+- `nadir2.mq5:32475` — `ScenarioPlanBetter`
+- `nadir2.mq5:32500` — `ScenarioConsiderPlan`
+- `nadir2.mq5:32506` — `ScenarioDiscover`
+- `nadir2.mq5:32581` — `ScenarioCoreReady`
+- `nadir2.mq5:32595` — `ScenarioApplyCoreReady`
+- `nadir2.mq5:32670` — `ScenarioEntryStatusToken`
+- `nadir2.mq5:32684` — `ScenarioPlanHeadline`
+- `nadir2.mq5:32703` — `ScenarioPlanLeadKey`
+- `nadir2.mq5:32720` — `ScenarioBuildVerdict`
+- `nadir2.mq5:32829` — `ScenarioMTEESelfTest`
+- `nadir2.mq5:32897` — `ScenarioUpdate`
+- `nadir2.mq5:32930` — `ScenarioClear`
+- `nadir2.mq5:32946` — `ScenarioDeleteObjects`
+- `nadir2.mq5:32952` — `ScenarioDrawOne`
+- `nadir2.mq5:33004` — `ScenarioDraw`
+- `nadir2.mq5:33045` — `ScenarioOnChartChange`
+- `nadir2.mq5:33050` — `ScenarioDashAdd`
+- `nadir2.mq5:33058` — `ScenarioPlanZoneText`
+- `nadir2.mq5:33067` — `ScenarioPlanTargetsText`
+- `nadir2.mq5:33082` — `ScenarioLead`
+- `nadir2.mq5:33097` — `ScenarioPlanEntryText`
+- `nadir2.mq5:33107` — `ScenarioPlanTriggerText`
+- `nadir2.mq5:33115` — `ScenarioPlanStopText`
+- `nadir2.mq5:33132` — `ScenarioPlanLegsText`
+- `nadir2.mq5:33145` — `ScenarioDashPlanFull`
+- `nadir2.mq5:33187` — `ScenarioDashFull`
+- `nadir2.mq5:33269` — `CoreDashboardDeleteObjects`
+- `nadir2.mq5:33296` — `QSMC_PurgePlaceholderTextObjects`
+- `nadir2.mq5:33320` — `DrawQuantumDashboard`
+- `nadir2.mq5:33818` — `MTF_RefreshAlignment`
+- `nadir2.mq5:33862` — `TopDown_Reset`
+- `nadir2.mq5:33892` — `TopDown_Reason`
+- `nadir2.mq5:33899` — `TopDown_Fail`
+- `nadir2.mq5:33907` — `TopDown_LoadClosed`
+- `nadir2.mq5:33920` — `TopDown_RangeEq`
+- `nadir2.mq5:33933` — `TopDown_ATR`
+- `nadir2.mq5:33948` — `TopDown_MaxHigh`
+- `nadir2.mq5:33955` — `TopDown_MinLow`
+- `nadir2.mq5:33964` — `TopDown_Profile`
+- `nadir2.mq5:34027` — `TopDown_React30`
+- `nadir2.mq5:34053` — `TopDown_Sequence15`
+- `nadir2.mq5:34152` — `TopDown_Evaluate`
+- `nadir2.mq5:34383` — `TopDown_Update`
+- `nadir2.mq5:34441` — `TopDown_BlocksDirection`
+- `nadir2.mq5:34454` — `TopDown_VetoesDirection`
+- `nadir2.mq5:34463` — `TopDown_VerdictState`
+- `nadir2.mq5:34483` — `TopDown_GatingModeLine`
+- `nadir2.mq5:34512` — `IsFractalHigh`
+- `nadir2.mq5:34523` — `IsFractalLow`
+- `nadir2.mq5:34627` — `MVP_LoadConfig`
+- `nadir2.mq5:34692` — `MVP_Tick`
+- `nadir2.mq5:34701` — `MVP_SnapRound`
+- `nadir2.mq5:34709` — `MVP_SnapUp`
+- `nadir2.mq5:34719` — `MVP_TriangleMass`
+- `nadir2.mq5:34761` — `MVP_PrepareGrid`
+- `nadir2.mq5:34805` — `MVP_Accumulate`
+- `nadir2.mq5:34856` — `MVP_SelectNodes`
+- `nadir2.mq5:34891` — `MVP_Finalize`
+- `nadir2.mq5:35023` — `MVP_VolumeAt`
+- `nadir2.mq5:35032` — `MVP_DecideReal`
+- `nadir2.mq5:35045` — `MVP_BaseRow`
+- `nadir2.mq5:35066` — `MVP_BuildBars`
+- `nadir2.mq5:35091` — `MVP_AddProfile`
+- `nadir2.mq5:35108` — `MVP_DayStart`
+- `nadir2.mq5:35125` — `MVP_WeekStart`
+- `nadir2.mq5:35136` — `MVP_OvernightDateKey`
+- `nadir2.mq5:35147` — `MVP_SessionKey`
+- `nadir2.mq5:35157` — `MVP_FindPeriod`
+- `nadir2.mq5:35198` — `MVP_BuildDays`
+- `nadir2.mq5:35211` — `MVP_BuildWeeks`
+- `nadir2.mq5:35224` — `MVP_CollectSessionRuns`
+- `nadir2.mq5:35250` — `MVP_BuildOneSession`
+- `nadir2.mq5:35266` — `MVP_DockNewestSession`
+- `nadir2.mq5:35281` — `MVP_BuildSessions`
+- `nadir2.mq5:35292` — `MVP_BuildVisible`
+- `nadir2.mq5:35318` — `MVP_BuildFixed`
+- `nadir2.mq5:35326` — `MVP_AssignActive`
+- `nadir2.mq5:35340` — `MVP_CollectNaked`
+- `nadir2.mq5:35364` — `MVP_ViewSignature`
+- `nadir2.mq5:35372` — `MVP_Rebuild`
+- `nadir2.mq5:35405` — `MVP_Clear`
+- `nadir2.mq5:35415` — `MVP_Rect`
+- `nadir2.mq5:35438` — `MVP_Line`
+- `nadir2.mq5:35455` — `MVP_Tag`
+- `nadir2.mq5:35465` — `MVP_PocColor`
+- `nadir2.mq5:35474` — `MVP_Px`
+- `nadir2.mq5:35479` — `MVP_HistSpan`
+- `nadir2.mq5:35530` — `MVP_RowColor`
+- `nadir2.mq5:35545` — `MVP_DrawHistogram`
+- `nadir2.mq5:35606` — `MVP_PocIsNaked`
+- `nadir2.mq5:35617` — `MVP_SegmentEnd`
+- `nadir2.mq5:35626` — `MVP_DrawProfileLevels`
+- `nadir2.mq5:35658` — `MVP_DrawNaked`
+- `nadir2.mq5:35677` — `MVP_DrawNodes`
+- `nadir2.mq5:35702` — `MVP_DrawValueBox`
+- `nadir2.mq5:35718` — `MVP_DrawLegend`
+- `nadir2.mq5:35723` — `MVP_Draw`
+- `nadir2.mq5:35753` — `MVP_Update`
+- `nadir2.mq5:35784` — `MVP_OnChartChange`
+- `nadir2.mq5:35791` — `MVP_Expect`
+- `nadir2.mq5:35796` — `MVP_SelfTest`
+- `nadir2.mq5:35917` — `ZRE_CfgMaxZones`
+- `nadir2.mq5:35925` — `ZRE_CfgMinZoneScore`
+- `nadir2.mq5:35933` — `ZRE_CfgPadATR`
+- `nadir2.mq5:35940` — `ZRE_CfgMaxZoneATR`
+- `nadir2.mq5:35947` — `ZRE_CfgFreshBars`
+- `nadir2.mq5:35955` — `ZRE_ContextInit`
+- `nadir2.mq5:35976` — `ZRE_CleanToken`
+- `nadir2.mq5:35986` — `ZRE_TokenUnion`
+- `nadir2.mq5:36019` — `ZRE_AddCand`
+- `nadir2.mq5:36041` — `ZRE_CandBefore`
+- `nadir2.mq5:36054` — `ZRE_SortCands`
+- `nadir2.mq5:36070` — `ZRE_MergeInto`
+- `nadir2.mq5:36084` — `ZRE_Gap`
+- `nadir2.mq5:36094` — `ZRE_Consolidate`
+- `nadir2.mq5:36144` — `ZRE_SideFor`
+- `nadir2.mq5:36153` — `ZRE_CountTouchEpisodes`
+- `nadir2.mq5:36188` — `ZRE_CausalSide`
+- `nadir2.mq5:36195` — `ZRE_TouchPts`
+- `nadir2.mq5:36203` — `ZRE_CountPts`
+- `nadir2.mq5:36211` — `ZRE_FreshPts`
+- `nadir2.mq5:36220` — `ZRE_BiasPts`
+- `nadir2.mq5:36230` — `ZRE_IsFlipped`
+- `nadir2.mq5:36262` — `ZRE_ScoreZoneEx`
+- `nadir2.mq5:36295` — `ZRE_ZoneId`
+- `nadir2.mq5:36301` — `ZRE_ZoneBefore`
+- `nadir2.mq5:36328` — `ZRE_BuildZonesEx`
+- `nadir2.mq5:36449` — `ZRE_BuildZones`
+- `nadir2.mq5:36465` — `ZRE_RoundTick`
+- `nadir2.mq5:36471` — `ZRE_ParamsInit`
+- `nadir2.mq5:36495` — `ZRE_EvidenceInit`
+- `nadir2.mq5:36508` — `ZRE_RejectionInit`
+- `nadir2.mq5:36526` — `ZRE_StatusInit`
+- `nadir2.mq5:36539` — `ZRE_LifecycleRetired`
+- `nadir2.mq5:36548` — `ZRE_LifecycleGet`
+- `nadir2.mq5:36561` — `ZRE_LifecycleSet`
+- `nadir2.mq5:36599` — `ZRE_FilterRetiredZones`
+- `nadir2.mq5:36614` — `ZRE_SignalInit`
+- `nadir2.mq5:36641` — `ZRE_OutcomeInit`
+- `nadir2.mq5:36654` — `ZRE_VerdictInit`
+- `nadir2.mq5:36675` — `ZRE_ZoneGap`
+- `nadir2.mq5:36682` — `ZRE_IsBrokenNow`
+- `nadir2.mq5:36690` — `ZRE_OppositeSide`
+- `nadir2.mq5:36709` — `ZRE_EffectiveSide`
+- `nadir2.mq5:36724` — `GetSignalDirection`
+- `nadir2.mq5:36751` — `ZRE_ClassifyState`
+- `nadir2.mq5:36769` — `ZRE_EffectiveState`
+- `nadir2.mq5:36777` — `ZRE_StateName`
+- `nadir2.mq5:36799` — `ZRE_EvalRejection`
+- `nadir2.mq5:36851` — `ZRE_ComputeEntrySL`
+- `nadir2.mq5:36866` — `ZRE_StrictOrder`
+- `nadir2.mq5:36876` — `ZRE_FinalizeGeometry`
+- `nadir2.mq5:36935` — `ZRE_BiasPts15`
+- `nadir2.mq5:36943` — `ZRE_StatePts`
+- `nadir2.mq5:36952` — `ZRE_ScoreSignal`
+- `nadir2.mq5:36987` — `ZRE_TrackAdvance`
+- `nadir2.mq5:37028` — `ZRE_TrackAdvanceTo`
+- `nadir2.mq5:37038` — `ZRE_ComputeStats`
+- `nadir2.mq5:37073` — `ZRE_StatsText`
+- `nadir2.mq5:37099` — `ZRE_SignalBetter`
+- `nadir2.mq5:37108` — `ZRE_Clip`
+- `nadir2.mq5:37124` — `ZRE_SelectVerdict`
+- `nadir2.mq5:37179` — `ZRE_VerdictMini`
+- `nadir2.mq5:37189` — `ZRE_Expect`
+- `nadir2.mq5:37195` — `ZRE_TestSeries`
+- `nadir2.mq5:37226` — `ZRE_TestCtx`
+- `nadir2.mq5:37251` — `ZRE_SameZones`
+- `nadir2.mq5:37265` — `ZRE_TestFill`
+- `nadir2.mq5:37289` — `ZRE_TestZone`
+- `nadir2.mq5:37307` — `ZRE_TestBar`
+- `nadir2.mq5:37316` — `ZRE_TestSignal`
+- `nadir2.mq5:37358` — `ZRE_TestSeriesHL`
+- `nadir2.mq5:37369` — `ZRE_SelfTestReaction`
+- `nadir2.mq5:37710` — `ZRE_SelfTest`
+- `nadir2.mq5:37842` — `ZRE_ParamsFromInputs`
+- `nadir2.mq5:37870` — `ZRE_SmcDirection`
+- `nadir2.mq5:37882` — `ZRE_BuildEvidence`
+- `nadir2.mq5:37908` — `ZRE_TryBuildSignal`
+- `nadir2.mq5:37977` — `ZRE_RemoveSignal`
+- `nadir2.mq5:37991` — `ZRE_AddSignal`
+- `nadir2.mq5:38024` — `ZRE_AdvanceAll`
+- `nadir2.mq5:38041` — `ZRE_ZoneText`
+- `nadir2.mq5:38050` — `ZRE_ZoneFlippedClosed`
+- `nadir2.mq5:38059` — `ZRE_AlertState`
+- `nadir2.mq5:38125` — `ZRE_RefreshVerdict`
+- `nadir2.mq5:38146` — `ZRE_DeleteObjects`
+- `nadir2.mq5:38154` — `ZRE_Arrow`
+- `nadir2.mq5:38171` — `ZRE_DrawOnePath`
+- `nadir2.mq5:38243` — `ZRE_DrawPaths`
+- `nadir2.mq5:38272` — `ZRE_DrawPreview`
+- `nadir2.mq5:38301` — `ZRE_ProcessLive`
+- `nadir2.mq5:38339` — `ZRE_ProcessClosedBar`
+- `nadir2.mq5:38516` — `ZRE_CollectCandidates`
+- `nadir2.mq5:38616` — `ZRE_FillContext`
+- `nadir2.mq5:38638` — `ZRE_Clear`
+- `nadir2.mq5:38655` — `ZRE_OnChartChange`
+- `nadir2.mq5:38666` — `ZRE_Update`
+- `nadir2.mq5:38794` — `RXN_LiqInit`
+- `nadir2.mq5:38813` — `RXN_DispInit`
+- `nadir2.mq5:38832` — `RXN_StructInit`
+- `nadir2.mq5:38844` — `RXN_EvidenceInit`
+- `nadir2.mq5:38928` — `RXN_RecordInit`
+- `nadir2.mq5:38957` — `RXN_ParamsInit`
+- `nadir2.mq5:38995` — `RXN_LevelName`
+- `nadir2.mq5:39005` — `RXN_PhaseName`
+- `nadir2.mq5:39020` — `RXN_OutcomeName`
+- `nadir2.mq5:39030` — `RXN_LiqSideName`
+- `nadir2.mq5:39037` — `RXN_LiqApplyName`
+- `nadir2.mq5:39053` — `RXN_CountAcceptBars`
+- `nadir2.mq5:39078` — `RXN_BrokenNow`
+- `nadir2.mq5:39087` — `RXN_ClassifyOutcome`
+- `nadir2.mq5:39114` — `RXN_PenetrationBudget`
+- `nadir2.mq5:39129` — `RXN_DispBodyRequirement`
+- `nadir2.mq5:39144` — `RXN_DispNeedsConsequence`
+- `nadir2.mq5:39162` — `RXN_ScanDisplacement`
+- `nadir2.mq5:39216` — `RXN_PtsZone`
+- `nadir2.mq5:39227` — `RXN_PtsArrival`
+- `nadir2.mq5:39253` — `RXN_PtsRejection`
+- `nadir2.mq5:39278` — `RXN_PtsLiquidity`
+- `nadir2.mq5:39297` — `RXN_PtsStructure`
+- `nadir2.mq5:39314` — `RXN_PtsContext`
+- `nadir2.mq5:39343` — `RXN_Score`
+- `nadir2.mq5:39377` — `RXN_Level`
+- `nadir2.mq5:39390` — `RXN_LevelEx`
+- `nadir2.mq5:39431` — `RXN_ApplyOpposition`
+- `nadir2.mq5:39482` — `RXN_PhaseAfterStructure`
+- `nadir2.mq5:39493` — `RXN_ExecReason`
+- `nadir2.mq5:39509` — `RXN_NeedsText`
+- `nadir2.mq5:39524` — `RXN_PathText`
+- `nadir2.mq5:39564` — `RXN_BuildEvidenceLines`
+- `nadir2.mq5:39665` — `RXN_SuppressionText`
+- `nadir2.mq5:39734` — `RXN_Classify`
+- `nadir2.mq5:39896` — `RXN_ShouldPromote`
+- `nadir2.mq5:39935` — `RXN_Expect`
+- `nadir2.mq5:39940` — `RXN_TestZone`
+- `nadir2.mq5:39959` — `RXN_TestBar`
+- `nadir2.mq5:39966` — `RXN_TestIntel`
+- `nadir2.mq5:39993` — `RXN_TestLiqSwept`
+- `nadir2.mq5:40013` — `RXN_TestStruct`
+- `nadir2.mq5:40025` — `RXN_TestZEvidence`
+- `nadir2.mq5:40042` — `RXN_TestReject`
+- `nadir2.mq5:40059` — `RXN_Scenario`
+- `nadir2.mq5:40117` — `RXN_SelfTestRun`
+- `nadir2.mq5:40682` — `RXN_ParamsFromInputs`
+- `nadir2.mq5:40724` — `RXN_LiqTypeIsBuySide`
+- `nadir2.mq5:40729` — `RXN_LiqTypeIsSellSide`
+- `nadir2.mq5:40743` — `RXN_ProbeLiquidity`
+- `nadir2.mq5:40853` — `RXN_BuildIntelWindow`
+- `nadir2.mq5:40951` — `RXN_IntelAt`
+- `nadir2.mq5:40965` — `RXN_SliceIntel`
+- `nadir2.mq5:40988` — `RXN_ProbeStructure`
+- `nadir2.mq5:41033` — `RXN_ProbeConsequence`
+- `nadir2.mq5:41062` — `RXN_ProbeMTF`
+- `nadir2.mq5:41075` — `RXN_MirrorExecState`
+- `nadir2.mq5:41110` — `RXN_RecordId`
+- `nadir2.mq5:41115` — `RXN_RecordExists`
+- `nadir2.mq5:41125` — `RXN_RecordAdd`
+- `nadir2.mq5:41171` — `AlertCandidateInit`
+- `nadir2.mq5:41195` — `AlertDispatcherClear`
+- `nadir2.mq5:41220` — `QSMC_InVisualDistance`
+- `nadir2.mq5:41230` — `QSMC_InVisualBand`
+- `nadir2.mq5:41242` — `QSMC_DisplayAllowsObject`
+- `nadir2.mq5:41254` — `QSMC_ApplyVisualPolicy`
+- `nadir2.mq5:41291` — `QSMC_IsDirectionalAlertMessage`
+- `nadir2.mq5:41298` — `QSMC_ClaimDirectionalAlert`
+- `nadir2.mq5:41307` — `AlertCurrentClosedIndex`
+- `nadir2.mq5:41314` — `AlertDistanceATR`
+- `nadir2.mq5:41321` — `AlertOpposingRoomATR`
+- `nadir2.mq5:41368` — `AlertBaseKey`
+- `nadir2.mq5:41373` — `AlertExactKey`
+- `nadir2.mq5:41378` — `AlertDispatcherSubmit`
+- `nadir2.mq5:41419` — `AlertCandidateBetter`
+- `nadir2.mq5:41436` — `AlertWithinMaxDistance`
+- `nadir2.mq5:41443` — `AlertInvalidationText`
+- `nadir2.mq5:41450` — `AlertCompactLine`
+- `nadir2.mq5:41465` — `AlertChannelsFor`
+- `nadir2.mq5:41489` — `AlertCooldownAllows`
+- `nadir2.mq5:41504` — `AlertCooldownCommit`
+- `nadir2.mq5:41522` — `AlertDispatcherDrawPrimary`
+- `nadir2.mq5:41592` — `WeightedGateAllows`
+- `nadir2.mq5:41648` — `AlertDispatcherFinalize`
+- `nadir2.mq5:41827` — `AlertWhyNoPopup`
+- `nadir2.mq5:41891` — `RXN_Alert`
+- `nadir2.mq5:41933` — `RXN_VolRegimeAt`
+- `nadir2.mq5:41949` — `RXN_EvidenceAtBar`
+- `nadir2.mq5:41967` — `RXN_EvalZone`
+- `nadir2.mq5:42129` — `RXN_ZoneBefore`
+- `nadir2.mq5:42141` — `RXN_RankExtra`
+- `nadir2.mq5:42181` — `RXN_ZoneMemoReset`
+- `nadir2.mq5:42189` — `RXN_ZoneMemoBetter`
+- `nadir2.mq5:42197` — `RXN_ZoneMemoFind`
+- `nadir2.mq5:42204` — `RXN_ZoneMemoAdd`
+- `nadir2.mq5:42231` — `RXN_ZoneEvidence`
+- `nadir2.mq5:42245` — `RXN_ProcessClosedBar`
+- `nadir2.mq5:42450` — `RXN_ReportOwnershipBlock`
+- `nadir2.mq5:42479` — `RXN_ProcessLive`
+- `nadir2.mq5:42508` — `RXN_BestReaction`
+- `nadir2.mq5:42522` — `RXN_ReconcileActiveSetup`
+- `nadir2.mq5:42562` — `RXN_Clear`
+- `nadir2.mq5:42587` — `RXN_Update`
+- `nadir2.mq5:42614` — `RXN_OnChartChange`
+- `nadir2.mq5:42625` — `RXN_DebugReport`
+- `nadir2.mq5:42682` — `RXN_DeleteObjects`
+- `nadir2.mq5:42689` — `RXN_LevelColor`
+- `nadir2.mq5:42697` — `RXN_DrawOne`
+- `nadir2.mq5:42768` — `RXN_Draw`
+- `nadir2.mq5:42854` — `PMI_Update`
+- `nadir2.mq5:42870` — `MTF_SniperTFByIndex`
+- `nadir2.mq5:42885` — `MTF_SniperTFIndex`
+- `nadir2.mq5:42901` — `MTF_SniperTFWeight`
+- `nadir2.mq5:42917` — `MTF_SniperTypeWeight`
+- `nadir2.mq5:42935` — `MTF_SniperFreshnessScore`
+- `nadir2.mq5:42944` — `MTF_SniperTouchQuality`
+- `nadir2.mq5:42957` — `MTF_SniperVolumeScore`
+- `nadir2.mq5:42965` — `MTF_SniperQueryMVPVolumeRatio`
+- `nadir2.mq5:43001` — `MTF_SniperComputeZoneStrength`
+- `nadir2.mq5:43024` — `MTF_SniperLevelInit`
+- `nadir2.mq5:43040` — `MTF_SniperClusterInit`
+- `nadir2.mq5:43086` — `MTF_SniperZone_Init`
+- `nadir2.mq5:43124` — `QSMC_CopyStatus`
+- `nadir2.mq5:43140` — `MTF_SniperCopyRatesBounded`
+- `nadir2.mq5:43201` — `MTF_SniperCopyBufferBounded`
+- `nadir2.mq5:43289` — `MTF_SniperReadHTF_EMA`
+- `nadir2.mq5:43311` — `MTF_SniperEvaluateTouchesAndBreaches`
+- `nadir2.mq5:43367` — `MTF_SniperAppendRawZone`
+- `nadir2.mq5:43386` — `MTF_SniperCollectTF`
+- `nadir2.mq5:43942` — `MTF_SniperFormatTFMask`
+- `nadir2.mq5:43957` — `MTF_SniperFormatTypeMask`
+- `nadir2.mq5:43972` — `MTF_SniperClusterAndMerge`
+- `nadir2.mq5:44114` — `MTF_SniperOverlapsNativeOBorFVG`
+- `nadir2.mq5:44148` — `MTF_SniperComputeMacroBias`
+- `nadir2.mq5:44203` — `MTF_SniperValidateGates`
+- `nadir2.mq5:44254` — `MTF_SniperCheckSessionTiming`
+- `nadir2.mq5:44268` — `MTF_SniperIsNewsBlackout`
+- `nadir2.mq5:44293` — `MTF_SniperEvaluateEntryTriggers`
+- `nadir2.mq5:44446` — `MTF_SniperComputeTradeManagement`
+- `nadir2.mq5:44610` — `MTF_SniperZone_DeleteObjects`
+- `nadir2.mq5:44615` — `MTF_SniperZone_Draw`
+- `nadir2.mq5:44683` — `MTF_SniperZone_OnChartChange`
+- `nadir2.mq5:44697` — `MTF_SniperScoreForDirection`
+- `nadir2.mq5:44718` — `MTF_SniperScaleEightPillarScore`
+- `nadir2.mq5:44733` — `MTF_SniperInvalidateSnapshot`
+- `nadir2.mq5:44749` — `MTF_SniperDataStatus`
+- `nadir2.mq5:44758` — `MTF_SniperZone_Update`
+- `nadir2.mq5:44945` — `MTF_SniperExpect`
+- `nadir2.mq5:44950` — `MTF_SniperZone_SelfTest`
