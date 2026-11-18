@@ -63,6 +63,8 @@ CHECKS = [
     ("comment-integrity", [sys.executable, "tools/test_comment_integrity.py"]),
     ("tick-performance", [sys.executable, "tools/test_tick_performance.py"]),
     ("runtime-diagnostics", [sys.executable, "tools/test_runtime_diagnostics.py"]),
+    ("el-data-integrity", [sys.executable, "tools/test_el_data_integrity.py"]),
+    ("el-sniper-readiness", [sys.executable, "tools/test_el_sniper_readiness.py"]),
     ("ux1-master-switch", [sys.executable, "tools/test_ux1_master_switch.py"]),
     ("display-authority", [sys.executable, "tools/test_display_authority.py"]),
     ("price-provenance", [sys.executable, "tools/test_price_provenance.py"]),

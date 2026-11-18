@@ -5154,6 +5154,10 @@ bool               g_sniper_w1_strong  = false;
 double             g_sniper_h1_adx     = 0.0;
 double             g_sniper_h1_atr     = 0.0;
 datetime           g_sniper_last_bar_time = 0;
+bool               g_sniper_data_ready = false;
+string             g_sniper_data_status = "";
+datetime           g_sniper_h1_bar_time = 0;
+datetime           g_sniper_m15_bar_time = 0;
 
 //====================================================================
 // FORWARD DECLARATIONS (100% Signature & Array Compatible)
@@ -15883,11 +15887,10 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // RETRY, not a skip - the function returns prev_calculated BEFORE
    // "g_last_bar_time" is committed, so the same bar is evaluated again on the
    // next tick (or the next event) with the data the terminal has by then.
-   // Retry is bounded. A short CopyBuffer may resize its destination and its
-   // returned subset cannot safely be aligned to the entire chart history.
-   // Copy to temporary arrays first; commit complete copies only. On exhaustion
-   // mark an incomplete full buffer unavailable, or only the newly closed/live
-   // tail for an incremental copy (leave older closed values unchanged).
+   // Retry diagnostics are bounded. A short CopyBuffer may resize its destination
+   // and cannot safely be aligned to the entire chart history. Copy to temporary
+   // arrays first; commit complete copies only. Exhaustion never authorizes an
+   // incomplete snapshot: keep retrying this bar without repeated warning spam.
    // A periodic causal replay is NOT a reason to recopy the whole indicator
    // history: the aligned buffers already hold the older closed-bar values.
    // Full copies are for attach/refresh, resize, or a history gap only.
@@ -15927,11 +15930,13 @@ int OnCalculate(const int rates_total, const int prev_calculated,
          Print("[DataHealth] WARNING role=",EnumToString(g_instance_role)," after ",g_ind_copy_retries,
                " retries the terminal still serves only ATR ",na,"/",need,
                ", ADX ",nd,"/",need,", RSI ",nr,"/",need,
-               " bars - continuing; incomplete inputs are unavailable (0.0),",
-               " never read as stale values");
+               " bars - DATA_INCOMPLETE; mandatory data unavailable, bar not consumed");
       }
+      // Retry budget limits repeated logging, never mandatory-data validation.
+      // Keep the bar identity uncommitted so recovery retries this same bar.
+      return prev_calculated;
    }
-   else g_ind_copy_retries=0;
+   else { g_ind_copy_retries=0; g_ind_copy_warned=false; }
    // CopyBuffer(,0,0,need,ta) returns the MOST RECENT `need` bars
    // (index 0 in ta[] is the forming bar); regardless of full-vs-incremental
    // mode they belong at the TAIL of g_atr_buf/adx/rsi. Older slots stay 0
@@ -43108,6 +43113,10 @@ void MTF_SniperZone_Init()
    g_sniper_h1_adx=0.0;
    g_sniper_h1_atr=0.0;
    g_sniper_last_bar_time=0;
+   g_sniper_data_ready=false;
+   g_sniper_data_status="";
+   g_sniper_h1_bar_time=0;
+   g_sniper_m15_bar_time=0;
 }
 
 // QSMC_COPY_STATUS_BEGIN
@@ -43126,13 +43135,14 @@ string QSMC_CopyStatus(const int copied,const int need,const int terminal_error,
 //--------------------------------------------------------------------
 // Phase 1.1: Bounded CopyRates & CopyBuffer (AUDIT-01 Pattern)
 // Reads CLOSED bars only (start_pos = 1, never bar 0).
-// Retries up to QSMC_IND_COPY_MAX_RETRY before accepting partial data.
+// Retry budget bounds diagnostics only; incomplete data is never published.
 //--------------------------------------------------------------------
 int MTF_SniperCopyRatesBounded(const int tf_idx,const ENUM_TIMEFRAMES tf,
                                const int count,MqlRates &rates_out[])
 {
    ArrayResize(rates_out,0);
    ArraySetAsSeries(rates_out,false);
+   ResetLastError();
    int copied=CopyRates(_Symbol,tf,1,count,rates_out);
    int copy_error=GetLastError();
    int sz=ArraySize(rates_out);
@@ -43158,10 +43168,12 @@ int MTF_SniperCopyRatesBounded(const int tf_idx,const ENUM_TIMEFRAMES tf,
             g_sniper_rates_warned[tf_idx]=true;
             Print("[SniperDataHealth] WARNING role=",EnumToString(g_instance_role),
                   " rates ",EnumToString(tf)," still incomplete after ",
-                  g_sniper_rates_retries[tf_idx]," update attempts - accepting ",
+                  g_sniper_rates_retries[tf_idx]," update attempts - DATA_INCOMPLETE; rejecting ",
                   copied,"/",count," closed bars");
          }
       }
+      ArrayResize(rates_out,0);
+      return 0;
    }
    int valid_n=(int)MathMin(copied,sz);
    if(valid_n<=0) return 0;
@@ -43223,6 +43235,7 @@ int MTF_SniperCopyBufferBounded(const int handle,const int count,double &buf_out
       return 0;
    }
    ArraySetAsSeries(buf_out,false);
+   ResetLastError();
    int copied=CopyBuffer(handle,0,1,count,buf_out);
    int copy_error=GetLastError();
    int sz=ArraySize(buf_out);
@@ -43244,26 +43257,31 @@ int MTF_SniperCopyBufferBounded(const int handle,const int count,double &buf_out
          warned_flag=true;
          Print("[SniperDataHealth] WARNING role=",EnumToString(g_instance_role)," ",tag,
                " still incomplete after ",retry_counter," update attempts (",
-               copied,"/",count,") - accepting partial closed data");
+               copied,"/",count,") - DATA_INCOMPLETE; no buffer values published");
       }
+      ArrayResize(buf_out,0);
+      return 0;
    }
-   else
-   {
-      if(retry_counter>0)
-         Print("[SniperDataHealth] role=",EnumToString(g_instance_role)," ",tag,
-               " READY ",copied,"/",count," after ",retry_counter," waiting attempts");
-      retry_counter=0;
-      warned_flag=false;
-   }
-
    int valid_n=(int)MathMin(copied,sz);
    if(valid_n<=0) return 0;
    ArraySetAsSeries(buf_out,false);
    for(int i=0;i<valid_n;i++)
    {
       if(buf_out[i]==EMPTY_VALUE || !MathIsValidNumber(buf_out[i]) || buf_out[i]<0.0)
-         buf_out[i]=0.0;
+      {
+         if(!warned_flag)
+            Print("[EL][DATA] symbol=",_Symbol," source=",tag,
+                  " status=DATA_INVALID index=",i,"; no buffer values published");
+         warned_flag=true;
+         ArrayResize(buf_out,0);
+         return 0;
+      }
    }
+   if(retry_counter>0 || warned_flag)
+      Print("[SniperDataHealth] role=",EnumToString(g_instance_role)," ",tag,
+            " DATA_READY ",copied,"/",count," after ",retry_counter," waiting attempts");
+   retry_counter=0;
+   warned_flag=false;
    return valid_n;
 }
 
@@ -44429,9 +44447,24 @@ void MTF_SniperComputeTradeManagement(SMTF_SniperCluster &cl,const double chart_
                                       const double h1_atr,const MqlRates &m15_rates[],
                                       const int m15_n,const double m15_atr)
 {
+   // Never label chart/synthetic volatility as measured H1 or M15 ATR.
+   // Clear derived output even if this function is called again on an old cluster.
+   cl.sl_price=0.0; cl.tp1_price=0.0; cl.tp2_price=0.0; cl.tp3_price=0.0;
+   cl.sl_dist_h1_atr=0.0; cl.sl_hard_max_ok=false;
+   cl.be_trigger_price=0.0; cl.be_active=false;
+   cl.trail_sl_price=0.0; cl.trail_active=false; cl.rec_lot_size=0.0;
+   if(!MathIsValidNumber(chart_atr) || chart_atr==EMPTY_VALUE || chart_atr<=0.0 ||
+      !MathIsValidNumber(h1_atr) || h1_atr==EMPTY_VALUE || h1_atr<=0.0 ||
+      !MathIsValidNumber(m15_atr) || m15_atr==EMPTY_VALUE || m15_atr<=0.0 ||
+      m15_n<5 || m15_n>ArraySize(m15_rates))
+   {
+      cl.entry_triggered=false;
+      cl.entry_grade="DATA_NOT_READY";
+      return;
+   }
    double safe_chart_atr=MathMax(chart_atr,_Point);
-   double safe_h1_atr=MathMax((h1_atr>0.0 ? h1_atr : safe_chart_atr*2.0),_Point);
-   double safe_m15_atr=MathMax((m15_atr>0.0 ? m15_atr : safe_chart_atr),_Point);
+   double safe_h1_atr=MathMax(h1_atr,_Point);
+   double safe_m15_atr=MathMax(m15_atr,_Point);
 
    bool is_buy=(cl.level.direction>0);
    double entry=(cl.entry_price>0.0 ? cl.entry_price
@@ -44462,8 +44495,15 @@ void MTF_SniperComputeTradeManagement(SMTF_SniperCluster &cl,const double chart_
       }
    }
    cl.sl_price=(is_buy ? MathMin(sl_zone,sl_swing) : MathMax(sl_zone,sl_swing));
-   double sl_dist=MathAbs(entry-cl.sl_price);
-   sl_dist=MathMax(sl_dist,_Point);
+   double sl_dist=(is_buy ? entry-cl.sl_price : cl.sl_price-entry);
+   if(!MathIsValidNumber(entry) || entry==EMPTY_VALUE || entry<=0.0 ||
+      !MathIsValidNumber(cl.sl_price) || cl.sl_price==EMPTY_VALUE || cl.sl_price<=0.0 ||
+      !MathIsValidNumber(sl_dist) || sl_dist<=_Point)
+   {
+      cl.entry_triggered=false;
+      cl.entry_grade="SKIP_STOP_GEOMETRY";
+      return;
+   }
 
    // HARD MAX: 2.0xATR(14) on H1 — if exceeded, SKIP the trade
    cl.sl_dist_h1_atr=sl_dist/safe_h1_atr;
@@ -44509,6 +44549,19 @@ void MTF_SniperComputeTradeManagement(SMTF_SniperCluster &cl,const double chart_
                  ? opp_htf : rr2_target);
    cl.tp3_price=(opp_d1w1_liq>0.0 && ((is_buy && opp_d1w1_liq>cl.tp2_price) || (!is_buy && opp_d1w1_liq<cl.tp2_price))
                  ? opp_d1w1_liq : rr3_target);
+
+   // A distant opposing TP1 can overtake the 2R/3R fallback targets.
+   // Reject crossed/non-finite targets; never invent closer structural objectives.
+   if(!MathIsValidNumber(cl.tp1_price) || cl.tp1_price==EMPTY_VALUE || cl.tp1_price<=0.0 ||
+      !MathIsValidNumber(cl.tp2_price) || cl.tp2_price==EMPTY_VALUE || cl.tp2_price<=0.0 ||
+      !MathIsValidNumber(cl.tp3_price) || cl.tp3_price==EMPTY_VALUE || cl.tp3_price<=0.0 ||
+      !ValidateTargetGeometry(is_buy,entry,cl.sl_price,cl.tp1_price,cl.tp2_price,cl.tp3_price))
+   {
+      cl.entry_triggered=false;
+      cl.entry_grade="SKIP_TARGET_GEOMETRY";
+      cl.tp1_price=0.0; cl.tp2_price=0.0; cl.tp3_price=0.0;
+      return;
+   }
 
    // 3. BREAK-EVEN (BE): move SL to entry after TP1 is hit OR displacement >= 2xATR
    double disp_be=(is_buy ? (entry+SNIPER_BE_DISP_ATR*safe_chart_atr)
@@ -44643,7 +44696,7 @@ void MTF_SniperZone_OnChartChange()
 //--------------------------------------------------------------------
 double MTF_SniperScoreForDirection(const bool is_buy,const double current_price,const double chart_atr)
 {
-   if(!InpUseSniperZoneEngine) return 0.0;
+   if(!InpUseSniperZoneEngine || !g_sniper_data_ready) return 0.0;
    double safe_atr=MathMax(chart_atr,_Point);
    int count=(is_buy ? g_sniper_active_sup_count : g_sniper_active_res_count);
    double best_score=0.0;
@@ -44675,27 +44728,57 @@ double MTF_SniperScaleEightPillarScore(const double existing_seven_pillar_score,
 // Phase 6.1: Master Update Function — MTF_SniperZone_Update()
 // Called from OnCalculate() AFTER PMI_Update() and BEFORE CalculateAITradeSetup()
 //--------------------------------------------------------------------
+// Invalidation clears consumers as well as the cached volatility; a stale
+// cluster must not add score or remain drawn as a current Sniper setup.
+void MTF_SniperInvalidateSnapshot()
+{
+   if(g_sniper_data_ready || ArraySize(g_sniper_merged)>0)
+      MTF_SniperZone_DeleteObjects();
+   g_sniper_data_ready=false;
+   g_sniper_last_bar_time=0;
+   g_sniper_h1_bar_time=0; g_sniper_m15_bar_time=0;
+   g_sniper_h1_atr=0.0; g_sniper_h1_adx=0.0;
+   g_sniper_macro_bias=0; g_sniper_w1_bias=0; g_sniper_w1_strong=false;
+   ArrayResize(g_sniper_raw_levels,0,64);
+   ArrayResize(g_sniper_raw_meta,0,64);
+   ArrayResize(g_sniper_merged,0,32);
+   g_sniper_active_sup_count=0; g_sniper_active_res_count=0;
+   MTF_SniperClusterInit(g_sniper_best);
+}
+
+void MTF_SniperDataStatus(const string state,const string reason)
+{
+   string key=state+"|"+reason;
+   if(key==g_sniper_data_status) return;
+   g_sniper_data_status=key;
+   Print("[EL][DATA] symbol=",_Symbol," timeframe=",EnumToString((ENUM_TIMEFRAMES)_Period),
+         " source=SNIPER status=",state," reason=",reason);
+}
+
 void MTF_SniperZone_Update()
 {
    if(!InpUseSniperZoneEngine)
    {
-      MTF_SniperZone_DeleteObjects();
+      MTF_SniperInvalidateSnapshot();
       return;
    }
-   if(g_rates_total<15) return;
    int closed=g_rates_total-2;
-   if(closed<2 || closed>=ArraySize(g_buf_t) || closed>=ArraySize(g_buf_c)) return;
+   if(g_rates_total<15 || closed<2 || closed>=ArraySize(g_buf_t) || closed>=ArraySize(g_buf_c))
+   {
+      MTF_SniperInvalidateSnapshot();
+      MTF_SniperDataStatus("DATA_INCOMPLETE","CHART_HISTORY");
+      return;
+   }
 
    datetime closed_time=g_buf_t[closed];
-   if(closed_time==g_sniper_last_bar_time && ArraySize(g_sniper_merged)>0)
+   datetime h1_stamp=iTime(_Symbol,PERIOD_H1,1);
+   datetime m15_stamp=iTime(_Symbol,PERIOD_M15,1);
+   // A complete decision is frozen for its chart closed bar. Do not backdate
+   // later child-TF evidence onto that same bar when H1/M15 roll intrabar.
+   if(g_sniper_data_ready && closed_time==g_sniper_last_bar_time)
       return;
 
-   ArrayResize(g_sniper_raw_levels,0,64);
-   ArrayResize(g_sniper_raw_meta,0,64);
-   ArrayResize(g_sniper_merged,0,32);
-   g_sniper_active_sup_count=0;
-   g_sniper_active_res_count=0;
-   MTF_SniperClusterInit(g_sniper_best);
+   MTF_SniperInvalidateSnapshot();
 
    MqlRates tf_rates_w1[], tf_rates_d1[], tf_rates_h4[];
    MqlRates tf_rates_m15[], tf_rates_m5[];
@@ -44710,16 +44793,22 @@ void MTF_SniperZone_Update()
       MqlRates rates[];
       int nr=MTF_SniperCopyRatesBounded(s,tf,SNIPER_BARS_LOAD,rates);
       if(nr<15) continue;
+      datetime tf_stamp=iTime(_Symbol,tf,1);
+      if(tf_stamp<=0 || rates[nr-1].time!=tf_stamp) continue;
 
       double atr_buf[];
       int na=MTF_SniperCopyBufferBounded(h_sniper_atr[s],nr,atr_buf,
                                          g_sniper_atr_retries[s],g_sniper_atr_warned[s],
                                          "ATR_"+EnumToString(tf));
-      if(tf==PERIOD_H1 && na>0 && ArraySize(atr_buf)>0)
+      // Never pair partial ATR with rates by index. Macro votes need rates,
+      // not ATR: retain valid OHLC even if optional zone volatility is missing.
+      if(iTime(_Symbol,tf,1)!=tf_stamp) continue;
+      bool tf_atr_ready=(na==nr && ArraySize(atr_buf)>=nr);
+      if(tf==PERIOD_H1 && tf_atr_ready)
          g_sniper_h1_atr=atr_buf[MathMin(na-1,ArraySize(atr_buf)-1)];
-      if(tf==PERIOD_M15 && na>0 && ArraySize(atr_buf)>0)
+      if(tf==PERIOD_M15 && tf_atr_ready)
          m15_atr_last=atr_buf[MathMin(na-1,ArraySize(atr_buf)-1)];
-      if(tf==PERIOD_M5 && na>0 && ArraySize(atr_buf)>0)
+      if(tf==PERIOD_M5 && tf_atr_ready)
          m5_atr_last=atr_buf[MathMin(na-1,ArraySize(atr_buf)-1)];
 
       if(tf==PERIOD_M15)
@@ -44729,7 +44818,8 @@ void MTF_SniperZone_Update()
                                                "RSI_M15");
       }
 
-      MTF_SniperCollectTF(s,tf,rates,nr,atr_buf,na);
+      if(tf_atr_ready)
+         MTF_SniperCollectTF(s,tf,rates,nr,atr_buf,na);
 
       if(tf==PERIOD_W1){ ArrayCopy(tf_rates_w1,rates); n_w1=nr; }
       else if(tf==PERIOD_D1){ ArrayCopy(tf_rates_d1,rates); n_d1=nr; }
@@ -44744,13 +44834,28 @@ void MTF_SniperZone_Update()
                                         g_sniper_adx_retries,g_sniper_adx_warned,"ADX_H1");
    if(nadx>0 && ArraySize(adx_h1_buf)>0)
       g_sniper_h1_adx=adx_h1_buf[MathMin(nadx-1,ArraySize(adx_h1_buf)-1)];
-   else
-      g_sniper_h1_adx=g_adx;
+   // These inputs already determine the H1 ADX gate, H1 stop limit and
+   // M15 structural/trailing stop. Optional zone-source TFs remain optional.
+   string missing="";
+   if(h1_stamp<=0 || m15_stamp<=0 || iTime(_Symbol,PERIOD_H1,1)!=h1_stamp ||
+      iTime(_Symbol,PERIOD_M15,1)!=m15_stamp) missing="RISK_TIMEFRAME_CHANGED";
+   else if(!MathIsValidNumber(g_atr) || g_atr==EMPTY_VALUE || g_atr<=0.0) missing="CHART_ATR";
+   else if(!MathIsValidNumber(g_sniper_h1_atr) || g_sniper_h1_atr==EMPTY_VALUE || g_sniper_h1_atr<=0.0) missing="H1_ATR";
+   else if(nadx!=4 || !MathIsValidNumber(g_sniper_h1_adx) || g_sniper_h1_adx==EMPTY_VALUE || g_sniper_h1_adx<0.0) missing="H1_ADX";
+   else if(n_m15<5 || !MathIsValidNumber(m15_atr_last) || m15_atr_last==EMPTY_VALUE || m15_atr_last<=0.0) missing="M15_STRUCTURE_ATR";
+   else if((ENUM_TIMEFRAMES)_Period==PERIOD_M5 &&
+           (n_m5<6 || !MathIsValidNumber(m5_atr_last) || m5_atr_last==EMPTY_VALUE || m5_atr_last<=0.0)) missing="M5_EXECUTION_ATR";
+   if(missing!="")
+   {
+      MTF_SniperInvalidateSnapshot();
+      MTF_SniperDataStatus("DATA_INCOMPLETE",missing);
+      return;  // no bar consumed: retry on the next update
+   }
 
    // Macro consensus bias (W1 + D1 + H4) and Golden Rule 3 W1 check
    MTF_SniperComputeMacroBias(tf_rates_w1,n_w1,tf_rates_d1,n_d1,tf_rates_h4,n_h4);
 
-   double chart_atr=(g_atr>0.0 ? g_atr : (g_sniper_h1_atr>0.0 ? g_sniper_h1_atr : _Point*20.0));
+   double chart_atr=g_atr;
    double cur_price=g_buf_c[closed];
 
    // Phase 3: Confluence Clustering & Sorting
@@ -44826,7 +44931,10 @@ void MTF_SniperZone_Update()
       }
    }
 
+   g_sniper_data_ready=true;
+   g_sniper_h1_bar_time=h1_stamp; g_sniper_m15_bar_time=m15_stamp;
    g_sniper_last_bar_time=closed_time;
+   MTF_SniperDataStatus("DATA_READY","RISK_INPUTS_ALIGNED");
    MTF_SniperZone_Draw();
 }
 

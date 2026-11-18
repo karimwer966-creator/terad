@@ -44,6 +44,8 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 
 | Document | What it answers |
 |---|---|
+| [`EL_ENGINEERING_REVIEW_2026-11-18.md`](EL_ENGINEERING_REVIEW_2026-11-18.md) | EL/QSMC audit, targeted data/identity fixes, unresolved MTF/provenance blockers, test evidence and NOT READY verdict |
+| [`EL_SOURCE_INVENTORY_2026-11-18.md`](EL_SOURCE_INVENTORY_2026-11-18.md) | complete MQL source/include inventory, tools/configuration map and host function locations |
 | [`ARCHITECTURE_AUDIT_v6.6.24.md`](ARCHITECTURE_AUDIT_v6.6.24.md) | the whole tree at v6.6.24: file inventory, the 33-header dependency graph, the 14 modules mapped onto real owners, rules 1–15 status, and why no `QME.mqh`/second EA exists (gate `tools/check_include_graph.py`) |
 | [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) | every layer, its inputs and its authority (documents **QATS**, the separate product) |
 | [`QSMC_V6.6.13_SEVEN_STRATEGY_MODULES.md`](QSMC_V6.6.13_SEVEN_STRATEGY_MODULES.md) | the pinned audit the test suites cite (ANCHORS/ORDER/GUARDS) |
