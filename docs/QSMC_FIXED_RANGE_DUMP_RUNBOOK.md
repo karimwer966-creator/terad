@@ -7,7 +7,7 @@ the script compiles, runs, or that any CORE signal is or is not present.
 
 Purpose: an **isolated, diagnostic-only** dump of `nadir2` buffers 0..25 for a
 fixed, closed-bar-only range. It is **not** a change to the baseline system
-(see `docs/QSMC_BASELINE_HASHES.md`, tag `pre-refactor-v6.6.24`).
+(see `docs/QSMC_BASELINE_HASHES.md`; baseline pin = base commit `06bd0896b4a1aa18ea1d880276c1083be5a8aac2`; tag `pre-refactor-v6.6.24` no longer resolves).
 
 ## 1. What it does / what it deliberately does not do
 

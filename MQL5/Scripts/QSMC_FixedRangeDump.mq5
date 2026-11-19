@@ -4,8 +4,10 @@
 //|                                                                  |
 //| BASELINE REFERENCE (not compiled into production binaries)        |
 //| Production sources this tool must NOT be mistaken for:            |
-//|   tag    pre-refactor-v6.6.24 -> commit 06bd0896b4a1aa18ea1d8...  |
+//|   base commit 06bd0896b4a1aa18ea1d880276c1083be5a8aac2 (main)    |
 //|   hashes docs/QSMC_BASELINE_HASHES.md                            |
+//|   NOTE: tag pre-refactor-v6.6.24 no longer resolves on origin;    |
+//|   the baseline pin is the commit hash above. Do NOT recreate it.  |
 //|                                                                  |
 //| IMPORTANT SIDE-EFFECT LIMITATION                                 |
 //| This script itself sends no orders, creates no GlobalVariables,   |

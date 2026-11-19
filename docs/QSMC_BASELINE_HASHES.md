@@ -1,9 +1,10 @@
-# QSMC production baseline hashes (pre-refactor-v6.6.24)
+# QSMC production baseline hashes (base commit 06bd0896b4a1aa18ea1d880276c1083be5a8aac2)
 
 (The repo-root `nadir2.mq5` is a byte-identical convenience copy of `MQL5/Indicators/nadir2.mq5`; both hashes are listed.)
 
-Base commit/tag: `pre-refactor-v6.6.24` -> `06bd0896b4a1aa18ea1d880276c1083be5a8aac2` (tag object on that commit).
-Recorded: 2026-11-19 (UTC). Working branch: arena/474b847b-terad (base = same commit).
+Base commit: `06bd0896b4a1aa18ea1d880276c1083be5a8aac2` (== `main` == `origin/main`).
+Recorded: 2026-11-19 (UTC). Working branch: arena/474b847b-terad (branched from that commit).
+Tag status: `pre-refactor-v6.6.24` existed in this working tree when first recorded (pointing at the same commit), but as of the 2026-11-19 verification pass it no longer resolves locally or on origin (`git ls-remote --tags origin` is empty). The baseline pin is the commit hash above. The tag must NOT be recreated or moved without explicit user approval; this file was corrected in place and the PR updated to match.
 
 Purpose: pin the production sources the diagnostic-only addition
 `MQL5/Scripts/QSMC_FixedRangeDump.mq5` must NOT be mistaken for.
@@ -12,7 +13,7 @@ Verify from the repository root with paths as listed below (repo-relative), e.g.
 
 sha256 hashes:
 ```
-06bd0896b4a1aa18ea1d880276c1083be5a8aac2  (git commit — verify with: git rev-parse pre-refactor-v6.6.24)
+06bd0896b4a1aa18ea1d880276c1083be5a8aac2  (git commit — verify with: git rev-parse main)
 d7e997a6a8559fd82a8f432115fc8ae0d3a4bcb8f7329a2fbf336aa2a29d1bd0  MQL5/Indicators/nadir2.mq5
 d7e997a6a8559fd82a8f432115fc8ae0d3a4bcb8f7329a2fbf336aa2a29d1bd0  nadir2.mq5
 9857d648ce215afaa1868f91c8a1debc92588cfbef1d283765bec23d7c122442  MQL5/Indicators/QSMC_SmcVpEngine.mq5
@@ -60,6 +61,7 @@ c1315483b34bc0987c7ea74cd764d13300deb153a65a561780bcfc907fccf262  MQL5/Include/Q
 944260fecd574c5ba5946723c1c2a74e87f4a82662de147524356c1fde9e591c  MQL5/Include/QSMC/QSMC_Zones.mqh
 ```
 
-Status: production sources unmodified vs tag (only NEW files added: the diagnostic
-script and docs). The tag already existed at the base commit; no new tag was created
-and production content was not committed or pushed by this change.
+Status: production sources unmodified vs the base commit (only NEW files added: the diagnostic
+script and docs). A tag with the same name is not recreated; if the tag reappears on origin it
+must be verified to point at 06bd0896b4a1aa18ea1d880276c1083be5a8aac2 before being cited again.
+Production content was not committed or pushed by this change beyond this branch's commit.
