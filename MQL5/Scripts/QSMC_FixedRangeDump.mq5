@@ -49,6 +49,8 @@
 #property version "6.624"
 #property description "Diagnostic-only fixed-range closed-bar dump of nadir2 buffers 0..25"
 
+#include <QSMC/QSMC_OpportunityFunnel.mqh>
+
 #define QSMC_FIXED_TF       PERIOD_M15
 #define QSMC_BUFFER_COUNT   26
 #define QSMC_MAX_ROWS       10000
@@ -103,6 +105,10 @@ void Fail(const string message,const int handle=INVALID_HANDLE)
 //--- main ------------------------------------------------------------
 void OnStart()
   {
+   // Phase B seam: reset the diagnostics-only opportunity-funnel module.
+   // Touches only the module's own counters; changes nothing about this
+   // script's output or about any production path (it is not wired there).
+   QSMC_OF_Reset();
    if(!InpConfirmedIsolatedPortableTerminal)
      {
       Fail("refusing to run: set InpConfirmedIsolatedPortableTerminal=true ONLY in a separate disposable portable MT5 installation; nadir2 itself has GV/chart side effects without the EA handshake (it will read/delete QSMC_EA_READER_HANDSHAKE_* GVs, publish QSMC diag GVs once per closed bar, and draw/delete PFX objects in its default VISUAL role)");

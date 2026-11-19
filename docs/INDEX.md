@@ -1,6 +1,6 @@
 # Index — every document, by what it is for
 
-75 documents accumulated across eleven releases. This file is the map: which ones
+91 documents accumulated across eleven releases. This file is the map: which ones
 are **instructions** (true today, follow them), which ones are **architecture**
 (explain the code as it is now), which ones are **QATS** (a separate product), and
 which ones are **frozen history** (true on the date printed inside them, and not a
@@ -85,6 +85,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`QSMC_RELOCATION_MAP_CONDITIONAL.md`](QSMC_RELOCATION_MAP_CONDITIONAL.md) | relocation of QATS/KLJ_DataFeeder/ScannerProbe → `MQL5/Legacy/` — approved but CONDITIONAL on the baseline; not executed |
 | [`QSMC_TESTER_PLAN_1_OBSERVATION.md`](QSMC_TESTER_PLAN_1_OBSERVATION.md) | Strategy Tester plan 1 — observation/dry-run diagnostics (no fills) |
 | [`QSMC_TESTER_PLAN_2_EXECUTION.md`](QSMC_TESTER_PLAN_2_EXECUTION.md) | Strategy Tester plan 2 — execution characterization, isolated tester only, never live |
+| [`QSMC_OPPORTUNITY_FUNNEL_AR.md`](QSMC_OPPORTUNITY_FUNNEL_AR.md) | Phase B: diagnostics-only per-closed-bar opportunity funnel — وحدة غير موصولة بعد، عقد عدم التداخل، خريطة خطافات مقترحة، صيغة CSV |
 
 ## 5. QATS — a separate product (not production-ready)
 

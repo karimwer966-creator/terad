@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Include-graph gate: the 33 headers are a DAG, and the context-coupled ones are frozen.
+"""Include-graph gate: the 34 headers are a DAG, and the context-coupled ones are frozen.
 
 WHY THIS EXISTS
 ---------------
@@ -28,7 +28,7 @@ WHAT IT CHECKS
 --------------
   I1 Every `#include <QSMC/...>` target resolves to a real file; platform
      includes (`<Trade/...>`, `<Object...>`) are allowlisted, not guessed.
-  I2 The header graph is acyclic (DFS colouring, all 33 nodes).
+  I2 The header graph is acyclic (DFS colouring, all 34 nodes).
   I3 Every header has a well-formed guard: matching `#ifndef`/`#define` names,
      balanced `#if*`/`#endif`, the closing `#endif` is the last code line, and
      the guard opens before the first `#include`.
