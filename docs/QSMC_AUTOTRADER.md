@@ -247,31 +247,24 @@ sequence is `docs/DEMO_TRIAL_RUNBOOK.md`.
 
 ### The heartbeat: silence is the failure you will actually meet
 
-When no order appears there are only **two** root causes, and a quiet Journal
-used to make them indistinguishable:
+Every `InpHeartbeatSeconds` (default 5 minutes, with the first heartbeat
+immediate) the EA reports its execution mode and scans the CORE direction
+buffer (slot 7) over the last `InpHeartbeatLookback` closed bars:
 
-1. the indicator published **no CORE signal** (its own gate chain rejected every
-   bar), so the EA literally had nothing to execute; or
-2. the indicator **did** publish, and an EA filter refused it (spread, stop
-   bounds, volume 0, position cap, …).
+* `CORE signals in last 200 closed bars: 0` means there are no signals in the
+  current reader's export buffer. Older zero-filled bars are not a replay, and
+  the count does not say whether an upstream feed was missing or a gate refused.
+* If CORE signals exist, the summary gives the most recent signal and its age.
+  Read the counters and `last skip:` for execution evidence; the signal may
+  already be older than `InpMaxSignalAgeBars`.
+* If the copy is incomplete or the buffer contains invalid values, the scan
+  does not report a zero-signal conclusion.
 
-Every `InpHeartbeatSeconds` (default 5 minutes, and once immediately after
-attach) the EA prints one `[QSMC_AT] heartbeat:` line that decides between them
-by scanning the CORE direction buffer (slot 7) over the last
-`InpHeartbeatLookback` closed bars:
-
-* `CORE signals in last 200 closed bars: 0 -> the indicator published NO CORE
-  setup` → the problem is upstream; read the chart panel's `NEEDS:` row, or set
-  `InpGateAuditLogEveryBars>0` inside `nadir2` to see which gate rejected.
-* `CORE signals in last 200 closed bars: 3 … last skip: <bar>|<dir> - <reason>`
-  → the transport works; the printed reason is the exact filter to adjust.
-
-The line also carries the mode (`INERT` / `DRY RUN` / `BLOCKED: …` / `ARMED`),
-the processed/sent/dry/refused counters, the open-position count, the daily
-guard state and the age of the most recent signal (so a signal older than
-`InpMaxSignalAgeBars` is named as no longer tradable). It is strictly read-only:
-it copies one buffer and prints; it never touches a gate, an order or a
-position.
+The EA prints the summary, `indicator verdict:`, `heartbeat identity:`,
+`GUARD day_base=`, and `heartbeat counters:` separately in **Experts**. Legacy
+combined messages could be cut mid-field at 511 characters, hiding both the
+breaker flags and the verdict. Missing fields in such a log are unknown, not
+clear. The heartbeat does not send or modify orders.
 
 `OnTimer` exists because a quiet symbol can go minutes without a tick. It reads
 the same closed-bar buffers, so it cannot create a signal that `OnTick` would not
@@ -337,28 +330,37 @@ The profiler is read-only: no value it records reaches a gate, and deleting it
 leaves every published signal identical. Acting on a number is your decision,
 made explicitly, not something the code does quietly.
 
-### v6.6.10 — the heartbeat now carries the INDICATOR'S verdict
+### The indicator verdict and reader identity
 
-`CORE signals in last 200 closed bars: 0` proves the transport is healthy and
-the indicator published nothing, but it does not say **why**. The panel's
-`NEEDS:` row answers that only while you are looking at the right chart, and
-`InpGateAuditLogEveryBars` answers it only if you edited the indicator's inputs.
+The EA prefers the last-closed-bar verdict in buffer 19 of its own `iCustom`
+handle. If that slot has no usable code, it can read the diagnostic globals for
+compiled-default inputs instead. Those globals (including the funnel and gate
+stats) are shared, so a fallback is not proof of a verdict from this reader.
 
-So `nadir2` now publishes the result of its own gate chain for the last closed
-bar as terminal globals, and the heartbeat decodes them:
-
+```text
+[QSMC_AT] heartbeat: INERT | CORE signals in last 200 closed bars: 0 -> none in the current indicator export buffer; history before this instance was attached is not proven
+[QSMC_AT] indicator verdict: RELIABILITY - score below InpMinReliability in the indicator (iCustom buffer 19, shift 1)
+[QSMC_AT] indicator diagnostics (default-input globals) | indicator funnel: bars 143 armed 6 confirmed 0 | diagnostic bar 2026.10.28 09:15
 ```
-[QSMC_AT] heartbeat: INERT | CORE signals in last 200 closed bars: 0 -> the indicator published NO CORE setup, ... | indicator verdict: RELIABILITY - score below InpMinReliability in the indicator | indicator funnel: bars 143 armed 6 confirmed 0 | last closed bar 2026.10.28 09:15
-```
 
-Read it as four questions answered in one line:
-
-| Fragment | Question it answers |
+| Fragment | What it establishes |
 | --- | --- |
-| `indicator verdict: <CODE> - <sentence>` | which gate refused the last candidate |
-| `indicator funnel: bars N armed A confirmed C` | did the chain ever arm a setup, or did it die before that |
-| `last closed bar …` | is the indicator actually evaluating *this* symbol and timeframe |
-| `no diagnostic record for …` | the two programs are not on the same chart/symbol/timeframe, or the indicator is not compiled |
+| `indicator verdict: <CODE> - <sentence>` | The reported status or blocker; not necessarily the first rejection of that bar |
+| `indicator funnel: bars N armed A confirmed C` | The session counters from the default-input diagnostic globals |
+| `diagnostic bar …` | The bar timestamp reported by those globals |
+| `no diagnostic record` | No usable code was found; check `[DataHealth]`, `[SniperDataHealth]` and `[GateAudit]` for `ROLE_EA_READER` |
+| `7..12 PRESENT` / `VCODE_COPY=1` | The slots could be copied. `1` here is a copy count, not a verdict code |
+| `BarsCalculated=…` (old logs: `INDICATOR_BUILD=CALCULATING(… bars)`) | Calculated bar count, not the EX5 version or proof that all upstream feeds are ready |
+
+The EA identity line reports `INDICATOR_BUILD=UNVERIFIED` because slot probes
+do not identify the loaded binary. Read `BUILD_VERSION`, `COMPILED_AT` and
+`CORE_EXPORT` from the indicator's startup `[QSMC_INSTANCE]` record for
+`ROLE_EA_READER`. When audits are enabled, the private reader emits its first
+`[GateAudit]` after the first completed closed-bar pass and then at the configured
+cadence. Each `[GateAudit]`/`[GateLeg]` includes role, instance ID, and closed-bar
+time; its counts and top blocker remain session-wide, not per-bar rejections.
+A chart `.set` affects the visible indicator, not the EA reader's compiled
+defaults. See the [Arabic demo diagnostic procedure](QSMC_CORE_DIAGNOSTICS_AR.md).
 
 The published codes (identical table in both files, checked by
 `tools/test_diag_bridge.py`):
@@ -388,11 +390,9 @@ that refused most often), not a prophecy about the next bar: a long enough
 sample can still produce a signal, and `CORE_PUBLISHED` for one bar does not
 mean the next one fires.
 
-The companion also distinguishes a dead indicator from a slow one now: a valid
-`iCustom` handle whose `BarsCalculated()` is negative used to print "still
-warming up" forever; it now says the instance exists but is **not calculating**,
-which is an indicator-side problem (bad inputs, no history), not a signal
-problem.
+A negative `BarsCalculated()` means the terminal did not report calculated
+bars for this handle. Check the `iCustom` initialization log and data health;
+the count alone cannot tell you whether the problem is transient.
 
 ---
 

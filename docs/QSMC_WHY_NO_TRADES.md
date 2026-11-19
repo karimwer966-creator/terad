@@ -24,23 +24,33 @@
 
 ## 0.1 الجديد في v6.6.10: الـ EA نفسه يقول لك أي بوابة رفضت
 
-كان السطر القديم `CORE signals ...: 0` يثبت أن المؤشر لم ينشر شيئاً، لكنه لا
-يقول **لماذا**. واللوحة تحتاج أن تنظر إليها، و`InpGateAuditLogEveryBars`
-تحتاج أن تعدّل إعدادات المؤشر. الآن صار المؤشر ينشر نتيجة بواباته كمتغيّرات
-عامة (`QSMC_DIAG_<الرمز>_<الفريم>_CORE`)، والـ EA يقرؤها ويطبعها في نبضته:
+العدد `CORE signals ...: 0` يعني أن نافذة بفر التصدير الحالية خالية من
+إشارات CORE، ولا يثبت نتيجة إعادة اختبار التاريخ ولا يحدّد سبب غياب الإشارة.
+يقرأ الـ EA نتيجة الشمعة المغلقة من بفر 19 في قارئ `iCustom` الخاص به أولاً،
+ثم يحاول قراءة متغيّرات المدخلات الافتراضية المشتركة إن لم يجد قيمة صالحة.
 
 ```text
-[QSMC_AT] heartbeat: INERT | CORE signals in last 200 closed bars: 0 -> the indicator published NO CORE setup, ... | indicator verdict: RELIABILITY - score below InpMinReliability in the indicator | indicator funnel: bars 143 armed 6 confirmed 0 | last closed bar 2026.10.28 09:15
+[QSMC_AT] heartbeat: INERT | CORE signals in last 200 closed bars: 0 -> none in the current indicator export buffer; history before this instance was attached is not proven
+[QSMC_AT] indicator verdict: RELIABILITY - score below InpMinReliability in the indicator (iCustom buffer 19, shift 1)
+[QSMC_AT] indicator diagnostics (default-input globals) | indicator funnel: bars 143 armed 6 confirmed 0 | diagnostic bar 2026.10.28 09:15
 ```
 
-اقرأه كأربعة أسئلة:
+النتيجة وحالة `GUARD` تُطبعان في سطرين مستقلين. في النسخة السابقة قد ينقطع
+السطر الموحّد عند 511 محرفاً (مثلاً وسط `eq=`)، فلا تستنتج من غياب المانع
+أن الحارس غير مفعّل أو أن المؤشر لم ينشر نتيجة تشخيصية.
 
-| المقطع | السؤال الذي يجيب عنه |
+| المقطع | ما الذي يوضّحه |
 | --- | --- |
-| `indicator verdict: …` | أي بوابة رفضت آخر مرشّح |
-| `indicator funnel: bars N armed A confirmed C` | هل وصلت السلسلة إلى `ARMED` أصلاً أم ماتت قبلها |
-| `last closed bar …` | هل المؤشر يقيّم **هذا** الرمز وهذه الفريم فعلاً |
-| `no diagnostic record for …` | البرنامجان ليسا على نفس المخطط/الرمز/الفريم، أو المؤشر غير مُترجم |
+| `indicator verdict: …` | الحالة أو المانع المُبلّغ عنه، وليس بالضرورة أول مانع لهذه الشمعة |
+| `indicator funnel: bars N armed A confirmed C` | عدّادات الجلسة من المتغيّرات المشتركة للمدخلات الافتراضية |
+| `diagnostic bar …` | توقيت الشمعة الذي سجّلته تلك المتغيّرات |
+| `no diagnostic record` | لا توجد نتيجة قابلة للقراءة؛ افحص `[DataHealth]` و`[SniperDataHealth]` و`[GateAudit]` لقارئ `ROLE_EA_READER` |
+| `BarsCalculated=…` (قديماً `INDICATOR_BUILD=CALCULATING(… bars)`) | عدد الشموع المحسوبة، لا إصدار ملف EX5 ولا دليل جاهزية بقية الأطر |
+| `VCODE_COPY=1` (قديماً `VCODE=1` في سطر الهوية) | نُسخت قيمة واحدة من البفر، وليس كود النتيجة 1 |
+
+ملف `.set` للمؤشر على الشارت يغيّر النسخة المرئية فقط؛ لا يغيّر مدخلات
+قارئ `iCustom` الخاص بالـ EA. لالتقاط سجله وإصدار ملفه المترجم، اتبع
+[دليل تشخيص XAUUSD/M15 على DEMO](QSMC_CORE_DIAGNOSTICS_AR.md).
 
 معاني الأكواد (نفس الجدول في الملفين، ويفحصه `tools/test_diag_bridge.py`):
 
@@ -66,10 +76,8 @@
 **المانع الأكثر تكراراً في الجلسة** لا نبوءة عن الشمعة القادمة؛ و`1` لشمعة
 واحدة لا يعني أن التالية ستنشر.
 
-أما إن كان المؤشر ميتاً لا بطيئاً: صار الـ EA يفرّق بينهما. مقبض `iCustom`
-صالح مع `BarsCalculated()` سالب لم يعد يُطبع «still warming up» إلى الأبد، بل
-يقول إن النسخة موجودة لكنها **لا تحسب** — وهذه مشكلة مؤشر (مدخلات مرفوضة أو
-تاريخ ناقص) لا مشكلة إشارة.
+إذا أعاد `BarsCalculated()` قيمة سالبة، لا توجد شموع محسوبة متاحة لهذا
+المقبض عند القياس؛ راجع سجل تهيئة `iCustom` وحالة البيانات قبل استنتاج السبب.
 
 ---
 
@@ -277,27 +285,25 @@ PRACTICAL يفعل **خمسة أشياء فقط**، وكل واحد منها ي�
 
 ## 7. خطوات التشخيص في خمس دقائق
 
-0. **اقرأ سطر النبضة** `[QSMC_AT] heartbeat:` (يُطبع تلقائياً عند الإرفاق ثم كل
-   `InpHeartbeatSeconds`=300 ثانية، ولا يرسل أي أمر). سطر واحد يحسم أصل المشكلة:
-   - `CORE signals in last 200 closed bars: 0 -> the indicator published NO CORE
-     setup` → المؤشر لم ينشر أي إشارة CORE أصلًا؛ المشكلة في بوابات المؤشر لا في
-     الـ EA. الحل في الخطوة 4 (صف `NEEDS:`) وليس في أي مفتاح من مفاتيح الـ EA.
-   - `CORE signals …: N` مع `last skip: …` → النقل سليم والـ EA يرفض لسبب مكتوب
-     بالحرف (سبريد/حجم/وقف/سقف صفقات…)؛ عالج ذلك السبب تحديداً.
-   - `handle INVALID` → المؤشر غير مترجم أو ليس في مجلد `MQL5\Indicators`.
-   - `still warming up` → المؤشر ما زال يحمّل التاريخ؛ انتظر النبضة التالية.
-1. **أول سطر** في Journal عند الإرفاق: هل هو `[QSMC_AT] QSMC v6.69 execution companion ON`؟
-   إن لا → الـ EA غير مُرفق أو لم يُترجم.
-2. **سطر الحالة**: `INERT` / `DRY RUN` / `BLOCKED` / `ARMED`. لا تنتقل قبل
-   أن يصبح `ARMED` أو `DRY RUN`.
-3. **مرّر إلى DRY RUN أولاً** (`InpEnableTrading=true`، `InpDryRun=true`).
-   إن ظهر سطر `DRY RUN BUY …` فالتنفيذ سليم والمشكلة في المفتاح المتبقي فقط.
-4. **إن لم يظهر شيء أبداً** → لا إشارة. افتح اللوحة واقرأ صف `NEEDS:`:
-   سيقول لك بالحرف أي بوابة رفضت. ولتفصيل أعمق فعّل في المؤشر
-   `InpGateAuditLogEveryBars=50` فيطبع `[GateAudit] … top blocker: …`.
-5. **تأكد من الإصدار**: `[QSMC_ARB] v6.6.13` في Journal، وليس رقماً أقدم.
+0. **اقرأ أسطر النبضة** في `Experts` (عند الإرفاق ثم كل `InpHeartbeatSeconds`،
+   الافتراضي 300 ثانية):
+   - `CORE signals in last 200 closed bars: 0` → النافذة الحالية لا تحتوي إشارات
+     CORE. اقرأ `indicator verdict:` ولا تغيّر العتبات قبل معرفة السبب.
+   - `CORE signals …: N` → راقب عمر الإشارة والعدّادات وسطر `last skip:` إن وُجد.
+   - `handle INVALID` → راجع سجل تهيئة `iCustom`.
+   - `CORE buffers not ready` أو `indicator history not ready` → النسخ لم يكتمل؛
+     لا يمكن الجزم بوجود أو غياب الإشارات في كامل النافذة.
+1. **تحقّق من الإرفاق:** ابحث عن `[QSMC_AT] … execution companion ON` في `Experts`.
+2. **اقرأ الوضع والحارس كلّاً على حدة:** `INERT` / `DRY RUN` / `BLOCKED` / `ARMED`
+   يصف وضع الـ EA، وسطر `GUARD` يبيّن حالة قواطع المخاطر.
+3. **راقب دون إرسال أوامر** على حساب DEMO باستخدام `InpEnableTrading=false` أو
+   `InpDryRun=true`، واترك حواجز المخاطر كما هي.
+4. **إذا غابت إشارات CORE**، اجمع `indicator verdict:` وسجل `[GateAudit]` وبيانات
+   `[DataHealth]` للقارئ الخاص. إعدادات `.set` للنسخة المرئية لا تصل إلى هذا القارئ.
+5. **تحقّق من الملف المترجم** في مجلد بيانات هذه الطرفية. `BarsCalculated` لا
+   يكشف إصدار المؤشر؛ تحقّق في MetaEditor قبل إعادة الإرفاق.
 
-> النبضة للقراءة فقط: تنسخ المخزن 7 وتطبع، لا تلمس بوابة ولا أمراً ولا صفقة.
+> النبضة تطبع بيانات التشخيص فقط ولا ترسل أمراً أو تعدّل صفقة.
 > إيقافها: `InpHeartbeatSeconds=0`.
 
 ---
@@ -325,11 +331,11 @@ PRACTICAL يفعل **خمسة أشياء فقط**، وكل واحد منها ي�
 
 | الحالة | السبب | مفتاح واحد للتغيير |
 | --- | --- | --- |
-| `heartbeat: … CORE signals …: 0` | المؤشر لا ينشر CORE (بواباته ترفض) | اقرأ `indicator verdict:` في نفس السطر (جدول §0.1) أو `InpGateAuditLogEveryBars` |
-| `indicator verdict: <كود>` | البوابة التي رفضت آخر مرشّح | الجدول في §0.1 |
+| `heartbeat: … CORE signals …: 0` | لا توجد إشارات في بفر التصدير الحالي | اقرأ سطر `indicator verdict:` المستقل (جدول §0.1) |
+| `indicator verdict: <كود>` | الحالة أو المانع الأكثر تكراراً، حسب الكود | الجدول في §0.1 |
 | `indicator funnel: … armed 0` | السلسلة لم تصل إلى إعداد مسلّح | مشكلة في توليد الإعداد لا في الـ EA |
-| `indicator verdict: no diagnostic record` | المؤشر لا يقيّم هذا الرمز/الفريم | نفس المخطط، نفس الرمز، F7 على nadir2 |
-| `heartbeat: … last skip: …` | الإشارة موجودة والـ EA يرفض | عالج السبب المذكور في السطر |
+| `indicator verdict: no diagnostic record` | لا توجد نتيجة تشخيصية قابلة للقراءة | التقط سجل القارئ الخاص (`ROLE_EA_READER`) |
+| `last skip: …` | الإشارة موجودة والـ EA يرفض | عالج السبب المذكور في السطر |
 | `heartbeat: handle INVALID` | المؤشر غير مترجم/في المكان الخطأ | F7 على `nadir2` داخل `MQL5\Indicators` |
 | لا شيء في Journal | EA غير مُرفق | أرفقه |
 | `INERT` | معطّل | `InpEnableTrading=true` |

@@ -23,11 +23,92 @@ class CoreSourceContracts(unittest.TestCase):
             self.assertIn(f'CopyBuffer(g_handle,QSMC_BUF_CORE_{ident},0,count,', EA)
 
     def test_closed_bar_lookback_includes_all_requested_shifts(self):
-        hb = between(EA, 'void DiagnosticHeartbeat()', 'void PrintEffectiveVsPreset()')
+        hb = between(EA, 'void PrintHeartbeatCore(', 'void DiagnosticHeartbeat()')
         for fragment in ('calc<look+1', '0,look+1,hb_dir', 'got<look+1',
                          'for(int i=1;i<=look;i++)', 'ArraySetAsSeries(hb_dir,true)'):
             self.assertIn(fragment, hb)
         self.assertIn('no zero-signal conclusion', hb)
+
+    def test_heartbeat_records_are_independent_of_core_readiness(self):
+        hb = between(EA, 'void DiagnosticHeartbeat()', 'void ManageOpenPositions()')
+        # An early return in the CORE scan must not skip the verdict/guard or
+        # append them to a long CORE message.
+        main = hb[hb.index('g_heartbeat_first=false;'):]
+        self.assertNotIn('return;', main)
+        self.assertEqual(main.count('PrintHeartbeatCore(mode);'), 1)
+        self.assertEqual(main.count('PrintIndicatorVerdict();'), 1)
+        self.assertIn('string _guard="[QSMC_AT] GUARD day_base="', main)
+        self.assertIn('Print(_guard);', main)
+        self.assertIn('Print("[QSMC_AT] heartbeat counters: processed "', main)
+        self.assertIn('Print("[QSMC_AT] last skip: ",g_last_note);', main)
+        summary = between(EA, 'void PrintHeartbeatCore(', 'void DiagnosticHeartbeat()')
+        for field in ('indicator verdict:', 'GUARD day_base=', 'processed ', 'g_last_note'):
+            self.assertNotIn(field, summary)
+
+    def test_verdict_probe_and_closed_bar_value_are_distinct(self):
+        ident = between(EA, 'string IndicatorIdentityLine()', 'string DiagVarName(')
+        self.assertIn('VCODE_COPY="+IntegerToString(vcode_n)', ident)
+        self.assertIn('BarsCalculated="+IntegerToString(bars_calc)', ident)
+        self.assertIn('INDICATOR_BUILD=UNVERIFIED', ident)
+        verdict = between(EA, 'double ReadCoreVerdictFromBuffer()', 'string DisciplineSuffix()')
+        self.assertIn('CopyBuffer(g_handle,QSMC_BUF_CORE_VCODE,1,1,v)', verdict)
+        self.assertIn('Print("[QSMC_AT] indicator verdict: ",DiagCodeText', verdict)
+        self.assertIn('Print("[QSMC_AT] indicator verdict: no diagnostic record', verdict)
+        self.assertIn('default-input globals; reader not verified', verdict)
+
+    def test_gate_audit_names_the_reader_after_closed_bar_publication(self):
+        calc = between(IND, 'int OnCalculate(', '   RunRuntimeDisplayNoLookaheadAudit(closed,g_buf_t);')
+        count = 'if(is_new_bar) g_gate_audit.bars++;'
+        self.assertEqual(calc.count('g_gate_audit.bars++;'), 1)
+        self.assertLess(calc.index(count), calc.index('DiagPublishCoreState(closed);'))
+        audit = calc[calc.index('GateProfilePublish(closed);'):]
+        self.assertIn('if(is_new_bar && InpGateAuditLogEveryBars>0 &&', audit)
+        self.assertIn('g_instance_role==ROLE_EA_READER && g_gate_audit.bars==1', audit)
+        self.assertIn('(g_gate_audit.bars%InpGateAuditLogEveryBars)==0', audit)
+        for field in ('EnumToString(g_instance_role)', '" inst="+g_instance_id',
+                      '" closed_bar="+TimeToString(g_buf_t[closed]'):
+            self.assertIn(field, audit)
+        self.assertEqual(calc.count('Print("[GateAudit] '), audit.count('Print("[GateAudit] ",audit_origin'))
+        self.assertIn('Print("[GateAudit] ",audit_origin," | top blocker: "', audit)
+        self.assertIn('Print("[GateLeg] ",audit_origin', audit)
+
+    def test_strategy_tester_declares_default_icustom_dependency(self):
+        self.assertRegex(EA, r'(?m)^#property\s+tester_indicator\s+"nadir2\.ex5"\s*$')
+        self.assertIn('g_handle=iCustom(_Symbol,_Period,InpIndicatorName);', EA)
+
+    def test_replay_result_names_its_instance(self):
+        replay = between(IND, 'if(g_replay_audit_pending && first_run)',
+                         'g_replay_audit_pending=false;')
+        self.assertIn('" | role="+EnumToString(g_instance_role)+" inst="+g_instance_id', replay)
+        for status in ('PASS', 'FAIL'):
+            message = replay[replay.index(f'Print("[CausalReplay] {status} '):].split(');', 1)[0]
+            self.assertIn('TimeToString(g_buf_t[closed]),replay_origin', message)
+
+    def test_reader_startup_reports_compiled_indicator_identity(self):
+        init = between(IND, 'int OnInit()', 'void OnDeinit(')
+        identity = init[init.index('Print("[QSMC_INSTANCE] INSTANCE_ID=",g_instance_id,'):]
+        for field in ('" | INSTANCE_ROLE=",EnumToString(g_instance_role)',
+                      '" | BUILD_VERSION=",QSMC_VERSION_TEXT',
+                      '" | COMPILED_AT=",TimeToString(__DATETIME__',
+                      '" | CORE_EXPORT=",(InpExportSignalBuffers?"ON":"OFF")'):
+            self.assertIn(field, identity)
+
+    def test_observation_preset_disables_entries_and_position_management(self):
+        preset = ROOT / 'presets/QSMC_AutoTrader_DIAG_XAUUSD_M15.set'
+        overrides = dict(line.split('=', 1) for line in preset.read_text().splitlines()
+                         if line and not line.startswith(';'))
+        required = {'InpEnableTrading': 'false', 'InpDryRun': 'true',
+                    'InpAllowRealTrading': 'false', 'InpRealAccountConfirm': '',
+                    'InpRealServerConfirm': '', 'InpResetBreakersAtInit': 'false',
+                    'InpCloseOnOpposite': 'false', 'InpUseTPPips': 'false',
+                    'InpBreakEvenAtR': '0.0', 'InpPartialCloseAtR': '0.0',
+                    'InpOwnExecutionLane': 'false', 'InpPinTimeframeMinutes': '15',
+                    'InpIndicatorName': 'nadir2'}
+        for key, value in required.items():
+            self.assertEqual(overrides.get(key), value, key)
+        default_magic = re.search(r'input\s+long\s+InpMagic\s*=\s*(\d+);', EA).group(1)
+        self.assertNotEqual(overrides['InpMagic'], default_magic)
+        self.assertGreater(int(overrides['InpHeartbeatSeconds']), 0)
 
     def test_invalid_direction_is_not_a_trade(self):
         poll = between(EA, 'void ProcessSignals()', 'string IndicatorIdentityLine()')

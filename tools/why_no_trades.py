@@ -100,6 +100,7 @@ def read_log(path: str) -> list:
 # ---------------------------------------------------------------------------
 
 EVIDENCE_MAX = 240
+LEGACY_HEARTBEAT_LIMIT = 511  # Experts message body, not the timestamp/source columns.
 
 
 def finding(fid, severity, title, evidence, detail, action):
@@ -125,11 +126,7 @@ GUARD_SNIPPET = re.compile(r"(?:GUARD|day guard RESTORED|BREAKER_STATE)[^|]*")
 
 
 def snippet(line, pattern=None, width=190):
-    """A readable slice of a log line, never the whole 600-character heartbeat.
-
-    The heartbeat carries five things in one line; quoting all of it as
-    'evidence' makes a report nobody scans.
-    """
+    """A readable slice of a log line, not the entire legacy heartbeat."""
     if line is None:
         return "(no line)"
     if pattern is not None:
@@ -141,7 +138,7 @@ def snippet(line, pattern=None, width=190):
 
 
 def parse_guard(line):
-    """Pull the numbers out of one heartbeat GUARD segment."""
+    """Read a standalone GUARD record or the segment in a legacy heartbeat."""
     out = {}
     for key in ("day_base", "sess_base", "bal", "eq", "floor"):
         m = re.search(r"\b%s=%s" % (key, NUM), line)
@@ -217,7 +214,21 @@ def diagnose(lines) -> dict:
 
     # ---- 2. breakers (COULD it trade) --------------------------------------
     guard_line, _ = first_line(lines, r"GUARD day_base=")
-    guard = parse_guard(guard_line) if guard_line else {}
+    guard_evidence = guard_line or ""
+    _, marker, tail = guard_evidence.partition("[QSMC_AT] heartbeat: ")
+    if marker and len(marker + tail) == LEGACY_HEARTBEAT_LIMIT:
+        # A cutoff can leave a syntactically valid but incomplete number, e.g.
+        # 'eq=5050' from 'eq=5050.60'. Don't use the final token as evidence.
+        guard_evidence = guard_evidence.rsplit(" ", 1)[0]
+        add("heartbeat-truncated", "WARNING",
+            "Legacy heartbeat appears truncated",
+            snippet(guard_line, r"GUARD[^|]*"),
+            "The message reaches 511 characters. The last field may be incomplete, "
+            "and missing guard flags or a missing verdict are not evidence that "
+            "the guards are clear or the indicator has no verdict.",
+            "Recompile the updated QSMC_AutoTrader and capture its separate GUARD "
+            "and indicator verdict lines in Experts.")
+    guard = parse_guard(guard_evidence)
     if guard.get("DAY_BLOCKED"):
         used = guard.get("loss_money")
         cap = guard.get("money_cap")
@@ -315,6 +326,8 @@ def diagnose(lines) -> dict:
         if verdict and verdict not in ("CORE_PUBLISHED",):
             detail += (" Indicator diagnostic reported %s; it may reflect the "
                        "session's most frequent rejection, not this bar's first failure." % verdict)
+            if "reader not verified" in verdict_line:
+                detail += " This fallback comes from shared globals, not a verified reader verdict."
         add("no-signal", "WARNING",
             "Zero CORE signals%s" % ((" — indicator verdict %s" % verdict)
                                      if verdict else ""),
@@ -376,12 +389,12 @@ def diagnose(lines) -> dict:
     nodiag, _ = first_line(lines, r"no diagnostic record")
     if nodiag:
         add("no-diag", "WARNING",
-            "The EA has no diagnostic record for this symbol/timeframe",
+            "No usable indicator verdict was reported",
             nodiag,
-            "Usually a symbol/timeframe/instance mismatch, or an older indicator "
-            "build without ABI v2.",
-            "Confirm both programs are on the same chart, symbol and timeframe, "
-            "and that nadir2 was compiled from this source tree.")
+            "An empty or unreadable verdict does not by itself identify a gate, "
+            "an indicator build, or a history problem.",
+            "Capture the EA reader's [DataHealth] and [GateAudit] lines and verify "
+            "the compiled nadir2 in this terminal's data folder.")
 
     # ---- 7. noise (real, expected, worth naming so it stops worrying) -----
     rejects = [l for l in lines if "[QSMC_ZONE_REJECT]" in l]
