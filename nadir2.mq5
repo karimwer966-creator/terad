@@ -15661,13 +15661,16 @@ AlertDispatcherClear();
    // role each running instance owns and proves there are no anonymous ones.
    Print("[QSMC_INSTANCE] INSTANCE_ID=",g_instance_id,
          " | INSTANCE_ROLE=",EnumToString(g_instance_role),
+         " | BUILD_VERSION=",QSMC_VERSION_TEXT,
+         " | COMPILED_AT=",TimeToString(__DATETIME__,TIME_DATE|TIME_SECONDS),
+         " | CORE_EXPORT=",(InpExportSignalBuffers?"ON":"OFF"),
          " | OWNER_ID=",g_instance_owner_magic,
          " | CHART_ID=",IntegerToString((long)g_instance_chart_id),
          " | SYMBOL=",_Symbol,
          " | TIMEFRAME=",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | INIT_TIMESTAMP=",TimeToString(g_instance_init_time,TIME_DATE|TIME_SECONDS),
          " | silent=",(QSMC_IsReaderSilent()?"YES":"no"),
-         " | input_hash_scope=SAME-ROLE-ONLY (a tuned VISUAL panel is not a mismatch for this reader)");
+         " | input_hash_scope=SAME-ROLE-ONLY");
    return INIT_SUCCEEDED;
 }
 void OnDeinit(const int reason)
@@ -16151,19 +16154,20 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       if(g_replay_expected_time==g_buf_t[closed])
       {
          ulong rebuilt_hash=CausalGraphFingerprint();
+         string replay_origin=" | role="+EnumToString(g_instance_role)+" inst="+g_instance_id;
          if(rebuilt_hash!=g_replay_expected_hash)
          {
             g_replay_equivalence_ok=false;
             g_causal_invariants_ok=false;
             g_replay_audit_status="MISMATCH";
             Print("[CausalReplay] FAIL ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
-                  " incremental/full mismatch @ ",TimeToString(g_buf_t[closed]));
+                  " incremental/full mismatch @ ",TimeToString(g_buf_t[closed]),replay_origin);
          }
          else
          {
             g_replay_audit_status="PASS";
             Print("[CausalReplay] PASS ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
-                  " @ ",TimeToString(g_buf_t[closed]));
+                  " @ ",TimeToString(g_buf_t[closed]),replay_origin);
          }
       }
       else
@@ -16173,26 +16177,8 @@ int OnCalculate(const int rates_total, const int prev_calculated,
 
    g_last_rates_total=rates_total;
 
-   // Signal gate audit: session bookkeeping, once per newly closed bar.
-   if(is_new_bar)
-   {
-      g_gate_audit.bars++;
-      if(InpGateAuditLogEveryBars>0 &&
-         (g_gate_audit.bars%InpGateAuditLogEveryBars)==0)
-      {
-         Print("[GateAudit] ",SignalGateAuditLine()," | ",SignalGateOutcomeLine(),
-               " | top blocker: ",GateAuditTopBlocker());
-         Print("[GateAudit] ",SignalGateSourceLine()," | ",TopDown_GatingModeLine());   // v6.4.1
-         Print("[GateAudit] ",SignalGateRXNLine());                                     // v6.5.0
-         // v6.6.16 (LEG_GEOMETRY audit): print the numeric leg snapshot when the
-         // top blocker is leg-related. This is rate-limited to the same cadence
-         // as the GateAudit block (InpGateAuditLogEveryBars) so it never floods
-         // the log on every tick.
-         string leg=SignalGateLegDiagLine();
-         if(leg!="") Print("[GateLeg] ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period)," @ ",
-                           TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES)," | ",leg);
-      }
-   }
+   // Count the bar before evaluating it; print the audit after publication.
+   if(is_new_bar) g_gate_audit.bars++;
 
    // Advance attach-session research outcomes once per closed bar, even when
    // no setup currently owns the lifecycle; confirmed signal facts stay apart.
@@ -16458,6 +16444,23 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // v6.6.10: publish the verdict of this closed bar for QSMC_AutoTrader.
    DiagPublishCoreState(closed);
    GateProfilePublish(closed);
+   // Give the private reader one audit at its first completed closed-bar
+   // pass, then honor the configured cadence. No audits when disabled.
+   if(is_new_bar && InpGateAuditLogEveryBars>0 &&
+      ((g_instance_role==ROLE_EA_READER && g_gate_audit.bars==1) ||
+       (g_gate_audit.bars%InpGateAuditLogEveryBars)==0))
+   {
+      string audit_origin="role="+EnumToString(g_instance_role)+" inst="+g_instance_id+
+                          " closed_bar="+TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES);
+      string blocker=GateAuditTopBlocker();
+      Print("[GateAudit] ",audit_origin," | top blocker: ",(blocker==""?"none recorded":blocker),
+            " | ",SignalGateOutcomeLine());
+      Print("[GateAudit] ",audit_origin," | ",SignalGateAuditLine());
+      Print("[GateAudit] ",audit_origin," | ",SignalGateSourceLine()," | ",TopDown_GatingModeLine());
+      Print("[GateAudit] ",audit_origin," | ",SignalGateRXNLine());
+      string leg=SignalGateLegDiagLine();
+      if(leg!="") Print("[GateLeg] ",audit_origin," | ",leg);
+   }
    RunRuntimeDisplayNoLookaheadAudit(closed,g_buf_t);
 
    RunRuntimeCausalValidation();

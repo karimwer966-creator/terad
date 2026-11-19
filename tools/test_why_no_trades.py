@@ -193,6 +193,42 @@ zv = by_id(with_verdict, "no-signal") or by_id(with_verdict, "zero-signal")
 check("NO_STRUCTURE_EVENT" in zv["detail"],
       "the verdict is repeated in the no-signal detail", zv["detail"][:120])
 
+# Regression: the legacy Experts message ended in the middle of equity and
+# never showed the risk flags or indicator verdict. Use synthetic balances.
+LOG_PREFIX = TS + "QSMC_AutoTrader (XAUUSD,M15)\t"
+core_summary = ("[QSMC_AT] heartbeat: ARMED | CORE signals in last 200 closed bars: 0 "
+                "-> none in the current indicator export buffer; history before this instance "
+                "was attached is not proven")
+legacy_counters = (" | processed 0 sent 0 (partial 0) dry 0 refused 0 expired 0 "
+                   "invalid_buffer_signals 0 signal_copy_failures 0 unconfirmed 0 unprotected 0 "
+                   "weak 0 moderate 0 strong 0 dup_prevented 0 owner_refused 0 profile_refused 0 open 0")
+guard_payload = ("GUARD day_base=5000.00 sess_base=5000.00 bal=5050.60 eq=5050.60 "
+                 "DAY_STOP_STATE=PERCENT ARMED")
+legacy_body = (core_summary + " (see GateAudit and DataHealth for this iCustom instance)"
+               + legacy_counters + " | " + guard_payload)
+clipped_body = legacy_body[:511]
+check(clipped_body.endswith("eq=5050"), "the legacy cutoff lands inside the equity field")
+clipped = W.diagnose([LOG_PREFIX + clipped_body])
+check("heartbeat-truncated" in ids(clipped), "a legacy Experts cutoff is flagged", ids(clipped))
+check(clipped["verdict"] is None and "eq" not in clipped["guard"] and clipped["guard"].get("bal") == 5050.60,
+      "a clipped equity or unseen verdict is not used as evidence", clipped["guard"])
+full = W.diagnose([LOG_PREFIX + legacy_body])
+check("heartbeat-truncated" not in ids(full) and full["guard"].get("eq") == 5050.60,
+      "a complete legacy heartbeat still parses", full["guard"])
+
+split = W.diagnose([
+    LOG_PREFIX + core_summary,
+    LOG_PREFIX + "[QSMC_AT] indicator verdict: NO_STRUCTURE_EVENT - no event (iCustom buffer 19, shift 1)",
+    LOG_PREFIX + "[QSMC_AT] " + guard_payload,
+])
+check("heartbeat-truncated" not in ids(split) and split["verdict"] == "NO_STRUCTURE_EVENT"
+      and split["guard"].get("eq") == 5050.60,
+      "separate heartbeat, verdict and guard records retain the evidence", split["guard"])
+
+fallback = W.diagnose([HEARTBEAT, verdict_line + " (default-input globals; reader not verified)"])
+check("not a verified reader verdict" in by_id(fallback, "no-signal")["detail"],
+      "the report distinguishes a shared diagnostic fallback from the handle's verdict")
+
 # ---------------------------------------------------------------------------
 # 5. MTF history: report the role without asserting causation
 # ---------------------------------------------------------------------------

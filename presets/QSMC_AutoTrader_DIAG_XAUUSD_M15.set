@@ -1,0 +1,21 @@
+; source: MQL5/Experts/QSMC_AutoTrader.mq5
+; CORE diagnostics only. Load on a separate DEMO chart with Algo Trading off.
+; A separate magic keeps this observation out of any regular EA's guard/seen scope.
+; No entries, position management, execution-lane claims, or breaker resets.
+InpMagic=2026111801
+InpPinTimeframeMinutes=15
+InpIndicatorName=nadir2
+InpEnableTrading=false
+InpDryRun=true
+InpAllowRealTrading=false
+InpRealAccountConfirm=
+InpRealServerConfirm=
+InpResetBreakersAtInit=false
+InpCloseOnOpposite=false
+InpBreakEvenAtR=0.0
+InpPartialCloseAtR=0.0
+InpUseTPPips=false
+InpOwnExecutionLane=false
+InpEnableTrialJournal=false
+InpHeartbeatSeconds=60
+InpHeartbeatLookback=200

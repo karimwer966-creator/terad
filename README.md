@@ -5,7 +5,7 @@ not share a preset format contract, and only one of them is production-ready.
 
 | Product | Files | State |
 |---|---|---|
-| **QSMC** (this repository's production product) | `nadir2.mq5` (canonical, mirrored to `MQL5/Indicators/`), `MQL5/Experts/QSMC_AutoTrader.mq5`, `MQL5/Include/QSMC/*.mqh`, 9 presets | offline-verified: 68/68 curated checks (67 suites + gates), 9/9 presets bound, layout 8/8, include graph 6/6. The MT5 compile and the field tests are the operator's step — see [`docs/STAGED_GO_LIVE_LADDER_v6.6.14.md`](docs/STAGED_GO_LIVE_LADDER_v6.6.14.md) |
+| **QSMC** (this repository's production product) | `nadir2.mq5` (canonical, mirrored to `MQL5/Indicators/`), `MQL5/Experts/QSMC_AutoTrader.mq5`, `MQL5/Include/QSMC/*.mqh`, 9 QSMC presets | offline verification via the curated gate below. The MT5 compile and the field tests are the operator's step — see [`docs/STAGED_GO_LIVE_LADDER_v6.6.14.md`](docs/STAGED_GO_LIVE_LADDER_v6.6.14.md) |
 | **QATS** (separate, experimental) | `MQL5/Experts/QuantumAutonomousTradingSystem.mq5`, `presets/Quantum_XAUUSD_PRODUCTION.set` | **not production-ready**: no demonstrated edge. Read [`docs/QATS_README.md`](docs/QATS_README.md) first |
 
 > **Install (Arabic):** [`INSTALL_AR.md`](INSTALL_AR.md) · **Everything indexed:** [`docs/INDEX.md`](docs/INDEX.md) · **Repo map:** [`docs/PROJECT_MAP_AR.md`](docs/PROJECT_MAP_AR.md)
@@ -22,7 +22,7 @@ MQL5/Experts/KLJ_DataFeeder.mq5     feed sanity companion, no trading
 MQL5/Include/QSMC/*.mqh             33 headers, aggregated by QSMC_Root.mqh
 MQL5/Indicators/QSMC_ScannerProbe.mq5, QSMC_SmcVpEngine.mq5
 MQL5/Scripts/QSMC_ArbiterTest.mq5, QSMC_ResetGuards.mq5
-presets/*.set                       9 files, each bound to its source (see below)
+presets/*.set                       10 files, each bound to its source (see below)
 tools/                              67 test suites, 94 Python files in total
                                     (gates, generators, simulators, fixtures)
 docs/                               79 documents + docs/INDEX.md + docs/history/
@@ -42,10 +42,19 @@ shipped preset can arm REAL trading**.
 | `presets/QSMC_v6.6.20_latency_diagnosis.set` | `nadir2` | diagnostic logging, no trading |
 | `presets/QSMC_AutoTrader_v6.6.20_DEMO_AUTO.set` | EA | the compiled defaults, printed as a file (demo armed, REAL refused) |
 | `presets/QSMC_AutoTrader_v6.6.20_PRODUCTION_SAFE.set` | EA | master switch off + dry-run on: nothing is sent |
+| `presets/QSMC_AutoTrader_DIAG_XAUUSD_M15.set` | EA | isolated demo observation: no entries or position management; [Arabic CORE log guide](docs/QSMC_CORE_DIAGNOSTICS_AR.md) |
 | `presets/QSMC_AutoTrader_DEMO_0.10_200.set` | EA | 0.10 lots-risk, 200-currency daily stop (generated) |
 | `presets/QSMC_AutoTrader_v6.6.22_SCALP_M5.set` | EA | M5 pin, 0.25 % risk, 08:00–20:00 window, 6 entries/day |
 | `presets/QSMC_fixed005_tp100_200_300.set` | EA | fixed 0.05 lot, pip TP ladder 100/200/300 |
 | `presets/Quantum_XAUUSD_PRODUCTION.set` | QATS | **other product** |
+
+## XAUUSD/M15 trial bundle
+
+Run `python3 tools/package_trial.py` to build `release/QSMC_XAUUSD_M15_Trial.zip`.
+It contains the EA and indicator sources, a no-orders observation preset, an
+optional DEMO order preset, and the [Arabic start guide](docs/QSMC_TRIAL_XAUUSD_M15_AR.md).
+Compile both `.mq5` files with MetaEditor F7. The ZIP does not contain EX5s or
+certify MT5 execution.
 
 ## Verify it yourself
 

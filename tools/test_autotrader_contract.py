@@ -288,7 +288,7 @@ require(hb is not None and int(hb.group(1)) > 0,
 require(re.search(r"input\s+int\s+InpHeartbeatLookback\s*=\s*(\d+)\s*;", ea) is not None,
         "the heartbeat scans a configurable lookback window (InpHeartbeatLookback)")
 require("void DiagnosticHeartbeat()" in code, "the heartbeat is one named function")
-hb_body = code[code.index("void DiagnosticHeartbeat()"):code.index("void ManageOpenPositions()")]
+hb_body = code[code.index("void PrintHeartbeatCore("):code.index("void ManageOpenPositions()")]
 require("CopyBuffer(g_handle,QSMC_BUF_CORE_DIR" in hb_body,
         "the heartbeat reads the CORE direction buffer (7) itself, not an internal indicator state")
 require(not re.search(r"g_trade\.|OrderSend|PositionOpen|PositionModify|PositionClose", hb_body),

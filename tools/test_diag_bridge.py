@@ -228,8 +228,9 @@ require('GlobalVariableSet(p+"GP_BARS"' in host and "g_gate_audit.bars" in host,
         "the sample size travels with the peak (a peak without a window is not evidence)")
 require("GlobalVariableSet(DiagVarName(" not in ea and 'GlobalVariableSet(p+"GP_' not in ea,
         "the companion never writes a profile value back")
-require("out+=GateProfileSuffix();" in ea,
-        "the profile rides on every heartbeat exit, not only the complete one")
+require('string profile=GateProfileSuffix();' in ea and
+        'Print("[QSMC_AT] indicator gate stats (default-input globals)",profile);' in ea,
+        "the profile is logged separately so it cannot displace the verdict from the journal")
 
 prof = re.search(r"string GateProfileSuffix\(\)\s*\{(.*?)\n  \}", ea, re.S)
 require(prof is not None, "the companion has a GateProfileSuffix()")

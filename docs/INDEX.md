@@ -34,6 +34,8 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`QSMC_CHART_READING_AR.md`](QSMC_CHART_READING_AR.md) | معنى كل نص على الشارت، وترتيب سلطة الطبقات |
 | [`QSMC_DASHBOARD_CLARITY.md`](QSMC_DASHBOARD_CLARITY.md) | dashboard rows, verdict codes, caps |
 | [`QSMC_WHY_NO_TRADES.md`](QSMC_WHY_NO_TRADES.md) | triage: a trade is missing — which gate refused it |
+| [`QSMC_CORE_DIAGNOSTICS_AR.md`](QSMC_CORE_DIAGNOSTICS_AR.md) | التقاط سجل قارئ CORE على XAUUSD/M15 بحساب DEMO دون أوامر |
+| [`QSMC_TRIAL_XAUUSD_M15_AR.md`](QSMC_TRIAL_XAUUSD_M15_AR.md) | تركيب حزمة التجربة واختيار المراقبة أو أوامر DEMO أو الإعادة التاريخية |
 | [`QSMC_RUNTIME_LOG_REVIEW_AR.md`](QSMC_RUNTIME_LOG_REVIEW_AR.md) | قراءة سجل Experts سطرًا سطرًا |
 | [`QSMC_TRADER_MIND_REVIEW_AR.md`](QSMC_TRADER_MIND_REVIEW_AR.md) | الخطوات التسع للقرار، ومقارنتها بمتداول محترف |
 | [`QSMC_SCREENSHOT_PRIMARY_CONFLICT_AR.md`](QSMC_SCREENSHOT_PRIMARY_CONFLICT_AR.md) | لماذا تختلف الأولوية عن الشموع أحيانًا |

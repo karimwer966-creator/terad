@@ -136,8 +136,10 @@
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
 #property version   "6.624"
-#property description "Companion execution EA for the QSMC indicator. Ships inert; no strategy claim."
+#property description "Companion execution EA for QSMC. Default: DEMO armed, REAL disarmed."
 #property strict
+// iCustom uses a name input, so the tester cannot infer this dependency.
+#property tester_indicator "nadir2.ex5"
 
 #include <Trade/Trade.mqh>
 //--- v6.6.24: the pure execution rules (day/drawdown/streak/cooldown floors,
@@ -398,7 +400,7 @@ input double InpPartialClosePercent  = 50.0;   // percent of the volume banked a
 //--- 6. runtime ------------------------------------------------------
 input int    InpPollSeconds          = 2;      // timer period, seconds
 input bool   InpVerbose              = false;  // print every skipped signal and why
-input int    InpHeartbeatSeconds     = 300;    // diagnostic journal line every N seconds (0 = off)
+input int    InpHeartbeatSeconds     = 300;    // diagnostic journal entries every N seconds (0 = off)
 input int    InpHeartbeatLookback    = 200;    // bars scanned to prove whether the indicator publishes CORE at all
 
 //--- 7. unified signal execution profile ------------------------------
@@ -3406,20 +3408,15 @@ void ProcessSignals()
 //| _CONF / _TIME once per closed bar. Reading them changes nothing;  |
 //| a missing variable is reported as "no record", never guessed.     |
 //+------------------------------------------------------------------+
-// 2026-11-06 audit (E1/E3): "verify the exact iCustom instance and indicator
-// build" was not answerable from the log. The EA said it reads the indicator's
-// compiled defaults, but never which instance, which timeframe, or whether the
-// handle it holds answers on the slots it was written against. A stale nadir2.ex5
-// left in the Data Folder keeps answering CopyBuffer() happily, from its own,
-// older buffer map - so the ABI actually being read has to be stated.
+// The handle can report calculation count and readable slot numbers, not the
+// build version or the meaning of a slot. Keep those observations distinct.
 string IndicatorIdentityLine()
   {
    if(g_handle==INVALID_HANDLE)
       return "INDICATOR_ABI=UNREAD | handle INVALID";
    int bars_calc=BarsCalculated(g_handle);
-   // Probe every slot the ABI contract asserts, one element deep. A build whose
-   // buffer map moved does not answer all six, and that difference is the whole
-   // point of the line.
+   // Probe each CORE export slot one element deep. A successful copy proves
+   // accessibility only, not that an older EX5 uses the same buffer map.
    int slots[6];
    slots[0]=QSMC_BUF_CORE_DIR;   slots[1]=QSMC_BUF_CORE_ENTRY;
    slots[2]=QSMC_BUF_CORE_SL;    slots[3]=QSMC_BUF_CORE_TP1;
@@ -3437,12 +3434,10 @@ string IndicatorIdentityLine()
    int vcode_n=CopyBuffer(g_handle,QSMC_BUF_CORE_VCODE,0,1,probe);
    string abi=(present==6 ? "7..12 PRESENT" : "7..12 INCOMPLETE");
    return "INDICATOR_ABI="+abi+
-          " (probe 7/8/9/10/11/12="+got+", VCODE="+IntegerToString(vcode_n)+")"+
+          " (probe 7/8/9/10/11/12="+got+", VCODE_COPY="+IntegerToString(vcode_n)+")"+
           " | INDICATOR_TIMEFRAME="+EnumToString((ENUM_TIMEFRAMES)_Period)+
           " | INDICATOR_SYMBOL="+_Symbol+
-          " | INDICATOR_BUILD="+(bars_calc>0
-                                   ? "CALCULATING("+IntegerToString(bars_calc)+" bars)"
-                                   : "NOT CALCULATING")+
+          " | BarsCalculated="+IntegerToString(bars_calc)+" | INDICATOR_BUILD=UNVERIFIED"+
           " | INDICATOR_INPUTS=COMPILED DEFAULTS (no input list passed; a chart .set cannot reach this instance)";
   }
 
@@ -3562,48 +3557,47 @@ string DiagCodeText(const int code)
       case 33: return "BRANCH_ROLLBACK - the causal branch was rejected or rolled back";
       case 34: return "OTHER - some other gate in the indicator refused the candidate";
      }
-   return ("UNKNOWN code "+IntegerToString((long)code)+" - this companion is older than the indicator build; copy both files and press F7");
+   return ("UNKNOWN code "+IntegerToString((long)code)+" - not in this EA's verdict table; verify both compiled files");
   }
-// One suffix for every heartbeat exit path, so an early return (no handle, no
-// history, still warming up) still carries the indicator's own verdict instead
-// of leaving the operator with half the answer.
-// v6.6.15 (H6): read the CORE verdict from buffer 19 when available, fall back
-// to GlobalVariables. Buffer verdict is per-bar (chronological) on the closed
-// bar; buffer 0.0 means the attached indicator build does not publish it.
+
+bool IsCoreVerdictValue(const double code)
+  {
+   return (MathIsValidNumber(code) && code>=0.0 && code<=INT_MAX && code==MathFloor(code));
+  }
+
+// v6.6.15 (H6): prefer the last closed-bar verdict on this iCustom handle.
+// A zero in slot 19 can be an unfilled slot; it does not identify a build.
 double ReadCoreVerdictFromBuffer()
   {
    if(g_handle==INVALID_HANDLE) return -1.0;
    double v[];
    ArraySetAsSeries(v,true);                                  // v6.6.15: dynamic array to avoid static-array warning
    int got=CopyBuffer(g_handle,QSMC_BUF_CORE_VCODE,1,1,v);   // shift 1 = last closed
-   if(got!=1) return -1.0;
-   if(!MathIsValidNumber(v[0]) || v[0]==0.0) return -1.0;
+   if(got!=1 || !IsCoreVerdictValue(v[0]) || v[0]==0.0) return -1.0;
    return v[0];
   }
-string IndicatorVerdictSuffix()
+void PrintIndicatorVerdict()
   {
-   double core=-1.0;
-   bool from_buffer=false;
-   double bv=ReadCoreVerdictFromBuffer();
-   if(bv>=0.0) { core=bv; from_buffer=true; }
-   else
+   double core=ReadCoreVerdictFromBuffer();
+   bool from_buffer=(core>=0.0);
+   if(!from_buffer) DiagRead("CORE",core);
+   if(!IsCoreVerdictValue(core))
      {
-      double gv=0.0;
-      if(DiagRead("CORE",gv)) core=gv;
+      Print("[QSMC_AT] indicator verdict: no diagnostic record - check [DataHealth] and [GateAudit] for this iCustom reader");
+      return;
      }
-   if(core<0.0)
-      return (" | indicator verdict: no diagnostic record for "+
-              IntegerToString((long)_Period)+" on this symbol - the indicator has not completed a"+
-              " closed-bar pass here (not attached, not compiled, or a different symbol/timeframe)");
-   string out=" | indicator verdict: "+DiagCodeText((int)MathRound(core))+
-              (from_buffer?" (buffer)":" (diag)");
+   Print("[QSMC_AT] indicator verdict: ",DiagCodeText((int)core),
+         (from_buffer ? " (iCustom buffer 19, shift 1)" : " (default-input globals; reader not verified)"));
+   // The additional aggregates come from shared default-input globals, not
+   // from the handle. Label them separately even when the verdict is from it.
+   string out="";
    double db=0.0,da=0.0,dc=0.0,dt=0.0;
    if(DiagRead("BARS",db) && DiagRead("ARMED",da) && DiagRead("CONF",dc))
       out+=" | indicator funnel: bars "+IntegerToString((long)db)+
            " armed "+IntegerToString((long)da)+
            " confirmed "+IntegerToString((long)dc);
    if(DiagRead("TIME",dt) && dt>0.0)
-      out+=" | last closed bar "+TimeToString((datetime)(long)dt,TIME_DATE|TIME_MINUTES);
+      out+=" | diagnostic bar "+TimeToString((datetime)(long)dt,TIME_DATE|TIME_MINUTES);
    // v6.6.12: which gate profile the indicator is running. A relaxed threshold
    // must never be something the operator discovers by accident, weeks later.
    double prof=-1.0;
@@ -3611,8 +3605,9 @@ string IndicatorVerdictSuffix()
       out+=" | indicator gate profile: "+(prof>0.5 ?
            "PRACTICAL (entry thresholds relaxed - read the indicator's init banner)" :
            "STRICT (thresholds as entered)");
-   out+=GateProfileSuffix();
-   return out;
+   if(out!="") Print("[QSMC_AT] indicator diagnostics (default-input globals)",out);
+   string profile=GateProfileSuffix();
+   if(profile!="") Print("[QSMC_AT] indicator gate stats (default-input globals)",profile);
   }
 
 
@@ -3919,53 +3914,25 @@ void ManagePipLadder(const ulong ticket,const bool buy,const double entry,
      }
   }
 
-void DiagnosticHeartbeat()
+void PrintHeartbeatCore(const string mode)
   {
-   if(InpHeartbeatSeconds<=0) return;
-   datetime now=TimeCurrent();
-   if(!g_heartbeat_first && (long)(now-g_last_heartbeat)<(long)InpHeartbeatSeconds) return;
-   g_last_heartbeat=now;
-   g_heartbeat_first=false;
-
-   string mode="INERT";
-   if(InpEnableTrading)
-     {
-      if(InpDryRun) mode="DRY RUN";
-      else
-        {
-         string blk=TradeEnvBlock(true);
-         if(blk=="") mode="ARMED";
-         else        mode="BLOCKED: "+blk;
-        }
-     }
-
    if(g_handle==INVALID_HANDLE)
      {
-      Print("[QSMC_AT] heartbeat: ",mode," | indicator `",InpIndicatorName,
-            "` handle INVALID - not compiled or missing from MQL5\\Indicators; no signal can ever be read"+
-            IndicatorVerdictSuffix());
+      Print("[QSMC_AT] heartbeat: ",mode," | indicator handle INVALID - see the iCustom initialization log");
       return;
      }
-   // v6.6.10: a valid handle is not a working indicator. BarsCalculated()<0
-   // means the instance exists but never calculated (its OnInit failed, the
-   // symbol/timeframe has no history, or the parameters were rejected). That
-   // used to be reported as "still warming up" forever, which sent the operator
-   // looking at the wrong layer.
+   // A valid handle can still have no calculated bars; the count cannot say why.
    int calc=BarsCalculated(g_handle);
    if(calc<0)
      {
-      Print("[QSMC_AT] heartbeat: ",mode," | indicator `",InpIndicatorName,
-            "` exists but is NOT calculating (BarsCalculated=",IntegerToString((long)calc),
-            ") - its OnInit failed or its history is unavailable; read the nadir2 lines in the Experts log"+
-            IndicatorVerdictSuffix());
+      Print("[QSMC_AT] heartbeat: ",mode," | no calculated indicator bars (BarsCalculated=",calc,
+            ") - see [DataHealth] and the iCustom initialization log");
       return;
      }
    if(!g_last_copy_ok)
      {
-      Print("[QSMC_AT] heartbeat: ",mode," | indicator `",InpIndicatorName,
-            "` is still warming up (",IntegerToString((long)calc),
-            " bars calculated; the last CopyBuffer returned fewer bars than requested); waiting, nothing is wrong yet"+
-            IndicatorVerdictSuffix());
+      Print("[QSMC_AT] heartbeat: ",mode," | CORE buffers not ready (BarsCalculated=",calc,
+            ") - no complete signal-buffer copy for this poll");
       return;
      }
 
@@ -3976,7 +3943,7 @@ void DiagnosticHeartbeat()
      {
       Print("[QSMC_AT] heartbeat: ",mode," | indicator history not ready (Bars=",
             bars_avail,", BarsCalculated=",calc,", requested closed bars=",look,
-            ") - no zero-signal conclusion"+IndicatorVerdictSuffix());
+            ") - no zero-signal conclusion");
       return;
      }
    double hb_dir[];
@@ -3985,8 +3952,7 @@ void DiagnosticHeartbeat()
    if(got<look+1)
      {
       Print("[QSMC_AT] heartbeat: ",mode," | indicator history not ready (",
-            IntegerToString(got),"/",IntegerToString(look+1)," bars) - no zero-signal conclusion"+
-            IndicatorVerdictSuffix());
+            IntegerToString(got),"/",IntegerToString(look+1)," bars) - no zero-signal conclusion");
       return;
      }
 
@@ -4012,7 +3978,7 @@ void DiagnosticHeartbeat()
      {
       Print("[QSMC_AT] heartbeat: ",mode," | CORE direction buffer invalid at ",invalid,
             " of ",look," closed bars (EMPTY_VALUE or non-ABI value); valid signals=",found,
-            " - no complete zero-signal conclusion"+IndicatorVerdictSuffix());
+            " - no complete zero-signal conclusion");
       return;
      }
 
@@ -4021,7 +3987,7 @@ void DiagnosticHeartbeat()
    if(found==0)
      {
       // Export journal starts at attachment; zero-filled older bars are not replay proof.
-      line+=" -> none in the current indicator export buffer; history before this instance was attached is not proven (see GateAudit and DataHealth for this iCustom instance)";
+      line+=" -> none in the current indicator export buffer; history before this instance was attached is not proven";
      }
    else
      {
@@ -4031,10 +3997,39 @@ void DiagnosticHeartbeat()
       if(last_shift>(int)MathMax(1,InpMaxSignalAgeBars))
          line+=" - older than InpMaxSignalAgeBars="+IntegerToString(InpMaxSignalAgeBars)+", no longer tradable";
      }
-   // v6.6.16 (audit A): structured guard state on every heartbeat line.
+   Print(line);
+  }
+
+void DiagnosticHeartbeat()
+  {
+   if(InpHeartbeatSeconds<=0) return;
+   datetime now=TimeCurrent();
+   if(!g_heartbeat_first && (long)(now-g_last_heartbeat)<(long)InpHeartbeatSeconds) return;
+   g_last_heartbeat=now;
+   g_heartbeat_first=false;
+
+   string mode="INERT";
+   if(InpEnableTrading)
+     {
+      if(InpDryRun) mode="DRY RUN";
+      else
+        {
+         string blk=TradeEnvBlock(true);
+         if(blk=="") mode="ARMED";
+         else        mode="BLOCKED: "+blk;
+        }
+     }
+
+   // The legacy combined entry was clipped at 511 characters in Experts,
+   // hiding the guard flags and verdict. Keep each section a separate record.
+   PrintHeartbeatCore(mode);
+   PrintIndicatorVerdict();
+   Print("[QSMC_AT] heartbeat identity: ",IndicatorIdentityLine());
+
+   // Structured guard state, independent of indicator data readiness.
    double _curEq=AccountInfoDouble(ACCOUNT_EQUITY);
    double _curBal=AccountInfoDouble(ACCOUNT_BALANCE);
-   string _guard=" | GUARD day_base="+(g_day_start_equity>0.0?DoubleToString(g_day_start_equity,2):"n/a")+
+   string _guard="[QSMC_AT] GUARD day_base="+(g_day_start_equity>0.0?DoubleToString(g_day_start_equity,2):"n/a")+
                  " sess_base="+(g_session_start_equity>0.0?DoubleToString(g_session_start_equity,2):"n/a")+
                  " bal="+DoubleToString(_curBal,2)+" eq="+DoubleToString(_curEq,2);
    // v6.6.16 (safety hotfix): heartbeat shows effective (post-HARD-clamp) daily cap.
@@ -4077,7 +4072,9 @@ void DiagnosticHeartbeat()
    if(g_loss_streak_blocked) _guard+=" CONSEC_LOSS_BLOCKED(cnt="+IntegerToString(g_consec_losses)+")";
    if(!g_day_blocked && !g_drawdown_blocked && !g_loss_streak_blocked) _guard+=" ARMED";
    _guard+=" exec="+ExecutionModeName();
-   line+=" | processed "+IntegerToString(g_signals)+
+   Print(_guard);
+
+   Print("[QSMC_AT] heartbeat counters: processed "+IntegerToString(g_signals)+
          " sent "+IntegerToString(g_sent)+
          " (partial "+IntegerToString(g_partial)+")"
          " dry "+IntegerToString(g_dry)+
@@ -4095,20 +4092,10 @@ void DiagnosticHeartbeat()
          " dup_prevented "+IntegerToString(g_duplicates_prevented)+
          " owner_refused "+IntegerToString(g_owner_refused)+
          " profile_refused "+IntegerToString(g_profile_refused)+
-         " open "+IntegerToString(OpenCount(_Symbol))+
-         _guard+
-         DisciplineSuffix();
-   if(g_last_note!="")
-      line+=" | last skip: "+g_last_note;
-
-   // v6.6.10: the indicator's own verdict on the last closed bar. Without it,
-   // "CORE signals: 0" is a symptom with no cause; with it, the line names the
-   // gate that refused the candidate (see the DIAG_TABLE block above).
-   line+=IndicatorVerdictSuffix();
-   Print(line);
-   // 2026-11-06 audit (E1): repeat the identity on the heartbeat. A handle can
-   // outlive the .ex5 it was created from; this is the line that notices.
-   Print("[QSMC_AT] heartbeat identity: ",IndicatorIdentityLine());
+         " open "+IntegerToString(OpenCount(_Symbol)));
+   string discipline=DisciplineSuffix();
+   if(discipline!="") Print("[QSMC_AT] heartbeat discipline",discipline);
+   if(g_last_note!="") Print("[QSMC_AT] last skip: ",g_last_note);
   }
 
 //+------------------------------------------------------------------+
