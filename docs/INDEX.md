@@ -79,6 +79,12 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`REVIEW_INCLUDE_QSMC_v6.6.24_AR.md`](REVIEW_INCLUDE_QSMC_v6.6.24_AR.md) | مراجعة الطبقة الداخلية `Include/QSMC` (33 ملفًا): 23 عيبًا أُصلحت، وحكم على التغييرات المقترحة، وما لم يُراجَع صريحًا |
 | [`QSMC_LINKS_REPAIR_2026-11-16_AR.md`](QSMC_LINKS_REPAIR_2026-11-16_AR.md) | إصلاح الروابط بين الأجزاء (الدورة السابقة) |
 | [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md) | خريطة المستودع: كل مجلد وماذا يحتوي |
+| [`QSMC_FIXED_RANGE_DUMP_RUNBOOK.md`](QSMC_FIXED_RANGE_DUMP_RUNBOOK.md) | the diagnostic-only nadir2 fixed-range dump: side-effect limits, Windows compile/run, CSV checks (COMPILE/RUN/CSV **NOT VERIFIED**) |
+| [`QSMC_BASELINE_HASHES.md`](QSMC_BASELINE_HASHES.md) | sha256 manifest of production sources @ `pre-refactor-v6.6.24` — the diagnostic tool is not a baseline change |
+| [`QSMC_QSVP_3_OF_10_TRACE.md`](QSMC_QSVP_3_OF_10_TRACE.md) | what "SELL candidate 3/10, FAIL at LIQUIDITY SWEEP" means, with file:line evidence |
+| [`QSMC_RELOCATION_MAP_CONDITIONAL.md`](QSMC_RELOCATION_MAP_CONDITIONAL.md) | relocation of QATS/KLJ_DataFeeder/ScannerProbe → `MQL5/Legacy/` — approved but CONDITIONAL on the baseline; not executed |
+| [`QSMC_TESTER_PLAN_1_OBSERVATION.md`](QSMC_TESTER_PLAN_1_OBSERVATION.md) | Strategy Tester plan 1 — observation/dry-run diagnostics (no fills) |
+| [`QSMC_TESTER_PLAN_2_EXECUTION.md`](QSMC_TESTER_PLAN_2_EXECUTION.md) | Strategy Tester plan 2 — execution characterization, isolated tester only, never live |
 
 ## 5. QATS — a separate product (not production-ready)
 
