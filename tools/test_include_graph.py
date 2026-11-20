@@ -120,11 +120,11 @@ def main() -> int:
     case(rc == 0, "T9 the live tree must pass all include-graph checks")
     case(len(g.PASSES) == 6, "T9 expected 6 passing checks, got %d" % len(g.PASSES))
     text = "\n".join(g.PASSES)
-    for token in ("33 header(s)", "54 edge(s)", "well-formed"):
+    for token in ("34 header(s)", "54 edge(s)", "well-formed"):
         case(token in text, "T9 %r missing from the gate's own report" % token)
 
     print("PASS include-graph gate: comment trap, cycles, guards, coupling, order, "
-          "and the live 33-header / 54-edge tree")
+          "and the live 34-header / 54-edge tree")
     return 0
 
 

@@ -91,7 +91,13 @@ def main():
         if name.endswith(".set") and not name.startswith("Quantum"):
             files.append("presets/" + name)
     inc = os.path.join(ROOT, "MQL5", "Include", "QSMC")
-    files += ["MQL5/Include/QSMC/" + f for f in sorted(os.listdir(inc)) if f.endswith(".mqh")]
+    # Diagnostics-only modules are not part of the production data-folder
+    # layout and are never included by any production source. Shipping them
+    # would trip the documented-layout gate (G2) and confuse the install;
+    # they live in the repository (and PR gates), not in the terminal folder.
+    production_exclusions = {"QSMC_OpportunityFunnel.mqh"}
+    files += ["MQL5/Include/QSMC/" + f for f in sorted(os.listdir(inc))
+              if f.endswith(".mqh") and f not in production_exclusions]
     for doc in ("QSMC_BUILD_AND_RUN.md", "QSMC_GO_LIVE_RUNBOOK.md", "QSMC_PRODUCTION_CHECKLIST.md",
                 "QSMC_AUTOTRADER.md", "QSMC_WHY_NO_TRADES.md", "QSMC_CHART_READING_AR.md",
                 "QSMC_RUNTIME_LOG_REVIEW_AR.md"):
@@ -128,7 +134,7 @@ def main():
         "branch=%s" % branch,
         "commit=%s%s" % (commit, " (working tree had uncommitted changes)" if dirty else ""),
         "compile_status=NOT COMPILED HERE - MetaEditor F7 required",
-        "offline_gate=OFFLINE GO (curated checks); release gate GO (0 warnings)",
+        "offline_gate=OFFLINE GO (curated checks); release gate GO (see stdout for warnings)",
         "safety=EA ships ARMED ON DEMO (EXECUTION_DEMO): InpEnableTrading=true, InpDryRun=false; REAL disarmed: InpAllowRealTrading=false, empty login/server confirmations",
         "",
         "files:",

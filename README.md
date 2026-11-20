@@ -19,13 +19,13 @@ nadir2.mq5                          canonical host: 45 002 lines, 599 `input`
                                     in MQL5/Indicators/nadir2.mq5
 MQL5/Experts/QSMC_AutoTrader.mq5    the companion EA: 67 inputs, reads buffers 7-12
 MQL5/Experts/KLJ_DataFeeder.mq5     feed sanity companion, no trading
-MQL5/Include/QSMC/*.mqh             33 headers, aggregated by QSMC_Root.mqh
+MQL5/Include/QSMC/*.mqh             34 headers, aggregated by QSMC_Root.mqh
 MQL5/Indicators/QSMC_ScannerProbe.mq5, QSMC_SmcVpEngine.mq5
 MQL5/Scripts/QSMC_ArbiterTest.mq5, QSMC_ResetGuards.mq5
 presets/*.set                       10 files, each bound to its source (see below)
-tools/                              67 test suites, 94 Python files in total
+tools/                              70 test suites, 98 Python files in total
                                     (gates, generators, simulators, fixtures)
-docs/                               79 documents + docs/INDEX.md + docs/history/
+docs/                               90 documents + docs/INDEX.md + docs/history/
 ```
 
 ## Presets — one file per decision, all validated offline

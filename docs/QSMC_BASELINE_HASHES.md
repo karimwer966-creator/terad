@@ -1,0 +1,67 @@
+# QSMC production baseline hashes (base commit 06bd0896b4a1aa18ea1d880276c1083be5a8aac2)
+
+(The repo-root `nadir2.mq5` is a byte-identical convenience copy of `MQL5/Indicators/nadir2.mq5`; both hashes are listed.)
+
+Base commit: `06bd0896b4a1aa18ea1d880276c1083be5a8aac2` (== `main` == `origin/main`).
+Recorded: 2026-11-19 (UTC). Working branch: arena/474b847b-terad (branched from that commit).
+Tag status: `pre-refactor-v6.6.24` existed in this working tree when first recorded (pointing at the same commit), but as of the 2026-11-19 verification pass it no longer resolves locally or on origin (`git ls-remote --tags origin` is empty). The baseline pin is the commit hash above. The tag must NOT be recreated or moved without explicit user approval; this file was corrected in place and the PR updated to match.
+
+Purpose: pin the production sources the diagnostic-only addition
+`MQL5/Scripts/QSMC_FixedRangeDump.mq5` must NOT be mistaken for.
+Verify from the repository root with paths as listed below (repo-relative), e.g.:
+  sha256sum -c <(sed -n '/^```$/,/^```$/p' docs/QSMC_BASELINE_HASHES.md | sed '1d;$d' | grep -E '^[0-9a-f]{64}  ')
+
+sha256 hashes:
+```
+06bd0896b4a1aa18ea1d880276c1083be5a8aac2  (git commit — verify with: git rev-parse main)
+d7e997a6a8559fd82a8f432115fc8ae0d3a4bcb8f7329a2fbf336aa2a29d1bd0  MQL5/Indicators/nadir2.mq5
+d7e997a6a8559fd82a8f432115fc8ae0d3a4bcb8f7329a2fbf336aa2a29d1bd0  nadir2.mq5
+9857d648ce215afaa1868f91c8a1debc92588cfbef1d283765bec23d7c122442  MQL5/Indicators/QSMC_SmcVpEngine.mq5
+5bbae0699f2d0e70f90fcc09990ab5ec1270772d0127581203c82afbc9a569de  MQL5/Indicators/QSMC_ScannerProbe.mq5
+287e2b5043d8d9b330fe79b0fe75266b99be3e5b75965d706eeb14037bcd48b8  MQL5/Experts/QSMC_AutoTrader.mq5
+3e9073c793c7a739d7a41b39a17df8270677e778a4f2ccc28e8d78faace2ae65  MQL5/Experts/QuantumAutonomousTradingSystem.mq5
+3880ec756363e0f9ed308072f2712c0bfa56face2583a7e37ea5ddc5f30ba82d  MQL5/Experts/KLJ_DataFeeder.mq5
+aa4aed32240693f69390febe3de03423054f342c52d430d4ff1cc8e3eb837435  MQL5/Scripts/QSMC_BufferDump.mq5
+6987e5eb019573bfd74e493f4f3c1e1b5c3847e47cb7c8531551f70b5f26d4ec  MQL5/Scripts/QSMC_ArbiterTest.mq5
+26daeb40c571f8aecfc4e90e12b1a5065c369c0146069a832c3b770f4f7bbf0e  MQL5/Scripts/QSMC_ResetGuards.mq5
+ab6163efb6777a4c6905e1bf40745d92596c6ea0208c5ead461ade4d573734ec  tools/package_production.py
+c664909acad897876a26d9ed8d1ca3288f9ed3c1624f7513656972937607d727  presets/QSMC_AutoTrader_DIAG_XAUUSD_M15.set
+07b8279e994fb1d42051341f2315bab7ac7a60364255a23ebc7af02d78b79c54  MQL5/Include/QSMC/QSMC_AlertManager.mqh
+b67da13144c70e65a3ec0cccccdefa1f71c0ec049c788e77c18844cfb5942e50  MQL5/Include/QSMC/QSMC_Arbiter.mqh
+882c55e786db51f67581fd3f26288b0d5ab06ee1626f0e26275b3c46741198b0  MQL5/Include/QSMC/QSMC_Bias.mqh
+ebaf6725e9588d7d2017d84114680aba68843873576a16842c332da236ac9d72  MQL5/Include/QSMC/QSMC_CandlePatterns.mqh
+91cd7eec45bd4cebce5158875d1a51c5764baabb1f39efe806a01e91e02857be  MQL5/Include/QSMC/QSMC_ChartLayers.mqh
+cb468a211ad6b65e54f15e5865d013861000c23e92e881718ec40e5c214f6cb6  MQL5/Include/QSMC/QSMC_DataProvider.mqh
+141fa390fcdc0283b31562e3cc20f09c91e7e2d1cf55b61621e40bef0cc0b8a2  MQL5/Include/QSMC/QSMC_EarlyBreakDetector.mqh
+f10dc28fdc2ec6bfe46964df88a1d063876f988071d29d1d961784042dee1f44  MQL5/Include/QSMC/QSMC_ExecutionRules.mqh
+ad39f23fef32e15dcca3611ce1548b8af79139468fcd01357e6cd6b9e0dbe891  MQL5/Include/QSMC/QSMC_Gates.mqh
+6cba3c2034ac8a6fb28365beb8450f0875d4eaf49a45645513dc4226efd2aab6  MQL5/Include/QSMC/QSMC_IncidentSafety.mqh
+308f6f9e0376a93a32170ab391e189d9f528c9fe5fd948e671def2c03bf52645  MQL5/Include/QSMC/QSMC_InputFingerprint.mqh
+f59d4143a2a8a12e0f2918531ddb165ebeb44adeb6cf4cd8817947f9f93e1c3b  MQL5/Include/QSMC/QSMC_InstanceIdentity.mqh
+71a67d36c4c9308ab6a35147f10e560d1ca7748530abfec00b88a61fbb9416d2  MQL5/Include/QSMC/QSMC_LiquidityValue.mqh
+28e0d03342a41c5c93addd538a5a223a731a4b54109490f79c7ab7e92f43cb42  MQL5/Include/QSMC/QSMC_MarketData.mqh
+aa9090996196dcf26e6e9ac7d69d46d0b56a1cfa1aaceee8311d47f0c4ddc52e  MQL5/Include/QSMC/QSMC_Preset.mqh
+b13652f380c81c6312e7ae077b73c1909cf612b25a158a4ef92b4d4f895f9759  MQL5/Include/QSMC/QSMC_Reaction.mqh
+ae44fbf2a37c920d1620928a81636b323e97bcb2ab8bca9d2229d3532996a941  MQL5/Include/QSMC/QSMC_Renderer.mqh
+0a5fa4ae67f7a8d18aa64a690851aa0bc056a1c08721a89e0958457da5dcc8e2  MQL5/Include/QSMC/QSMC_Root.mqh
+d4f7e85cb152b88ac3f8f760dc6a8a24789228f70c16e0363e567027b57c15f2  MQL5/Include/QSMC/QSMC_Scanners.mqh
+8d3aa3d52612697876ebb65fbd64d84f7bda117289083b8a2670de876936b97b  MQL5/Include/QSMC/QSMC_Selftest.mqh
+c6f38f0de13994bc590bcf91e45e328bd567c8ee5bf810c5e542147a6ecbb2bc  MQL5/Include/QSMC/QSMC_SignalRegistry.mqh
+39beb5a612574033e381c3219c5b8b7d9e17780068df31f37ad977bd453fcaf6  MQL5/Include/QSMC/QSMC_Stats.mqh
+493159de73fd77b0ecdb99943ac4eed141f8d84948cb713dbd1e1be7eafd5f2c  MQL5/Include/QSMC/QSMC_Structure.mqh
+4faea7eb5c451658e8f7ce210704fe0fcc6eae5eaf28522b1ed934d7e0245448  MQL5/Include/QSMC/QSMC_SvpChart.mqh
+536f45ad8b5ea04dd5454f4c7a8b8962907c6ffef4da1f8cc8b979354869c04e  MQL5/Include/QSMC/QSMC_SvpCore.mqh
+90c8a6f3112741a6e703b720a93b3531842f60d41336936d2699c565e8a72594  MQL5/Include/QSMC/QSMC_SvpDecision.mqh
+e172d084716c53a8cb0cc317fe7631104884b94532d4bc593cdedbdf427a924e  MQL5/Include/QSMC/QSMC_SvpLiquidity.mqh
+824ba9542fa27473bef295c4003ae08d49b40890db612f1c679bc13481598d55  MQL5/Include/QSMC/QSMC_SvpVolumeProfile.mqh
+bfde9b4660e187d872da083590d6876d98a7d738a33b191a5a278752bca42fee  MQL5/Include/QSMC/QSMC_SvpZones.mqh
+dfb596d3389fb393fdc0e533f7c7d0f8bd49645faf08134bced73b65093a670f  MQL5/Include/QSMC/QSMC_Types.mqh
+c1315483b34bc0987c7ea74cd764d13300deb153a65a561780bcfc907fccf262  MQL5/Include/QSMC/QSMC_UnifiedDecision.mqh
+88456fd44f3ee9600af00984f213e5aef359e9881bc4d242f66372c2ca2edf99  MQL5/Include/QSMC/QSMC_ZoneScorer.mqh
+944260fecd574c5ba5946723c1c2a74e87f4a82662de147524356c1fde9e591c  MQL5/Include/QSMC/QSMC_Zones.mqh
+```
+
+Status: production sources unmodified vs the base commit (only NEW files added: the diagnostic
+script and docs). A tag with the same name is not recreated; if the tag reappears on origin it
+must be verified to point at 06bd0896b4a1aa18ea1d880276c1083be5a8aac2 before being cited again.
+Production content was not committed or pushed by this change beyond this branch's commit.
