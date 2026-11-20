@@ -8,9 +8,9 @@
 
 | البند | الحالة |
 |---|---|
-| المصدر عند `dec6f23` (PR #80) | متسق، Hash-pinned في `docs/QSMC_BASELINE_HASHES.md` |
-| الحزمة | `out/release/QSMC_v6.6.22_production.zip` — 950,915 بايت — sha256 `5b5adf7bff9f4ae1fd88dfc335fbfa6a8f702ea565fcaac3560e332cd4d6daa8` |
-| فحص جاهزية offline | `OFFLINE GO` + release gate `GO (1 warning)` — التحذير: `G2 headers present but not in the documented layout: QSMC_OpportunityFunnel.mqh` (ترويسة تشخيصية جديدة، غير موصولة بالإنتاج؛ التحذير سليم ولا يُخفى) |
+| المصدر عند `7b8edaa` (PR #80) | متسق، Hash-pinned في `docs/QSMC_BASELINE_HASHES.md` |
+| الحزمة | `out/release/QSMC_v6.6.22_production.zip` — 946,274 بايت — sha256 `5b6b591f3164528eb3412552d3d19e9d82d79ea7d31aa862025f9ddb61617555` (بُنيت عند `7b8edaa`، بدون QSMC_OpportunityFunnel.mqh وبدون الأداة التشخيصية) |
+| فحص جاهزية offline | `OFFLINE GO` + release gate `GO` مع تحذير `G2 headers present but not in the documented layout: QSMC_OpportunityFunnel.mqh` (تحذير صحيح يخص الحضور في الشجرة لا في الحزمة؛ لا يُخفى ولا يُعدَّل بوابةً لإسكاته) |
 | محتوى الحزمة | مصادر `.mq5/.mqh` + presets + وثائق — **بدون .ex5**؛ الترجمة F7 خطوة إجبارية عندك |
 | الأداة التشخيصية `QSMC_FixedRangeDump.mq5` | **ليست** داخل الحزمة (diagnostic-only)؛ تُركَّب يدويًا إن أردت |
 | MetaEditor compile / selftests على جهازك | **NOT VERIFIED** |
