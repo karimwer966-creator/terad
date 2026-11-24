@@ -75,6 +75,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 |---|---|
 | [`PRODUCTION_REVIEW_2026-11-16_AR.md`](PRODUCTION_REVIEW_2026-11-16_AR.md) | مراجعة كل ملف + الترتيب + ربط الإعدادات (هذه الدورة) |
 | [`AUDIT_v6.6.24.md`](AUDIT_v6.6.24.md) | the v6.6.24 full-repository audit: findings by class, INVALID items with evidence, the demo-trial deliverables |
+| [`QSMC_STRATEGY_CATALOG_ANALYSIS_2026-11-24.md`](QSMC_STRATEGY_CATALOG_ANALYSIS_2026-11-24.md) | cross-map of the 49-strategy TradeZella library onto QSMC surfaces: coverage classes, ranked adoption tiers, rejections with reasons (analysis only, no code) |
 | [`AUDIT_v6.6.24_2026-11-16.md`](AUDIT_v6.6.24_2026-11-16.md) | archived prior audit cycle (2026-11-16), renamed via `git mv` from `AUDIT_v6.6.24.md` when the 2026-11-24 cycle took the canonical path; content unchanged |
 | [`PRODUCTION_REVIEW_v6.6.24_AR.md`](PRODUCTION_REVIEW_v6.6.24_AR.md) | التقرير العربي لدورة v6.6.24: العيوب الأحد عشر، فصل (أ) عن (ب)، أدوات التجربة R1–R5، والخطوات اليدوية الست |
 | [`REVIEW_INCLUDE_QSMC_v6.6.24_AR.md`](REVIEW_INCLUDE_QSMC_v6.6.24_AR.md) | مراجعة الطبقة الداخلية `Include/QSMC` (33 ملفًا): 23 عيبًا أُصلحت، وحكم على التغييرات المقترحة، وما لم يُراجَع صريحًا |
