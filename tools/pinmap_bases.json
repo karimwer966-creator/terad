@@ -8,8 +8,8 @@
   "failures_at_base": 27
  },
  "test_docs_freshness": {
-  "base": "ab46c16a445af03eb3b8ea8ea0c330c18236eed2",
-  "failures_at_base": 122
+  "base": "548b12c",
+  "failures_at_base": 0
  },
  "test_phase5_meanreversion": {
   "base": "ab46c16a445af03eb3b8ea8ea0c330c18236eed2",
@@ -24,8 +24,8 @@
   "failures_at_base": 0
  },
  "test_tactical_authority": {
-  "base": "ab46c16a445af03eb3b8ea8ea0c330c18236eed2",
-  "failures_at_base": 100000
+  "base": "548b12c",
+  "failures_at_base": 0
  },
  "test_weighted_gates": {
   "base": "dd610017d4853d612b3cf5c429c86704e9bcef86",
