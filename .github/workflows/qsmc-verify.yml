@@ -127,6 +127,25 @@ jobs:
       - name: Candle reversal geometry (piercing / dark cloud, proven satisfiable)
         run: python3 tools/test_candle_patterns.py 2>&1 | tee out/test_candle_patterns.log
 
+      # v6.6.24 (audit P0-3). "CAUSALITY PASS (digests 1, comparisons 0)" and a
+      # self-test printing PASS off zero scenarios are both impossible now:
+      # the verdict is tri-state (zero checked items => INCONCLUSIVE) and the
+      # scenario suite counts what it executed. This step compiles and executes
+      # the shipped verdict helpers natively.
+      - name: PMI replay audit (zero comparisons can never print PASS)
+        run: python3 tools/test_pmi_replay_audit.py 2>&1 | tee out/test_pmi_replay_audit.log
+
+
+      # v6.6.24. These two were pinned to snapshots that no longer exist in
+      # the clone (ab46c16) and were red for drift only. They have been
+      # re-pinned against the current source and are green; per the pin-drift
+      # job's own rule, green suites move back up here to become gates.
+      - name: One authoritative scenario state (tactical preview cannot contradict it)
+        run: python3 tools/test_tactical_authority.py 2>&1 | tee out/tactical_authority.log
+
+      - name: Documentation freshness (doc citations + countable facts vs nadir2.mq5)
+        run: python3 tools/test_docs_freshness.py 2>&1 | tee out/docs_freshness.log
+
       # v6.6.24 (R3). The mechanical half of "is this build safe to attach to a
       # DEMO account": one version everywhere, presets bound, no order API
       # reachable from the indicator layer, one magic per QSMC executor, the
@@ -345,17 +364,9 @@ jobs:
         continue-on-error: true
         run: python3 tools/test_gate_profile.py 2>&1 | tee out/gate_profile.log
 
-      - name: One authoritative scenario state (tactical preview cannot contradict it)
-        continue-on-error: true
-        run: python3 tools/test_tactical_authority.py 2>&1 | tee out/tactical_authority.log
-
       - name: Mean reversion / momentum (confirmed swings only, MACD veto-only, display only)
         continue-on-error: true
         run: python3 tools/test_phase5_meanreversion.py 2>&1 | tee out/phase5_meanreversion.log
-
-      - name: Documentation freshness (doc citations + countable facts vs nadir2.mq5)
-        continue-on-error: true
-        run: python3 tools/test_docs_freshness.py 2>&1 | tee out/docs_freshness.log
 
       - name: Summary
         if: always()

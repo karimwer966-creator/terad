@@ -570,7 +570,7 @@
    }
   },
   "test_docs_freshness": {
-   "base": "ab46c16a445af03eb3b8ea8ea0c330c18236eed2",
+   "base": "548b12c",
    "pins": {
     "1003": {
      "line": 1003,
@@ -584,455 +584,461 @@
      "text": "input bool InpCFShowOnDashboard = false; // show the confluence block in the dashboard tooltip\ninput int InpCFWeightStructure = 20; // weight: structure (MSS/BOS/CHoCH alignment), 0-100\ninput int InpCFWeightLiquidity = 20; // weight: liquidity (swept pool alignment), 0-100",
      "wide": "input bool InpEnableConfluence = false; // master switch for the ONE unified score; while off it costs nothing\ninput bool InpCFShowOnDashboard = false; // show the confluence block in the dashboard tooltip\ninput int InpCFWeightStructure = 20; // weight: structure (MSS/BOS/CHoCH alignment), 0-100\ninput int InpCFWeightLiquidity = 20; // weight: liquidity (swept pool alignment), 0-100\ninput int InpCFWeightZone = 20; // weight: zone (price inside a live OB/FVG/SR/POC), 0-100"
     },
-    "1187": {
-     "line": 1187,
-     "line_text": "input double InpConfluentSRMergeATR = 0.5; // Confluent S/R levels closer than this x ATR merge into one",
-     "text": "input bool InpPanelsAvoidTradeLevels = true; // Keep panels clear of the terminal's order/position labels\ninput double InpConfluentSRMergeATR = 0.5; // Confluent S/R levels closer than this x ATR merge into one\ninput bool InpResolveLabelCollisions = true; // Shift chart text labels so no two overlap",
-     "wide": "input int InpPanelIdleMaxHeightPct = 15; // INERT: nothing reads it (doc 11.14)\ninput bool InpPanelsAvoidTradeLevels = true; // Keep panels clear of the terminal's order/position labels\ninput double InpConfluentSRMergeATR = 0.5; // Confluent S/R levels closer than this x ATR merge into one\ninput bool InpResolveLabelCollisions = true; // Shift chart text labels so no two overlap\ninput int InpLabelMinGapPx = 15; // Minimum vertical gap between chart text labels (pixels)"
-    },
-    "1202": {
-     "line": 1202,
-     "line_text": "input bool InpTopDownAlerts = true; // alert on top-down BUY/SELL verdict flips (closed bars only)",
-     "text": "input bool InpShowTopDownPanel = true; // INERT: nothing reads it (doc 11.14)\ninput bool InpTopDownAlerts = true; // alert on top-down BUY/SELL verdict flips (closed bars only)\ninput int InpTopDownStructureBars = 120; // closed bars per TF for structure + dealing range",
-     "wide": "input bool InpTopDownGateCore = true; // AND-gate Layer A: core cannot confirm while top-down disagrees\ninput bool InpShowTopDownPanel = true; // INERT: nothing reads it (doc 11.14)\ninput bool InpTopDownAlerts = true; // alert on top-down BUY/SELL verdict flips (closed bars only)\ninput int InpTopDownStructureBars = 120; // closed bars per TF for structure + dealing range\ninput int InpTopDownFractalN = 3; // swing fractal right-side bars per TF"
-    },
-    "1298": {
-     "line": 1298,
-     "line_text": "input group \"====== v5.4.0 Performance & Stability ======\"",
-     "text": "\ninput group \"====== v5.4.0 Performance & Stability ======\"\ninput bool InpUseIncrementalDetection = true;",
-     "wide": "input bool InpDeclutterMode = true; // Clean preset: fewer zones, small labels, capped objects\n\ninput group \"====== v5.4.0 Performance & Stability ======\"\ninput bool InpUseIncrementalDetection = true;\ninput int InpMaxStructuresKeep = 30;"
-    },
-    "13934": {
-     "line": 13934,
-     "line_text": "",
-     "text": "}\n\nbool SigLog_Expect(const bool cond,const string name,int &fails)",
-     "wide": "return s;\n}\n\nbool SigLog_Expect(const bool cond,const string name,int &fails)\n{"
-    },
-    "14918": {
-     "line": 14918,
-     "line_text": "else if(InpLondonKillZoneEnd<0 || InpLondonKillZoneEnd>23) bad=\"InpLondonKillZoneEnd\";",
-     "text": "else if(InpLondonKillZoneStart<0 || InpLondonKillZoneStart>23) bad=\"InpLondonKillZoneStart\";\nelse if(InpLondonKillZoneEnd<0 || InpLondonKillZoneEnd>23) bad=\"InpLondonKillZoneEnd\";\nelse if(InpNewYorkKillZoneStart<0 || InpNewYorkKillZoneStart>23) bad=\"InpNewYorkKillZoneStart\";",
-     "wide": "else if(InpNewYorkEnd<0 || InpNewYorkEnd>23) bad=\"InpNewYorkEnd\";\nelse if(InpLondonKillZoneStart<0 || InpLondonKillZoneStart>23) bad=\"InpLondonKillZoneStart\";\nelse if(InpLondonKillZoneEnd<0 || InpLondonKillZoneEnd>23) bad=\"InpLondonKillZoneEnd\";\nelse if(InpNewYorkKillZoneStart<0 || InpNewYorkKillZoneStart>23) bad=\"InpNewYorkKillZoneStart\";\nelse if(InpNewYorkKillZoneEnd<0 || InpNewYorkKillZoneEnd>23) bad=\"InpNewYorkKillZoneEnd\";"
-    },
-    "14931": {
-     "line": 14931,
-     "line_text": "if(InpUseFinalResolver &&",
-     "text": "// than renormalise - the same rule the Confluence Engine weights follow.\nif(InpUseFinalResolver &&\nInpResWeightBias+InpResWeightZone+InpResWeightReaction+InpResWeightTactical!=100)",
-     "wide": "// AUDIT-RS1: the resolver weights must sum to exactly 100. Refuse rather\n// than renormalise - the same rule the Confluence Engine weights follow.\nif(InpUseFinalResolver &&\nInpResWeightBias+InpResWeightZone+InpResWeightReaction+InpResWeightTactical!=100)\n{"
-    },
-    "14935": {
-     "line": 14935,
-     "line_text": "return INIT_PARAMETERS_INCORRECT;",
-     "text": "Print(\"Invalid Quantum SMC resolver weights: they must sum to exactly 100\");\nreturn INIT_PARAMETERS_INCORRECT;\n}",
-     "wide": "{\nPrint(\"Invalid Quantum SMC resolver weights: they must sum to exactly 100\");\nreturn INIT_PARAMETERS_INCORRECT;\n}\n"
-    },
-    "14939": {
-     "line": 14939,
-     "line_text": "// an edited weight can never silently rescale what PUBLISH means.",
-     "text": "// AUDIT-GS1: same rule as the resolver - refuse rather than renormalise, so\n// an edited weight can never silently rescale what PUBLISH means.\nif(InpUseWeightedGates &&",
-     "wide": "\n// AUDIT-GS1: same rule as the resolver - refuse rather than renormalise, so\n// an edited weight can never silently rescale what PUBLISH means.\nif(InpUseWeightedGates &&\nInpWGWeightLevel+InpWGWeightEvidence+InpWGWeightProximity+"
-    },
-    "14943": {
-     "line": 14943,
-     "line_text": "{",
-     "text": "InpWGWeightAlignment+InpWGWeightRoom!=100)\n{\nPrint(\"Invalid Quantum SMC weighted-gate weights: they must sum to exactly 100\");",
-     "wide": "InpWGWeightLevel+InpWGWeightEvidence+InpWGWeightProximity+\nInpWGWeightAlignment+InpWGWeightRoom!=100)\n{\nPrint(\"Invalid Quantum SMC weighted-gate weights: they must sum to exactly 100\");\nreturn INIT_PARAMETERS_INCORRECT;"
-    },
-    "14947": {
-     "line": 14947,
-     "line_text": "if(InpUseWeightedGates && (InpWGMinScore<0 || InpWGMinScore>100))",
-     "text": "}\nif(InpUseWeightedGates && (InpWGMinScore<0 || InpWGMinScore>100))\n{",
-     "wide": "return INIT_PARAMETERS_INCORRECT;\n}\nif(InpUseWeightedGates && (InpWGMinScore<0 || InpWGMinScore>100))\n{\nPrint(\"Invalid Quantum SMC InpWGMinScore: it must be between 0 and 100\");"
-    },
-    "14951": {
-     "line": 14951,
-     "line_text": "}",
-     "text": "return INIT_PARAMETERS_INCORRECT;\n}\n",
-     "wide": "Print(\"Invalid Quantum SMC InpWGMinScore: it must be between 0 and 100\");\nreturn INIT_PARAMETERS_INCORRECT;\n}\n\n// AUDIT-SC1: the scalping overlay refuses an inconsistent configuration rather"
-    },
-    "15097": {
-     "line": 15097,
-     "line_text": "for(int i=0;i<5;i++) if(h_ema_mtf[i]==INVALID_HANDLE) Print(\"MTF handle \",i,\" failed\");",
-     "text": "}\nfor(int i=0;i<5;i++) if(h_ema_mtf[i]==INVALID_HANDLE) Print(\"MTF handle \",i,\" failed\");\n",
-     "wide": "else g_mr_macd_ready=true;\n}\nfor(int i=0;i<5;i++) if(h_ema_mtf[i]==INVALID_HANDLE) Print(\"MTF handle \",i,\" failed\");\n\n// v6.5.2 MTF_SniperZone_Engine: create iATR(14) and iRSI(14) handles across all 7 timeframes"
-    },
-    "15341": {
-     "line": 15341,
-     "line_text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Master Volume Profile self-test: FAIL\");",
-     "text": "else\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Master Volume Profile self-test: FAIL\");\n}",
-     "wide": "QSMC_InitPass(\" Master Volume Profile self-test: PASS\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Master Volume Profile self-test: FAIL\");\n}\n}"
-    },
-    "15346": {
-     "line": 15346,
-     "line_text": "ScenarioClear();",
-     "text": "RXN_Clear();\nScenarioClear();\nSBP3_Clear();",
-     "wide": "ZRE_Clear();\nRXN_Clear();\nScenarioClear();\nSBP3_Clear();\nWY_Clear();"
-    },
-    "15455": {
-     "line": 15455,
-     "line_text": "if(SigLog_SelfTest())",
-     "text": "Print(\">>> \",QSMC_VERSION_TEXT,\" LegGeometry self-test: FAIL \u2014 see prior log lines\");\nif(SigLog_SelfTest())\nQSMC_InitPass(\" SigLog self-test: PASS\");",
-     "wide": "else\nPrint(\">>> \",QSMC_VERSION_TEXT,\" LegGeometry self-test: FAIL \u2014 see prior log lines\");\nif(SigLog_SelfTest())\nQSMC_InitPass(\" SigLog self-test: PASS\");\nelse"
-    },
-    "15456": {
-     "line": 15456,
-     "line_text": "QSMC_InitPass(\" SigLog self-test: PASS\");",
-     "text": "if(SigLog_SelfTest())\nQSMC_InitPass(\" SigLog self-test: PASS\");\nelse",
-     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" LegGeometry self-test: FAIL \u2014 see prior log lines\");\nif(SigLog_SelfTest())\nQSMC_InitPass(\" SigLog self-test: PASS\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" SigLog self-test: FAIL\");"
-    },
-    "15460": {
-     "line": 15460,
-     "line_text": "MTF_SniperZone_Init();",
-     "text": "}\nMTF_SniperZone_Init();\nif(InpUseSniperZoneEngine)",
-     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" SigLog self-test: FAIL\");\n}\nMTF_SniperZone_Init();\nif(InpUseSniperZoneEngine)\n{"
-    },
-    "15516": {
-     "line": 15516,
-     "line_text": "// Free every PMI allocation (tree nodes, CSV handle, panel objects) before",
-     "text": "if(h_ema_quant!=INVALID_HANDLE){ IndicatorRelease(h_ema_quant); h_ema_quant=INVALID_HANDLE; }\n// Free every PMI allocation (tree nodes, CSV handle, panel objects) before\n// the global object sweep, and print the memory/replay audit summary.",
-     "wide": "if(h_sniper_adx_h1!=INVALID_HANDLE){ IndicatorRelease(h_sniper_adx_h1); h_sniper_adx_h1=INVALID_HANDLE; }\nif(h_ema_quant!=INVALID_HANDLE){ IndicatorRelease(h_ema_quant); h_ema_quant=INVALID_HANDLE; }\n// Free every PMI allocation (tree nodes, CSV handle, panel objects) before\n// the global object sweep, and print the memory/replay audit summary.\nPMI_Deinit();"
-    },
-    "15538": {
-     "line": 15538,
-     "line_text": "g_qsmc_paint_slice=true; // explicit user/chart events are never throttled",
-     "text": "{\ng_qsmc_paint_slice=true; // explicit user/chart events are never throttled\nif(id==CHARTEVENT_OBJECT_CLICK)",
-     "wide": "void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)\n{\ng_qsmc_paint_slice=true; // explicit user/chart events are never throttled\nif(id==CHARTEVENT_OBJECT_CLICK)\n{"
-    },
-    "15688": {
-     "line": 15688,
-     "line_text": "g_buf_t[k]=time[src]; g_buf_tv[k]=tick_volume[src];",
-     "text": "g_buf_o[k]=open[src]; g_buf_h[k]=high[src]; g_buf_l[k]=low[src]; g_buf_c[k]=close[src];\ng_buf_t[k]=time[src]; g_buf_tv[k]=tick_volume[src];\ng_buf_spread[k]=spread[src];",
-     "wide": "int src=is_series ? rates_total-1-k : k;\ng_buf_o[k]=open[src]; g_buf_h[k]=high[src]; g_buf_l[k]=low[src]; g_buf_c[k]=close[src];\ng_buf_t[k]=time[src]; g_buf_tv[k]=tick_volume[src];\ng_buf_spread[k]=spread[src];\ng_buf_rv[k]=volume[src]; // v5.8.0: real-volume mirror"
-    },
-    "15697": {
-     "line": 15697,
-     "line_text": "// ATR/ADX copy (it only rejected na<=0/nd<=0) and never read the RSI return",
-     "text": "// treated as \"data available\". The full-rebuild branch accepted a PARTIAL\n// ATR/ADX copy (it only rejected na<=0/nd<=0) and never read the RSI return\n// value at all; the incremental branch skipped a failed tail copy silently.",
-     "wide": "// v6.5.2 AUDIT FIX (AUDIT-01, was CRITICAL): a short or failed CopyBuffer was\n// treated as \"data available\". The full-rebuild branch accepted a PARTIAL\n// ATR/ADX copy (it only rejected na<=0/nd<=0) and never read the RSI return\n// value at all; the incremental branch skipped a failed tail copy silently.\n// Either way g_atr_buf/g_adx_buf/g_rsi_buf kept zero or previous-symbol"
-    },
-    "15705": {
-     "line": 15705,
-     "line_text": "// RETRY, not a skip - the function returns prev_calculated BEFORE",
-     "text": "// two indicator branches: data that is not confirmed COMPLETE is now a\n// RETRY, not a skip - the function returns prev_calculated BEFORE\n// \"g_last_bar_time\" is committed, so the same bar is evaluated again on the",
-     "wide": "// with wrong data. This is the v5.7.3 A7 defect class, still present in the\n// two indicator branches: data that is not confirmed COMPLETE is now a\n// RETRY, not a skip - the function returns prev_calculated BEFORE\n// \"g_last_bar_time\" is committed, so the same bar is evaluated again on the\n// next tick (or the next event) with the data the terminal has by then."
-    },
-    "15711": {
-     "line": 15711,
-     "line_text": "// mark an incomplete full buffer unavailable, or only the newly closed/live",
-     "text": "// Copy to temporary arrays first; commit complete copies only. On exhaustion\n// mark an incomplete full buffer unavailable, or only the newly closed/live\n// tail for an incremental copy (leave older closed values unchanged).",
-     "wide": "// returned subset cannot safely be aligned to the entire chart history.\n// Copy to temporary arrays first; commit complete copies only. On exhaustion\n// mark an incomplete full buffer unavailable, or only the newly closed/live\n// tail for an incremental copy (leave older closed values unchanged).\n// A periodic causal replay is NOT a reason to recopy the whole indicator"
-    },
-    "15716": {
-     "line": 15716,
-     "line_text": "bool indicator_full_copy=(prev_calculated==0 || g_last_rates_total==0 ||",
-     "text": "// Full copies are for attach/refresh, resize, or a history gap only.\nbool indicator_full_copy=(prev_calculated==0 || g_last_rates_total==0 ||\nneedResize || rates_total>g_last_rates_total+1);",
-     "wide": "// history: the aligned buffers already hold the older closed-bar values.\n// Full copies are for attach/refresh, resize, or a history gap only.\nbool indicator_full_copy=(prev_calculated==0 || g_last_rates_total==0 ||\nneedResize || rates_total>g_last_rates_total+1);\nbool full_indicators=(indicator_full_copy || full_detection);"
-    },
-    "15723": {
-     "line": 15723,
-     "line_text": "// paying a large repeated copy; it was neither cheap nor history-complete.",
-     "text": "// cap ran on EVERY new bar and left older slots unavailable while still\n// paying a large repeated copy; it was neither cheap nor history-complete.\nint tail_need=(int)MathMax(3,rates_total-g_last_rates_total+2);",
-     "wide": "// copy only the changed tail (plus any history gap). The previous 2000-bar\n// cap ran on EVERY new bar and left older slots unavailable while still\n// paying a large repeated copy; it was neither cheap nor history-complete.\nint tail_need=(int)MathMax(3,rates_total-g_last_rates_total+2);\nif(tail_need>rates_total) tail_need=rates_total;"
-    },
-    "16132": {
-     "line": 16132,
-     "line_text": "// REVIEW-P1: per-tick UI redraws are wall-clock coalesced (display-only pacing).",
-     "text": "// pass places them all before any ChartRedraw() can show them.\n// REVIEW-P1: per-tick UI redraws are wall-clock coalesced (display-only pacing).\n// Panels and label layout still refresh IMMEDIATELY on each new closed bar and",
-     "wide": "// (full-redraw block, early-break preview, MTF entry). One collision\n// pass places them all before any ChartRedraw() can show them.\n// REVIEW-P1: per-tick UI redraws are wall-clock coalesced (display-only pacing).\n// Panels and label layout still refresh IMMEDIATELY on each new closed bar and\n// on first attach; between bars they refresh at ~QSMC_UI_COALESCE_MS cadence."
-    },
-    "17478": {
-     "line": 17478,
-     "line_text": "{",
-     "text": "bool ValidateCausalGraphInvariants(string &reason)\n{\nreason=\"\";",
-     "wide": "\nbool ValidateCausalGraphInvariants(string &reason)\n{\nreason=\"\";\nint n=ArraySize(g_causal_events);"
-    },
-    "17499": {
-     "line": 17499,
-     "line_text": "if(g_causal_events[j].id==ev.id)",
-     "text": "for(int j=i+1;j<n;j++)\nif(g_causal_events[j].id==ev.id)\n{reason=\"Duplicate causal event identity: \"+ev.id; return false;}",
-     "wide": "{reason=\"Parent unavailable at child event time: \"+ev.id; return false;}\nfor(int j=i+1;j<n;j++)\nif(g_causal_events[j].id==ev.id)\n{reason=\"Duplicate causal event identity: \"+ev.id; return false;}\nint parents[2]; parents[0]=ev.parent_primary; parents[1]=ev.parent_secondary;"
-    },
-    "17519": {
-     "line": 17519,
-     "line_text": "int cur=queue[head++];",
-     "text": "{\nint cur=queue[head++];\nif(cur==i){reason=\"Causal parent cycle at \"+ev.id; return false;}",
-     "wide": "while(head<tail)\n{\nint cur=queue[head++];\nif(cur==i){reason=\"Causal parent cycle at \"+ev.id; return false;}\nif(cur<0 || cur>=n || seen[cur]) continue;"
-    },
-    "17630": {
-     "line": 17630,
-     "line_text": "g_order_blocks[ev.source_index].source_displacement_bar!=g_causal_events[dp].event_bar ||",
-     "text": "ev.confirmation_time!=g_causal_events[st].confirmation_time ||\ng_order_blocks[ev.source_index].source_displacement_bar!=g_causal_events[dp].event_bar ||\ng_order_blocks[ev.source_index].source_displacement_time!=g_causal_events[dp].event_time ||",
-     "wide": "ev.confirmation_bar!=g_causal_events[st].confirmation_bar ||\nev.confirmation_time!=g_causal_events[st].confirmation_time ||\ng_order_blocks[ev.source_index].source_displacement_bar!=g_causal_events[dp].event_bar ||\ng_order_blocks[ev.source_index].source_displacement_time!=g_causal_events[dp].event_time ||\ng_order_blocks[ev.source_index].source_displacement_event_id!=g_causal_events[dp].id ||"
-    },
-    "17639": {
-     "line": 17639,
-     "line_text": "{",
-     "text": "else if(ev.type==CE_HTF_STRUCTURE)\n{\nstring htf_reason=\"\";",
-     "wide": "}\nelse if(ev.type==CE_HTF_STRUCTURE)\n{\nstring htf_reason=\"\";\nif(!ValidateHTFAvailability(InpHTFBiasTF,ev.origin_time,"
-    },
-    "1841": {
-     "line": 1841,
-     "line_text": "input bool InpSigLogCore = true; // CSV: log Layer A confirmed setups (source CORE)",
-     "text": "input bool InpSigLogCSV = false; // Write the per-signal outcome CSV (off = no file I/O)\ninput bool InpSigLogCore = true; // CSV: log Layer A confirmed setups (source CORE)\ninput bool InpSigLogZRE = true; // CSV: log Zone Reaction Engine signals (source ZRE)",
-     "wide": "// observed results of a logged sample; it is not a forecast.\ninput bool InpSigLogCSV = false; // Write the per-signal outcome CSV (off = no file I/O)\ninput bool InpSigLogCore = true; // CSV: log Layer A confirmed setups (source CORE)\ninput bool InpSigLogZRE = true; // CSV: log Zone Reaction Engine signals (source ZRE)\ninput bool InpSigLogZREShadow = true; // CSV: also log ZRE reactions rejected ONLY by the score gate (status SHADOW)"
-    },
-    "1851": {
-     "line": 1851,
-     "line_text": "",
-     "text": "input bool InpMTEERunSelfTest = true; // Run deterministic synthetic MTEE tests at init\n\ninput group \"====== v6.5.2 MTF SNIPER ZONE ENGINE (7-TF Confluence) ======\"",
-     "wide": "input bool InpSigLogRunSelfTest = true; // Run SigLog_SelfTest() at init (diagnostic print only)\ninput bool InpMTEERunSelfTest = true; // Run deterministic synthetic MTEE tests at init\n\ninput group \"====== v6.5.2 MTF SNIPER ZONE ENGINE (7-TF Confluence) ======\"\ninput bool InpUseSniperZoneEngine = true; // Enable MTF_SniperZone_Engine (W1->M5 7-TF confluence)"
-    },
-    "1895": {
-     "line": 1895,
-     "line_text": "// double CPU + spam the log). All calculations and",
-     "text": "// (they duplicate the VISUAL instance's prints and\n// double CPU + spam the log). All calculations and\n// buffers still run \u2014 the EA depends on them.",
-     "wide": "// chart objects, must NOT print PMI replay failures\n// (they duplicate the VISUAL instance's prints and\n// double CPU + spam the log). All calculations and\n// buffers still run \u2014 the EA depends on them.\n// ROLE_SCANNER = 2 -- reserved for future multi-symbol sweep."
-    },
-    "1896": {
-     "line": 1896,
-     "line_text": "// buffers still run \u2014 the EA depends on them.",
-     "text": "// double CPU + spam the log). All calculations and\n// buffers still run \u2014 the EA depends on them.\n// ROLE_SCANNER = 2 -- reserved for future multi-symbol sweep.",
-     "wide": "// (they duplicate the VISUAL instance's prints and\n// double CPU + spam the log). All calculations and\n// buffers still run \u2014 the EA depends on them.\n// ROLE_SCANNER = 2 -- reserved for future multi-symbol sweep.\n//"
-    },
-    "1897": {
-     "line": 1897,
-     "line_text": "// ROLE_SCANNER = 2 -- reserved for future multi-symbol sweep.",
-     "text": "// buffers still run \u2014 the EA depends on them.\n// ROLE_SCANNER = 2 -- reserved for future multi-symbol sweep.\n//",
-     "wide": "// double CPU + spam the log). All calculations and\n// buffers still run \u2014 the EA depends on them.\n// ROLE_SCANNER = 2 -- reserved for future multi-symbol sweep.\n//\n// Detection is done via a short-lived GV handshake set by the EA just before"
-    },
-    "1898": {
-     "line": 1898,
-     "line_text": "//",
-     "text": "// ROLE_SCANNER = 2 -- reserved for future multi-symbol sweep.\n//\n// Detection is done via a short-lived GV handshake set by the EA just before",
-     "wide": "// buffers still run \u2014 the EA depends on them.\n// ROLE_SCANNER = 2 -- reserved for future multi-symbol sweep.\n//\n// Detection is done via a short-lived GV handshake set by the EA just before\n// calling iCustom (QSMC_EA_READER_HANDSHAKE_<login>_<magic>_<sym>_<tf>)."
-    },
-    "19239": {
-     "line": 19239,
-     "line_text": "",
-     "text": "}\n\n//====================================================================",
-     "wide": "g_causal_diag.decision_state=g_decision_state;\n}\n\n//====================================================================\n// SIGNAL GATE AUDIT (diagnostic counters; display/log only)"
-    },
-    "1929": {
-     "line": 1929,
-     "line_text": "#define SNIPER_TF_COUNT 7",
-     "text": "//====================================================================\n#define SNIPER_TF_COUNT 7\n#define SNIPER_BARS_LOAD 200",
-     "wide": "// v6.5.2 MTF_SniperZone_Engine \u2014 CONSTANTS\n//====================================================================\n#define SNIPER_TF_COUNT 7\n#define SNIPER_BARS_LOAD 200\n#define SNIPER_MAX_RAW_ZONES 256"
-    },
-    "19939": {
-     "line": 19939,
-     "line_text": "(upper >= body * 1.8 && ci.close_location <= 0.45));",
-     "text": "ci.is_rejection = ((lower >= body * 1.8 && ci.close_location >= 0.55) ||\n(upper >= body * 1.8 && ci.close_location <= 0.45));\nif(lower >= body * 1.8 && ci.close_location >= 0.60) ci.confirms_buy = true;",
-     "wide": "// 2. Rejection candle\nci.is_rejection = ((lower >= body * 1.8 && ci.close_location >= 0.55) ||\n(upper >= body * 1.8 && ci.close_location <= 0.45));\nif(lower >= body * 1.8 && ci.close_location >= 0.60) ci.confirms_buy = true;\nif(upper >= body * 1.8 && ci.close_location <= 0.40) ci.confirms_sell = true;"
-    },
-    "20403": {
-     "line": 20403,
-     "line_text": "{",
-     "text": "if(is_buy)\n{\ndouble cur_mae=(entry-low)/risk;",
-     "wide": "double high=h[closed],low=l[closed],close=c[closed];\nif(is_buy)\n{\ndouble cur_mae=(entry-low)/risk;\ndouble cur_mfe=(high-entry)/risk;"
-    },
-    "22172": {
-     "line": 22172,
-     "line_text": "//--------------------------------------------------------------------",
-     "text": "// fixed and documented; every threshold is configurable.\n//--------------------------------------------------------------------\nstring ClassifyQuantRegime(const int closed,string &detail_out)",
-     "wide": "// never generates, gates or blocks anything. Precedence order is\n// fixed and documented; every threshold is configurable.\n//--------------------------------------------------------------------\nstring ClassifyQuantRegime(const int closed,string &detail_out)\n{"
-    },
-    "22911": {
-     "line": 22911,
-     "line_text": "//--- Scale 1: first continuation structure + zone + closed retest",
-     "text": "\n//--- Scale 1: first continuation structure + zone + closed retest\ng_scale.scale1_ready=false;",
-     "wide": "if(confirmed_bar<0 || confirmed_bar>closed) return;\n\n//--- Scale 1: first continuation structure + zone + closed retest\ng_scale.scale1_ready=false;\ng_scale.scale1_reason=\"\";"
-    },
-    "23924": {
-     "line": 23924,
-     "line_text": "// v6.4.2 AUDIT-Z1: precedence bug. \"(c<o)!=bull || small\" evaluated as",
-     "text": "// base candle: previous candle opposite or small\n// v6.4.2 AUDIT-Z1: precedence bug. \"(c<o)!=bull || small\" evaluated as\n// \"((c<o)!=bull) || small\", i.e. it ACCEPTED a same-direction base candle",
-     "wide": "bool bull=(c[b]>o[b]);\n// base candle: previous candle opposite or small\n// v6.4.2 AUDIT-Z1: precedence bug. \"(c<o)!=bull || small\" evaluated as\n// \"((c<o)!=bull) || small\", i.e. it ACCEPTED a same-direction base candle\n// for a bull zone and only rejected it when the body was large. Intent"
-    },
-    "24052": {
-     "line": 24052,
-     "line_text": "double atr=(B<ArraySize(g_atr_buf) && g_atr_buf[B]>0.0) ? g_atr_buf[B] : g_atr;",
-     "text": "int A=C-2,B=C-1;\ndouble atr=(B<ArraySize(g_atr_buf) && g_atr_buf[B]>0.0) ? g_atr_buf[B] : g_atr;\nif(atr<=0.0) return false;",
-     "wide": "{\nint A=C-2,B=C-1;\ndouble atr=(B<ArraySize(g_atr_buf) && g_atr_buf[B]>0.0) ? g_atr_buf[B] : g_atr;\nif(atr<=0.0) return false;\nbool bullish_gap=(l[C]>h[A]);"
-    },
-    "24228": {
-     "line": 24228,
-     "line_text": "q.availability_bar=avail_bar;",
-     "text": "q.origin_bar=f; q.origin_time=t[f];\nq.availability_bar=avail_bar;\nq.availability_time=(avail_bar+1<total ? t[avail_bar+1] : t[avail_bar]+PeriodSeconds());",
-     "wide": "q.bar=avail_bar; q.time=t[f];\nq.origin_bar=f; q.origin_time=t[f];\nq.availability_bar=avail_bar;\nq.availability_time=(avail_bar+1<total ? t[avail_bar+1] : t[avail_bar]+PeriodSeconds());\nq.price=l[f]; q.type=\"EQL\"; q.swept=false; q.priority=3;"
-    },
-    "24503": {
-     "line": 24503,
-     "line_text": "if(QSMC_PriorDayRef(closed,d1ref) && d1ref.high>0.0 && d1ref.low>0.0)",
-     "text": "SPriorPeriodRef d1ref;\nif(QSMC_PriorDayRef(closed,d1ref) && d1ref.high>0.0 && d1ref.low>0.0)\n{",
-     "wide": "int closed=QSMC_ClosedBar();\nSPriorPeriodRef d1ref;\nif(QSMC_PriorDayRef(closed,d1ref) && d1ref.high>0.0 && d1ref.low>0.0)\n{\ng_d1_high=d1ref.high;"
-    },
-    "24692": {
-     "line": 24692,
-     "line_text": "//--- ever awarded for free.",
-     "text": "//--- reached it. A threshold of 0 or less confirms nothing, so no leg is\n//--- ever awarded for free.\nif(min_distribution_atr>0.0 && distribution_atr>=min_distribution_atr)",
-     "wide": "//--- (4) Distribution needs a positive threshold AND a move that actually\n//--- reached it. A threshold of 0 or less confirms nothing, so no leg is\n//--- ever awarded for free.\nif(min_distribution_atr>0.0 && distribution_atr>=min_distribution_atr)\n{"
-    },
-    "24942": {
-     "line": 24942,
-     "line_text": "if(best>=0 && av<=best_avail) continue; // newest chain wins",
-     "text": "if(!SB_ChainComplete(i,sh,sw)) continue;\nif(best>=0 && av<=best_avail) continue; // newest chain wins\nbest=i; best_avail=av; best_shift=sh; best_sweep=sw;",
-     "wide": "int sh=-1,sw=-1;\nif(!SB_ChainComplete(i,sh,sw)) continue;\nif(best>=0 && av<=best_avail) continue; // newest chain wins\nbest=i; best_avail=av; best_shift=sh; best_sweep=sw;\n}"
-    },
-    "25098": {
-     "line": 25098,
-     "line_text": "if(P3_Score(true,1,false,false)!=60)",
-     "text": "{ where=\"SBP3-4 the range leg is worth 25\"; return false; }\nif(P3_Score(true,1,false,false)!=60)\n{ where=\"SBP3-4 range + manipulation is worth 60\"; return false; }",
-     "wide": "if(P3_Score(true,0,false,false)!=25)\n{ where=\"SBP3-4 the range leg is worth 25\"; return false; }\nif(P3_Score(true,1,false,false)!=60)\n{ where=\"SBP3-4 range + manipulation is worth 60\"; return false; }\nif(P3_Score(true,-1,true,false)!=100)"
-    },
-    "25168": {
-     "line": 25168,
-     "line_text": "return true;",
-     "text": "}\nreturn true;\n}",
-     "wide": "{ where=\"SBP3-9 an index past the graph must be refused and must reset its outputs\"; return false; }\n}\nreturn true;\n}\n"
-    },
-    "25365": {
-     "line": 25365,
-     "line_text": "g_wy_range_valid=false; g_wy_range_start=-1; g_wy_range_end=-1;",
-     "text": "{\ng_wy_range_valid=false; g_wy_range_start=-1; g_wy_range_end=-1;\ng_wy_range_high=0.0; g_wy_range_low=0.0;",
-     "wide": "void WY_Update(const int closed)\n{\ng_wy_range_valid=false; g_wy_range_start=-1; g_wy_range_end=-1;\ng_wy_range_high=0.0; g_wy_range_low=0.0;\ng_wy_touches_high=0; g_wy_touches_low=0;"
-    },
-    "25623": {
-     "line": 25623,
-     "line_text": "//",
-     "text": "// enforces agreement between a pattern and a side.\n//\n// So this module reimplements none of that. It adds exactly two things:",
-     "wide": "// IS the HAMMER / SHOOTING_STAR geometry. CandleConfirmsDirection() already\n// enforces agreement between a pattern and a side.\n//\n// So this module reimplements none of that. It adds exactly two things:\n//"
-    },
-    "25966": {
-     "line": 25966,
-     "line_text": "if(PA_UnifyStrength(\"MORNING_STAR\",88,false,45)!=88)",
-     "text": "{ where=\"PA-3 an inside bar takes its configured strength\"; return false; }\nif(PA_UnifyStrength(\"MORNING_STAR\",88,false,45)!=88)\n{ where=\"PA-3 a named pattern keeps its own strength\"; return false; }",
-     "wide": "if(PA_UnifyStrength(\"NONE\",0,true,45)!=45)\n{ where=\"PA-3 an inside bar takes its configured strength\"; return false; }\nif(PA_UnifyStrength(\"MORNING_STAR\",88,false,45)!=88)\n{ where=\"PA-3 a named pattern keeps its own strength\"; return false; }\nif(PA_UnifyStrength(\"NONE\",0,true,999)!=100)"
-    },
-    "26131": {
-     "line": 26131,
-     "line_text": "acc+=dev*dev;",
-     "text": "double dev=g_buf_c[i]-v;\nacc+=dev*dev;\n}",
-     "wide": "if(!(g_buf_c[i]>0.0)) return 0.0;\ndouble dev=g_buf_c[i]-v;\nacc+=dev*dev;\n}\nreturn MathSqrt(acc/(double)period);"
-    },
-    "26462": {
-     "line": 26462,
-     "line_text": "// AUDIT-MR1 self-test. It exercises the PURE cores with local values only - no",
-     "text": "\n// AUDIT-MR1 self-test. It exercises the PURE cores with local values only - no\n// chart, no series, no terminal state - so a logic regression is caught at OnInit",
-     "wide": "}\n\n// AUDIT-MR1 self-test. It exercises the PURE cores with local values only - no\n// chart, no series, no terminal state - so a logic regression is caught at OnInit\n// instead of on a live bar. Gated by InpMTEERunSelfTest, the file's existing"
-    },
-    "26688": {
-     "line": 26688,
-     "line_text": "// with Price Action switched off. A POC is a level and returns dir 0, so it can",
-     "text": "// InpPAIncludePOC, but NOT InpEnablePriceAction, so the zone leg still works\n// with Price Action switched off. A POC is a level and returns dir 0, so it can\n// confirm presence without ever being counted as a contradiction.",
-     "wide": "// Consequence, stated plainly: this leg inherits InpPAZoneToleranceATR and\n// InpPAIncludePOC, but NOT InpEnablePriceAction, so the zone leg still works\n// with Price Action switched off. A POC is a level and returns dir 0, so it can\n// confirm presence without ever being counted as a contradiction.\n//"
-    },
-    "26885": {
-     "line": 26885,
-     "line_text": "InpCFWeightSession,InpCFWeightCandle,InpCFWeightMTF);",
-     "text": "InpCFWeightStructure,InpCFWeightLiquidity,InpCFWeightZone,\nInpCFWeightSession,InpCFWeightCandle,InpCFWeightMTF);\ng_cf_buy_score =(int)MathRound(agg_buy);",
-     "wide": "g_cf_pillar_candle,mtf_sell,\nInpCFWeightStructure,InpCFWeightLiquidity,InpCFWeightZone,\nInpCFWeightSession,InpCFWeightCandle,InpCFWeightMTF);\ng_cf_buy_score =(int)MathRound(agg_buy);\ng_cf_sell_score=(int)MathRound(agg_sell);"
-    },
-    "32050": {
-     "line": 32050,
-     "line_text": "{",
-     "text": "bool ScenarioMTEESelfTest(string &where)\n{\nwhere=\"\";",
-     "wide": "\nbool ScenarioMTEESelfTest(string &where)\n{\nwhere=\"\";\nSScenarioPlan a,b;"
-    },
-    "32081": {
-     "line": 32081,
-     "line_text": "a.rank_score=b.rank_score=70;",
-     "text": "a.alignment_rank=b.alignment_rank=3;\na.rank_score=b.rank_score=70;\na.geometry_valid=true; b.geometry_valid=false;",
-     "wide": "a.validity_pass=b.validity_pass=true;\na.alignment_rank=b.alignment_rank=3;\na.rank_score=b.rank_score=70;\na.geometry_valid=true; b.geometry_valid=false;\na.barrier_room_atr=1.25; b.barrier_room_atr=0.0;"
-    },
-    "32109": {
-     "line": 32109,
-     "line_text": "a.valid=true; a.validity_pass=true; a.alignment_rank=1; a.candidate_qualified=false;",
-     "text": "ScenarioPlanInit(a,true);\na.valid=true; a.validity_pass=true; a.alignment_rank=1; a.candidate_qualified=false;\na.qualification_reason=\"NO_DATA \u2014 H1 closed directional context unavailable\";",
-     "wide": "// 7/7 Missing H1 is retained with an explicit reason, never silently qualified.\nScenarioPlanInit(a,true);\na.valid=true; a.validity_pass=true; a.alignment_rank=1; a.candidate_qualified=false;\na.qualification_reason=\"NO_DATA \u2014 H1 closed directional context unavailable\";\nif(ScenarioEntryStatusToken(a)!=\"NO_QUALIFIED_CANDIDATE\" ||"
-    },
-    "32121": {
-     "line": 32121,
-     "line_text": "if(g_scn_built_time!=0) ScenarioClear();",
-     "text": "{\nif(g_scn_built_time!=0) ScenarioClear();\nreturn;",
-     "wide": "if(!InpUseDirectionalScenarioEngine)\n{\nif(g_scn_built_time!=0) ScenarioClear();\nreturn;\n}"
-    },
-    "32138": {
-     "line": 32138,
-     "line_text": "{",
-     "text": "if(force_rebuild || g_scn_built_time!=stamp)\n{\nScenarioBuildContext(closed);",
-     "wide": "datetime stamp=g_buf_t[closed];\nif(force_rebuild || g_scn_built_time!=stamp)\n{\nScenarioBuildContext(closed);\nScenarioDiscover(closed);"
-    },
-    "32158": {
-     "line": 32158,
-     "line_text": "g_scn_next_action=\"wait for closed-bar market data\";",
-     "text": "g_scn_verdict_reason=\"scenario engine has not evaluated a closed bar\";\ng_scn_next_action=\"wait for closed-bar market data\";\ng_scn_preferred=\"NONE\";",
-     "wide": "g_scn_verdict=(int)SCV_NO_TRADE;\ng_scn_verdict_reason=\"scenario engine has not evaluated a closed bar\";\ng_scn_next_action=\"wait for closed-bar market data\";\ng_scn_preferred=\"NONE\";\ng_scn_preferred_reason=\"scenario engine has not evaluated a closed bar\";"
-    },
-    "32176": {
-     "line": 32176,
-     "line_text": "// v6.6.10 AUDIT-DSE1: a TERMINAL plan is still drawn, but as what it is.",
-     "text": "if(g_scn_ctx.closed<0 || g_scn_ctx.closed>=ArraySize(g_buf_t)) return;\n// v6.6.10 AUDIT-DSE1: a TERMINAL plan is still drawn, but as what it is.\n// The old guard dropped the plan when `invalidated` was set and KEPT it when",
-     "wide": "if(!p.valid || p.execution_ready || !(p.zone_high>p.zone_low)) return;\nif(g_scn_ctx.closed<0 || g_scn_ctx.closed>=ArraySize(g_buf_t)) return;\n// v6.6.10 AUDIT-DSE1: a TERMINAL plan is still drawn, but as what it is.\n// The old guard dropped the plan when `invalidated` was set and KEPT it when\n// only `plan_dead` was set, so the chart could carry a tinted conditional"
-    },
-    "32661": {
-     "line": 32661,
-     "line_text": "",
-     "text": "}\n\ndouble price=c[closed];",
-     "wide": "(best_buy?clrLimeGreen:clrLightCoral):clrOrange);\n}\n\ndouble price=c[closed];\ndouble sup=0.0,res=0.0;"
-    },
-    "32853": {
-     "line": 32853,
-     "line_text": "string wy_dir=(g_wy_active?(g_wy_dir>0?\"BUY\":(g_wy_dir<0?\"SELL\":\"none\")):\"stand aside\");",
-     "text": "// conflicted event can never show a side next to a stand-aside.\nstring wy_dir=(g_wy_active?(g_wy_dir>0?\"BUY\":(g_wy_dir<0?\"SELL\":\"none\")):\"stand aside\");\ntooltip+=\"\\nWY: \"+WY_EventName(g_wy_event)+(g_wy_active?\"\":\" (not active)\")+",
-     "wide": "// A direction is printed only while the event is ACTIVE, so an invalidated or\n// conflicted event can never show a side next to a stand-aside.\nstring wy_dir=(g_wy_active?(g_wy_dir>0?\"BUY\":(g_wy_dir<0?\"SELL\":\"none\")):\"stand aside\");\ntooltip+=\"\\nWY: \"+WY_EventName(g_wy_event)+(g_wy_active?\"\":\" (not active)\")+\n\" | dir \"+wy_dir+"
-    },
-    "32855": {
-     "line": 32855,
-     "line_text": "\" | dir \"+wy_dir+",
-     "text": "tooltip+=\"\\nWY: \"+WY_EventName(g_wy_event)+(g_wy_active?\"\":\" (not active)\")+\n\" | dir \"+wy_dir+\n\" | score \"+IntegerToString(g_wy_score)+\"/100 (confluence, not a win rate)\";",
-     "wide": "string wy_dir=(g_wy_active?(g_wy_dir>0?\"BUY\":(g_wy_dir<0?\"SELL\":\"none\")):\"stand aside\");\ntooltip+=\"\\nWY: \"+WY_EventName(g_wy_event)+(g_wy_active?\"\":\" (not active)\")+\n\" | dir \"+wy_dir+\n\" | score \"+IntegerToString(g_wy_score)+\"/100 (confluence, not a win rate)\";\nif(g_wy_range_valid)"
-    },
-    "32892": {
-     "line": 32892,
-     "line_text": "tooltip+=\"\\nMR: stretch \"+DoubleToString(g_mr_stretch,2)+\" sigma | dir \"+mr_dir+",
-     "text": "string mr_dir=(g_mr_dir>0?\"BUY\":(g_mr_dir<0?\"SELL\":\"none\"));\ntooltip+=\"\\nMR: stretch \"+DoubleToString(g_mr_stretch,2)+\" sigma | dir \"+mr_dir+\n\" | score \"+IntegerToString(g_mr_score)+\"/100 (confluence, not a win rate)\";",
-     "wide": "// a vetoed fade can never show a direction next to a stand-aside.\nstring mr_dir=(g_mr_dir>0?\"BUY\":(g_mr_dir<0?\"SELL\":\"none\"));\ntooltip+=\"\\nMR: stretch \"+DoubleToString(g_mr_stretch,2)+\" sigma | dir \"+mr_dir+\n\" | score \"+IntegerToString(g_mr_score)+\"/100 (confluence, not a win rate)\";\nif(g_mr_sigma>0.0)"
-    },
-    "33021": {
-     "line": 33021,
-     "line_text": "}",
-     "text": "g_dash_h=height;\n}\n",
-     "wide": "g_dash_y=y;\ng_dash_h=height;\n}\n\n"
-    },
-    "33032": {
-     "line": 33032,
-     "line_text": "// refreshes immediately; otherwise the fetch is throttled to every 10th call to",
-     "text": "// shift 1 = last closed bar), so the vector is a closed-bar fact. `force`\n// refreshes immediately; otherwise the fetch is throttled to every 10th call to\n// keep the per-tick cost bounded (5 handle reads per call, 5 timeframes).",
-     "wide": "// Reads ONLY closed bars of each configured timeframe (CopyBuffer/CopyClose at\n// shift 1 = last closed bar), so the vector is a closed-bar fact. `force`\n// refreshes immediately; otherwise the fetch is throttled to every 10th call to\n// keep the per-tick cost bounded (5 handle reads per call, 5 timeframes).\n// Throttling is a latency/accuracy trade for a CONTEXT indicator only - the"
-    },
-    "42644": {
-     "line": 42644,
-     "line_text": "SMTF_SniperCluster cl;",
-     "text": "int b=swing_hi_bar[s];\nSMTF_SniperCluster cl;\nMTF_SniperClusterInit(cl);",
-     "wide": "{\nint b=swing_hi_bar[s];\nSMTF_SniperCluster cl;\nMTF_SniperClusterInit(cl);\ncl.level.tf=tf;"
-    },
-    "42797": {
-     "line": 42797,
-     "line_text": "{",
-     "text": "for(int i=MathMax(2,bars-80);i<bars;i++)\n{\n// Bullish FVG",
-     "wide": "//------------------------------------------------------------------\nfor(int i=MathMax(2,bars-80);i<bars;i++)\n{\n// Bullish FVG\nif(rates[i].low>rates[i-2].high && (rates[i].low-rates[i-2].high)>=0.10*safe_atr)"
-    },
-    "5321": {
-     "line": 5321,
-     "line_text": "if(dp<0) continue;",
-     "text": "int dp=FindNearestCausalAncestor(si,CE_DISPLACEMENT,\"\");\nif(dp<0) continue;\nint sw=FindNearestCausalAncestor(dp,CE_LIQ_SWEEP,\"\");",
-     "wide": "if(!CorePathEventAvailable(si,closed) || !st.confirmed || st.invalidated) continue;\nint dp=FindNearestCausalAncestor(si,CE_DISPLACEMENT,\"\");\nif(dp<0) continue;\nint sw=FindNearestCausalAncestor(dp,CE_LIQ_SWEEP,\"\");\nif(sw<0) continue;"
+    "1012": {
+     "line": 1012,
+     "line_text": "input int InpCFMinDisplayScore = 60; // minimum score to name a side; below it the engine stands aside",
+     "text": "input int InpCFWeightMTF = 15; // weight: MTF bias (higher-timeframe closed structure), 0-100\ninput int InpCFMinDisplayScore = 60; // minimum score to name a side; below it the engine stands aside\ninput bool InpCFVetoOnConflict = true; // NO TRADE when a source that HAS evidence contradicts the side",
+     "wide": "input int InpCFWeightCandle = 15; // weight: candle (unified pattern strength, zone required), 0-100\ninput int InpCFWeightMTF = 15; // weight: MTF bias (higher-timeframe closed structure), 0-100\ninput int InpCFMinDisplayScore = 60; // minimum score to name a side; below it the engine stands aside\ninput bool InpCFVetoOnConflict = true; // NO TRADE when a source that HAS evidence contradicts the side\ninput bool InpCFRequireActiveStrategy = false; // additionally require one strategy module (P3/SB/WY/PA/MR) to agree"
+    },
+    "1015": {
+     "line": 1015,
+     "line_text": "input group \"====== Risk Model (AUDIT-RM1, display only, advisory text) ======\"",
+     "text": "input bool InpCFRequireActiveStrategy = false; // additionally require one strategy module (P3/SB/WY/PA/MR) to agree\ninput group \"====== Risk Model (AUDIT-RM1, display only, advisory text) ======\"\ninput bool InpEnableRiskModel = false; // master switch for the advisory Entry/SL/TP/R:R readout",
+     "wide": "input bool InpCFVetoOnConflict = true; // NO TRADE when a source that HAS evidence contradicts the side\ninput bool InpCFRequireActiveStrategy = false; // additionally require one strategy module (P3/SB/WY/PA/MR) to agree\ninput group \"====== Risk Model (AUDIT-RM1, display only, advisory text) ======\"\ninput bool InpEnableRiskModel = false; // master switch for the advisory Entry/SL/TP/R:R readout\ninput bool InpRMShowOnDashboard = false; // show the risk readout in the dashboard tooltip"
+    },
+    "1196": {
+     "line": 1196,
+     "line_text": "input bool InpUseHTFBias = true;",
+     "text": "input ENUM_TIMEFRAMES InpHTFBiasTF = PERIOD_H4;\ninput bool InpUseHTFBias = true;\ninput int InpHTFStructureFractalN = 3;",
+     "wide": "input group \"====== ICT Depth & Filters ======\"\ninput ENUM_TIMEFRAMES InpHTFBiasTF = PERIOD_H4;\ninput bool InpUseHTFBias = true;\ninput int InpHTFStructureFractalN = 3;\ninput group \"====== v6.4.0 TOP-DOWN DECISION ENGINE (D1 -> M5) ======\""
+    },
+    "1211": {
+     "line": 1211,
+     "line_text": "input double InpTopDownMinRR = 2.0; // hard R:R floor (policy: never below 1:2)",
+     "text": "input double InpTopDownChaseATR = 1.5; // max distance price may run from the entry edge (x M15 ATR)\ninput double InpTopDownMinRR = 2.0; // hard R:R floor (policy: never below 1:2)\ninput int InpTopDownMinConfluences = 3; // minimum distinct-timeframe confluences to publish",
+     "wide": "input int InpTopDownExecBars = 12; // M5 execution lookback (closed bars)\ninput double InpTopDownChaseATR = 1.5; // max distance price may run from the entry edge (x M15 ATR)\ninput double InpTopDownMinRR = 2.0; // hard R:R floor (policy: never below 1:2)\ninput int InpTopDownMinConfluences = 3; // minimum distinct-timeframe confluences to publish\ninput bool InpTopDownRequireSession = false; // additionally require an active killzone"
+    },
+    "1307": {
+     "line": 1307,
+     "line_text": "input bool InpLogLifecycleTransitions = false;",
+     "text": "input bool InpSmartObjectManagement = true;\ninput bool InpLogLifecycleTransitions = false;\n",
+     "wide": "input double InpRetestMaxDistanceATR = 4.0; // was 2.5; retest reach (docs/SIGNAL_VISIBILITY_DIAGNOSIS.md)\ninput bool InpSmartObjectManagement = true;\ninput bool InpLogLifecycleTransitions = false;\n\ninput group \"====== v5.6.6 RUNTIME / CAUSAL VALIDATION ======\""
+    },
+    "14367": {
+     "line": 14367,
+     "line_text": "void SigLog_BufWrite(const int idx,const int src,const double dir,const double e,const double sl,",
+     "text": "\nvoid SigLog_BufWrite(const int idx,const int src,const double dir,const double e,const double sl,\nconst double t1,const double t2,const double t3)",
+     "wide": "}\n\nvoid SigLog_BufWrite(const int idx,const int src,const double dir,const double e,const double sl,\nconst double t1,const double t2,const double t3)\n{"
+    },
+    "15587": {
+     "line": 15587,
+     "line_text": "RM_Clear();",
+     "text": "CF_Clear();\nRM_Clear();\nif(InpMTEERunSelfTest)",
+     "wide": "MR_Clear();\nCF_Clear();\nRM_Clear();\nif(InpMTEERunSelfTest)\n{"
+    },
+    "15600": {
+     "line": 15600,
+     "line_text": "QSMC_InitPass(\" Power-of-3 / Silver-Bullet self-test: PASS (9/9)\");",
+     "text": "if(SBP3_SelfTest(mtee_fail))\nQSMC_InitPass(\" Power-of-3 / Silver-Bullet self-test: PASS (9/9)\");\nelse",
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" MTEE synthetic self-test: FAIL \u2014 \",mtee_fail);\nif(SBP3_SelfTest(mtee_fail))\nQSMC_InitPass(\" Power-of-3 / Silver-Bullet self-test: PASS (9/9)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Power-of-3 / Silver-Bullet self-test: FAIL - \",mtee_fail);"
+    },
+    "15604": {
+     "line": 15604,
+     "line_text": "QSMC_InitPass(\" Wyckoff Spring/Upthrust self-test: PASS (9/9)\");",
+     "text": "if(WY_SelfTest(mtee_fail))\nQSMC_InitPass(\" Wyckoff Spring/Upthrust self-test: PASS (9/9)\");\nelse",
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Power-of-3 / Silver-Bullet self-test: FAIL - \",mtee_fail);\nif(WY_SelfTest(mtee_fail))\nQSMC_InitPass(\" Wyckoff Spring/Upthrust self-test: PASS (9/9)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Wyckoff Spring/Upthrust self-test: FAIL - \",mtee_fail);"
+    },
+    "15608": {
+     "line": 15608,
+     "line_text": "QSMC_InitPass(\" Pure Price Action self-test: PASS (9/9)\");",
+     "text": "if(PA_SelfTest(mtee_fail))\nQSMC_InitPass(\" Pure Price Action self-test: PASS (9/9)\");\nelse",
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Wyckoff Spring/Upthrust self-test: FAIL - \",mtee_fail);\nif(PA_SelfTest(mtee_fail))\nQSMC_InitPass(\" Pure Price Action self-test: PASS (9/9)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Pure Price Action self-test: FAIL - \",mtee_fail);"
+    },
+    "15612": {
+     "line": 15612,
+     "line_text": "QSMC_InitPass(\" Mean-reversion / momentum self-test: PASS (9/9)\");",
+     "text": "if(MR_SelfTest(mtee_fail))\nQSMC_InitPass(\" Mean-reversion / momentum self-test: PASS (9/9)\");\nelse",
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Pure Price Action self-test: FAIL - \",mtee_fail);\nif(MR_SelfTest(mtee_fail))\nQSMC_InitPass(\" Mean-reversion / momentum self-test: PASS (9/9)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Mean-reversion / momentum self-test: FAIL - \",mtee_fail);"
+    },
+    "15616": {
+     "line": 15616,
+     "line_text": "QSMC_InitPass(\" Confluence Engine self-test: PASS (10/10)\");",
+     "text": "if(CF_SelfTest(mtee_fail))\nQSMC_InitPass(\" Confluence Engine self-test: PASS (10/10)\");\nelse",
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Mean-reversion / momentum self-test: FAIL - \",mtee_fail);\nif(CF_SelfTest(mtee_fail))\nQSMC_InitPass(\" Confluence Engine self-test: PASS (10/10)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Confluence Engine self-test: FAIL - \",mtee_fail);"
+    },
+    "15620": {
+     "line": 15620,
+     "line_text": "QSMC_InitPass(\" Risk model self-test: PASS (10/10)\");",
+     "text": "if(RM_SelfTest(mtee_fail))\nQSMC_InitPass(\" Risk model self-test: PASS (10/10)\");\nelse",
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" Confluence Engine self-test: FAIL - \",mtee_fail);\nif(RM_SelfTest(mtee_fail))\nQSMC_InitPass(\" Risk model self-test: PASS (10/10)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Risk model self-test: FAIL - \",mtee_fail);"
+    },
+    "15823": {
+     "line": 15823,
+     "line_text": "int OnCalculate(const int rates_total, const int prev_calculated,",
+     "text": "//====================================================================\nint OnCalculate(const int rates_total, const int prev_calculated,\nconst datetime &time[], const double &open[], const double &high[],",
+     "wide": "// MAIN - OnCalculate with chronological enforcement & delta rendering\n//====================================================================\nint OnCalculate(const int rates_total, const int prev_calculated,\nconst datetime &time[], const double &open[], const double &high[],\nconst double &low[], const double &close[], const long &tick_volume[],"
+    },
+    "16088": {
+     "line": 16088,
+     "line_text": "// AUDIT-OB1 AGE BOUND, checked LAST within this closed bar so that a",
+     "text": "}\n// AUDIT-OB1 AGE BOUND, checked LAST within this closed bar so that a\n// block which both breaks and ages out on the same bar resolves to",
+     "wide": "g_order_blocks[i].closed_state=\"MITIGATED\";\n}\n// AUDIT-OB1 AGE BOUND, checked LAST within this closed bar so that a\n// block which both breaks and ages out on the same bar resolves to\n// MITIGATED - a price fact outranks a time fact. ReplayClosedBarStates()"
+    },
+    "16093": {
+     "line": 16093,
+     "line_text": "if(g_order_blocks[i].state!=\"MITIGATED\" && OBIsExpired(i,closed))",
+     "text": "// design contract above that function demands: the same rules, nothing new.\nif(g_order_blocks[i].state!=\"MITIGATED\" && OBIsExpired(i,closed))\nOBMarkExpired(i,closed);",
+     "wide": "// applies the identical rule in the identical position, which is what the\n// design contract above that function demands: the same rules, nothing new.\nif(g_order_blocks[i].state!=\"MITIGATED\" && OBIsExpired(i,closed))\nOBMarkExpired(i,closed);\n}"
+    },
+    "16202": {
+     "line": 16202,
+     "line_text": "P3_Update(closed);",
+     "text": "{\nP3_Update(closed);\nSB_Update(closed);",
+     "wide": "if(detection_updated)\n{\nP3_Update(closed);\nSB_Update(closed);\n// AUDIT-WY1 reads only closed bars, the per-bar ATR and g_judas, all of"
+    },
+    "16203": {
+     "line": 16203,
+     "line_text": "SB_Update(closed);",
+     "text": "P3_Update(closed);\nSB_Update(closed);\n// AUDIT-WY1 reads only closed bars, the per-bar ATR and g_judas, all of",
+     "wide": "{\nP3_Update(closed);\nSB_Update(closed);\n// AUDIT-WY1 reads only closed bars, the per-bar ATR and g_judas, all of\n// which are final here. It re-derives its event from scratch every pass, so"
+    },
+    "16207": {
+     "line": 16207,
+     "line_text": "WY_Update(closed);",
+     "text": "// a full rebuild reproduces what the incremental passes published.\nWY_Update(closed);\n}",
+     "wide": "// which are final here. It re-derives its event from scratch every pass, so\n// a full rebuild reproduces what the incremental passes published.\nWY_Update(closed);\n}\n"
+    },
+    "16253": {
+     "line": 16253,
+     "line_text": "TopDown_Update(rates_total,false);",
+     "text": "// before any lifecycle/candidate work so every gate below reads it.\nTopDown_Update(rates_total,false);\n",
+     "wide": "// v6.4.0 TOP-DOWN DECISION ENGINE: closed-bar D1->M5 evaluation runs\n// before any lifecycle/candidate work so every gate below reads it.\nTopDown_Update(rates_total,false);\n\n// Existing immutable setups get first ownership of the newly closed bar."
+    },
+    "16275": {
+     "line": 16275,
+     "line_text": "PMI_Update();",
+     "text": "// PMI_Update() and BEFORE CalculateAITradeSetup().\nPMI_Update();\nMTF_SniperZone_Update();",
+     "wide": "// Phase 6.1: MTF_SniperZone_Update() is called from OnCalculate() AFTER\n// PMI_Update() and BEFORE CalculateAITradeSetup().\nPMI_Update();\nMTF_SniperZone_Update();\n"
+    },
+    "16434": {
+     "line": 16434,
+     "line_text": "MVP_Update(rates_total, is_new_bar || prev_calculated==0, is_new_bar || prev_calculated==0); LV_Update(closed,prev_calculated==0); // closed-bar observer",
+     "text": "// v6.2.0 Master Volume Profile: closed-bar, observational, no entry authority.\nMVP_Update(rates_total, is_new_bar || prev_calculated==0, is_new_bar || prev_calculated==0); LV_Update(closed,prev_calculated==0); // closed-bar observer\n// AUDIT-PA1 Pure Price Action: closed-bar, observational, no entry authority.",
+     "wide": "PMI_UpdateAll(rates_total,is_new_bar || detection_updated);\n// v6.2.0 Master Volume Profile: closed-bar, observational, no entry authority.\nMVP_Update(rates_total, is_new_bar || prev_calculated==0, is_new_bar || prev_calculated==0); LV_Update(closed,prev_calculated==0); // closed-bar observer\n// AUDIT-PA1 Pure Price Action: closed-bar, observational, no entry authority.\n// It runs HERE and not at the detection convergence point above, for the same"
+    },
+    "16443": {
+     "line": 16443,
+     "line_text": "if(is_new_bar || detection_updated) PA_Update(closed);",
+     "text": "// bar, never per tick, and skipped entirely while its switch is off.\nif(is_new_bar || detection_updated) PA_Update(closed);\n// AUDIT-MR1 Mean Reversion / Momentum: closed-bar, observational, no entry",
+     "wide": "// pass, and g_atr_buf / g_atr written earlier in this same pass. Once per closed\n// bar, never per tick, and skipped entirely while its switch is off.\nif(is_new_bar || detection_updated) PA_Update(closed);\n// AUDIT-MR1 Mean Reversion / Momentum: closed-bar, observational, no entry\n// authority. It sits beside PA_Update because every input it reads is already"
+    },
+    "16451": {
+     "line": 16451,
+     "line_text": "if(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);",
+     "text": "// together. Once per closed bar, never per tick, skipped entirely while off.\nif(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);\n// AUDIT-CF1 Confluence Engine: closed-bar, observational, no entry authority.",
+     "wide": "// MVP_Update; it is placed after it only to keep the observational modules\n// together. Once per closed bar, never per tick, skipped entirely while off.\nif(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);\n// AUDIT-CF1 Confluence Engine: closed-bar, observational, no entry authority.\n// It runs LAST of the module updates because its legs read state the others"
+    },
+    "16457": {
+     "line": 16457,
+     "line_text": "if(is_new_bar || detection_updated) CF_Update(closed,rates_total);",
+     "text": "// scored is what makes the summary a summary rather than a stale echo.\nif(is_new_bar || detection_updated) CF_Update(closed,rates_total);\n// AUDIT-RM1 Risk Model: display-only advisory. It runs AFTER CF_Update",
+     "wide": "// mean-reversion verdict, alongside P3/SB/WY above. Scoring the same bar they\n// scored is what makes the summary a summary rather than a stale echo.\nif(is_new_bar || detection_updated) CF_Update(closed,rates_total);\n// AUDIT-RM1 Risk Model: display-only advisory. It runs AFTER CF_Update\n// because it attaches a plan to the side the confluence engine named, and"
+    },
+    "16462": {
+     "line": 16462,
+     "line_text": "if(is_new_bar || detection_updated) RM_Update(closed,rates_total);",
+     "text": "// adopted instead of re-derived. No buffer, no drawing, no order.\nif(is_new_bar || detection_updated) RM_Update(closed,rates_total);\n// AUDIT-SC1: the scalping overlay reads only what the modules above already",
+     "wide": "// AFTER TopDown_Update() above so the chain's own entry/SL/TP1 can be\n// adopted instead of re-derived. No buffer, no drawing, no order.\nif(is_new_bar || detection_updated) RM_Update(closed,rates_total);\n// AUDIT-SC1: the scalping overlay reads only what the modules above already\n// published for this CLOSED bar. Advisory: it never writes the resolver verdict,"
+    },
+    "16469": {
+     "line": 16469,
+     "line_text": "ZRE_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);",
+     "text": "// Runs after MVP_Update so the active profile levels are current.\nZRE_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);\n// v6.5.0 Reaction Signal Layer: closed-bar, classification only, no entry",
+     "wide": "// v6.3.0 Zone Reaction Engine: closed-bar, observational, no entry authority.\n// Runs after MVP_Update so the active profile levels are current.\nZRE_Update(rates_total, is_new_bar || detection_updated || prev_calculated==0);\n// v6.5.0 Reaction Signal Layer: closed-bar, classification only, no entry\n// authority. It runs HERE because it consumes the zone list ZRE just built"
+    },
+    "18354": {
+     "line": 18354,
+     "line_text": "double ScoreStructure(const int total,const bool is_buy)",
+     "text": "//====================================================================\ndouble ScoreStructure(const int total,const bool is_buy)\n{",
+     "wide": "// QUALITY ENGINE - 7 WEIGHTED PILLARS\n//====================================================================\ndouble ScoreStructure(const int total,const bool is_buy)\n{\nint n=ArraySize(g_structures);"
+    },
+    "18375": {
+     "line": 18375,
+     "line_text": "double ScoreLiquidity(const bool is_buy,const int anchor_bar)",
+     "text": "}\ndouble ScoreLiquidity(const bool is_buy,const int anchor_bar)\n{",
+     "wide": "return base;\n}\ndouble ScoreLiquidity(const bool is_buy,const int anchor_bar)\n{\nint n=ArraySize(g_liquidity);"
+    },
+    "18395": {
+     "line": 18395,
+     "line_text": "// AUDIT-OB1 ORDER BLOCK AGE BOUND + DISPLAY VOCABULARY",
+     "text": "//====================================================================\n// AUDIT-OB1 ORDER BLOCK AGE BOUND + DISPLAY VOCABULARY\n//",
+     "wide": "}\n//====================================================================\n// AUDIT-OB1 ORDER BLOCK AGE BOUND + DISPLAY VOCABULARY\n//\n// THE GAP THIS CLOSES. SOrderBlock.age has been written since the engine was"
+    },
+    "1850": {
+     "line": 1850,
+     "line_text": "input bool InpMTEERunSelfTest = true; // Run deterministic synthetic MTEE tests at init",
+     "text": "input bool InpSigLogRunSelfTest = true; // Run SigLog_SelfTest() at init (diagnostic print only)\ninput bool InpMTEERunSelfTest = true; // Run deterministic synthetic MTEE tests at init\n",
+     "wide": "input bool InpExportSignalBuffers = true; // Fill hidden calculation buffers 3-14 (read by QSMC_Tester.mq5; nothing is drawn)\ninput bool InpSigLogRunSelfTest = true; // Run SigLog_SelfTest() at init (diagnostic print only)\ninput bool InpMTEERunSelfTest = true; // Run deterministic synthetic MTEE tests at init\n\ninput group \"====== v6.5.2 MTF SNIPER ZONE ENGINE (7-TF Confluence) ======\""
+    },
+    "18506": {
+     "line": 18506,
+     "line_text": "double ScoreSession()",
+     "text": "}\ndouble ScoreSession()\n{",
+     "wide": "return best;\n}\ndouble ScoreSession()\n{\nint closed=g_rates_total-2;"
+    },
+    "18515": {
+     "line": 18515,
+     "line_text": "double ScoreHTF(const bool is_buy)",
+     "text": "}\ndouble ScoreHTF(const bool is_buy)\n{",
+     "wide": "return 30.0;\n}\ndouble ScoreHTF(const bool is_buy)\n{\nif(!InpUseHTFBias) return 50.0;"
+    },
+    "1860": {
+     "line": 1860,
+     "line_text": "input double InpSniperMaxRiskPct = 1.50; // Golden Rule 7: Advisory equity risk % per trade (1.0-2.0%)",
+     "text": "input bool InpSniperUseTrailing = true; // Phase 5.4: Trail SL behind M15 swings (0.5x ATR) after TP2\ninput double InpSniperMaxRiskPct = 1.50; // Golden Rule 7: Advisory equity risk % per trade (1.0-2.0%)\ninput bool InpSniperRunSelfTest = true; // Run MTF_SniperZone_SelfTest() at OnInit()",
+     "wide": "input bool InpSniperNewsFilter = true; // Golden Rule 6: +-30 min high-impact news blackout\ninput bool InpSniperUseTrailing = true; // Phase 5.4: Trail SL behind M15 swings (0.5x ATR) after TP2\ninput double InpSniperMaxRiskPct = 1.50; // Golden Rule 7: Advisory equity risk % per trade (1.0-2.0%)\ninput bool InpSniperRunSelfTest = true; // Run MTF_SniperZone_SelfTest() at OnInit()\n"
+    },
+    "2019": {
+     "line": 2019,
+     "line_text": "#define SNIPER_SL_BUFFER_ATR 0.30",
+     "text": "// Phase 5 Trade Management Constants\n#define SNIPER_SL_BUFFER_ATR 0.30\n#define SNIPER_SL_HARD_MAX_H1_ATR 2.00",
+     "wide": "\n// Phase 5 Trade Management Constants\n#define SNIPER_SL_BUFFER_ATR 0.30\n#define SNIPER_SL_HARD_MAX_H1_ATR 2.00\n#define SNIPER_BE_DISP_ATR 2.00"
+    },
+    "2020": {
+     "line": 2020,
+     "line_text": "#define SNIPER_SL_HARD_MAX_H1_ATR 2.00",
+     "text": "#define SNIPER_SL_BUFFER_ATR 0.30\n#define SNIPER_SL_HARD_MAX_H1_ATR 2.00\n#define SNIPER_BE_DISP_ATR 2.00",
+     "wide": "// Phase 5 Trade Management Constants\n#define SNIPER_SL_BUFFER_ATR 0.30\n#define SNIPER_SL_HARD_MAX_H1_ATR 2.00\n#define SNIPER_BE_DISP_ATR 2.00\n#define SNIPER_TRAIL_M15_ATR 0.50"
+    },
+    "2021": {
+     "line": 2021,
+     "line_text": "#define SNIPER_BE_DISP_ATR 2.00",
+     "text": "#define SNIPER_SL_HARD_MAX_H1_ATR 2.00\n#define SNIPER_BE_DISP_ATR 2.00\n#define SNIPER_TRAIL_M15_ATR 0.50",
+     "wide": "#define SNIPER_SL_BUFFER_ATR 0.30\n#define SNIPER_SL_HARD_MAX_H1_ATR 2.00\n#define SNIPER_BE_DISP_ATR 2.00\n#define SNIPER_TRAIL_M15_ATR 0.50\n#define SNIPER_TP1_CLOSE_PCT 50.0"
+    },
+    "2022": {
+     "line": 2022,
+     "line_text": "#define SNIPER_TRAIL_M15_ATR 0.50",
+     "text": "#define SNIPER_BE_DISP_ATR 2.00\n#define SNIPER_TRAIL_M15_ATR 0.50\n#define SNIPER_TP1_CLOSE_PCT 50.0",
+     "wide": "#define SNIPER_SL_HARD_MAX_H1_ATR 2.00\n#define SNIPER_BE_DISP_ATR 2.00\n#define SNIPER_TRAIL_M15_ATR 0.50\n#define SNIPER_TP1_CLOSE_PCT 50.0\n#define SNIPER_TP2_CLOSE_PCT 30.0"
+    },
+    "2053": {
+     "line": 2053,
+     "line_text": "struct STopDownState",
+     "text": "//--- v6.4.0 top-down decision state (closed bars of D1..M5 only)\nstruct STopDownState\n{",
+     "wide": "string g_d1_structure_state = \"NEUTRAL\";\n//--- v6.4.0 top-down decision state (closed bars of D1..M5 only)\nstruct STopDownState\n{\nbool computed;"
+    },
+    "20627": {
+     "line": 20627,
+     "line_text": "SCandleIntelligence AnalyzeCandleIntelligence(const int closed,const double &o[],const double &h[],",
+     "text": "// Phase 3: Candle Confirmation Engine (15 institutional properties)\nSCandleIntelligence AnalyzeCandleIntelligence(const int closed,const double &o[],const double &h[],\nconst double &l[],const double &c[],const long &tv[],",
+     "wide": "\n// Phase 3: Candle Confirmation Engine (15 institutional properties)\nSCandleIntelligence AnalyzeCandleIntelligence(const int closed,const double &o[],const double &h[],\nconst double &l[],const double &c[],const long &tv[],\nconst long &rv[],const double atr)"
+    },
+    "21417": {
+     "line": 21417,
+     "line_text": "void CalculateAITradeSetup(const int total,const double &o[],const double &h[],const double &l[],const double &c[])",
+     "text": "//====================================================================\nvoid CalculateAITradeSetup(const int total,const double &o[],const double &h[],const double &l[],const double &c[])\n{",
+     "wide": "// aggregation, so every factor actually reaches final_score.\n//====================================================================\nvoid CalculateAITradeSetup(const int total,const double &o[],const double &h[],const double &l[],const double &c[])\n{\nResetCausalHopReport();"
+    },
+    "21881": {
+     "line": 21881,
+     "line_text": "double final_score=0.0;",
+     "text": "}\ndouble final_score=0.0;\nif(InpInstitutionalSequence)",
+     "wide": "rel_label=RelationNodeName(RN_OB);\n}\ndouble final_score=0.0;\nif(InpInstitutionalSequence)\n{"
+    },
+    "23676": {
+     "line": 23676,
+     "line_text": "double TheoreticalRiskMoney(const double entry,const double sl,const double volume)",
+     "text": "//--------------------------------------------------------------------\ndouble TheoreticalRiskMoney(const double entry,const double sl,const double volume)\n{",
+     "wide": "// \"RISK CALCULATION UNAVAILABLE\" is shown. Never invented.\n//--------------------------------------------------------------------\ndouble TheoreticalRiskMoney(const double entry,const double sl,const double volume)\n{\nif(!g_instrument.valid) return 0.0;"
+    },
+    "24419": {
+     "line": 24419,
+     "line_text": "int FractalRightBars(const int n)",
+     "text": "//====================================================================\nint FractalRightBars(const int n)\n{",
+     "wide": "// FRACTAL HELPERS\n//====================================================================\nint FractalRightBars(const int n)\n{\n// A swing is CONFIRMED only after n fully closed bars on the right."
+    },
+    "25438": {
+     "line": 25438,
+     "line_text": "// AUDIT-SB1 POWER OF 3 + SILVER BULLET (DISPLAY ONLY)",
+     "text": "//====================================================================\n// AUDIT-SB1 POWER OF 3 + SILVER BULLET (DISPLAY ONLY)\n//",
+     "wide": "\n//====================================================================\n// AUDIT-SB1 POWER OF 3 + SILVER BULLET (DISPLAY ONLY)\n//\n// WHAT THESE TWO MODULES ARE. Both are READERS of state the file already"
+    },
+    "25566": {
+     "line": 25566,
+     "line_text": "void P3_Update(const int closed)",
+     "text": "// TacticalAuthorityDecide, so the decision rule is testable without a chart.\nvoid P3_Update(const int closed)\n{",
+     "wide": "// hands them to the pure order above - the same split as QSMC_BuildGeometry /\n// TacticalAuthorityDecide, so the decision rule is testable without a chart.\nvoid P3_Update(const int closed)\n{\ng_p3_phase=P3_PHASE_NONE; g_p3_dir=0; g_p3_score=0;"
+    },
+    "25742": {
+     "line": 25742,
+     "line_text": "void SB_Update(const int closed)",
+     "text": "// the EXISTING causal graph whether the whole required sequence is inside it.\nvoid SB_Update(const int closed)\n{",
+     "wide": "// The adapter. It resolves the window from the closed bar's own time, then asks\n// the EXISTING causal graph whether the whole required sequence is inside it.\nvoid SB_Update(const int closed)\n{\ng_sb_active=false; g_sb_window=-1; g_sb_dir=0; g_sb_fvg=-1;"
+    },
+    "26017": {
+     "line": 26017,
+     "line_text": "// AUDIT-WY1 WYCKOFF SPRING / UPTHRUST (DISPLAY ONLY)",
+     "text": "//====================================================================\n// AUDIT-WY1 WYCKOFF SPRING / UPTHRUST (DISPLAY ONLY)\n//",
+     "wide": "\n//====================================================================\n// AUDIT-WY1 WYCKOFF SPRING / UPTHRUST (DISPLAY ONLY)\n//\n// WHAT IS NEW AND WHAT IS REUSED. Only the RANGE GEOMETRY is new, because"
+    },
+    "26206": {
+     "line": 26206,
+     "line_text": "void WY_Update(const int closed)",
+     "text": "// The adapter. It re-derives everything from closed bars on every pass.\nvoid WY_Update(const int closed)\n{",
+     "wide": "\n// The adapter. It re-derives everything from closed bars on every pass.\nvoid WY_Update(const int closed)\n{\ng_wy_range_valid=false; g_wy_range_start=-1; g_wy_range_end=-1;"
+    },
+    "26456": {
+     "line": 26456,
+     "line_text": "// AUDIT-PA1 PURE PRICE ACTION (DISPLAY ONLY)",
+     "text": "//====================================================================\n// AUDIT-PA1 PURE PRICE ACTION (DISPLAY ONLY)\n//",
+     "wide": "\n//====================================================================\n// AUDIT-PA1 PURE PRICE ACTION (DISPLAY ONLY)\n//\n// WHAT ALREADY EXISTED, AND IS THEREFORE NOT REWRITTEN HERE."
+    },
+    "26612": {
+     "line": 26612,
+     "line_text": "bool PA_ZoneAt(const double price,const int closed,const double atr,",
+     "text": "// OB > FVG > S/R > POC: the causal zones first, the statistical level last.\nbool PA_ZoneAt(const double price,const int closed,const double atr,\nstring &name,double &top,double &bottom,int &dir)",
+     "wide": "// reading only what the existing detectors already published. Priority is\n// OB > FVG > S/R > POC: the causal zones first, the statistical level last.\nbool PA_ZoneAt(const double price,const int closed,const double atr,\nstring &name,double &top,double &bottom,int &dir)\n{"
+    },
+    "26682": {
+     "line": 26682,
+     "line_text": "void PA_Update(const int closed)",
+     "text": "// then applies the rule that a pattern without a zone is not confirmation.\nvoid PA_Update(const int closed)\n{",
+     "wide": "// pattern that was missing, finds the zone from the arrays that already exist, and\n// then applies the rule that a pattern without a zone is not confirmation.\nvoid PA_Update(const int closed)\n{\ng_pa_pattern=\"NONE\"; g_pa_strength=0; g_pa_pattern_dir=0; g_pa_inside_bar=false;"
+    },
+    "26879": {
+     "line": 26879,
+     "line_text": "// AUDIT-MR1 MEAN REVERSION / MOMENTUM (DISPLAY ONLY)",
+     "text": "//====================================================================\n// AUDIT-MR1 MEAN REVERSION / MOMENTUM (DISPLAY ONLY)\n//",
+     "wide": "\n//====================================================================\n// AUDIT-MR1 MEAN REVERSION / MOMENTUM (DISPLAY ONLY)\n//\n// WHAT ALREADY EXISTED, AND IS THEREFORE NOT REWRITTEN HERE."
+    },
+    "27137": {
+     "line": 27137,
+     "line_text": "void MR_Update(const int closed,const int rates_total,const bool full)",
+     "text": "// bar and a full rebuild cannot disagree with the incremental passes.\nvoid MR_Update(const int closed,const int rates_total,const bool full)\n{",
+     "wide": "// The one pass. Resets everything first, so nothing is carried over from a previous\n// bar and a full rebuild cannot disagree with the incremental passes.\nvoid MR_Update(const int closed,const int rates_total,const bool full)\n{\ng_mr_vwap=0.0; g_mr_sigma=0.0; g_mr_upper=0.0; g_mr_lower=0.0; g_mr_stretch=0.0;"
+    },
+    "27480": {
+     "line": 27480,
+     "line_text": "// AUDIT-CF1 CONFLUENCE ENGINE (display only, no entry authority)",
+     "text": "//====================================================================\n// AUDIT-CF1 CONFLUENCE ENGINE (display only, no entry authority)\n//====================================================================",
+     "wide": "\n//====================================================================\n// AUDIT-CF1 CONFLUENCE ENGINE (display only, no entry authority)\n//====================================================================\n// WHAT THIS MODULE IS"
+    },
+    "27645": {
+     "line": 27645,
+     "line_text": "void CF_Update(const int closed,const int rates_total)",
+     "text": "// The per-bar driver. Reads closed-bar state only, latches nothing, draws nothing.\nvoid CF_Update(const int closed,const int rates_total)\n{",
+     "wide": "\n// The per-bar driver. Reads closed-bar state only, latches nothing, draws nothing.\nvoid CF_Update(const int closed,const int rates_total)\n{\n// Clear FIRST, then early-exit - the same contract PA_Update() and MR_Update()"
+    },
+    "27976": {
+     "line": 27976,
+     "line_text": "// AUDIT-RM1 RISK MODEL (display only - advisory TEXT, never an order)",
+     "text": "//====================================================================\n// AUDIT-RM1 RISK MODEL (display only - advisory TEXT, never an order)\n//====================================================================",
+     "wide": "\n//====================================================================\n// AUDIT-RM1 RISK MODEL (display only - advisory TEXT, never an order)\n//====================================================================\n// WHAT THIS MODULE IS"
+    },
+    "28205": {
+     "line": 28205,
+     "line_text": "void RM_Update(const int closed,const int rates_total)",
+     "text": "// The per-bar driver. Advisory only: it publishes a plan for a human to read.\nvoid RM_Update(const int closed,const int rates_total)\n{",
+     "wide": "\n// The per-bar driver. Advisory only: it publishes a plan for a human to read.\nvoid RM_Update(const int closed,const int rates_total)\n{\nRM_Clear();"
+    },
+    "28402": {
+     "line": 28402,
+     "line_text": "// AUDIT-RM1 synthetic self-test. Exercises the PURE cores only - it reads no",
+     "text": "\n// AUDIT-RM1 synthetic self-test. Exercises the PURE cores only - it reads no\n// chart history and no account data, so it is identical on every symbol.",
+     "wide": "}\n\n// AUDIT-RM1 synthetic self-test. Exercises the PURE cores only - it reads no\n// chart history and no account data, so it is identical on every symbol.\nbool RM_SelfTest(string &where)"
+    },
+    "33604": {
+     "line": 33604,
+     "line_text": "if((InpEnableConfluence||InpEnableAllModules) && (InpCFShowOnDashboard||InpEnableAllModules))",
+     "text": "// must not be able to push a Core row off it.\nif((InpEnableConfluence||InpEnableAllModules) && (InpCFShowOnDashboard||InpEnableAllModules))\n{",
+     "wide": "// is fixed and pinned by test_dashboard_clarity.py, and a display-only extra\n// must not be able to push a Core row off it.\nif((InpEnableConfluence||InpEnableAllModules) && (InpCFShowOnDashboard||InpEnableAllModules))\n{\nstring cf_legs_a=\"structure \"+DoubleToString(g_cf_pillar_structure,0)+(g_cf_has_structure?\"\":\" (absent)\")+"
+    },
+    "33635": {
+     "line": 33635,
+     "line_text": "if((InpEnableRiskModel||InpEnableAllModules) && (InpRMShowOnDashboard||InpEnableAllModules))",
+     "text": "// display-only extra must not be able to push a Core row off the card.\nif((InpEnableRiskModel||InpEnableAllModules) && (InpRMShowOnDashboard||InpEnableAllModules))\n{",
+     "wide": "// it belongs to. Tooltip only, never the 11-row card, for the same reason: a\n// display-only extra must not be able to push a Core row off the card.\nif((InpEnableRiskModel||InpEnableAllModules) && (InpRMShowOnDashboard||InpEnableAllModules))\n{\ntooltip+=\"\\nRM: \"+g_rm_verdict+(g_rm_dir>0?\" BUY\":(g_rm_dir<0?\" SELL\":\"\"))+"
+    },
+    "33663": {
+     "line": 33663,
+     "line_text": "if((InpEnablePowerOf3||InpEnableAllModules) && (InpP3ShowOnDashboard||InpEnableAllModules))",
+     "text": "// a Core row off the card. This is the same merge the DSE section uses.\nif((InpEnablePowerOf3||InpEnableAllModules) && (InpP3ShowOnDashboard||InpEnableAllModules))\n{",
+     "wide": "// test_dashboard_clarity.py, and a display-only extra must not be able to push\n// a Core row off the card. This is the same merge the DSE section uses.\nif((InpEnablePowerOf3||InpEnableAllModules) && (InpP3ShowOnDashboard||InpEnableAllModules))\n{\nstring p3_dir=\"\";"
+    },
+    "33675": {
+     "line": 33675,
+     "line_text": "if((InpEnableSilverBullet||InpEnableAllModules) && (InpSBShowOnDashboard||InpEnableAllModules))",
+     "text": "}\nif((InpEnableSilverBullet||InpEnableAllModules) && (InpSBShowOnDashboard||InpEnableAllModules))\n{",
+     "wide": "if(g_p3_invalidation!=\"\") tooltip+=\"\\nP3 invalidation: \"+g_p3_invalidation;\n}\nif((InpEnableSilverBullet||InpEnableAllModules) && (InpSBShowOnDashboard||InpEnableAllModules))\n{\n// No direction is printed unless the setup is ACTIVE, so the card can never"
+    },
+    "33692": {
+     "line": 33692,
+     "line_text": "if((InpEnableWyckoff||InpEnableAllModules) && (InpWyckoffShowOnDashboard||InpEnableAllModules))",
+     "text": "// same reason as the two above.\nif((InpEnableWyckoff||InpEnableAllModules) && (InpWyckoffShowOnDashboard||InpEnableAllModules))\n{",
+     "wide": "// AUDIT-WY1 Wyckoff Spring / Upthrust. Tooltip, never the 11-row card, for the\n// same reason as the two above.\nif((InpEnableWyckoff||InpEnableAllModules) && (InpWyckoffShowOnDashboard||InpEnableAllModules))\n{\n// A direction is printed only while the event is ACTIVE, so an invalidated or"
+    },
+    "33712": {
+     "line": 33712,
+     "line_text": "if((InpEnablePriceAction||InpEnableAllModules) && (InpPAShowOnDashboard||InpEnableAllModules))",
+     "text": "// reason as the modules above.\nif((InpEnablePriceAction||InpEnableAllModules) && (InpPAShowOnDashboard||InpEnableAllModules))\n{",
+     "wide": "// AUDIT-PA1 Pure Price Action. Tooltip, never the 11-row card, for the same\n// reason as the modules above.\nif((InpEnablePriceAction||InpEnableAllModules) && (InpPAShowOnDashboard||InpEnableAllModules))\n{\n// A direction is printed only when one is actually resolved, so a standalone"
+    },
+    "33730": {
+     "line": 33730,
+     "line_text": "if((InpEnableMeanReversion||InpEnableAllModules) && (InpMRShowOnDashboard||InpEnableAllModules))",
+     "text": "// same reason as the modules above.\nif((InpEnableMeanReversion||InpEnableAllModules) && (InpMRShowOnDashboard||InpEnableAllModules))\n{",
+     "wide": "// AUDIT-MR1 Mean Reversion / Momentum. Tooltip, never the 11-row card, for the\n// same reason as the modules above.\nif((InpEnableMeanReversion||InpEnableAllModules) && (InpMRShowOnDashboard||InpEnableAllModules))\n{\n// A side is printed only when one is actually resolved, so a bare stretch or"
+    },
+    "34215": {
+     "line": 34215,
+     "line_text": "void TopDown_Evaluate()",
+     "text": "//--- the full top-down chain; single exit via TopDown_Fail / success tail\nvoid TopDown_Evaluate()\n{",
+     "wide": "\n//--- the full top-down chain; single exit via TopDown_Fail / success tail\nvoid TopDown_Evaluate()\n{\nMqlRates r_d1[],r_h4[],r_h1[],r_m30[],r_m15[],r_m5[];"
+    },
+    "34407": {
+     "line": 34407,
+     "line_text": "if(rr+1e-9<InpTopDownMinRR)",
+     "text": "double rr=(d1_dir>0 ? (tp1-entry)/risk : (entry-tp1)/risk);\nif(rr+1e-9<InpTopDownMinRR)\n{",
+     "wide": "double tp1=cands[bi];\ndouble rr=(d1_dir>0 ? (tp1-entry)/risk : (entry-tp1)/risk);\nif(rr+1e-9<InpTopDownMinRR)\n{\nTopDown_Fail(StringFormat(\"R:R %.2f below required %.2f (nearest target %s)\","
+    },
+    "34409": {
+     "line": 34409,
+     "line_text": "TopDown_Fail(StringFormat(\"R:R %.2f below required %.2f (nearest target %s)\",",
+     "text": "{\nTopDown_Fail(StringFormat(\"R:R %.2f below required %.2f (nearest target %s)\",\nrr,InpTopDownMinRR,csrc[bi]));",
+     "wide": "if(rr+1e-9<InpTopDownMinRR)\n{\nTopDown_Fail(StringFormat(\"R:R %.2f below required %.2f (nearest target %s)\",\nrr,InpTopDownMinRR,csrc[bi]));\nreturn;"
+    },
+    "34446": {
+     "line": 34446,
+     "line_text": "void TopDown_Update(const int total,const bool force)",
+     "text": "\nvoid TopDown_Update(const int total,const bool force)\n{",
+     "wide": "}\n\nvoid TopDown_Update(const int total,const bool force)\n{\nif(!InpTopDownEnabled)"
+    },
+    "34575": {
+     "line": 34575,
+     "line_text": "bool IsFractalHigh(const double &h[],const int i,const int n,const int total)",
+     "text": "//====================================================================\nbool IsFractalHigh(const double &h[],const int i,const int n,const int total)\n{",
+     "wide": "// (declared API kept total; used by flexible-mode tooling)\n//====================================================================\nbool IsFractalHigh(const double &h[],const int i,const int n,const int total)\n{\nif(i<n || i+n>total-2) return false; // confirmed: fully inside closed bars"
+    },
+    "34586": {
+     "line": 34586,
+     "line_text": "bool IsFractalLow(const double &l[],const int i,const int n,const int total)",
+     "text": "}\nbool IsFractalLow(const double &l[],const int i,const int n,const int total)\n{",
+     "wide": "return true;\n}\nbool IsFractalLow(const double &l[],const int i,const int n,const int total)\n{\nif(i<n || i+n>total-2) return false;"
+    },
+    "44356": {
+     "line": 44356,
+     "line_text": "void MTF_SniperEvaluateEntryTriggers(SMTF_SniperCluster &cl,",
+     "text": "//--------------------------------------------------------------------\nvoid MTF_SniperEvaluateEntryTriggers(SMTF_SniperCluster &cl,\nconst MqlRates &entry_rates[],const int entry_n,",
+     "wide": "// Phase 4: Sniper Entry Triggers (Closed-Bar Only, C1..C5)\n//--------------------------------------------------------------------\nvoid MTF_SniperEvaluateEntryTriggers(SMTF_SniperCluster &cl,\nconst MqlRates &entry_rates[],const int entry_n,\nconst double entry_atr,"
+    },
+    "44509": {
+     "line": 44509,
+     "line_text": "void MTF_SniperComputeTradeManagement(SMTF_SniperCluster &cl,const double chart_atr,",
+     "text": "//--------------------------------------------------------------------\nvoid MTF_SniperComputeTradeManagement(SMTF_SniperCluster &cl,const double chart_atr,\nconst double h1_atr,const MqlRates &m15_rates[],",
+     "wide": "// Phase 5: Trade Management Rules (SL, TP1/TP2/TP3, BE, Trail, Risk)\n//--------------------------------------------------------------------\nvoid MTF_SniperComputeTradeManagement(SMTF_SniperCluster &cl,const double chart_atr,\nconst double h1_atr,const MqlRates &m15_rates[],\nconst int m15_n,const double m15_atr)"
+    },
+    "5586": {
+     "line": 5586,
+     "line_text": "SCandleIntel AnalyzeClosedCandle(const int closed,const double &o[],const double &h[],",
+     "text": "\nSCandleIntel AnalyzeClosedCandle(const int closed,const double &o[],const double &h[],\nconst double &l[],const double &c[],const double atr)",
+     "wide": "};\n\nSCandleIntel AnalyzeClosedCandle(const int closed,const double &o[],const double &h[],\nconst double &l[],const double &c[],const double atr)\n{"
     },
     "627": {
      "line": 627,
      "line_text": "#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)",
      "text": "#property indicator_chart_window\n#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7",
-     "wide": "#define QSMC_VERSION_TEXT \"v6.6.22\"\n#property indicator_chart_window\n#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7\n//+------------------------------------------------------------------+"
+     "wide": "#define QSMC_VERSION_TEXT \"v6.6.24\"\n#property indicator_chart_window\n#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7\n//+------------------------------------------------------------------+"
     },
     "628": {
      "line": 628,
@@ -1040,59 +1046,47 @@
      "text": "#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7\n//+------------------------------------------------------------------+",
      "wide": "#property indicator_chart_window\n#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7\n//+------------------------------------------------------------------+\n//| v6.6.0 SIGNAL ARBITRATION LAYER |"
     },
-    "747": {
-     "line": 747,
-     "line_text": "",
-     "text": "};\n\n// AUDIT-SB1 POWER OF 3 phase. Its own enum, appended after ENUM_SESSION_ID so",
-     "wide": "SESSION_NEWYORK\n};\n\n// AUDIT-SB1 POWER OF 3 phase. Its own enum, appended after ENUM_SESSION_ID so\n// no existing enumerator value anywhere in the file changes."
+    "756": {
+     "line": 756,
+     "line_text": "enum ENUM_P3_PHASE",
+     "text": "// never an instruction, and it never authorizes anything.\nenum ENUM_P3_PHASE\n{",
+     "wide": "// A phase is a description of what has already happened on closed bars. It is\n// never an instruction, and it never authorizes anything.\nenum ENUM_P3_PHASE\n{\nP3_PHASE_NONE=0, // no Asia range resolved for the applicable local day"
     },
-    "757": {
-     "line": 757,
-     "line_text": "{",
-     "text": "enum ENUM_P3_PHASE\n{\nP3_PHASE_NONE=0, // no Asia range resolved for the applicable local day",
-     "wide": "// never an instruction, and it never authorizes anything.\nenum ENUM_P3_PHASE\n{\nP3_PHASE_NONE=0, // no Asia range resolved for the applicable local day\nP3_PHASE_ACCUMULATION,"
+    "766": {
+     "line": 766,
+     "line_text": "enum ENUM_WYCKOFF_EVENT",
+     "text": "// existing enumerator value anywhere in the file can shift.\nenum ENUM_WYCKOFF_EVENT\n{",
+     "wide": "// AUDIT-WY1 Wyckoff range event. Its OWN enum, added as a new type, so no\n// existing enumerator value anywhere in the file can shift.\nenum ENUM_WYCKOFF_EVENT\n{\nWY_EVENT_NONE=0, // no qualifying range, or no qualifying test bar"
     },
-    "808": {
-     "line": 808,
-     "line_text": "//--- BinarySearchNearestOB, DrawStructureAndOB, AddBreakerBlock). These four",
-     "text": "//--- ScoreOrderBlock, SelectEntryOB, BuildOBPriceIndex/StrengthIndex,\n//--- BinarySearchNearestOB, DrawStructureAndOB, AddBreakerBlock). These four\n//--- inputs add ONLY what it was missing - an age bound - plus two opt-ins and a",
-     "wide": "//--- scores, indexes, caps, draws and mitigates order blocks (DetectOrderBlocks,\n//--- ScoreOrderBlock, SelectEntryOB, BuildOBPriceIndex/StrengthIndex,\n//--- BinarySearchNearestOB, DrawStructureAndOB, AddBreakerBlock). These four\n//--- inputs add ONLY what it was missing - an age bound - plus two opt-ins and a\n//--- display vocabulary. There is no second OB engine and no parallel registry."
+    "817": {
+     "line": 817,
+     "line_text": "input bool InpOBUseAgeExpiry = false; // retire an OB after InpOBMaxAgeBars closed bars (false = today: only a close through the zone retires it)",
+     "text": "//--- version AHEAD of the triple.\ninput bool InpOBUseAgeExpiry = false; // retire an OB after InpOBMaxAgeBars closed bars (false = today: only a close through the zone retires it)\ninput int InpOBMaxAgeBars = 200; // closed CHART bars; <=0 disables even when the switch is on",
+     "wide": "//--- not claims about the build - and CI now fails if any marker ever claims a\n//--- version AHEAD of the triple.\ninput bool InpOBUseAgeExpiry = false; // retire an OB after InpOBMaxAgeBars closed bars (false = today: only a close through the zone retires it)\ninput int InpOBMaxAgeBars = 200; // closed CHART bars; <=0 disables even when the switch is on\ninput bool InpOBZoneBodyOnly = false; // zone = pure candle body instead of the default body+rejection-wick hybrid"
     },
-    "906": {
-     "line": 906,
-     "line_text": "input group \"====== All Seven Modules At Once (AUDIT-UX1) ======\"",
-     "text": "input bool InpObsShowPrimary = true; // column: what was actually published\ninput group \"====== All Seven Modules At Once (AUDIT-UX1) ======\"\ninput bool InpEnableAllModules = false; // one switch: all seven strategy modules ON plus",
-     "wide": "input bool InpObsShowScalp = true; // column: the scalping overlay's verdict\ninput bool InpObsShowPrimary = true; // column: what was actually published\ninput group \"====== All Seven Modules At Once (AUDIT-UX1) ======\"\ninput bool InpEnableAllModules = false; // one switch: all seven strategy modules ON plus\n// their tooltip output. Does NOT enable the chart-object"
+    "915": {
+     "line": 915,
+     "line_text": "input group \"====== Silver Bullet / Power of 3 (AUDIT-SB1, display only) ======\"",
+     "text": "// mid-bar without a detection update waits for the next bar.\ninput group \"====== Silver Bullet / Power of 3 (AUDIT-SB1, display only) ======\"\n// Every switch below defaults to OFF. With them off, nothing in this group is",
+     "wide": "// so nothing visible is lost; a confirmation that lands\n// mid-bar without a detection update waits for the next bar.\ninput group \"====== Silver Bullet / Power of 3 (AUDIT-SB1, display only) ======\"\n// Every switch below defaults to OFF. With them off, nothing in this group is\n// computed, drawn, logged or appended to the dashboard, and no existing value,"
     },
-    "928": {
-     "line": 928,
-     "line_text": "// independent of chart timeframe. They are resolved through the SAME broker",
-     "text": "// Windows are MINUTES FROM LOCAL MIDNIGHT so they are exact to the minute and\n// independent of chart timeframe. They are resolved through the SAME broker\n// clock the session engine already uses (InpBrokerUTCOffsetWinterMinutes +",
-     "wide": "input bool InpSBShowEntryZone = false; // draw the FVG retrace zone the window resolved to\n// Windows are MINUTES FROM LOCAL MIDNIGHT so they are exact to the minute and\n// independent of chart timeframe. They are resolved through the SAME broker\n// clock the session engine already uses (InpBrokerUTCOffsetWinterMinutes +\n// InpBrokerDSTRule + InpUseDSTSessions), so no second time conversion is"
+    "937": {
+     "line": 937,
+     "line_text": "input group \"====== Wyckoff Spring / Upthrust (AUDIT-WY1, display only) ======\"",
+     "text": "input int InpSBChainMaxAgeBars = 240; // a chain element older than this many closed bars cannot open a window setup\ninput group \"====== Wyckoff Spring / Upthrust (AUDIT-WY1, display only) ======\"\n// Display only. This module never feeds the arbiter, the Core lifecycle, the",
+     "wide": "input int InpSBWin3Start = 840, InpSBWin3End = 900; // window 3, 14:00-15:00\ninput int InpSBChainMaxAgeBars = 240; // a chain element older than this many closed bars cannot open a window setup\ninput group \"====== Wyckoff Spring / Upthrust (AUDIT-WY1, display only) ======\"\n// Display only. This module never feeds the arbiter, the Core lifecycle, the\n// Directional Scenario Engine, the confluence scorers, or any buffer, and it"
     },
-    "949": {
-     "line": 949,
-     "line_text": "input bool InpWyckoffShowOnDashboard = false; // append the event to the dashboard tooltip (needs InpEnableWyckoff)",
-     "text": "input bool InpEnableWyckoff = false; // detect Spring / Upthrust at a structural range\ninput bool InpWyckoffShowOnDashboard = false; // append the event to the dashboard tooltip (needs InpEnableWyckoff)\ninput bool InpWyckoffShowRange = false; // draw the range box the event was measured against",
-     "wide": "// measurement, so nothing is duplicated.\ninput bool InpEnableWyckoff = false; // detect Spring / Upthrust at a structural range\ninput bool InpWyckoffShowOnDashboard = false; // append the event to the dashboard tooltip (needs InpEnableWyckoff)\ninput bool InpWyckoffShowRange = false; // draw the range box the event was measured against\ninput int InpWyckoffMinRangeBars = 16; // a range shorter than this is noise, not accumulation"
+    "958": {
+     "line": 958,
+     "line_text": "input group \"====== Pure Price Action (AUDIT-PA1, display only) ======\"",
+     "text": "input int InpWyckoffMaxAgeBars = 96; // an event older than this many closed bars is stale\ninput group \"====== Pure Price Action (AUDIT-PA1, display only) ======\"\n// The unified pattern function ALREADY EXISTS: AnalyzeClosedCandle() returns one",
+     "wide": "input bool InpWyckoffRequireVolume = true; // require the existing displacement-or-volume sweep confirmation\ninput int InpWyckoffMaxAgeBars = 96; // an event older than this many closed bars is stale\ninput group \"====== Pure Price Action (AUDIT-PA1, display only) ======\"\n// The unified pattern function ALREADY EXISTS: AnalyzeClosedCandle() returns one\n// pattern label and one 0-100 strength for nine patterns, and a \"Pin Bar\" is its"
     },
-    "969": {
-     "line": 969,
-     "line_text": "// with NO zone requirement, then adds the zone as a BONUS (+12 zone_ok, +8 inside).",
-     "text": "// OPT-IN, DEFAULT OFF. ContextualCandleScore() currently awards candle.score*0.45\n// with NO zone requirement, then adds the zone as a BONUS (+12 zone_ok, +8 inside).\n// So a candle outside every zone still contributes. Turning this on makes the zone",
-     "wide": "input bool InpPAShowOnDashboard = false; // append the price-action verdict to the dashboard tooltip\n// OPT-IN, DEFAULT OFF. ContextualCandleScore() currently awards candle.score*0.45\n// with NO zone requirement, then adds the zone as a BONUS (+12 zone_ok, +8 inside).\n// So a candle outside every zone still contributes. Turning this on makes the zone\n// a hard requirement and such a candle scores 0. While it is off - the default -"
-    },
-    "994": {
-     "line": 994,
-     "line_text": "// OPTIONAL momentum filter. The iMACD handle is created ONLY when this is true,",
-     "text": "input double InpMRRSIOversold = 30.0; // RSI at or below this makes a stretched-down bar exhausted\n// OPTIONAL momentum filter. The iMACD handle is created ONLY when this is true,\n// so with the default off nothing in OnInit changes at all. If the handle cannot",
-     "wide": "input double InpMRRSIOverbought = 70.0; // RSI at or above this makes a stretched-up bar exhausted\ninput double InpMRRSIOversold = 30.0; // RSI at or below this makes a stretched-down bar exhausted\n// OPTIONAL momentum filter. The iMACD handle is created ONLY when this is true,\n// so with the default off nothing in OnInit changes at all. If the handle cannot\n// be created the leg reports \"unavailable\" and scores 0 - an optional display-only"
-    },
-    "997": {
-     "line": 997,
-     "line_text": "// filter must never be able to stop the indicator from loading.",
-     "text": "// be created the leg reports \"unavailable\" and scores 0 - an optional display-only\n// filter must never be able to stop the indicator from loading.\ninput bool InpMRUseMACD = false; // use MACD as a veto on fading against momentum",
-     "wide": "// so with the default off nothing in OnInit changes at all. If the handle cannot\n// be created the leg reports \"unavailable\" and scores 0 - an optional display-only\n// filter must never be able to stop the indicator from loading.\ninput bool InpMRUseMACD = false; // use MACD as a veto on fading against momentum\ninput int InpMRFastEMA = 12; // MACD fast EMA (standard 12)"
+    "978": {
+     "line": 978,
+     "line_text": "input group \"====== Mean Reversion / Momentum (AUDIT-MR1, display only) ======\"",
+     "text": "input bool InpPAIncludePOC = true; // count the active volume-profile POC as a zone\ninput group \"====== Mean Reversion / Momentum (AUDIT-MR1, display only) ======\"\n// THREE legs, and what each one is allowed to do. The BANDS (VWAP +/- k sigma,",
+     "wide": "input double InpPAZoneToleranceATR = 0.15; // how close to a zone still counts as inside it\ninput bool InpPAIncludePOC = true; // count the active volume-profile POC as a zone\ninput group \"====== Mean Reversion / Momentum (AUDIT-MR1, display only) ======\"\n// THREE legs, and what each one is allowed to do. The BANDS (VWAP +/- k sigma,\n// reusing the existing BufVWAP rather than adding iBands) say price is stretched."
     }
    }
   },
@@ -1567,7 +1561,7 @@
    }
   },
   "test_tactical_authority": {
-   "base": "ab46c16a445af03eb3b8ea8ea0c330c18236eed2",
+   "base": "548b12c",
    "pins": {
     "100": {
      "line": 100,
@@ -1575,29 +1569,29 @@
      "text": "//| the arbitration layer and its MQL5-dialect compile fixes. |\n//| AUDIT-05 [STYLE] Dead declarations removed (4 unused entry-mark |\n//| buffer arrays, 1 undefined prototype) and the preview plot |",
      "wide": "//| #property version now both read v6.6.1, the build that carries |\n//| the arbitration layer and its MQL5-dialect compile fixes. |\n//| AUDIT-05 [STYLE] Dead declarations removed (4 unused entry-mark |\n//| buffer arrays, 1 undefined prototype) and the preview plot |\n//| arrows now use the documented hollow diamond (108/109) that |"
     },
-    "5642": {
-     "line": 5642,
-     "line_text": "// arrangement the AUDIT-SB1 and AUDIT-WY1 cores use so transcriptions cannot drift.",
-     "text": "// tools/test_phase4_priceaction.py and in-terminal by PA_SelfTest(), the same\n// arrangement the AUDIT-SB1 and AUDIT-WY1 cores use so transcriptions cannot drift.\nbool PA_InsideBarGeometry(const double h,const double l,const double prev_h,const double prev_l);",
-     "wide": "// no terminal call - so they are exercisable offline by\n// tools/test_phase4_priceaction.py and in-terminal by PA_SelfTest(), the same\n// arrangement the AUDIT-SB1 and AUDIT-WY1 cores use so transcriptions cannot drift.\nbool PA_InsideBarGeometry(const double h,const double l,const double prev_h,const double prev_l);\nstring PA_UnifyPattern(const string candle_pattern,const bool inside_bar,"
+    "5910": {
+     "line": 5910,
+     "line_text": "ENUM_TACTICAL_AUTHORITY auth=TacticalAuthorityGate(bull,src,trigger_bar,trigger,auth_reason);",
+     "text": "string auth_reason=\"\";\nENUM_TACTICAL_AUTHORITY auth=TacticalAuthorityGate(bull,src,trigger_bar,trigger,auth_reason);\nif(auth==TAC_AUTH_BLOCKED || auth==TAC_AUTH_STALE)",
+     "wide": "//--- same OnCalculate pass, before the dashboard is drawn.\nstring auth_reason=\"\";\nENUM_TACTICAL_AUTHORITY auth=TacticalAuthorityGate(bull,src,trigger_bar,trigger,auth_reason);\nif(auth==TAC_AUTH_BLOCKED || auth==TAC_AUTH_STALE)\n{"
     },
-    "5741": {
-     "line": 5741,
-     "line_text": "ENUM_TIMEFRAMES SelectExecutionTF()",
-     "text": "//====================================================================\nENUM_TIMEFRAMES SelectExecutionTF()\n{",
-     "wide": "// Does not mutate g_trade_setup.valid or bypass institutional confirmation.\n//====================================================================\nENUM_TIMEFRAMES SelectExecutionTF()\n{\nif(!InpAutoExecutionTF) return InpExecutionTF;"
+    "6009": {
+     "line": 6009,
+     "line_text": "STacticalFact _tf;",
+     "text": "{\nSTacticalFact _tf;\n_tf.valid=true;",
+     "wide": "QSMC_Root()!=NULL)\n{\nSTacticalFact _tf;\n_tf.valid=true;\n_tf.bull=bull;"
     },
-    "5752": {
-     "line": 5752,
-     "line_text": "string MTFEntryGrade(const bool confirmed,const bool core_owned)",
-     "text": "// a confirmed tactical entry is B and an unconfirmed preview is C.\nstring MTFEntryGrade(const bool confirmed,const bool core_owned)\n{",
-     "wide": "// gate on the display. Grade the owning CORE setup when present; without one,\n// a confirmed tactical entry is B and an unconfirmed preview is C.\nstring MTFEntryGrade(const bool confirmed,const bool core_owned)\n{\nif(!confirmed) return \"C\";"
+    "6020": {
+     "line": 6020,
+     "line_text": "QSMC_Root().TacticalObserve(_tf);",
+     "text": "_tf.chase_atr=dist_close_atr;\nQSMC_Root().TacticalObserve(_tf);\n}",
+     "wide": "_tf.core_owned=core_owned;\n_tf.chase_atr=dist_close_atr;\nQSMC_Root().TacticalObserve(_tf);\n}\n// v6.4.1: the tactical entry is now an arrow + a graded label, not only an"
     },
-    "5760": {
-     "line": 5760,
-     "line_text": "void ClearMTFExecutionEntry()",
-     "text": "}\nvoid ClearMTFExecutionEntry()\n{",
-     "wide": "return \"B\";\n}\nvoid ClearMTFExecutionEntry()\n{\ng_tac_dir=0; g_tac_closed=false;"
+    "6027": {
+     "line": 6027,
+     "line_text": "string line=PFX+\"MTF_ENTRY\";",
+     "text": "string exect=TimeToString(et,TIME_MINUTES);\nstring line=PFX+\"MTF_ENTRY\";\nif(ObjectFind(0,line)<0) ObjectCreate(0,line,OBJ_HLINE,0,0,ep);",
+     "wide": "{\nstring exect=TimeToString(et,TIME_MINUTES);\nstring line=PFX+\"MTF_ENTRY\";\nif(ObjectFind(0,line)<0) ObjectCreate(0,line,OBJ_HLINE,0,0,ep);\nObjectSetDouble(0,line,OBJPROP_PRICE,ep);"
     },
     "900": {
      "line": 900,
