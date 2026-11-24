@@ -127,6 +127,14 @@ jobs:
       - name: Candle reversal geometry (piercing / dark cloud, proven satisfiable)
         run: python3 tools/test_candle_patterns.py 2>&1 | tee out/test_candle_patterns.log
 
+      # v6.6.24 (audit P0-3). "CAUSALITY PASS (digests 1, comparisons 0)" and a
+      # self-test printing PASS off zero scenarios are both impossible now:
+      # the verdict is tri-state (zero checked items => INCONCLUSIVE) and the
+      # scenario suite counts what it executed. This step compiles and executes
+      # the shipped verdict helpers natively.
+      - name: PMI replay audit (zero comparisons can never print PASS)
+        run: python3 tools/test_pmi_replay_audit.py 2>&1 | tee out/test_pmi_replay_audit.log
+
       # v6.6.24 (R3). The mechanical half of "is this build safe to attach to a
       # DEMO account": one version everywhere, presets bound, no order API
       # reachable from the indicator layer, one magic per QSMC executor, the

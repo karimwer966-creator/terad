@@ -8742,7 +8742,8 @@ void   PMI_ReplayAudit(const int closed,const bool force);
 bool   PMI_SelfTestExpect(const string name,const bool hasLiq,const bool hasSweep,
                           const bool hasDisp,const bool hasStructure,const bool hasZone,
                           const bool hasRetest,const bool hasLTF,const bool orderValid,
-                          const string expected_missing,const bool expected_ready);
+                          const string expected_missing,const bool expected_ready,
+                          int &executed);
 int    PMI_RunSelfTests();
 string PMI_StateDigestString();
 void   PMI_UpdateAll(const int rates_total,const bool force);
@@ -13030,6 +13031,23 @@ ulong PMI_SequenceHash()
    return PMI_HashString(s);
 }
 
+// v6.6.24 (audit P0-3): tri-state verdict. Pure helpers, no globals, so the
+// host suite (tools/test_pmi_replay_audit.py) compiles and executes this
+// exact text with g++. A check that verified zero comparisons is
+// INCONCLUSIVE, never PASS.
+int PMI_TriStateVerdict(const bool failed,const int checked_n)
+{
+   if(failed) return 1;
+   if(checked_n<=0) return 2;
+   return 0;
+}
+string PMI_VerdictText(const int v)
+{
+   if(v==1) return "FAIL";
+   if(v==2) return "INCONCLUSIVE";
+   return "PASS";
+}
+
 void PMI_StoreDigest(const int closed)
 {
    int slot=-1;
@@ -13112,7 +13130,23 @@ void PMI_ReplayAudit(const int closed,const bool force)
    // v6.6.16 (audit C): cold-start guard — don't run the audit on the very
    // first closed-bar pass when the ring has barely been populated. A fresh
    // ring has no historical comparison basis.
-   if(g_pmi_replay.digests_stored<2) return;
+   // v6.6.24 (audit P0-3): a skipped audit is not a verdict. Say so out
+   // loud: the deinit summary must never show a stale PASS, and the operator
+   // must see WHY nothing was verified. Print once per init.
+   if(g_pmi_replay.digests_stored<2)
+   {
+      g_pmi_replay.last_report="not run (cold start: digests_stored="+
+                               IntegerToString(g_pmi_replay.digests_stored)+
+                               " < 2) | armed on incremental bars with closed % every "+
+                               IntegerToString(g_pmicfg.replay_every)+" == 0";
+      static bool cold_warned=false;
+      if(!cold_warned && !QSMC_IsReaderSilent())
+      {
+         cold_warned=true;
+         Print("[PMI Replay Audit] ",g_pmi_replay.last_report);
+      }
+      return;
+   }
 
    int compared=0,mismatch=0,digests=0;
    for(int i=0;i<PMI_DIGEST_RING;i++)
@@ -13148,16 +13182,32 @@ void PMI_ReplayAudit(const int closed,const bool force)
    int tree_bad=PMI_TreeCausalityCheck(g_pmi_tree_root,closed);
    if(tree_bad>0) g_pmi_replay.causality_failures+=tree_bad;
 
+   // v6.6.24 (audit P0-3): tri-state verdicts. A component that verified
+   // zero items is INCONCLUSIVE, never PASS. The counters keep their raw
+   // semantics; only the printed verdict is honest.
+   int seq_checked=((g_pmi_seq.sweepBar>=0 || g_pmi_seq.displacementBar>=0 ||
+                     g_pmi_seq.mssBar>=0 || g_pmi_seq.structureBar>=0 ||
+                     g_pmi_seq.zoneBar>=0 || g_pmi_seq.retestBar>=0 ||
+                     g_pmi_seq.ltfConfirmBar>=0) ? 1 : 0);
+   int lookahead_checked=ArraySize(g_pmi_levels)+ArraySize(g_pmi_structs)+seq_checked;
+   int causality_checked=((g_pmi_tree_root>=0) ? 1 : 0)+seq_checked;
+   int run_causality_bad=((!g_pmi_seq.causalOrderValid) ? 1 : 0)+tree_bad;
+   int v_repaint=PMI_TriStateVerdict(mismatch>0, compared);
+   int v_lookahead=PMI_TriStateVerdict(future>0, lookahead_checked);
+   int v_causality=PMI_TriStateVerdict(run_causality_bad>0, causality_checked);
+   string overall=(v_repaint==1 || v_lookahead==1 || v_causality==1 ? "FAIL" :
+                   (v_repaint==2 || v_lookahead==2 || v_causality==2 ? "INCONCLUSIVE" : "PASS"));
    g_pmi_replay.audits_run++;
    g_pmi_replay.last_audited_bar=closed;
    g_pmi_replay.pass_repaint=(g_pmi_replay.repaint_failures==0);
    g_pmi_replay.pass_lookahead=(g_pmi_replay.lookahead_failures==0);
    g_pmi_replay.pass_causality=(g_pmi_replay.causality_failures==0);
    g_pmi_replay.last_report=StringFormat(
-      "REPAINT %s | LOOKAHEAD %s | CAUSALITY %s (digests %d, status comparisons %d, mismatches %d)",
-      (g_pmi_replay.pass_repaint?"PASS":"FAIL"),
-      (g_pmi_replay.pass_lookahead?"PASS":"FAIL"),
-      (g_pmi_replay.pass_causality?"PASS":"FAIL"),
+      "Overall %s | REPAINT %s | LOOKAHEAD %s | CAUSALITY %s (digests %d, status comparisons %d, mismatches %d)",
+      overall,
+      PMI_VerdictText(v_repaint),
+      PMI_VerdictText(v_lookahead),
+      PMI_VerdictText(v_causality),
       digests,compared,g_pmi_replay.repaint_failures);
    // v6.6.16 (audit B+C): EA_READER instances keep the mismatch counters
    // (so genuine lookahead bugs are still caught in diagnostics) but do not
@@ -13181,8 +13231,10 @@ void PMI_ReplayAudit(const int closed,const bool force)
 bool PMI_SelfTestExpect(const string name,const bool hasLiq,const bool hasSweep,
                         const bool hasDisp,const bool hasStructure,const bool hasZone,
                         const bool hasRetest,const bool hasLTF,const bool orderValid,
-                        const string expected_missing,const bool expected_ready)
+                        const string expected_missing,const bool expected_ready,
+                        int &executed)
 {
+   executed++;
    string missing="";
    string state=PMI_ClassifyChainState(hasLiq,hasSweep,hasDisp,hasStructure,hasZone,
                                        hasRetest,hasLTF,orderValid,missing);
@@ -13201,25 +13253,33 @@ bool PMI_SelfTestExpect(const string name,const bool hasLiq,const bool hasSweep,
 int PMI_RunSelfTests()
 {
    g_pmi_self_test_failures=0;
+   int pmi_scenarios_executed=0;
    // Test 1: sweep without displacement -> NO ENTRY
-   PMI_SelfTestExpect("T1 sweep only",true,true,false,false,false,false,false,true,"DISPLACEMENT",false);
+   PMI_SelfTestExpect("T1 sweep only",true,true,false,false,false,false,false,true,"DISPLACEMENT",false,pmi_scenarios_executed);
    // Test 2: sweep + displacement, no Core structure -> WAIT
-   PMI_SelfTestExpect("T2 sweep+displacement",true,true,true,false,false,false,false,true,"STRUCTURE",false);
+   PMI_SelfTestExpect("T2 sweep+displacement",true,true,true,false,false,false,false,true,"STRUCTURE",false,pmi_scenarios_executed);
    // Test 3: + Core structure + zone, no retest -> WAITING FOR RETEST
-   PMI_SelfTestExpect("T3 +Core structure+zone",true,true,true,true,true,false,false,true,"RETEST",false);
+   PMI_SelfTestExpect("T3 +Core structure+zone",true,true,true,true,true,false,false,true,"RETEST",false,pmi_scenarios_executed);
    // Test 4: complete sequence + retest, no LTF confirmation yet
-   PMI_SelfTestExpect("T4 +retest",true,true,true,true,true,true,false,true,"LTF CONFIRMATION",false);
+   PMI_SelfTestExpect("T4 +retest",true,true,true,true,true,true,false,true,"LTF CONFIRMATION",false,pmi_scenarios_executed);
    // Test 6a: complete sequence -> ENTRY READY at chain level
-   PMI_SelfTestExpect("T6 complete chain",true,true,true,true,true,true,true,true,"",true);
+   PMI_SelfTestExpect("T6 complete chain",true,true,true,true,true,true,true,true,"",true,pmi_scenarios_executed);
    // Test 6b: future candle cannot repair a broken causal order
-   PMI_SelfTestExpect("T6b broken order",true,true,true,true,true,true,true,false,"BLOCKED",false);
-   if(g_pmi_self_test_failures==0)
+   PMI_SelfTestExpect("T6b broken order",true,true,true,true,true,true,true,false,"BLOCKED",false,pmi_scenarios_executed);
+   if(pmi_scenarios_executed<=0)
+   {
+      // v6.6.24 (audit P0-3): zero scenarios executed is not a PASS.
+      Print("[PMI SelfTest] INCONCLUSIVE - no scenarios executed");
+      return 1;
+   }
+   else if(g_pmi_self_test_failures==0)
    {
       if(!QSMC_IsReaderSilent())
-         Print("[PMI SelfTest] PASS - Tests 1-4, 6 (chain classifier: incomplete chains cannot be entry-ready)");
+         Print("[PMI SelfTest] PASS - scenarios T1, T2, T3, T4, T6, T6b (chain classifier) | executed=",
+               pmi_scenarios_executed," | failures=0");
    }
    else
-      Print("[PMI SelfTest] FAIL - ",g_pmi_self_test_failures," scenario(s)");
+      Print("[PMI SelfTest] FAIL - ",g_pmi_self_test_failures,"/",pmi_scenarios_executed," scenario(s) failed");
    return g_pmi_self_test_failures;
 }
 
