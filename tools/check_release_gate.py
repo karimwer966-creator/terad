@@ -472,6 +472,14 @@ EXEC_TRADE_ALLOWED = {os.path.abspath(EXEC_EA)}
 QATS_EA = os.path.join(ROOT, "MQL5", "Experts", "QuantumAutonomousTradingSystem.mq5")
 QATS_TRADE_ALLOWED = {os.path.abspath(QATS_EA)}
 
+# 2026-11-25 confirmation engine. It is a NEW, ADDITIVE order boundary, not a
+# patch to QSMC_AutoTrader. It is excluded from the QSMC layer scan by name and
+# held to its own G9 contract below: dry-run ON, live orders OFF, REAL/CONTEST
+# refused at init, no mutating position management until explicitly armed. The
+# exclusion is named in the gate output; it is not a silent skip.
+CE_EA = os.path.join(ROOT, "MQL5", "Experts", "QSMC_ConfirmationEngine.mq5")
+CE_TRADE_ALLOWED = {os.path.abspath(CE_EA)}
+
 # Execution/mutation API is forbidden. Read-only account queries are not an
 # order path: the visual indicator may inspect open positions/orders to keep
 # labels off trade levels (UpdateTradeLevelKeepOut), but it may never send,
@@ -507,6 +515,7 @@ def strip_noise(src):
 
 g4_sites = 0
 g4_qats_excluded = False
+g4_ce_excluded = False
 for path in LIBRARY + PROGRAMS:
     code = strip_noise(read(path))
     base = os.path.basename(path)
@@ -516,6 +525,9 @@ for path in LIBRARY + PROGRAMS:
     if os.path.abspath(path) in QATS_TRADE_ALLOWED:
         g4_qats_excluded = True
         continue          # named, documented exclusion - see QATS_EA comment above
+    if os.path.abspath(path) in CE_TRADE_ALLOWED:
+        g4_ce_excluded = True
+        continue          # named, documented exclusion - checked by G9 below
     for rx, why in TRADE:
         for m in re.finditer(rx, code):
             fail("G4 %s:%d uses %s - nothing in this release is allowed to reach the "
@@ -531,12 +543,15 @@ for path in LIBRARY + PROGRAMS:
                      % (os.path.relpath(path, ROOT), code[:m.start()].count("\n") + 1, why,
                         ALLOW_SITE.get(why, "nothing")))
                 g4_sites += 1
-_g4_note = ("G4 no order-send/modify/close API in the layer (headers + indicator + probe) and none in the "
+_g4_note = ("G4 no order-send/modify/close API in the QSMC layer (headers + indicator + probe) and none in the "
             "feeder; read-only position/order inspection is display-only; Alert/push/sound only in CAlertManager; "
-            "QSMC CSV writes only in QSMC_Stats; the only mutating trade API in the repository is the execution companion's")
+            "QSMC CSV writes only in QSMC_Stats; the QSMC execution companion remains the layer's single trade boundary")
 if g4_qats_excluded:
     _g4_note += ("; BY-NAME EXCLUSION (not scanned, out of QSMC scope, merged standalone system PR #56, "
                  "DEMO-only enforced in-file): MQL5/Experts/QuantumAutonomousTradingSystem.mq5")
+if g4_ce_excluded:
+    _g4_note += ("; BY-NAME EXCLUSION (additive confirmation engine, G9 dry-run contract): "
+                 "MQL5/Experts/QSMC_ConfirmationEngine.mq5")
 NOTES.append(_g4_note)
 
 # ------------------------------------------- G8 the execution companion (v6.6.8 / 2026-11-09)
@@ -639,6 +654,65 @@ else:
                  "InpRealAccountConfirm/InpRealServerConfirm + permissions + risk gates + no emergency lockout), "
                  "refused at init before the first tick and re-verified before every order; mode detected via "
                  "ACCOUNT_TRADE_MODE only; risk bounded by the HARD ceilings (0.50/2.00/8.00) + aggregate 2.00; no martingale")
+
+# ------------------------------------------- G9 confirmation engine (2026-11-25)
+# The phase-2 engine is additive: it owns a second order boundary so the legacy
+# CORE-buffer execution path stays unchanged. A second boundary may not weaken
+# the shipping default. G9 is a whole-file, fail-closed contract for that EA.
+if not os.path.isfile(CE_EA):
+    fail("G9 MQL5/Experts/QSMC_ConfirmationEngine.mq5 is missing - DESIGN.md "
+         "documents an additive confirmation engine")
+else:
+    ce = read(CE_EA)
+    ce_code = strip_noise(ce)
+    ce_required = {"InpMasterEnable": ("bool", "true"),
+                   "InpDryRun": ("bool", "true"),
+                   "InpAllowLiveOrders": ("bool", "false"),
+                   "InpAllowRealTrading": ("bool", "false"),
+                   "InpKillSwitch": ("bool", "false"),
+                   "InpUseAIAgent": ("bool", "false")}
+    for name, (typ, want) in ce_required.items():
+        m = re.search(r'^input\s+' + typ + r'\s+' + name + r'\s*=\s*([^;]+);', ce, re.M)
+        if not m:
+            fail("G9 %s is not declared as input %s - the disarmed contract cannot be found" % (name, typ))
+        elif m.group(1).strip() != want:
+            fail("G9 %s defaults to %s, expected %s" % (name, m.group(1).strip(), want))
+    for name, ceiling in (("InpRiskPercent", 0.50), ("InpMaxDailyLossPercent", 2.00)):
+        m = re.search(r'^input\s+double\s+' + name + r'\s*=\s*([0-9.]+)\s*;', ce, re.M)
+        if not m or float(m.group(1)) > ceiling:
+            fail("G9 %s is missing or exceeds the documented hard ceiling %.2f" % (name, ceiling))
+    # String literals are intentionally removed from ce_code; refusal messages
+    # and decision constants must be checked against the raw source.
+    for token in ("ACCOUNT_TRADE_MODE_REAL", "ACCOUNT_TRADE_MODE_CONTEST",
+                  "INIT REFUSED: REAL or CONTEST account detected", "return INIT_FAILED",
+                  "REAL_REFUSED", "LIVE_ORDERS_DISABLED", "CE_AccountAllowsEntry"):
+        if token not in ce:
+            fail("G9 the REAL/CONTEST refusal or account gate is gone: %s" % token)
+    manage = ce_code.find("void CE_ManagePositions")
+    guard = ce_code.find("if(InpDryRun || InpAllowLiveOrders==false)", manage)
+    mutations = [p for p in (ce_code.find("PositionModify", manage),
+                             ce_code.find("PositionClose", manage)) if p >= 0]
+    if manage < 0 or guard < manage or not mutations or guard > min(mutations):
+        fail("G9 CE_ManagePositions can mutate positions before the dry-run / "
+             "no-live-orders guard - the executor is not disarmed by default")
+    place = ce.find("void CE_PlaceOrder")
+    dry_guard = ce.find('r.decision=="ENTER_DRY_RUN" || a.dry_run || a.allow_live==false', place)
+    order_calls = [p for p in (ce.find("g_trade.OrderOpen", place),
+                               ce.find("g_trade.Buy", place),
+                               ce.find("g_trade.Sell", place)) if p >= 0]
+    if place < 0 or dry_guard < place or not order_calls or dry_guard > min(order_calls):
+        fail("G9 CE_PlaceOrder can reach the trade API before the dry-run guard")
+    if "WebRequest(" in ce_code:
+        fail("G9 the confirmation engine must not make network requests - the AI "
+             "opinion is a bounded local-file component")
+    if re.search(r'MathPow\s*\(\s*2|lots\s*\*\s*2|InpAllowRealTrading\s*=\s*true', ce_code):
+        fail("G9 martingale / REAL-arming pattern found in the confirmation engine")
+    if not g4_ce_excluded:
+        fail("G9 the by-name G4 exception was not exercised - a skipped gate is not a contract")
+    NOTES.append("G9 confirmation engine ships DISARMED (dry_run=true, live_orders=false, "
+                 "REAL=false); REAL/CONTEST refused at OnInit, account and per-order gates re-check REAL, "
+                 "position management short-circuits before mutating trade API, risk/defaults are capped "
+                 "(0.50 risk / 2.00 daily loss), optional AI is a local bounded file, no WebRequest/martingale")
 
 # ------------------------------------------------------------- G5 log flood
 # "Flood" has one meaning here: a line printed from the per-bar path. That is a

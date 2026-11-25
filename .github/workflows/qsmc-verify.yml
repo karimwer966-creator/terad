@@ -48,6 +48,16 @@ jobs:
       - name: Mechanical pass + MQL5 dialect rules D1-D16
         run: python3 tools/static_check.py 2>&1 | tee out/static_check.log
 
+      # Phase 2 confirmation engine: strict host build/selftest, then the
+      # deterministic replay/backtest artefact contracts. These are NOT F7,
+      # NOT Strategy Tester and NOT a live MT5 demo; the reports say so.
+      - name: Confirmation engine native + replay/backtest contracts
+        run: |
+          python3 tools/confirmation_native.py 2>&1 | tee out/confirmation_native.log
+          python3 tools/test_confirmation_engine.py 2>&1 | tee out/confirmation_engine.log
+          python3 tools/test_confirmation_replay.py 2>&1 | tee out/confirmation_replay.log
+          python3 tools/test_confirmation_backtest.py 2>&1 | tee out/confirmation_backtest.log
+
       # F7 on the merged build reported 42 errors whose root cause was ONE missing
       # '//' on a comment continuation line: the compiler read the prose as code,
       # then mis-parsed the whole SBP3_Clear() body as global-scope declarations.
