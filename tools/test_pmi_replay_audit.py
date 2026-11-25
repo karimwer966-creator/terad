@@ -134,6 +134,14 @@ require("digests_stored<2)\n   {" in text.replace('\r\n', '\n') or
         "cold-start skip is a block, no longer a silent return")
 require("cold start: digests_stored=" in text,
         "cold-start last_report states WHY the audit did not run")
+# v6.6.24 P0-3 regression: the overall verdict has THREE components. A
+# causality-only failure must be printed even when InpPMILogEvents is false;
+# otherwise the journal shows nothing while last_report says Overall FAIL.
+require("if(!g_pmi_replay.pass_repaint || !g_pmi_replay.pass_lookahead)\n" not in text and
+        "if(!g_pmi_replay.pass_repaint || !g_pmi_replay.pass_lookahead)\r\n" not in text,
+        "the failure-print condition is not left two-component")
+require("!g_pmi_replay.pass_causality" in text,
+        "a causality failure is loud even with event logging off")
 require("closed % every " in text and "[PMI Replay Audit] " in text,
         "cold-start WARN names the arming condition and is printed once per init")
 require("if(g_pmi_replay.digests_stored<2) return;" not in text,

@@ -321,9 +321,9 @@
 //|     re-scan window (gap "resurrection" after an absorber fills),    |
 //|     and the per-pass cap + filled-prune over the whole retained     |
 //|     history (the old lookback-limited window could never match the  |
-//|     incremental accumulator). Equivalence is machine-verified by    |
-//|     tools/replay_equiv_test.py (700+ randomized trials incl.        |
-//|     cap-saturated stress rounds; zero mismatches).                  |
+//|     incremental accumulator). An external randomized equivalence   |
+//|     harness was used historically, but it is ABSENT from this      |
+//|     checkout; this is a design note, NOT a current test result.    |
 //| B2. g_decision_state was never refreshed while an active setup      |
 //|     owned the chart (CalculateAITradeSetup early-returns and was    |
 //|     the only caller of ApplyCausalDecisionState); after a retest    |
@@ -440,11 +440,11 @@
 //|      remains CalculateAITradeSetup / ManageSetupLifecycle.         |
 //|                                                                    |
 //| REVIEW FIXES v6.1.1 (research layer only; no entry-path change):    |
-//| R1.   tools/verify_predictive.py still asserted the pre-refactor    |
+//| R1.   A historical external predictive harness asserted the old     |
 //|      pointer tree ('new MarketTreeNode', 'delete'): the repository  |
-//|      gate reported 4 FAILs. The harness now verifies the pool      |
-//|      allocator (single ArrayResize in PMI_NewNode, post-order free, |
-//|      allocation/free accounting) and runs the new tree model test.  |
+//|      gate reported 4 FAILs. That harness is NOT shipped in this     |
+//|      checkout; this box records history, not a current test result. |
+//|      no equivalent verification harness is shipped in this tree.    |
 //| R2.   PMI_TreeCausalityCheck flagged EVERY internal node of a       |
 //|      healthy tree: the right-child test required                  |
 //|      right.startIndex == node.endIndex+1, which no correctly built  |
@@ -522,8 +522,8 @@
 //| D7.   v7 file: DashRow() was unbounded while DashClearRest() cleans |
 //|      only rows 0..63; rows created at index >= 64 would never be    |
 //|      deleted on rebuild. DashRow now caps at the same 64.           |
-//|      Evidence: tools/dash_reposition_model_test.py (A-E all PASS),  |
-//|      verify_engine.py updated to the macro-based title.             |
+//|      Historical evidence: an external chart-layout harness (ABSENT  |
+//|      here) reported A-E all PASS; verify_engine.py was retitled.    |
 //|                                                                    |
 //| v6.1.3 CHART LAYOUT AUDIT - ITERATION 2 (display layer only; no     |
 //| decision, scoring, causal or setup-lifecycle change):               |
@@ -6839,7 +6839,7 @@ void ZRE_Update(const int rates_total,const bool force_rebuild);
 
 //====================================================================
 // v6.5.0 REACTION SIGNAL LAYER (RXN) - forward declarations.
-// PURE CORE (no chart state; executed verbatim by tools/rxn_mql_harness.py)
+// PURE CORE (no chart state; external RXN core harness NOT shipped here)
 //====================================================================
 void   RXN_LiqInit(SRxnLiquidity &q);
 void   RXN_DispInit(SRxnDisplacement &d);
@@ -13302,7 +13302,7 @@ void PMI_ReplayAudit(const int closed,const bool force)
    // C-fix: also tag the audit line with instance id so two VISUAL instances
    // can never be confused.
    if(QSMC_IsReaderSilent()) return;
-   if(!g_pmi_replay.pass_repaint || !g_pmi_replay.pass_lookahead)
+   if(!g_pmi_replay.pass_repaint || !g_pmi_replay.pass_lookahead || !g_pmi_replay.pass_causality) // P0-3: all three verdicts
       Print("[PMI Replay Audit] ",g_pmi_replay.last_report,
             (StringLen(g_pmi_replay.first_failure_detail)>0?" | "+g_pmi_replay.first_failure_detail:""),
             " | inst=",g_instance_id);
@@ -22918,8 +22918,8 @@ long QuantVolumeAt(const int bar)
 // absorber fills, per-pass cap + filled-prune), FVG states are already
 // exact when this function runs and are NOT touched here.
 //
-// Equivalence notes (verified by tools/replay_equiv_test.py, 700+
-// randomized trials incl. cap-saturated stress rounds):
+// Equivalence notes (the historical randomized harness is NOT shipped
+// here; these are design invariants, not a current test result):
 //  - OB created at structure-bar pass S -> first check at S+1
 //    (incremental applies the mitigation loop BEFORE Detect* calls).
 //  - Zone with base bar b: the incremental DetectZones scan window is
@@ -34713,8 +34713,8 @@ bool IsFractalLow(const double &l[],const int i,const int n,const int total)
 // The buy/sell split is the close location inside each bar's range
 // (close-location), not exchange bid/ask delta. The legend says so.
 //
-// Numeric spec: tools/mvp_model_test.py (triangle mass, grid, POC, value
-// area, HVN/LVN, naked-row touch). Same formulas, same tie-breaks.
+// Numeric spec: an external market-profile model harness (ABSENT here)
+// described triangle mass, grid, POC, value area, HVN/LVN, naked-row.
 //==========================================================================
 #define MVP_MAX_ROWS      80
 #define MVP_MAX_PROFILES  16
@@ -36632,7 +36632,7 @@ int ZRE_BuildZones(SZRECand &cands[],const SZREContext &ctx,const double &h[],co
 // Once per closed bar (or when the causal state was rebuilt). Intra-bar
 // ticks return immediately: nothing is created or drawn per tick.
 //====================================================================
-// STAGES 2-8 - PURE CORE (no chart state; executed by tools/zre_mql_harness.py)
+// STAGES 2-8 - PURE CORE (no chart state; external ZRE harness NOT shipped here)
 //====================================================================
 double ZRE_RoundTick(const double x,const double tick)
 {
@@ -38008,8 +38008,8 @@ bool ZRE_SelfTest()
 
 //====================================================================
 // ZRE_ADAPTERS_BEGIN - chart-state code (reads g_buf_*, g_quant, engine
-// state; draws objects). Not executed by tools/zre_mql_harness.py, which
-// only runs the pure core above. Read-only with respect to every setup.
+// state; draws objects). The external ZRE harness (NOT shipped here) covered
+// only the pure core above; this adapter is read-only for every setup.
 //====================================================================
 void ZRE_ParamsFromInputs(SZREParams &p)
 {
@@ -39891,9 +39891,9 @@ string RXN_SuppressionText(const SRxnEvidence &e,const SRxnParams &p)
 }
 
 //--------------------------------------------------------------------
-// RXN_Classify: the decision core. PURE - it reads no chart state, so it is
-// executed verbatim by tools/rxn_mql_harness.py and so incremental processing
-// and a full chronological rebuild necessarily agree (audit section 18).
+// RXN_Classify: the decision core. PURE - it reads no chart state. An external
+// RXN core harness (NOT shipped here) once transcribed it; the pure/no-state
+// property is why incremental/full rebuilds should agree (audit section 18).
 //
 // The adapter GATHERS (zone, interaction bar, follow-through intel window,
 // liquidity probe, structure probe). This function DECIDES: outcome, phase,
@@ -40100,9 +40100,9 @@ bool RXN_ShouldPromote(const SRxnEvidence &e,const bool opposite_setup_active,
 }
 
 //--------------------------------------------------------------------
-// Self-test. Synthetic data only, no chart access, executed verbatim by
-// tools/rxn_mql_harness.py. Covers the audit's 14-test matrix plus BUY/SELL
-// symmetry and the BUG-02 exclusivity invariant.
+// Self-test. Synthetic data only, no chart access. An external RXN core
+// harness (NOT shipped here) historically covered the audit's 14-test matrix,
+// BUY/SELL symmetry and the BUG-02 exclusivity invariant.
 //--------------------------------------------------------------------
 void RXN_Expect(const bool ok,const string why,string &where)
 {
