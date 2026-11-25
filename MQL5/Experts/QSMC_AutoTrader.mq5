@@ -663,15 +663,15 @@ void JournalInit()
             " | TRADING IS NOT AFFECTED - the trial will have no CSV");
       return;
      }
-   long size=FileSize(g_jrn_handle);
-   if(size<=0)
+   ulong size=FileSize(g_jrn_handle);
+   if(size==0)
      {
       FileWrite(g_jrn_handle,"time_server","symbol","tf","magic","signal_bar_time",
                 "dir","class","score","entry_signal","sl","tp","spread_points",
                 "lots","risk_money","retcode","event","note");
      }
    FileSeek(g_jrn_handle,0,SEEK_END);
-   Print("[QSMC_AT JOURNAL] ",g_jrn_path," open, ",IntegerToString(size),
+   Print("[QSMC_AT JOURNAL] ",g_jrn_path," open, ",size,
          " bytes already in the file (rows are appended, never rewritten)");
   }
 
@@ -689,7 +689,7 @@ void JournalRow(const string event_name,const datetime sig_bar,const int dir,
   {
    if(g_jrn_off || g_jrn_handle==INVALID_HANDLE) return;
    int tf=(int)(PeriodSeconds(_Period)/60);
-   int w=FileWrite(g_jrn_handle,
+   uint w=FileWrite(g_jrn_handle,
                    JournalCell(TimeToString(TimeCurrent(),TIME_DATE|TIME_SECONDS)),
                    JournalCell(_Symbol),
                    JournalCell(IntegerToString(tf)),
@@ -707,7 +707,7 @@ void JournalRow(const string event_name,const datetime sig_bar,const int dir,
                    JournalCell(retcode!=0 ? IntegerToString(retcode) : ""),
                    JournalCell(event_name),
                    JournalCell(note));
-   if(w<0)
+   if(w==0)
      {
       g_jrn_errors++;
       g_jrn_consec_errors++;

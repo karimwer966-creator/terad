@@ -476,4 +476,31 @@ require("clears by itself at the next server day roll" in ea,
 require("int DryTradesToday()" in code and "void CountOneDryTrade()" in code,
         "F7 dry rehearsals have their own persisted counter")
 
+# ------------------------------------------------- journal I/O return types
+# MetaEditor F7 on the post-merge build reported:
+#   666,13: possible loss of data due to type conversion from 'ulong' to 'long'
+#   692,9 : possible loss of data due to type conversion from 'uint' to 'int'
+# FileSize() returns ulong and FileWrite() returns uint. Keeping the native
+# types removes both narrowing conversions; FileWrite() reports failure as 0,
+# which is exactly the convention QSMC_Stats.mqh already uses. A uint is never
+# negative, so `w<0` was both a type error and a dead error branch.
+require("   ulong size=FileSize(g_jrn_handle);" in code,
+        "the journal file size stays in FileSize()'s native ulong type")
+require("   long size=FileSize(g_jrn_handle);" not in code,
+        "no ulong-to-long narrowing remains at FileSize()")
+require("if(size==0)" in code and "if(size<=0)" not in code,
+        "an unsigned file size is compared with zero, not with a signed bound")
+require("IntegerToString(size)" not in code,
+        "the ulong size is not narrowed just to be printed")
+require(re.search(r'Print\("\[QSMC_AT JOURNAL\] ",g_jrn_path," open, ",size,', ea) is not None,
+        "Print() receives the ulong size directly")
+require("   uint w=FileWrite(g_jrn_handle," in code,
+        "the journal write count stays in FileWrite()'s native uint type")
+require("   int w=FileWrite(g_jrn_handle," not in code,
+        "no uint-to-int narrowing remains at FileWrite()")
+require("if(w==0)" in code and "if(w<0)" not in code,
+        "a zero-byte FileWrite() is counted as a journal error; the impossible negative branch is gone")
+require("g_jrn_errors++" in code and "g_jrn_rows++" in code,
+        "the existing journal error/row counters are preserved")
+
 print("AutoTrader contract checks passed; this is not an MT5 run and not a backtest.")
