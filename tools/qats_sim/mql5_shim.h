@@ -350,7 +350,7 @@ struct State
    // broker's ORDER_TYPE_TIME modes the symbol accepts (SYMBOL_EXPIRATION_MODE);
    // 0 = every mode is allowed, as on the operator's broker.
    long expirationMode = 0;
-   Series series[6];               // M5 M15 H1 H4 D1 W1
+   Series series[7];               // M5 M15 H1 H4 D1 W1 M1
    std::vector<Indicator> indicators;
    std::map<std::string, double> gv;
    std::vector<Position> positions;
@@ -456,6 +456,7 @@ inline int tfIndex(ENUM_TIMEFRAMES tf)
       case PERIOD_H4: return 3;
       case PERIOD_D1: return 4;
       case PERIOD_W1: return 5;
+      case PERIOD_M1: return 6;
       default: return -1;
    }
 }
@@ -463,6 +464,7 @@ inline datetime barOpenTime(ENUM_TIMEFRAMES tf, datetime t)
 {
    switch(tf)
    {
+      case PERIOD_M1: return t - t % 60;
       case PERIOD_M5: return t - t % 300;
       case PERIOD_M15: return t - t % 900;
       case PERIOD_H1: return t - t % 3600;
@@ -523,8 +525,8 @@ inline void indicatorCatchUp(Indicator &ind)
 // --- quotes / bars ---
 inline void pushTickToSeries(datetime t, double bid, long volInc)
 {
-   static const ENUM_TIMEFRAMES tfs[6] = {PERIOD_M5, PERIOD_M15, PERIOD_H1, PERIOD_H4, PERIOD_D1, PERIOD_W1};
-   for(int i = 0; i < 6; i++)
+   static const ENUM_TIMEFRAMES tfs[7] = {PERIOD_M5, PERIOD_M15, PERIOD_H1, PERIOD_H4, PERIOD_D1, PERIOD_W1, PERIOD_M1};
+   for(int i = 0; i < 7; i++)
    {
       Series &ser = S.series[i];
       ser.tf = tfs[i];
@@ -1917,6 +1919,32 @@ public:
             rq.symbol = p.symbol;
             rq.position = ticket;
             rq.volume = p.volume;
+            rq.type = (p.type == POSITION_TYPE_BUY) ? ORDER_TYPE_SELL : ORDER_TYPE_BUY;
+            rq.magic = m_magic;
+            rq.type_filling = m_filling;
+            return sim::serverSend(rq, m_result);
+         }
+      m_result = MqlTradeResult{};
+      m_result.retcode = TRADE_RETCODE_POSITION_CLOSED;
+      return false;
+   }
+   // CTrade::PositionClosePartial(ticket, volume) is the ticket overload used by
+   // the confirmation engine. The typed simulator previously modelled only the
+   // full-close path; a partial close is a DEAL with rq.position and a smaller
+   // rq.volume, so the existing serverSendImpl already enforces volume/step,
+   // opposite direction, margin, and the real retcodes.
+   bool PositionClosePartial(const ulong ticket, const double volume, const ulong deviation = 0xFFFFFFFFFFFFFFFFUL)
+   {
+      (void)deviation;
+      for(const sim::Position &p : sim::S.positions)
+         if(p.ticket == ticket)
+         {
+            if(!fillingCheck()) return false;
+            MqlTradeRequest rq{};
+            rq.action = TRADE_ACTION_DEAL;
+            rq.symbol = p.symbol;
+            rq.position = ticket;
+            rq.volume = volume;
             rq.type = (p.type == POSITION_TYPE_BUY) ? ORDER_TYPE_SELL : ORDER_TYPE_BUY;
             rq.magic = m_magic;
             rq.type_filling = m_filling;
