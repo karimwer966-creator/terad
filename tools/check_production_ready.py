@@ -52,6 +52,10 @@ CHECKS = [
     # class of defect that makes every later check meaningless (a runbook that
     # names a file which does not exist, a preset key the EA never declares).
     ("repo-layout", [sys.executable, "tools/check_repo_layout.py", "--verbose"]),
+    # Active source comments must not point at a verification harness that is
+    # absent from the checkout. Six such references claimed replay/equivalence
+    # results that no shipped tool can reproduce here.
+    ("tool-reference-integrity", [sys.executable, "tools/test_tool_reference_integrity.py"]),
     ("preset-binding", [sys.executable, "tools/check_presets.py"]),
     # The include layer is a textual splice, so its topology has no compiler.
     # check_include_graph.py owns the graph; test_include_graph.py proves the
@@ -82,6 +86,9 @@ CHECKS = [
     # v6.6.24: the two-bar reversal geometry, compiled and run natively. Two of
     # the four named patterns were unsatisfiable in v6.6.23.
     ("candle-patterns", [sys.executable, "tools/test_candle_patterns.py"]),
+    # v6.6.24 P0-3: a replay verdict with zero checks is INCONCLUSIVE, and a
+    # causality-only FAIL must still reach the journal with event logging off.
+    ("pmi-replay-audit", [sys.executable, "tools/test_pmi_replay_audit.py"]),
     # v6.6.24 (R3): the demo-trial preflight. Mechanical invariants only - one
     # version, bound presets, no order API in the indicator layer, one magic,
     # account-mode gate, HARD ceilings, shipping risk defaults.

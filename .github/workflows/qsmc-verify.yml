@@ -39,9 +39,10 @@ jobs:
       # The tree an operator clones must be the tree the docs describe, and every
       # .set must bind to the MQL5 source it claims to configure. Both are cheap
       # (under a second) and both used to be checked by hand, one defect at a time.
-      - name: Repository layout + preset binding
+      - name: Repository layout + preset binding + tool references
         run: |
           python3 tools/check_repo_layout.py --verbose 2>&1 | tee out/layout.log
+          python3 tools/test_tool_reference_integrity.py 2>&1 | tee out/tool_references.log
           python3 tools/check_presets.py 2>&1 | tee out/presets.log
 
       - name: Mechanical pass + MQL5 dialect rules D1-D16

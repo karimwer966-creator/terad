@@ -1,6 +1,6 @@
 # Index — every document, by what it is for
 
-93 documents accumulated across eleven releases. This file is the map: which ones
+95 documents accumulated across eleven releases. This file is the map: which ones
 are **instructions** (true today, follow them), which ones are **architecture**
 (explain the code as it is now), which ones are **QATS** (a separate product), and
 which ones are **frozen history** (true on the date printed inside them, and not a
@@ -78,6 +78,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`QSMC_STRATEGY_CATALOG_ANALYSIS_2026-11-24.md`](QSMC_STRATEGY_CATALOG_ANALYSIS_2026-11-24.md) | cross-map of the 49-strategy TradeZella library onto QSMC surfaces: coverage classes, ranked adoption tiers, rejections with reasons (analysis only, no code) |
 | [`AUDIT_v6.6.24_2026-11-16.md`](AUDIT_v6.6.24_2026-11-16.md) | archived prior audit cycle (2026-11-16), renamed via `git mv` from `AUDIT_v6.6.24.md` when the 2026-11-24 cycle took the canonical path; content unchanged |
 | [`PRODUCTION_REVIEW_v6.6.24_AR.md`](PRODUCTION_REVIEW_v6.6.24_AR.md) | التقرير العربي لدورة v6.6.24: العيوب الأحد عشر، فصل (أ) عن (ب)، أدوات التجربة R1–R5، والخطوات اليدوية الست |
+| [`QSMC_AUDIT_2026-11-25.md`](QSMC_AUDIT_2026-11-25.md) | independent repository-wide audit: baseline, dependency map, reproduced/deferred execution defects, repaired diagnostic gates, regression analysis and readiness verdict |
 | [`REVIEW_INCLUDE_QSMC_v6.6.24_AR.md`](REVIEW_INCLUDE_QSMC_v6.6.24_AR.md) | مراجعة الطبقة الداخلية `Include/QSMC` (33 ملفًا): 23 عيبًا أُصلحت، وحكم على التغييرات المقترحة، وما لم يُراجَع صريحًا |
 | [`QSMC_LINKS_REPAIR_2026-11-16_AR.md`](QSMC_LINKS_REPAIR_2026-11-16_AR.md) | إصلاح الروابط بين الأجزاء (الدورة السابقة) |
 | [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md) | خريطة المستودع: كل مجلد وماذا يحتوي |
