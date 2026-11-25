@@ -132,13 +132,13 @@ check(RAW.count("\n") > 0 and RAW.count("\n") == RAW.count("\r\n"),
       "LF %d CRLF %d" % (RAW.count("\n"), RAW.count("\r\n")))
 check(io.open(MIRROR, encoding="utf-8", newline="").read() == RAW, "A13 MQL5/Indicators/nadir2.mq5 is byte-identical to the root copy")
 check('#define QSMC_VERSION_TEXT "v6.6.24"' in TEXT and '#property version   "6.624"' in TEXT, "A14 the build is v6.6.24")
-# 534 = the inputs nadir2.mq5 declared before v6.6.22 (the release gate's G3 parses the same number).
+# 538 = the inputs nadir2.mq5 declared before v6.6.22 (534) + the four AUDIT-A2 playbook inputs (unreleased branch work).
 NEW_INPUTS = ["InpChartProfile", "InpLayerPrimary", "InpLayerSecondary", "InpLayerVolumeProfile", "InpLayerVolumeDetail",
               "InpLayerOptional", "InpPrimaryMarkHistory", "InpSignalEpisodeGapBars"]
 own_inputs = re.findall(r"^input\s+(?!group)[^;=]*?\b(Inp\w+)\s*=", TEXT, re.M)
 layer_inputs = re.findall(r"^input\s+(?!group)[^;=]*?\b(Inp\w+)\s*=", SN.read_source(os.path.join(SN.INCLUDE_ROOT, "QSMC", "QSMC_ChartLayers.mqh")), re.M)
-check(len(own_inputs) == 534 and not [n for n in NEW_INPUTS if n in own_inputs] and layer_inputs == NEW_INPUTS,
-      "A15 nadir2.mq5 still declares exactly the 534 inputs it had; the eight new ones are declared in QSMC_ChartLayers.mqh "
+check(len(own_inputs) == 538 and not [n for n in NEW_INPUTS if n in own_inputs] and layer_inputs == NEW_INPUTS,
+      "A15 nadir2.mq5 still declares exactly the 538 inputs it had (534 + 4 AUDIT-A2); the eight new ones are declared in QSMC_ChartLayers.mqh "
       "(a tail include, so they come last in the dialog)", "own %d, layer file %s" % (len(own_inputs), layer_inputs))
 check('string base="PD_";' in TEXT and len(re.findall(r"PFX\+base\+", TEXT)) == 8,
       "A16 the only names built as PFX+<variable> are the premium/discount family (base = \"PD_\")",

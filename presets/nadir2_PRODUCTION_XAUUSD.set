@@ -184,6 +184,10 @@ InpRMNoZoneSLATR=1.5
 InpRMUseRRFloor=true
 InpRMPreferTopDownPlan=true
 InpRMMaxPoolScan=40
+InpEnableIctPlaybook=false
+InpA2ShowOnDashboard=false
+InpA2LookbackBars=12
+InpA2PoiATR=1.5
 ; InpShowPremiumDiscount: premium/discount ranges
 InpShowPremiumDiscount=true
 InpPDLinesOnly=false
