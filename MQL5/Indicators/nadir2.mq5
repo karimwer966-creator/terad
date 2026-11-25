@@ -1021,6 +1021,93 @@ input double InpRMNoZoneSLATR           = 1.50;   // stop distance in ATR when n
 input bool   InpRMUseRRFloor            = true;   // reject when TP1 R:R is below the file's hard floor InpTopDownMinRR
 input bool   InpRMPreferTopDownPlan     = true;   // adopt the TopDown chain's own entry/SL/TP1 when it agrees
 input int    InpRMMaxPoolScan           = 40;     // how many recent liquidity pools to scan for the stop and targets
+//====================================================================
+// AUDIT-A2 ICT PULLBACK PLAYBOOK  (DISPLAY ONLY)
+//
+// WHAT THIS IS, AND WHAT IT IS NOT.
+// Five playbook predicates written from the public SMC/ICT vocabulary:
+//   (1) Structure+OTE            (#30 structure-ote)
+//   (2) AMD / market-maker + OTE (#31 po3-ote-adr, #44 amd-model)
+//   (3) session liquidity grab + FVG (#34 nexus-blast-strategy)
+//   (4) session raid + confirm   (#38 intraday-liquidity-volatility-model)
+//   (5) break -> retest          (#47 break-retest, #49 liquidity-strategy)
+// Evaluated once per closed bar as MET / STAND ASIDE with a reason. Every
+// predicate reads state the file already maintains: g_structures,
+// g_causal_events, g_fvgs, g_order_blocks, g_range (via GetOTEZone, the one
+// OTE definition), g_p3_*, g_sb_*, g_trade_setup, the kill zones and the
+// news window. It adds NO detection of its own: a playbook row is a
+// question about already-published facts, never a second opinion on them.
+//
+// Display-only means exactly that: no row here can move a verdict, a
+// buffer, a gate or an alert. The switch is default OFF and while it is
+// off the module costs nothing. No number on this board is a win rate;
+// "met" means the legs are present, nothing more. Missing evidence scores
+// 0 and never collects a free point.
+//====================================================================
+
+// One playbook verdict. Stored per closed bar; written nowhere else.
+struct SIctPlaybookRow
+{
+   bool   met;            // every leg of the playbook is present on this closed bar
+   int    dir;            // +1 long, -1 short, 0 when standing aside
+   string reason;         // when met: what fired; when not: the first missing leg
+   string invalidation;   // what would void the read (met rows only)
+};
+
+// Snapshot copied from the host once per closed bar. The pure cores read
+// ONLY this struct, so they can be transcribed and tested offline
+// (tools/test_phase8_ictplaybook.py) exactly like AUDIT-PA1/MR1.
+struct SIctPlaybookState
+{
+   int      closed_bar;
+   datetime bar_time;
+   double   close;
+   double   atr;
+   int      lookback;         // closed bars searched for the legs
+   double   poi_atr;          // an OB/FVG this close to price (x ATR) counts as near
+   bool     range_valid;      // dealing range present (g_range.valid)
+   int      ote_dir;          // +1 the OTE zone is a buy zone, -1 a sell zone, 0 n/a
+   bool     in_ote;           // close sits inside the OTE zone
+   int      struct_dir;       // direction of the newest BOS/MSS/CHoCH on closed bars
+   int      struct_age;       // bars since it (9999 when none)
+   int      poi_count;        // live OBs/FVGs in the structure direction
+   bool     poi_near;         // nearest such POI within poi_atr x ATR of close
+   int      sweep_dir;        // +1 SSL taken (bullish reclaim), -1 BSL taken, 0 none
+   int      sweep_age;        // bars since the sweep (9999 when none)
+   bool     sweep_in_kz;      // the sweep landed in London or New York kill zone
+   int      fvg_after_sweep;  // FVGs created after that sweep in the reclaim direction
+   int      p3_phase;         // ENUM_P3_PHASE as int
+   int      p3_dir;           // g_p3_dir
+   int      sb_dir;           // g_sb_dir when the silver-bullet chain resolved, else 0
+   int      setup_state;      // 0 no chain, 1 confirmation pending (waiting retest), 2 valid
+   bool     in_london_kz;     // decision bar falls in the London kill zone
+   bool     in_ny_kz;         // decision bar falls in the New York kill zone
+   bool     news_blackout;    // decision bar is inside the +/-30m news window
+};
+
+input group "====== ICT Pullback Playbook (AUDIT-A2, display only) ======"
+input bool   InpEnableIctPlaybook = false; // master switch; while off the module costs nothing
+input bool   InpA2ShowOnDashboard = false; // append the playbook rows to the dashboard tooltip
+input int    InpA2LookbackBars    = 12;    // closed bars searched for sweep/structure legs
+input double InpA2PoiATR          = 1.50;  // a POI this close to price (x ATR) counts as near
+
+SIctPlaybookRow g_a2_p1;  // #30 structure + OTE
+SIctPlaybookRow g_a2_p2;  // #31/#44 AMD / market-maker + OTE
+SIctPlaybookRow g_a2_p3;  // #34 session liquidity grab + FVG
+SIctPlaybookRow g_a2_p4;  // #38 session raid + confirmation
+SIctPlaybookRow g_a2_p5;  // #47/#49 break -> retest
+bool            g_a2_valid=false;  // rows hold a closed-bar resolution, never the forming bar
+
+bool A2_SelfTest(string &where);
+void A2_Clear();
+void A2_Update(const int closed);
+string A2_RowText(const SIctPlaybookRow &r);
+SIctPlaybookRow A2_StructureOTE(const SIctPlaybookState &s);
+SIctPlaybookRow A2_AmdOte(const SIctPlaybookState &s);
+SIctPlaybookRow A2_SessionGrabFvg(const SIctPlaybookState &s);
+SIctPlaybookRow A2_SessionRaidConfirm(const SIctPlaybookState &s);
+SIctPlaybookRow A2_BreakRetest(const SIctPlaybookState &s);
+
 input group "====== Premium / Discount & OTE ======"
 input bool InpShowPremiumDiscount = true;
 input bool InpPDLinesOnly = false;          // draw range boundaries / EQ as Fibonacci-style lines
@@ -15585,6 +15672,7 @@ AlertDispatcherClear();
    MR_Clear();
    CF_Clear();
    RM_Clear();
+   A2_Clear();
    if(InpMTEERunSelfTest)
    {
       string mtee_fail="";
@@ -15620,6 +15708,10 @@ AlertDispatcherClear();
          QSMC_InitPass(" Risk model self-test: PASS (10/10)");
       else
          Print(">>> ",QSMC_VERSION_TEXT," Risk model self-test: FAIL - ",mtee_fail);
+      if(A2_SelfTest(mtee_fail))
+         QSMC_InitPass(" ICT Pullback Playbook self-test: PASS (16/16)");
+      else
+         Print(">>> ",QSMC_VERSION_TEXT," ICT Pullback Playbook self-test: FAIL - ",mtee_fail);
       if(SCALP_SelfTest(mtee_fail))
          QSMC_InitPass(" Scalping strategies self-test: PASS (10/10)");
       else
@@ -16449,6 +16541,13 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // MVP_Update; it is placed after it only to keep the observational modules
    // together. Once per closed bar, never per tick, skipped entirely while off.
    if(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);
+   // AUDIT-A2 ICT Pullback Playbook: closed-bar, observational, no entry
+   // authority. It runs beside MR_Update because every input it reads -
+   // g_structures, g_causal_events, g_fvgs, g_order_blocks, the dealing
+   // range and its OTE zone, g_p3_*, g_sb_*, g_trade_setup, the kill zones
+   // and the news window - is already final at this point. Once per closed
+   // bar, never per tick, skipped entirely while its switch is off.
+   if(is_new_bar || detection_updated) A2_Update(closed);
    // AUDIT-CF1 Confluence Engine: closed-bar, observational, no entry authority.
    // It runs LAST of the module updates because its legs read state the others
    // publish: PA_Update() for the unified pattern and MR_Update() for the
@@ -33750,6 +33849,16 @@ void DrawQuantumDashboard(const int total,const double &c[])
       if(g_mr_reason!="") tooltip+="\nMR why: "+g_mr_reason;
       if(g_mr_invalidation!="") tooltip+="\nMR invalidation: "+g_mr_invalidation;
    }
+   // AUDIT-A2 ICT Pullback Playbook. Tooltip, never the 11-row card, for the
+   // same reason as the modules above.
+   if((InpEnableIctPlaybook||InpEnableAllModules) && (InpA2ShowOnDashboard||InpEnableAllModules))
+   {
+      tooltip+="\nA2 STRUCT+OTE (#30): "+A2_RowText(g_a2_p1);
+      tooltip+="\nA2 AMD+OTE (#31/#44): "+A2_RowText(g_a2_p2);
+      tooltip+="\nA2 SESSION-GRAB (#34): "+A2_RowText(g_a2_p3);
+      tooltip+="\nA2 SESSION-RAID (#38): "+A2_RowText(g_a2_p4);
+      tooltip+="\nA2 BREAK-RETEST (#47/#49): "+A2_RowText(g_a2_p5);
+   }
 
    int chart_w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
 
@@ -45171,3 +45280,305 @@ bool MTF_SniperZone_SelfTest()
 #define QSMC_HOST_IDENTITY
 #include <QSMC/QSMC_InstanceIdentity.mqh>
 #include <QSMC/QSMC_InputFingerprint.mqh>
+
+//====================================================================
+// AUDIT-A2 ICT PULLBACK PLAYBOOK  implementation (display only)
+//
+// PURE cores first, then the host glue, then the self-test. The cores
+// read ONLY the SIctPlaybookState snapshot - no globals, no series - so
+// tools/test_phase8_ictplaybook.py transcribes them line for line.
+//====================================================================
+
+// PURE. (1) Structure+OTE - catalog #30 structure-ote.
+SIctPlaybookRow A2_StructureOTE(const SIctPlaybookState &s)
+{
+   SIctPlaybookRow r; r.met=false; r.dir=0; r.reason=""; r.invalidation="";
+   if(s.closed_bar<2) { r.reason="no closed-bar snapshot yet"; return r; }
+   if(s.struct_dir==0) { r.reason="no MSS/BOS/CHoCH inside the search window"; return r; }
+   if(s.struct_age>s.lookback) { r.reason="the structure break is "+IntegerToString(s.struct_age)+" bars old (window "+IntegerToString(s.lookback)+")"; return r; }
+   if(!s.range_valid) { r.reason="no dealing range, so no OTE zone exists"; return r; }
+   if(!s.in_ote || s.ote_dir!=s.struct_dir) { r.reason="price is not inside the OTE zone aligned with structure"; return r; }
+   if(s.poi_count<=0) { r.reason="no live OB/FVG in the structure direction"; return r; }
+   if(!s.poi_near) { r.reason="the nearest live POI is further than the allowed ATR distance"; return r; }
+   r.met=true; r.dir=s.struct_dir;
+   r.reason=(s.struct_dir>0?"bullish":"bearish")+" structure "+IntegerToString(s.struct_age)+" bars ago + OTE + live POI";
+   r.invalidation="a closed bar back through the structure break level";
+   return r;
+}
+
+// PURE. (2) AMD / market-maker + OTE - catalog #31 po3-ote-adr, #44 amd-model.
+SIctPlaybookRow A2_AmdOte(const SIctPlaybookState &s)
+{
+   SIctPlaybookRow r; r.met=false; r.dir=0; r.reason=""; r.invalidation="";
+   if(s.closed_bar<2) { r.reason="no closed-bar snapshot yet"; return r; }
+   if(s.p3_phase!=(int)P3_PHASE_MANIPULATION && s.p3_phase!=(int)P3_PHASE_DISTRIBUTION) { r.reason="no resolved manipulation/distribution phase today"; return r; }
+   if(s.p3_dir==0) { r.reason="the phase resolved but carries no direction"; return r; }
+   if(s.news_blackout) { r.reason="inside the +/-30m news window - the playbook stands aside"; return r; }
+   if(!s.range_valid) { r.reason="no dealing range, so no OTE zone exists"; return r; }
+   if(!s.in_ote || s.ote_dir!=s.p3_dir) { r.reason="price is not inside the OTE zone aligned with the AMD resolution"; return r; }
+   r.met=true; r.dir=s.p3_dir;
+   r.reason=(s.p3_phase==(int)P3_PHASE_DISTRIBUTION?"distribution":"manipulation")+" resolved "+(s.p3_dir>0?"long":"short")+" + OTE";
+   r.invalidation="a closed bar back inside the manipulation candle (the Judas swing failed)";
+   return r;
+}
+
+// PURE. (3) Session liquidity grab + FVG - catalog #34 nexus-blast-strategy.
+SIctPlaybookRow A2_SessionGrabFvg(const SIctPlaybookState &s)
+{
+   SIctPlaybookRow r; r.met=false; r.dir=0; r.reason=""; r.invalidation="";
+   if(s.closed_bar<2) { r.reason="no closed-bar snapshot yet"; return r; }
+   if(s.sweep_dir==0) { r.reason="no SSL/BSL sweep inside the search window"; return r; }
+   if(s.sweep_age>s.lookback) { r.reason="the sweep is "+IntegerToString(s.sweep_age)+" bars old (window "+IntegerToString(s.lookback)+")"; return r; }
+   if(!s.sweep_in_kz) { r.reason="the sweep did not land in London or New York kill zone"; return r; }
+   if(s.fvg_after_sweep<=0) { r.reason="no FVG created in the reclaim direction after the sweep"; return r; }
+   if(s.struct_dir!=s.sweep_dir || s.struct_age>s.lookback) { r.reason="no MSS/BOS/CHoCH in the reclaim direction inside the window"; return r; }
+   r.met=true; r.dir=s.sweep_dir;
+   r.reason=(s.sweep_dir>0?"SSL":"BSL")+" taken "+IntegerToString(s.sweep_age)+" bars ago in kill zone + FVG + structure";
+   r.invalidation="a closed bar back through the swept level";
+   return r;
+}
+
+// PURE. (4) Session raid + confirmation - catalog #38 intraday-liquidity-volatility-model.
+SIctPlaybookRow A2_SessionRaidConfirm(const SIctPlaybookState &s)
+{
+   SIctPlaybookRow r; r.met=false; r.dir=0; r.reason=""; r.invalidation="";
+   if(s.closed_bar<2) { r.reason="no closed-bar snapshot yet"; return r; }
+   int raid_dir=(s.sb_dir!=0 ? s.sb_dir : (s.p3_phase==(int)P3_PHASE_DISTRIBUTION ? s.p3_dir : 0));
+   if(raid_dir==0) { r.reason="neither the silver-bullet chain nor a distribution phase has resolved"; return r; }
+   if(!s.in_london_kz && !s.in_ny_kz) { r.reason="decision bar is outside the London/New York kill zones"; return r; }
+   if(s.struct_dir!=raid_dir || s.struct_age>s.lookback) { r.reason="no MSS/BOS/CHoCH in the raid direction inside the window"; return r; }
+   if(s.fvg_after_sweep<=0) { r.reason="no FVG after the raid in the reclaim direction"; return r; }
+   r.met=true; r.dir=raid_dir;
+   r.reason=(s.sb_dir!=0?"silver-bullet":"distribution")+" raid + kill zone + structure + FVG";
+   r.invalidation="a closed bar back through the raid origin";
+   return r;
+}
+
+// PURE. (5) Break -> retest - catalog #47 break-retest, #49 liquidity-strategy.
+SIctPlaybookRow A2_BreakRetest(const SIctPlaybookState &s)
+{
+   SIctPlaybookRow r; r.met=false; r.dir=0; r.reason=""; r.invalidation="";
+   if(s.closed_bar<2) { r.reason="no closed-bar snapshot yet"; return r; }
+   if(s.setup_state==0) { r.reason="no causal chain in progress (nothing broke, nothing retests)"; return r; }
+   if(s.sweep_dir==0) { r.reason="the chain has no recorded sweep leg"; return r; }
+   if(s.sweep_age>2*s.lookback) { r.reason="the break is stale ("+IntegerToString(s.sweep_age)+" bars)"; return r; }
+   r.met=true; r.dir=s.sweep_dir;
+   r.reason=(s.setup_state==1?"ARMED - waiting for the retest":"retest held - chain confirmed")+" | break "+IntegerToString(s.sweep_age)+" bars ago";
+   r.invalidation="the battle zone gives way on a closed bar";
+   return r;
+}
+
+// One tooltip line for a row. Missing evidence is printed, never hidden.
+string A2_RowText(const SIctPlaybookRow &r)
+{
+   if(!r.met) return "stand aside | "+r.reason;
+   string side=(r.dir>0?"MET long | ":"MET short | ");
+   string inv=(r.invalidation!=""?" | inv: "+r.invalidation:"");
+   return side+r.reason+inv;
+}
+
+// Reset to the inert state, beside the other module resets.
+void A2_Clear()
+{
+   SIctPlaybookRow inert;
+   inert.met=false; inert.dir=0; inert.reason=""; inert.invalidation="";
+   g_a2_p1=inert; g_a2_p2=inert; g_a2_p3=inert; g_a2_p4=inert; g_a2_p5=inert;
+   g_a2_valid=false;
+}
+
+// Host glue. Closed bar only, never per tick, skipped entirely while its
+// switch (or the module master switch) is off. No detection happens here:
+// every value is copied out of state the other engines publish.
+void A2_Update(const int closed)
+{
+   if(!(InpEnableIctPlaybook||InpEnableAllModules)) return;
+   if(closed<2 || closed>=ArraySize(g_buf_c) || closed>=ArraySize(g_buf_t) ||
+      closed>=ArraySize(g_buf_h) || closed>=ArraySize(g_buf_l)) return;
+
+   double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0)
+              ? g_atr_buf[closed] : g_atr;
+
+   SIctPlaybookState s;
+   s.closed_bar=closed; s.bar_time=g_buf_t[closed]; s.close=g_buf_c[closed];
+   s.atr=atr; s.lookback=InpA2LookbackBars; s.poi_atr=InpA2PoiATR;
+   s.range_valid=g_range.valid;
+   s.ote_dir=0; s.in_ote=false;
+   s.struct_dir=0; s.struct_age=9999; s.poi_count=0; s.poi_near=false;
+   s.sweep_dir=0; s.sweep_age=9999; s.sweep_in_kz=false; s.fvg_after_sweep=0;
+   s.p3_phase=(int)g_p3_phase; s.p3_dir=g_p3_dir;
+   s.sb_dir=(g_sb_active?g_sb_dir:0);
+   s.setup_state=(g_trade_setup.valid?2:(g_trade_setup.confirmation_pending?1:0));
+   s.in_london_kz=IsInKillZone(s.bar_time,SESSION_LONDON);
+   s.in_ny_kz=IsInKillZone(s.bar_time,SESSION_NEWYORK);
+   s.news_blackout=MTF_SniperIsNewsBlackout(s.bar_time);
+
+   // The OTE zone, from the one definition the file already has.
+   double ote_top=0.0, ote_bottom=0.0; bool ote_buy=false;
+   if(s.range_valid && GetOTEZone(ote_top,ote_bottom,ote_buy))
+   {
+      s.ote_dir=(ote_buy?1:-1);
+      s.in_ote=(s.close<=ote_top && s.close>=ote_bottom);
+   }
+
+   // The newest MSS/BOS/CHoCH on closed bars, inside the window.
+   for(int i=ArraySize(g_structures)-1;i>=0;i--)
+   {
+      SStructureBreak st=g_structures[i];
+      if(st.bar>closed) continue;
+      if(st.type=="INIT" || st.type=="") continue;
+      s.struct_dir=(st.bullish?1:-1);
+      s.struct_age=closed-st.bar;
+      break;
+   }
+
+   // The newest liquidity sweep in the causal graph.
+   for(int i=ArraySize(g_causal_events)-1;i>=0;i--)
+   {
+      SCausalEvent ev=g_causal_events[i];
+      if(ev.type!=CE_LIQ_SWEEP || ev.invalidated || !ev.confirmed) continue;
+      if(ev.event_bar>closed) continue;
+      s.sweep_dir=(ev.bullish?1:-1);
+      s.sweep_age=closed-ev.event_bar;
+      s.sweep_in_kz=IsInKillZone(ev.event_time,SESSION_LONDON)
+                  ||IsInKillZone(ev.event_time,SESSION_NEWYORK);
+      break;
+   }
+
+   // FVGs created after that sweep, in the reclaim direction.
+   if(s.sweep_age<9999)
+   {
+      int sw_bar=closed-s.sweep_age;
+      for(int i=0;i<ArraySize(g_fvgs);i++)
+      {
+         if(g_fvgs[i].creation_bar<=sw_bar) continue;
+         if((g_fvgs[i].bullish?1:-1)!=s.sweep_dir) continue;
+         s.fvg_after_sweep++;
+      }
+   }
+
+   // Live OBs/FVGs in the structure direction: count them and find the
+   // nearest, exactly the liveness vocabulary the zone scan uses (an FVG
+   // that is FILLED is not a POI, an OB that is MITIGATED or expired is
+   // not a POI). Tick volume is never read here - price and zones only.
+   if(s.struct_dir!=0 && atr>0.0)
+   {
+      double nearest=DBL_MAX;
+      for(int i=0;i<ArraySize(g_order_blocks);i++)
+      {
+         SOrderBlock ob=g_order_blocks[i];
+         if((ob.bullish?1:-1)!=s.struct_dir) continue;
+         if(ob.state=="MITIGATED" || ob.closed_state=="MITIGATED") continue;
+         if(OBIsExpired(i,closed)) continue;
+         double d=MathAbs(s.close-(ob.top+ob.bottom)*0.5)/atr;
+         s.poi_count++; if(d<nearest) nearest=d;
+      }
+      for(int i=0;i<ArraySize(g_fvgs);i++)
+      {
+         SFVG f=g_fvgs[i];
+         if((f.bullish?1:-1)!=s.struct_dir) continue;
+         if(f.state=="FILLED") continue;
+         double d=MathAbs(s.close-(f.top+f.bottom)*0.5)/atr;
+         s.poi_count++; if(d<nearest) nearest=d;
+      }
+      s.poi_near=(nearest<=s.poi_atr);
+   }
+
+   g_a2_p1=A2_StructureOTE(s);
+   g_a2_p2=A2_AmdOte(s);
+   g_a2_p3=A2_SessionGrabFvg(s);
+   g_a2_p4=A2_SessionRaidConfirm(s);
+   g_a2_p5=A2_BreakRetest(s);
+   g_a2_valid=true;
+
+   // Journal only when a row is MET, the same "evidence present" discipline
+   // PA_Update uses; a stand-aside is carried by the tooltip, not the log.
+   if(InpLogLifecycleTransitions)
+   {
+      if(g_a2_p1.met) LogLifecycle(StringFormat("A2 STRUCT+OTE %s | %s",(g_a2_p1.dir>0?"LONG":"SHORT"),g_a2_p1.reason));
+      if(g_a2_p2.met) LogLifecycle(StringFormat("A2 AMD+OTE %s | %s",(g_a2_p2.dir>0?"LONG":"SHORT"),g_a2_p2.reason));
+      if(g_a2_p3.met) LogLifecycle(StringFormat("A2 SESSION-GRAB %s | %s",(g_a2_p3.dir>0?"LONG":"SHORT"),g_a2_p3.reason));
+      if(g_a2_p4.met) LogLifecycle(StringFormat("A2 SESSION-RAID %s | %s",(g_a2_p4.dir>0?"LONG":"SHORT"),g_a2_p4.reason));
+      if(g_a2_p5.met) LogLifecycle(StringFormat("A2 BREAK-RETEST %s | %s",(g_a2_p5.dir>0?"LONG":"SHORT"),g_a2_p5.reason));
+   }
+}
+
+// Reset for the self-test. The in-terminal self-test exercises the PURE
+// cores with hand-built snapshots - it never touches globals or series, so
+// it means the same thing in every terminal.
+bool A2_SelfTest(string &where)
+{
+   SIctPlaybookState s;
+   s.closed_bar=100; s.bar_time=0; s.close=100.0; s.atr=1.0;
+   s.lookback=12; s.poi_atr=1.5;
+   s.range_valid=true; s.ote_dir=0; s.in_ote=false;
+   s.struct_dir=0; s.struct_age=9999; s.poi_count=0; s.poi_near=false;
+   s.sweep_dir=0; s.sweep_age=9999; s.sweep_in_kz=false; s.fvg_after_sweep=0;
+   s.p3_phase=0; s.p3_dir=0; s.sb_dir=0; s.setup_state=0;
+   s.in_london_kz=false; s.in_ny_kz=false; s.news_blackout=false;
+
+   // T1-T5: an empty snapshot stands aside everywhere. Missing evidence
+   // is never a free point.
+   if(A2_StructureOTE(s).met)     { where="A2-1 an empty snapshot must stand aside (structure+OTE)"; return false; }
+   if(A2_AmdOte(s).met)           { where="A2-2 an empty snapshot must stand aside (AMD+OTE)"; return false; }
+   if(A2_SessionGrabFvg(s).met)   { where="A2-3 an empty snapshot must stand aside (session grab)"; return false; }
+   if(A2_SessionRaidConfirm(s).met){ where="A2-4 an empty snapshot must stand aside (session raid)"; return false; }
+   if(A2_BreakRetest(s).met)      { where="A2-5 an empty snapshot must stand aside (break-retest)"; return false; }
+
+   // T6: the complete structure+OTE picture, long.
+   SIctPlaybookState s6=s;
+   s6.struct_dir=1; s6.struct_age=3; s6.in_ote=true; s6.ote_dir=1;
+   s6.poi_count=2; s6.poi_near=true;
+   SIctPlaybookRow r6=A2_StructureOTE(s6);
+   if(!r6.met || r6.dir!=1)       { where="A2-6 the complete long structure+OTE picture must be MET long"; return false; }
+
+   // T7: the OTE zone on the wrong side of the structure leg.
+   SIctPlaybookState s7=s6; s7.ote_dir=-1;
+   if(A2_StructureOTE(s7).met)    { where="A2-7 an opposing OTE zone must veto structure+OTE"; return false; }
+
+   // T8: the structure break fell out of the search window.
+   SIctPlaybookState s8=s6; s8.struct_age=99;
+   if(A2_StructureOTE(s8).met)    { where="A2-8 a stale structure break must stand aside"; return false; }
+
+   // T9: manipulation resolved short, OTE aligned - met short.
+   SIctPlaybookState s9=s;
+   s9.p3_phase=P3_PHASE_MANIPULATION; s9.p3_dir=-1; s9.in_ote=true; s9.ote_dir=-1;
+   SIctPlaybookRow r9=A2_AmdOte(s9);
+   if(!r9.met || r9.dir!=-1)      { where="A2-9 manipulation + aligned OTE must be MET short"; return false; }
+
+   // T10: the same picture inside the news window - stand aside.
+   SIctPlaybookState s10=s9; s10.news_blackout=true;
+   if(A2_AmdOte(s10).met)         { where="A2-10 the news window must veto the AMD playbook"; return false; }
+
+   // T11: SSL taken in a kill zone, FVG and structure in the reclaim direction.
+   SIctPlaybookState s11=s;
+   s11.sweep_dir=1; s11.sweep_age=2; s11.sweep_in_kz=true; s11.fvg_after_sweep=1;
+   s11.struct_dir=1; s11.struct_age=2;
+   SIctPlaybookRow r11=A2_SessionGrabFvg(s11);
+   if(!r11.met || r11.dir!=1)     { where="A2-11 the complete session-grab picture must be MET long"; return false; }
+
+   // T12: the same sweep outside any kill zone.
+   SIctPlaybookState s12=s11; s12.sweep_in_kz=false;
+   if(A2_SessionGrabFvg(s12).met) { where="A2-12 a sweep outside the kill zones must stand aside"; return false; }
+
+   // T13: silver-bullet resolved, kill zone, structure and FVG in reclaim direction.
+   SIctPlaybookState s13=s;
+   s13.sb_dir=1; s13.in_london_kz=true; s13.struct_dir=1; s13.struct_age=4; s13.fvg_after_sweep=1;
+   SIctPlaybookRow r13=A2_SessionRaidConfirm(s13);
+   if(!r13.met || r13.dir!=1)     { where="A2-13 the complete session-raid picture must be MET long"; return false; }
+
+   // T14: the same raid on a bar outside the London/New York kill zones.
+   SIctPlaybookState s14=s13; s14.in_london_kz=false;
+   if(A2_SessionRaidConfirm(s14).met) { where="A2-14 a raid outside the kill zones must stand aside"; return false; }
+
+   // T15: a confirmed chain with a recorded sweep leg, short.
+   SIctPlaybookState s15=s;
+   s15.setup_state=2; s15.sweep_dir=-1; s15.sweep_age=5;
+   SIctPlaybookRow r15=A2_BreakRetest(s15);
+   if(!r15.met || r15.dir!=-1)    { where="A2-15 the complete break-retest picture must be MET short"; return false; }
+
+   // T16: the break fell out of the (doubled) search window.
+   SIctPlaybookState s16=s15; s16.sweep_age=99;
+   if(A2_BreakRetest(s16).met)    { where="A2-16 a stale break must stand aside"; return false; }
+
+   return true;
+}

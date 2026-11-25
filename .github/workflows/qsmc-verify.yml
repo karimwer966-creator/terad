@@ -226,6 +226,14 @@ jobs:
       - name: Risk model (advisory text only, no order, reuses the existing risk inputs)
         run: python3 tools/test_phase7_riskmodel.py 2>&1 | tee out/test_phase7_riskmodel.log
 
+      # AUDIT-A2 (unreleased, display-only). Proves the five playbook predicates
+      # stand aside without complete evidence, that the OTE zone they read is the
+      # file's own GetOTEZone(), that the rows reach ONLY the dashboard tooltip
+      # behind both switches, and that the module cannot authorize anything: no
+      # buffer, no trade API, no alert, one call per closed bar.
+      - name: ICT Pullback Playbook (display only, no buffer moved, cannot authorize)
+        run: python3 tools/test_phase8_ictplaybook.py 2>&1 | tee out/test_phase8_ictplaybook.log
+
       - name: Scenario geometry (self-test numbers must still describe zones)
         run: python3 tools/check_scenario_geometry.py 2>&1 | tee out/geometry.log
 

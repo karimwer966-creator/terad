@@ -29,10 +29,10 @@
      "wide": "\"one row per closed bar | keeps \",InpObsJournalBars,\" shows \",InpObsTooltipBars);\n\n// v5.8.0: quant/scaling input validation with safe clamped defaults.\nApplyQuantInputConfig();\n"
     },
     "14934": {
-     "line": 15353,
+     "line": 15676,
      "line_text": "if(InpMTEERunSelfTest)",
-     "text": "RM_Clear();\nif(InpMTEERunSelfTest)\n{",
-     "wide": "CF_Clear();\nRM_Clear();\nif(InpMTEERunSelfTest)\n{\nstring mtee_fail=\"\";"
+     "text": "A2_Clear();\nif(InpMTEERunSelfTest)\n{",
+     "wide": "RM_Clear();\nA2_Clear();\nif(InpMTEERunSelfTest)\n{\nstring mtee_fail=\"\";"
     },
     "14970": {
      "line": 15560,
@@ -364,10 +364,10 @@
      "wide": "input int InpRetestTimeoutBars = 40; // was 25; retest window (docs/SIGNAL_VISIBILITY_DIAGNOSIS.md)\ninput double InpRetestMaxDistanceATR = 4.0; // was 2.5; retest reach (docs/SIGNAL_VISIBILITY_DIAGNOSIS.md)\ninput bool InpSmartObjectManagement = true;\ninput bool InpLogLifecycleTransitions = false;\n"
     },
     "14919": {
-     "line": 15353,
+     "line": 15676,
      "line_text": "if(InpMTEERunSelfTest)",
-     "text": "RM_Clear();\nif(InpMTEERunSelfTest)\n{",
-     "wide": "CF_Clear();\nRM_Clear();\nif(InpMTEERunSelfTest)\n{\nstring mtee_fail=\"\";"
+     "text": "A2_Clear();\nif(InpMTEERunSelfTest)\n{",
+     "wide": "RM_Clear();\nA2_Clear();\nif(InpMTEERunSelfTest)\n{\nstring mtee_fail=\"\";"
     },
     "14959": {
      "line": 15564,
@@ -621,16 +621,16 @@
      "wide": "}\n\nvoid SigLog_BufWrite(const int idx,const int src,const double dir,const double e,const double sl,\nconst double t1,const double t2,const double t3)\n{"
     },
     "15587": {
-     "line": 15587,
+     "line": 15674,
      "line_text": "RM_Clear();",
-     "text": "CF_Clear();\nRM_Clear();\nif(InpMTEERunSelfTest)",
-     "wide": "MR_Clear();\nCF_Clear();\nRM_Clear();\nif(InpMTEERunSelfTest)\n{"
+     "text": "CF_Clear();\nRM_Clear();\nA2_Clear();",
+     "wide": "MR_Clear();\nCF_Clear();\nRM_Clear();\nA2_Clear();\nif(InpMTEERunSelfTest)"
     },
     "15600": {
      "line": 15600,
      "line_text": "QSMC_InitPass(\" Power-of-3 / Silver-Bullet self-test: PASS (9/9)\");",
      "text": "if(SBP3_SelfTest(mtee_fail))\nQSMC_InitPass(\" Power-of-3 / Silver-Bullet self-test: PASS (9/9)\");\nelse",
-     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" MTEE synthetic self-test: FAIL \u2014 \",mtee_fail);\nif(SBP3_SelfTest(mtee_fail))\nQSMC_InitPass(\" Power-of-3 / Silver-Bullet self-test: PASS (9/9)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Power-of-3 / Silver-Bullet self-test: FAIL - \",mtee_fail);"
+     "wide": "Print(\">>> \",QSMC_VERSION_TEXT,\" MTEE synthetic self-test: FAIL — \",mtee_fail);\nif(SBP3_SelfTest(mtee_fail))\nQSMC_InitPass(\" Power-of-3 / Silver-Bullet self-test: PASS (9/9)\");\nelse\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Power-of-3 / Silver-Bullet self-test: FAIL - \",mtee_fail);"
     },
     "15604": {
      "line": 15604,
@@ -723,10 +723,10 @@
      "wide": "// pass, and g_atr_buf / g_atr written earlier in this same pass. Once per closed\n// bar, never per tick, and skipped entirely while its switch is off.\nif(is_new_bar || detection_updated) PA_Update(closed);\n// AUDIT-MR1 Mean Reversion / Momentum: closed-bar, observational, no entry\n// authority. It sits beside PA_Update because every input it reads is already"
     },
     "16451": {
-     "line": 16451,
+     "line": 16543,
      "line_text": "if(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);",
-     "text": "// together. Once per closed bar, never per tick, skipped entirely while off.\nif(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);\n// AUDIT-CF1 Confluence Engine: closed-bar, observational, no entry authority.",
-     "wide": "// MVP_Update; it is placed after it only to keep the observational modules\n// together. Once per closed bar, never per tick, skipped entirely while off.\nif(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);\n// AUDIT-CF1 Confluence Engine: closed-bar, observational, no entry authority.\n// It runs LAST of the module updates because its legs read state the others"
+     "text": "// together. Once per closed bar, never per tick, skipped entirely while off.\nif(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);\n// AUDIT-A2 ICT Pullback Playbook: closed-bar, observational, no entry",
+     "wide": "// MVP_Update; it is placed after it only to keep the observational modules\n// together. Once per closed bar, never per tick, skipped entirely while off.\nif(is_new_bar || detection_updated) MR_Update(closed,rates_total,full_indicators);\n// AUDIT-A2 ICT Pullback Playbook: closed-bar, observational, no entry\n// authority. It runs beside MR_Update because every input it reads -"
     },
     "16457": {
      "line": 16457,
@@ -1277,10 +1277,10 @@
      "wide": "return INIT_PARAMETERS_INCORRECT;\n}\nif(InpEnableScalping)\n{\nif(!QSMC_IsReaderSilent())"
     },
     "14954": {
-     "line": 15559,
+     "line": 15715,
      "line_text": "if(SCALP_SelfTest(mtee_fail))",
-     "text": "Print(\">>> \",QSMC_VERSION_TEXT,\" Risk model self-test: FAIL - \",mtee_fail);\nif(SCALP_SelfTest(mtee_fail))\nQSMC_InitPass(\" Scalping strategies self-test: PASS (10/10)\");",
-     "wide": "else\nPrint(\">>> \",QSMC_VERSION_TEXT,\" Risk model self-test: FAIL - \",mtee_fail);\nif(SCALP_SelfTest(mtee_fail))\nQSMC_InitPass(\" Scalping strategies self-test: PASS (10/10)\");\nelse"
+     "text": "Print(\">>> \",QSMC_VERSION_TEXT,\" ICT Pullback Playbook self-test: FAIL - \",mtee_fail);\nif(SCALP_SelfTest(mtee_fail))\nQSMC_InitPass(\" Scalping strategies self-test: PASS (10/10)\");",
+     "wide": "else\nPrint(\">>> \",QSMC_VERSION_TEXT,\" ICT Pullback Playbook self-test: FAIL - \",mtee_fail);\nif(SCALP_SelfTest(mtee_fail))\nQSMC_InitPass(\" Scalping strategies self-test: PASS (10/10)\");\nelse"
     },
     "15720": {
      "line": 16237,
