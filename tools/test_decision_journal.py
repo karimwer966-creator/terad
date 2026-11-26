@@ -615,7 +615,7 @@ for phrase in ("## 11.6 AUDIT-OBS1", "InpEnableDecisionJournal", "OBS_Record", "
 check("L6205" in DOCX, "K the doc cites OBS_Record's definition line (L6205)")
 check("L889" in DOCX, "K the doc cites the journal flag's line (L889)")
 check("L4495" in DOCX, "K the doc cites the row struct's line (L4495)")
-check("L15764" in DOCX, "K the doc cites the OnCalculate record call (L15764)")
+check("L15767" in DOCX, "K the doc cites the OnCalculate record call (L15767)")
 check(re.search(r"run: python3 tools/test_decision_journal\.py", WFX),
       "K CI runs tools/test_decision_journal.py")
 check(WFX.count("- name: ") >= 37, "K the workflow still wires every audit suite "

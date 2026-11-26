@@ -429,7 +429,7 @@ for phrase in ("## 11.4 AUDIT-GS1", "WeightedGateAllows()", "InpUseWeightedGates
                "confluence count, not a probability",
                "tools/test_weighted_gates.py", "CI step 33", "583"):
     check(phrase in DOCX, "H the doc states %r" % phrase)
-check("L40023" in DOCX, "H the doc cites the gate's definition line (L40023)")
+check("L40417" in DOCX, "H the doc cites the gate's definition line (L40417)")
 check("L862" in DOCX, "H the doc cites the flag's declaration line (L862)")
 check(re.search(r"run: python3 tools/test_weighted_gates\.py", WFX),
       "H CI runs tools/test_weighted_gates.py")

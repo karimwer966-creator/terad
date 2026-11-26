@@ -455,9 +455,9 @@ for phrase in ("## 11.7 AUDIT-D1", "InpMaxChartObjects", "QSMC_DeclutterExcess",
                "tools/test_declutter_cap.py", "CI step 36", "583",
                "one object over the cap", "never pruned"):
     check(phrase in DOCX, "K the doc states %r" % phrase)
-check("L7666" in DOCX, "K the doc cites SmartObjectCleanup's definition line (L7666)")
-check("L7535" in DOCX, "K the doc cites the excess core's line (L7535)")
-check("L7675" in DOCX, "K the doc cites the cap value's line (L7675)")
+check("L7669" in DOCX, "K the doc cites SmartObjectCleanup's definition line (L7669)")
+check("L7538" in DOCX, "K the doc cites the excess core's line (L7538)")
+check("L7678" in DOCX, "K the doc cites the cap value's line (L7678)")
 check("L1285" in DOCX, "K the doc cites the cap input's line (L1285)")
 check(re.search(r"run: python3 tools/test_declutter_cap\.py", WFX),
       "K CI runs tools/test_declutter_cap.py")

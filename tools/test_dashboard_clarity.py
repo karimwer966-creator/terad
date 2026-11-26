@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Guard the visible dashboard contract; not an MQL5 compiler or market test."""
+import re
 from pathlib import Path
 
-SOURCE = Path(__file__).resolve().parents[1] / "nadir2.mq5"
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / "nadir2.mq5"
+MIRROR = ROOT / "MQL5" / "Indicators" / "nadir2.mq5"
+DOC = ROOT / "docs" / "QSMC_DASHBOARD_CLARITY.md"
 text = SOURCE.read_text(encoding="utf-8")
+raw = SOURCE.read_bytes()
+mirror_raw = MIRROR.read_bytes()
+doc = DOC.read_text(encoding="utf-8")
 checks = {
     # v6.6.8: the card ships COMPACT. A full-width card is still available, but it
     # is no longer what a new chart gets, because covering the candles was the
@@ -23,13 +30,16 @@ checks = {
         'lines[ln]="... +"+IntegerToString(hidden_rows)+" more (hover)";',
         "hidden_rows=rows_total-ln;",
     )),
-    "the compact card is capped in pixels and in chart share": all(token in text for token in (
-        "int cap_px=(InpDashboardMaxWidthPx>0?InpDashboardMaxWidthPx:430);",
-        "int cap_pct=(int)(chart_w*2/5);",
-        "safe_w=(int)MathMax(210,MathMin(safe_w,chart_w-16));",
-        "MathMin(safe_w,MathMin(cap_px,cap_pct))" in text or
-        "MathMin(SafeLeftPanelWidth(),MathMin(cap_px,cap_pct))",
-    )),
+    "the compact card is capped in pixels and in chart share": (
+        all(token in text for token in (
+            "int cap_px=(InpDashboardMaxWidthPx>0?InpDashboardMaxWidthPx:430);",
+            "int cap_pct=(int)(chart_w*2/5);",
+            "safe_w=(int)MathMax(210,MathMin(safe_w,chart_w-16));",
+        )) and (
+            "MathMin(safe_w,MathMin(cap_px,cap_pct))" in text or
+            "MathMin(SafeLeftPanelWidth(),MathMin(cap_px,cap_pct))" in text
+        )
+    ),
     "wide mode is capped too, so it never spans a whole monitor": all(token in text for token in (
         "MathMin(chart_w-16,900)",
     )),
@@ -105,6 +115,71 @@ checks = {
             "terminal||!p.distance_available||g_scn_ctx.selection_atr<=0.0",
         )),
 }
+
+# Grouped display-only explainability panel addendum. It is deliberately pinned
+# on the same source file as the compact card: one chart, one set of facts, no
+# second decision path. These are transcription/display contracts, not F7.
+grouped_def = re.search(r"void DrawGroupedSMCDashboard\([^)]*\)\s*\{", text)
+grouped_head = text[grouped_def.start():grouped_def.start() + 320] if grouped_def else ""
+headings = ("MARKET CONTEXT", "LIQUIDITY ANALYSIS", "MARKET STRUCTURE",
+            "ZONE ANALYSIS", "SIGNAL ENGINE", "BUY", "SELL", "WATCH")
+checks["grouped panel is drawn from the existing dashboard path"] = (
+    grouped_def is not None and
+    text.count("DrawGroupedSMCDashboard(total,c);") == 1 and
+    "if(!QSMC_PaintAllowed()) return;" in grouped_head and
+    "if(!InpShowAIDashboard) return;" in grouped_head
+)
+checks["grouped panel renders every requested heading"] = all(
+    'ScenarioDashAdd(lines,cols,ln,cap,"%s",clrDodgerBlue);' % h in text
+    for h in headings
+)
+checks["grouped panel has a graceful DATA_WAITING state"] = (
+    '"DATA_WAITING | "' in text and
+    "g_sniper_data_ready" in text and
+    "g_sniper_data_status" in text and
+    "g_sniper_atr_warned" in text and
+    "g_sniper_adx_warned" in text and
+    "4806" in text and
+    "open W1/D1/H4/H1, raise Max bars, wait 2-3 min" in text
+)
+checks["grouped panel states it is display only, not an entry"] = (
+    "display only (NOT ENTRY)" in text and
+    "CONFIRMED" in text and
+    "CANDIDATE (NOT ENTRY)" in text and
+    "no candidate" in text
+)
+checks["grouped objects stay in the classified CORE_DASH_ primary family"] = (
+    'PFX+"CORE_DASH_GRP_BG"' in text and
+    'PFX+"CORE_DASH_GRP_ROW_"' in text and
+    'ObjectsDeleteAll(0,PFX+"CORE_DASH_");' in text
+)
+checks["grouped panel keeps full rows in the hover tooltip"] = (
+    '"... +"+IntegerToString(hidden_rows)+" more (hover)"' in text and
+    "for(int i=0;i<rows_total;i++) tooltip+=" in text and
+    "OBJPROP_TOOLTIP" in text
+)
+checks["grouped panel adds no input, header, object-create or redraw site"] = (
+    sum(1 for line in text.splitlines() if line.startswith("input ")) == 604 and
+    text.count("#include") == 8 and
+    text.count("ObjectCreate(") == 16 and
+    text.count("ChartRedraw(") == 3
+)
+checks["grouped panel adds no trade API"] = all(
+    api not in text for api in ("OrderSend(", "OrderSendAsync(", "PositionOpen(", "CTrade")
+)
+checks["both nadir2.mq5 copies remain byte-identical pure CRLF"] = (
+    raw == mirror_raw and
+    raw.count(b"\n") == raw.count(b"\r\n") and
+    raw.count(b"\r") == raw.count(b"\r\n")
+)
+checks["dashboard clarity doc documents the grouped panel and DATA_WAITING"] = (
+    "Grouped SMC explainability panel" in doc and
+    "DATA_WAITING" in doc and
+    "MARKET CONTEXT" in doc and
+    "4806" in doc and
+    "F7 / MetaEditor" in doc
+)
+
 # AlertWhyNoPopup() is a display helper. If it ever calls into the dispatcher it
 # stops being an explanation and becomes an unreviewed second decision path.
 # The DEFINITION block, not the forward declaration at the top of the file.
