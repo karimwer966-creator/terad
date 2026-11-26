@@ -1,6 +1,6 @@
 # Index — every document, by what it is for
 
-95 documents accumulated across eleven releases. This file is the map: which ones
+97 documents accumulated across eleven releases. This file is the map: which ones
 are **instructions** (true today, follow them), which ones are **architecture**
 (explain the code as it is now), which ones are **QATS** (a separate product), and
 which ones are **frozen history** (true on the date printed inside them, and not a
@@ -79,6 +79,8 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`AUDIT_v6.6.24_2026-11-16.md`](AUDIT_v6.6.24_2026-11-16.md) | archived prior audit cycle (2026-11-16), renamed via `git mv` from `AUDIT_v6.6.24.md` when the 2026-11-24 cycle took the canonical path; content unchanged |
 | [`PRODUCTION_REVIEW_v6.6.24_AR.md`](PRODUCTION_REVIEW_v6.6.24_AR.md) | التقرير العربي لدورة v6.6.24: العيوب الأحد عشر، فصل (أ) عن (ب)، أدوات التجربة R1–R5، والخطوات اليدوية الست |
 | [`QSMC_AUDIT_2026-11-25.md`](QSMC_AUDIT_2026-11-25.md) | independent repository-wide audit: baseline, dependency map, reproduced/deferred execution defects, repaired diagnostic gates, regression analysis and readiness verdict |
+| [`CONFIRMATION_ENGINE_REPLAY_2026-11-25.md`](CONFIRMATION_ENGINE_REPLAY_2026-11-25.md) | deterministic replay of the two 2026-11-25 zone setups across parser/state/UTC/session/AI/risk layers; companion 42-column [`confirmation_replay_2026-11-25.csv`](confirmation_replay_2026-11-25.csv) |
+| [`CONFIRMATION_ENGINE_TEST_BACKTEST_2026-11-25.md`](CONFIRMATION_ENGINE_TEST_BACKTEST_2026-11-25.md) | deterministic 3-month synthetic M1 surrogate, walk-forward split and parameter sensitivity; explicitly not Strategy Tester, broker ticks or evidence of edge |
 | [`REVIEW_INCLUDE_QSMC_v6.6.24_AR.md`](REVIEW_INCLUDE_QSMC_v6.6.24_AR.md) | مراجعة الطبقة الداخلية `Include/QSMC` (33 ملفًا): 23 عيبًا أُصلحت، وحكم على التغييرات المقترحة، وما لم يُراجَع صريحًا |
 | [`QSMC_LINKS_REPAIR_2026-11-16_AR.md`](QSMC_LINKS_REPAIR_2026-11-16_AR.md) | إصلاح الروابط بين الأجزاء (الدورة السابقة) |
 | [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md) | خريطة المستودع: كل مجلد وماذا يحتوي |

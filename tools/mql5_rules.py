@@ -1080,6 +1080,9 @@ UNITS = [
     # v6.6.22 SMC + Volume Profile decision engine (display only). Its own unit:
     # eight sources that share nothing with nadir2.mq5 but the signal registry.
     ("QSMC_SmcVpEngine.mq5 (SMC+VP engine)", "MQL5/Indicators/QSMC_SmcVpEngine.mq5"),
+    # 2026-11-25 additive confirmation engine: a separate translation unit
+    # with its own dry-run G9 contract, not a splice into the 34-header layer.
+    ("QSMC_ConfirmationEngine.mq5 (confirmation)", "MQL5/Experts/QSMC_ConfirmationEngine.mq5"),
 ]
 
 

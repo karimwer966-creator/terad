@@ -61,6 +61,9 @@ ROOT_FILES = {
     "README.md",        # the index: what ships, how to verify it
     "INSTALL_AR.md",    # the install guide, in Arabic
     "nadir2.mq5",       # canonical host, mirrored into MQL5/Indicators
+    "AUDIT.md",         # confirmation-engine Phase 1 source audit
+    "DESIGN.md",        # confirmation-engine architecture and decisions
+    "CHANGELOG.md",     # new inputs and defaults for the confirmation engine
     ".gitignore",
     ".gitattributes",
     "LICENSE",

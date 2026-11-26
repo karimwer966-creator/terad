@@ -45,6 +45,7 @@ jobs:
           echo "OFFLINE GO is not F7. Open nadir2.mq5 in MetaEditor and press F7."
           echo "Required banner: [QSMC_ARB] v6.6.22 arbitration layer ON"
           echo "EA ships ARMED ON DEMO (EXECUTION_DEMO). REAL requires explicit authorization: InpAllowRealTrading=true + exact InpRealAccountConfirm + exact InpRealServerConfirm - see the go-live runbook."
+          echo "The additive QSMC_ConfirmationEngine.mq5 is separate: dry-run ON, live orders OFF, REAL/CONTEST refused at init; G9 enforces the disarmed contract."
 
       - uses: actions/upload-artifact@v4
         if: always()
