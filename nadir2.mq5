@@ -6713,6 +6713,9 @@ void DrawKillZones();
 void DrawQuantumDashboard(const int total,const double &c[]);
 void RedrawAllPanels();
 void CoreDashboardDeleteObjects();
+void GroupedDashEnsureLabel(const string name);
+void GroupedDashEnsureRect(const string name);
+void DrawGroupedSMCDashboard(const int total,const double &c[]);
 void UpdateTradeLevelKeepOut();
 int  AvoidTradeLevelKeepOut(int y,const int h,const bool push_down);
 void RegisterChartLabel(const string name,const datetime tm,const double price,const bool above);
@@ -33437,6 +33440,245 @@ void CoreDashboardDeleteObjects()
    g_dash_lines=0;
    g_dash_h=0;
 }
+// GROUPED SMC DASHBOARD (display-only addendum). Reads existing Core/PMI/ZRE/RXN
+// state, never publishes a buffer, never calls a trade API and never changes an
+// entry gate. The CORE_DASH_GRP_* family stays under the existing CORE_DASH_
+// primary layer, so the clean chart profile keeps it visible by default.
+void GroupedDashEnsureLabel(const string name)
+{
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
+}
+
+void GroupedDashEnsureRect(const string name)
+{
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_RECTANGLE_LABEL,0,0,0);
+}
+
+string GroupedDashSniperReason()
+{
+   string s=g_sniper_data_status;
+   int p=StringFind(s,"|");
+   if(p>=0) s=StringSubstr(s,p+1);
+   if(StringLen(s)<=0) return "HTF_HISTORY";
+   return s;
+}
+
+string GroupedDashWaitingTags()
+{
+   string tags="";
+   for(int s=0;s<SNIPER_TF_COUNT;s++)
+   {
+      if(!g_sniper_atr_warned[s]) continue;
+      ENUM_TIMEFRAMES tf=MTF_SniperTFByIndex(s);
+      if(StringLen(tags)>0) tags+=" ";
+      tags+="ATR_"+EnumToString(tf);
+   }
+   if(g_sniper_adx_warned)
+   {
+      if(StringLen(tags)>0) tags+=" ";
+      tags+="ADX_H1";
+   }
+   if(StringLen(tags)<=0) return "none";
+   return tags;
+}
+
+string GroupedDashDataText()
+{
+   if(!InpUseSniperZoneEngine)
+      return "DATA: SNIPER ZONE ENGINE OFF - Core/PMI rows still display";
+   string tags=GroupedDashWaitingTags();
+   if(!g_sniper_data_ready)
+      return "DATA_WAITING | "+GroupedDashSniperReason()+" | handles "+tags+
+             " | open W1/D1/H4/H1, raise Max bars, wait 2-3 min";
+   if(tags!="none")
+      return "DATA_READY (risk inputs aligned) | optional HTF still loading: "+tags;
+   return "DATA_READY | RISK_INPUTS_ALIGNED";
+}
+
+string GroupedDashMarketDirection(bool &conflict)
+{
+   conflict=false;
+   int vote=0;
+   int sources=0;
+   int d1=(g_d1_structure_state=="BULLISH"?1:(g_d1_structure_state=="BEARISH"?-1:0));
+   if(g_htf_bias!=0)
+   {
+      vote=g_htf_bias;
+      sources++;
+   }
+   if(d1!=0)
+   {
+      if(vote!=0 && vote!=d1) conflict=true;
+      else vote=d1;
+      sources++;
+   }
+   if(InpTopDownEnabled && g_td.dir!=0)
+   {
+      if(vote!=0 && vote!=g_td.dir) conflict=true;
+      else vote=g_td.dir;
+      sources++;
+   }
+   if(conflict) return "MIXED - WAIT";
+   if(sources==0) return "NEUTRAL";
+   if(vote>0) return "BULLISH";
+   if(vote<0) return "BEARISH";
+   return "NEUTRAL";
+}
+
+string GroupedDashSwingText()
+{
+   int idx=3;
+   if(!g_pmi_enabled || !g_pmi_tf[idx].valid) return "n/a";
+   if(g_pmi_sw_n[idx]<=0) return "n/a";
+   double sh=0.0;
+   double sl=0.0;
+   for(int i=g_pmi_sw_n[idx]-1;i>=0;i--)
+   {
+      int f=g_pmi_sw_i[idx][i];
+      if(f<0 || f>=PMI_TF_SERMAX) continue;
+      if(g_pmi_sw_h[idx][i]==1 && sh<=0.0) sh=g_pmi_sh[idx][f];
+      if(g_pmi_sw_h[idx][i]==0 && sl<=0.0) sl=g_pmi_sl[idx][f];
+      if(sh>0.0 && sl>0.0) break;
+   }
+   if(sh<=0.0 || sl<=0.0) return "n/a";
+   return "SH "+DoubleToString(sh,_Digits)+" / SL "+DoubleToString(sl,_Digits)+" (H1)";
+}
+
+string GroupedDashLevelSummary(const string type)
+{
+   int total=0;
+   int swept=0;
+   int resting=0;
+   int n=ArraySize(g_pmi_levels);
+   for(int i=0;i<n;i++)
+   {
+      if(g_pmi_levels[i].type!=type) continue;
+      total++;
+      if(g_pmi_levels[i].status==PMI_LIQ_SWEPT || g_pmi_levels[i].status==PMI_LIQ_CONSUMED) swept++;
+      else if(g_pmi_levels[i].status==PMI_LIQ_UNTOUCHED || g_pmi_levels[i].status==PMI_LIQ_APPROACHED) resting++;
+   }
+   if(total<=0) return "n/a";
+   return IntegerToString(total)+" ("+IntegerToString(swept)+" swept, "+IntegerToString(resting)+" resting)";
+}
+
+string GroupedDashPriceText(const double price)
+{
+   if(price<=0.0 || !MathIsValidNumber(price)) return "n/a";
+   return DoubleToString(price,_Digits);
+}
+
+string GroupedDashContextText(const string market_direction)
+{
+   string pd=(g_pmi_loc.valid?g_pmi_loc.zone_h4:"UNKNOWN");
+   string sess=(g_pmi_session.label!=""?g_pmi_session.label:"n/a");
+   return "DIRECTION "+market_direction+" | SWING "+GroupedDashSwingText()+
+          " | PD "+pd+" ("+DoubleToString(g_pmi_loc.pd_h4,2)+") | SESSION "+sess;
+}
+
+string GroupedDashLiquidityText()
+{
+   return "EQH "+GroupedDashLevelSummary("EQH")+
+          " | EQL "+GroupedDashLevelSummary("EQL")+
+          " | PDH "+GroupedDashLevelSummary("PDH")+" @ "+GroupedDashPriceText(g_pmi_loc.pdh_price)+
+          " | PDL "+GroupedDashLevelSummary("PDL")+" @ "+GroupedDashPriceText(g_pmi_loc.pdl_price);
+}
+
+string GroupedDashSweepText()
+{
+   string pools=" | BSL "+GroupedDashPriceText(g_pmi_loc.nearest_bsl)+
+                " | SSL "+GroupedDashPriceText(g_pmi_loc.nearest_ssl);
+   if(!g_pmi_sweep.valid) return "SWEEP: none"+pools;
+   string dir=(g_pmi_sweep.direction>0?"SSL taken / bullish reversal":
+               (g_pmi_sweep.direction<0?"BSL taken / bearish reversal":"n/a"));
+   return "SWEEP: "+g_pmi_sweep.liquidityType+" "+dir+" "+g_pmi_sweep.qualityLabel+
+          " "+DoubleToString(g_pmi_sweep.penetrationATR,2)+" ATR"+pools;
+}
+
+string GroupedDashStructureText(const SResolvedCorePath &path,const string core_state,const int closed)
+{
+   string disp=(g_pmi_disp.valid?g_pmi_disp.label+"("+DoubleToString(g_pmi_disp.strength,0)+")":"none");
+   string st=(g_pmi_seq.hasStructure?g_pmi_seq.structureType:"none");
+   string bos=((g_pmi_seq.hasStructure && g_pmi_seq.structureType=="BOS")?"YES":"no");
+   string mss=(g_pmi_seq.hasMSS?"YES":"no");
+   return "DISP "+disp+" | STRUCT "+st+" | BOS "+bos+" | MSS "+mss+
+          " | "+CoreDashChain(path,core_state,closed);
+}
+
+string GroupedDashZoneText()
+{
+   bool fvg=g_pmi_state.validFVG;
+   bool ob=g_pmi_state.validOB;
+   bool both=(fvg && ob);
+   string best="n/a";
+   if(g_sniper_data_ready && g_sniper_best.level.strength>0.0)
+   {
+      best=(g_sniper_best.type_label==""?"confluence":g_sniper_best.type_label);
+      best+=" "+GroupedDashPriceText(g_sniper_best.level.price_low)+"-"+
+            GroupedDashPriceText(g_sniper_best.level.price_high);
+   }
+   return "FVG "+(fvg?"YES":"no")+" | OB "+(ob?"YES":"no")+
+          " | FVG+OB "+(both?"YES":"no")+" | BEST "+best;
+}
+
+string GroupedDashEventsText()
+{
+   string state=(g_pmi_seq.stateText!=""?g_pmi_seq.stateText:"NO SEQUENCE");
+   string missing=(g_pmi_seq.missingCondition!=""?g_pmi_seq.missingCondition:"none");
+   return "EVENTS "+state+" | missing "+missing+
+          " | ready "+(g_pmi_seq.entryReady?"YES":"no");
+}
+
+string GroupedDashQualityText()
+{
+   string quality=(g_quality.quality_class!=""?g_quality.quality_class:"n/a");
+   string no_trade=(g_pmi_state.noTradeReason!=""?g_pmi_state.noTradeReason:"none");
+   return "QUALITY "+quality+" | confluence "+DoubleToString(g_pmi_state.confluenceScore,1)+
+          "/100 | setup "+DoubleToString(g_pmi_state.setupQuality,1)+"/100 | blocker "+no_trade;
+}
+
+string GroupedDashCoreText()
+{
+   string s="CORE "+QA_CoreStatus()+" | "+g_qa_core.reason;
+   // g_final_why is published only by the existing final-verdict path.
+   if(g_final_why!="") s+=" | final "+g_final_why;
+   if(InpUnifiedDecision) s+=" | UD "+IntegerToString(g_ud.score)+"/100 "+g_ud.reasons;
+   return s;
+}
+
+string GroupedDashBuySellText(const int side,int &state)
+{
+   state=0;
+   if(side>0)
+   {
+      if(g_qa_core.direction>0 || g_final_signal==1) state=2;
+      else if((g_alert_primary.valid && g_alert_primary.direction>0) ||
+              (g_alert_opposite.valid && g_alert_opposite.direction>0)) state=1;
+   }
+   else
+   {
+      if(g_qa_core.direction<0 || g_final_signal==-1) state=2;
+      else if((g_alert_primary.valid && g_alert_primary.direction<0) ||
+              (g_alert_opposite.valid && g_alert_opposite.direction<0)) state=1;
+   }
+   SAlertCandidate cand;
+   cand=g_alert_primary;
+   if(!(cand.valid && cand.direction==side))
+   {
+      cand=g_alert_opposite;
+      if(!(cand.valid && cand.direction==side)) cand.valid=false;
+   }
+   string verdict=(state==2?"CONFIRMED":(state==1?"CANDIDATE (NOT ENTRY)":"no candidate"));
+   string score=(cand.valid?IntegerToString(cand.score)+"/100":"n/a");
+   string zone=(cand.valid?GroupedDashPriceText(cand.zone_lo)+"-"+GroupedDashPriceText(cand.zone_hi):"n/a");
+   string needs=(cand.valid && cand.needs!=""?cand.needs:"wait for a closed-bar Core confirmation");
+   return verdict+" | score "+score+" | zone "+zone+" | "+needs;
+}
+
+string GroupedDashWatchText(const SResolvedCorePath &path,const string core_state,const int closed)
+{
+   return core_state+" | blocker "+CoreDashBlocker(core_state,path)+
+          " | "+AlertWhyNoPopup(closed,g_buf_t[closed]);
+}
 
 //====================================================================
 // v6.5.3 (D4) PLACEHOLDER-TEXT SWEEP
@@ -33923,7 +34165,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    if(y+height>chart_h-6) y=8;
 
    string bg=PFX+"CORE_DASH_BG";
-   if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
+   GroupedDashEnsureRect(bg);
    ObjectSetInteger(0,bg,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,x);
    ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,y);
@@ -33940,7 +34182,7 @@ void DrawQuantumDashboard(const int total,const double &c[])
    for(int i=0;i<ln;i++)
    {
       string name=PFX+"CORE_DASH_ROW_"+IntegerToString(i);
-      if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
+      GroupedDashEnsureLabel(name);
       ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
       ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+pad);
       ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+pad+i*line_h);
@@ -33970,6 +34212,158 @@ void DrawQuantumDashboard(const int total,const double &c[])
    g_dash_x=x;
    g_dash_y=y;
    g_dash_h=height;
+   DrawGroupedSMCDashboard(total,c);
+}
+void DrawGroupedSMCDashboard(const int total,const double &c[])
+{
+   if(!QSMC_PaintAllowed()) return;
+   if(!InpShowAIDashboard) return;
+   int closed=total-2;
+   if(closed<1 || closed>=ArraySize(c) || closed>=ArraySize(g_buf_t)) return;
+
+   SResolvedCorePath path;
+   ResolveCoreCausalPath(closed,path);
+   int core_dir=CoreDashDirection(path);
+   string core_state=CoreDashState(path,core_dir);
+   bool direction_conflict=false;
+   string market_direction=GroupedDashMarketDirection(direction_conflict);
+   string data_text=GroupedDashDataText();
+   color data_col=clrLimeGreen;
+   if(StringFind(data_text,"DATA_WAITING")==0) data_col=clrOrange;
+   else if(StringFind(data_text,"SNIPER ZONE ENGINE OFF")>=0) data_col=clrSilver;
+   else if(StringFind(data_text,"optional HTF still loading")>=0) data_col=clrGold;
+
+   int buy_state=0;
+   int sell_state=0;
+   string buy_text=GroupedDashBuySellText(1,buy_state);
+   string sell_text=GroupedDashBuySellText(-1,sell_state);
+   color buy_col=(buy_state==2?clrLimeGreen:(buy_state==1?clrOrange:clrSilver));
+   color sell_col=(sell_state==2?clrLightCoral:(sell_state==1?clrOrange:clrSilver));
+
+   int cap=24;
+   string lines[];
+   color cols[];
+   ArrayResize(lines,cap);
+   ArrayResize(cols,cap);
+   int ln=0;
+   ScenarioDashAdd(lines,cols,ln,cap,
+      "GROUPED SMC | "+_Symbol+" "+EnumToString((ENUM_TIMEFRAMES)_Period)+
+      " | "+GroupedDashPriceText(c[closed])+" | display only (NOT ENTRY)",clrAqua);
+   ScenarioDashAdd(lines,cols,ln,cap,data_text,data_col);
+   ScenarioDashAdd(lines,cols,ln,cap,"MARKET CONTEXT",clrDodgerBlue);
+   ScenarioDashAdd(lines,cols,ln,cap,GroupedDashContextText(market_direction),clrSilver);
+   ScenarioDashAdd(lines,cols,ln,cap,"LIQUIDITY ANALYSIS",clrDodgerBlue);
+   ScenarioDashAdd(lines,cols,ln,cap,GroupedDashLiquidityText(),clrSilver);
+   ScenarioDashAdd(lines,cols,ln,cap,GroupedDashSweepText(),clrSilver);
+   ScenarioDashAdd(lines,cols,ln,cap,"MARKET STRUCTURE",clrDodgerBlue);
+   ScenarioDashAdd(lines,cols,ln,cap,GroupedDashStructureText(path,core_state,closed),clrSilver);
+   ScenarioDashAdd(lines,cols,ln,cap,"ZONE ANALYSIS",clrDodgerBlue);
+   ScenarioDashAdd(lines,cols,ln,cap,GroupedDashZoneText(),clrSilver);
+   ScenarioDashAdd(lines,cols,ln,cap,"SIGNAL ENGINE",clrDodgerBlue);
+   ScenarioDashAdd(lines,cols,ln,cap,GroupedDashEventsText(),clrSilver);
+   ScenarioDashAdd(lines,cols,ln,cap,GroupedDashQualityText(),clrSilver);
+   ScenarioDashAdd(lines,cols,ln,cap,GroupedDashCoreText(),clrSilver);
+   ScenarioDashAdd(lines,cols,ln,cap,"BUY",clrDodgerBlue);
+   ScenarioDashAdd(lines,cols,ln,cap,buy_text,buy_col);
+   ScenarioDashAdd(lines,cols,ln,cap,"SELL",clrDodgerBlue);
+   ScenarioDashAdd(lines,cols,ln,cap,sell_text,sell_col);
+   ScenarioDashAdd(lines,cols,ln,cap,"WATCH",clrDodgerBlue);
+   ScenarioDashAdd(lines,cols,ln,cap,GroupedDashWatchText(path,core_state,closed),clrOrange);
+
+   int rows_total=ln;
+   string tooltip="GROUPED SMC DASHBOARD | display only - NOT an entry, NOT F7, NOT Strategy Tester.\n";
+   tooltip+="اتجاه السوق · Swing High/Low · Premium/Discount\n";
+   tooltip+="EQH · EQL · PDH · PDL · Liquidity Sweep\n";
+   tooltip+="Displacement · BOS · MSS\n";
+   tooltip+="FVG · Order Block · FVG + OB\n";
+   tooltip+="تقييم السياق والأحداث وجودة الإعداد = context + events + setup-quality assessment\n";
+   tooltip+="DATA_WAITING is the 4806 indicator-not-ready condition, NOT a short-history bug: open W1/D1/H4/H1 once, raise Max bars in chart, wait 2-3 min, then read the panel; recovery is silent.\n";
+   tooltip+="Sections read existing Core/PMI/ZRE/RXN state. No buffer, plot, input, enum, preset or execution rule is changed.\n";
+   tooltip+="Primary: "+(g_alert_primary_tooltip==""?"none":g_alert_primary_tooltip)+"\n";
+   tooltip+="Context: "+g_alert_context_text+"\n";
+   tooltip+="Core chain: "+CoreDashChain(path,core_state,closed)+"\n";
+   tooltip+="Confluence detail: "+g_pmi_confluence_detail+"\n";
+   for(int i=0;i<rows_total;i++) tooltip+="\n"+lines[i];
+
+   int chart_w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+   int chart_h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   if(chart_w<=0) chart_w=800;
+   if(chart_h<=0) chart_h=600;
+   int panel_font=(InpPanelFontSize>0?InpPanelFontSize:(InpDashboardFullWidth?9:8));
+   panel_font=(int)MathMax(7,MathMin(10,panel_font));
+   int pad=6;
+   int line_h=panel_font+5;
+   int available=(chart_h-g_dash_y-g_dash_h-18-2*pad)/line_h;
+   int max_visible=(int)MathMax(8,MathMin(cap-1,available));
+   if(ln>max_visible)
+   {
+      int hidden_rows=ln-max_visible;
+      ln=max_visible;
+      if(ln<cap)
+      {
+         lines[ln]="... +"+IntegerToString(hidden_rows)+" more (hover)";
+         cols[ln]=clrDimGray;
+         ln++;
+      }
+   }
+
+   int text_w=0;
+   for(int i=0;i<ln;i++)
+      text_w=(int)MathMax(text_w,TextWidthPx(lines[i],"Consolas",panel_font,false));
+   int cap_px=(InpDashboardMaxWidthPx>0?InpDashboardMaxWidthPx:430);
+   int cap_pct=(int)(chart_w*2/5);
+   int safe_w=SafeLeftPanelWidth();
+   if(safe_w<=0) safe_w=chart_w-16;
+   int width=(int)MathMin(safe_w,MathMin(cap_px,cap_pct));
+   width=(int)MathMax(210,MathMin(width,text_w+2*pad+6));
+   width=(int)MathMin(width,chart_w-16);
+   int height=ln*line_h+2*pad;
+   int x=8;
+   UpdateTradeLevelKeepOut();
+   int y0=g_dash_y+g_dash_h+6;
+   int y=AvoidTradeLevelKeepOut(y0,height,true);
+   if(y+height>chart_h-6) y=8;
+
+   string bg=PFX+"CORE_DASH_GRP_BG";
+   GroupedDashEnsureRect(bg);
+   ObjectSetInteger(0,bg,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,x);
+   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,y);
+   ObjectSetInteger(0,bg,OBJPROP_XSIZE,width);
+   ObjectSetInteger(0,bg,OBJPROP_YSIZE,height);
+   ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,(color)0x0C0C12);
+   ObjectSetInteger(0,bg,OBJPROP_BORDER_TYPE,BORDER_FLAT);
+   ObjectSetInteger(0,bg,OBJPROP_COLOR,clrDimGray);
+   ObjectSetInteger(0,bg,OBJPROP_WIDTH,1);
+   ObjectSetInteger(0,bg,OBJPROP_BACK,false);
+   ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,bg,OBJPROP_SELECTED,false);
+   ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,bg,OBJPROP_ZORDER,20);
+   ObjectSetString(0,bg,OBJPROP_TOOLTIP,tooltip);
+   for(int i=0;i<ln;i++)
+   {
+      string name=PFX+"CORE_DASH_GRP_ROW_"+IntegerToString(i);
+      GroupedDashEnsureLabel(name);
+      ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+      ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+pad);
+      ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+pad+i*line_h);
+      ObjectSetString(0,name,OBJPROP_TEXT,lines[i]);
+      ObjectSetString(0,name,OBJPROP_FONT,
+         ((cols[i]==clrDodgerBlue || cols[i]==clrAqua)?"Consolas Bold":"Consolas"));
+      ObjectSetInteger(0,name,OBJPROP_FONTSIZE,panel_font);
+      ObjectSetInteger(0,name,OBJPROP_COLOR,cols[i]);
+      ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
+      ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+      ObjectSetInteger(0,name,OBJPROP_ZORDER,21);
+      ObjectSetString(0,name,OBJPROP_TOOLTIP,tooltip);
+   }
+   for(int i=ln;i<cap;i++)
+   {
+      string stale=PFX+"CORE_DASH_GRP_ROW_"+IntegerToString(i);
+      if(ObjectFind(0,stale)>=0) ObjectDelete(0,stale);
+   }
 }
 
 

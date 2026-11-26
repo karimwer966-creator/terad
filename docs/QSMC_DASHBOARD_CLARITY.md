@@ -62,6 +62,46 @@ engine's existing eligibility; if the macro direction display is mixed, the
 card downgrades its wording to `LOCAL READY / DIRECTION MIXED - WAIT`. The
 existing authoritative signal lifecycle remains the only signal authority.
 
+## Grouped SMC explainability panel (display-only addendum)
+
+A second, **display-only** card is drawn below the compact decision card. It
+groups the facts an operator was already collecting from tooltips into six
+headings: `MARKET CONTEXT`, `LIQUIDITY ANALYSIS`, `MARKET STRUCTURE`,
+`ZONE ANALYSIS`, `SIGNAL ENGINE`, and the three verdict rows `BUY`, `SELL`,
+`WATCH`. The rows read existing Core / PMI / ZRE / RXN / MTF-Sniper state; they
+do not publish a buffer, plot, input, enum, preset, alert, order or gate. The
+`BUY` and `SELL` rows say `CONFIRMED`, `CANDIDATE (NOT ENTRY)` or `no
+candidate`; `WATCH` names the Core state, its blocker and the existing
+`AlertWhyNoPopup()` reason. `CONFIRMED` is a read-only mirror of the published
+Core buffer / resolver verdict, never an entry authorization.
+
+The panel degrades gracefully while higher-timeframe indicator handles are
+still calculating. When `g_sniper_data_ready` is false, the second row starts
+with `DATA_WAITING` and prints the existing `g_sniper_data_status` reason plus
+the not-ready `ATR_*` / `ADX_H1` handles. This is the `4806` "indicator data
+not ready" condition, **not** a short-history bug and not proof that the EA
+reader failed. The tooltip says what to do: open `W1 / D1 / H4 / H1` once,
+raise `Max bars in chart`, wait two to three minutes, then read the panel;
+successful recovery is silent. When the risk inputs are aligned but optional
+HTF volatility is still loading, the row reads `DATA_READY (risk inputs
+aligned) | optional HTF still loading: ...`. With the Sniper engine switched
+off, the row says the Core/PMI rows still display.
+
+The new objects stay in the existing `PFX+"CORE_DASH_"` primary family
+(`CORE_DASH_GRP_BG` and `CORE_DASH_GRP_ROW_*`), so the clean chart profile and
+Minimal display mode already classify and allow them. Object creation is
+in-place: the two reusable `GroupedDashEnsure*()` helpers replace the two
+existing `ObjectCreate()` call sites, keeping the pinned count at 16. Rows that
+do not fit the remaining chart height collapse into a `... +N more (hover)`
+row, and every full row stays in the object tooltip. Both `nadir2.mq5` copies
+remain byte-identical and pure CRLF. No `ChartRedraw()` was added and the
+paint-slice guard is unchanged.
+
+This grouped panel is explainability only: it cannot arm live trading, change
+CE's dry-run default, approve AUD-03/04/05, or replace the authoritative signal
+lifecycle. F7 / MetaEditor compilation, Strategy Tester, broker ticks, a
+live/demo MT5 run and 24-hour paper observation remain operator-only evidence.
+
 MetaEditor is not available in the repository test environment. Run
 `python3 tools/test_dashboard_clarity.py`, `python3 tools/static_check.py`, and the
 QSMC contract tests; then open `nadir2.mq5` in MetaEditor and compile with F7
