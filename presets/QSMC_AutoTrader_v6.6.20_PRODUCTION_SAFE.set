@@ -50,6 +50,10 @@ InpMaxAggregateRiskPercent=1.00
 InpResetBreakersAtInit=false
 
 InpPinTimeframeMinutes=15
+; v6.6.25 (F): timeframe-pin idle mode, state kept on chart change, TRADE_EVENT lines - all OFF = v6.6.24 behaviour
+InpPinIdleOnMismatch=false
+InpKeepStateOnChartChange=false
+InpLogTradeEvents=false
 InpPinIndicatorDefaults=true
 ; ---- core -------------------------------------------------------------
 InpMagic=20261027

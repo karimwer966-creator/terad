@@ -362,6 +362,9 @@ input double InpMaxAccountDrawdownPct= 3.00;   // halt all new entries when equi
 input int    InpStopAfterConsecLoss  = 2;      // halt new entries after this many losing closes in a row (0 = off)
 input bool   InpResetBreakersAtInit  = false;  // SAFETY RESET: when true at EA attach, clears persisted day/session breaker state for this (login, magic, symbol) and re-captures a fresh baseline. Logs RESET_REASON. MEANT FOR OPERATOR USE AFTER REVIEW — does NOT auto-clear on TF change or mid-session reload.
 input int    InpPinTimeframeMinutes  = 15;     // TIMEFRAME PIN: 0 = off. 15 = this EA only runs on an M15 chart (the QSMC profile timeframe) and refuses any other. It never switches the chart itself.
+input bool   InpPinIdleOnMismatch    = false;  // v6.6.25 (F): on a chart that is NOT the pinned timeframe stay attached but IDLE (no signal read, no order) with ONE rate-limited warning naming the required timeframe, and resume by itself when the chart returns to it. false = legacy: refuse init (MT5 then removes the EA)
+input bool   InpKeepStateOnChartChange = false; // v6.6.25 (F): on a chart symbol/timeframe change (deinit reason 3) keep this EA's terminal-global seen-keys and ladder memory instead of running the housekeeping purge. false = legacy purge on every deinit
+input bool   InpLogTradeEvents       = false;  // v6.6.25 (F): one [QSMC_AT] TRADE_EVENT line per account deal (ANY magic - own, manual or foreign) and per own request: BUY/SELL, symbol, volume, price, SL, TP, comment, magic, retcode
 input int    InpMaxDataAgeSeconds    = 30;     // refuse entries when the last tick is older than this (stale feed / disconnect); 0 = off
 input int    InpMaxSignalAgeBars     = 1;      // ignore a signal older than this many closed bars
                                                // 1 = only the bar that just closed. 2 is the shipped
@@ -4298,6 +4301,11 @@ bool PinnedTimeframeMatches()
    return (PeriodSeconds(_Period)==(long)InpPinTimeframeMinutes*60);
   }
 
+//--- v6.6.25 (F, InpPinIdleOnMismatch): idle-mode state. EA globals survive an
+//--- OnDeinit/OnInit pair on a chart change, so OnInit sets both explicitly.
+bool     g_pin_idle      = false;   // attached on a non-pinned timeframe, doing nothing
+datetime g_pin_warn_last = 0;       // wall-clock time of the last idle warning
+
 string TimeframePinLabel(const int minutes)
   {
    switch(minutes)
@@ -4311,6 +4319,26 @@ string TimeframePinLabel(const int minutes)
       case 1440: return "D1";
      }
    return IntegerToString(minutes)+" minutes";
+  }
+
+// v6.6.25 (F): the ONE warning of idle mode. It names the timeframe the EA needs,
+// says what is (not) happening, and how to resume - printed at most every 300 s.
+string TimeframePinIdleNotice()
+  {
+   return ("[QSMC_AT] TIMEFRAME PIN IDLE: this EA needs "+TimeframePinLabel(InpPinTimeframeMinutes)+
+           " but this chart is "+EnumToString((ENUM_TIMEFRAMES)_Period)+
+           ". It stays attached but IDLE: no signal is read, no order is sent, open positions keep"+
+           " their server-side SL/TP. Switch the chart to "+TimeframePinLabel(InpPinTimeframeMinutes)+
+           " and it resumes by itself (InpPinIdleOnMismatch=true; next reminder in 300 s).");
+  }
+
+void TimeframePinIdleWarn()
+  {
+   if(!g_pin_idle) return;
+   datetime now=TimeLocal();
+   if(g_pin_warn_last>0 && now-g_pin_warn_last<300) return;
+   g_pin_warn_last=now;
+   Print(TimeframePinIdleNotice());
   }
 
 string TimeframePinRefusal()
@@ -4498,8 +4526,22 @@ int OnInit()
      }
    // The pin is enforced BEFORE any indicator handle is requested, so a chart on
    // the wrong timeframe cannot even create a second data stream.
+   g_pin_idle=false;
+   g_pin_warn_last=0;
    if(!PinnedTimeframeMatches())
      {
+      // v6.6.25 (F): optional IDLE mode. MT5 removes an EA whose OnInit fails, so
+      // after a timeframe flip the legacy refusal leaves the chart with no EA at
+      // all, even when the operator flips back. Idle mode stays attached, requests
+      // no indicator handle (the pin still precedes iCustom), never trades, and
+      // warns with the required timeframe until the chart returns to it.
+      if(InpPinIdleOnMismatch)
+        {
+         g_pin_idle=true;
+         TimeframePinIdleWarn();
+         EventSetTimer(InpPollSeconds);
+         return INIT_SUCCEEDED;
+        }
       Print(TimeframePinRefusal());
       return INIT_PARAMETERS_INCORRECT;
      }
@@ -5099,8 +5141,16 @@ void OnDeinit(const int reason)
    //--- R1: close the CSV handle. Rows already written are flushed by FileClose.
    JournalClose();
    EventKillTimer();
-   PurgeStaleSignalGlobals();   // do not leave a year of seen-keys behind
-   PurgeLadderGlobals();        // and no dead ticket memory either
+   // v6.6.25 (F): a chart symbol/timeframe change is not a goodbye - the same EA is
+   // initialised again a moment later. With InpKeepStateOnChartChange the purge is
+   // skipped on that one reason, so a ladder key can never be dropped because a
+   // position was transiently unselectable during the change. OFF: legacy purge.
+   bool keep_state=(InpKeepStateOnChartChange && reason==REASON_CHARTCHANGE);
+   if(keep_state)
+      Print("[QSMC_AT] chart symbol/timeframe change (deinit reason 3): seen-keys and ladder memory kept",
+            " (InpKeepStateOnChartChange=true); the next OnInit restores them");
+   if(!keep_state) PurgeStaleSignalGlobals();   // do not leave a year of seen-keys behind
+   if(!keep_state) PurgeLadderGlobals();        // and no dead ticket memory either
    if(g_handle!=INVALID_HANDLE)
      {
       IndicatorRelease(g_handle);
@@ -5121,6 +5171,7 @@ void OnTick()
    // TIMEFRAME PIN: a chart timeframe change re-runs OnInit,, but a pin edited at
    // runtime (or a profile that changes the period) must not leave the EA
    // trading a stream it was not reviewed for. One cheap integer compare.
+   if(g_pin_idle) TimeframePinIdleWarn();   // v6.6.25 (F): rate-limited, idle mode only
    if(!PinnedTimeframeMatches()) return;
    DayGuardUpdate();
    SessionGuardUpdate();
@@ -5135,6 +5186,7 @@ void OnTick()
 
 void OnTimer()
   {
+   if(g_pin_idle) TimeframePinIdleWarn();   // v6.6.25 (F): rate-limited, idle mode only
    if(!PinnedTimeframeMatches()) return;
    // The timer keeps the EA responsive on a quiet symbol where no tick arrives
    // for minutes; it reads the same closed-bar buffers, so it adds no new signal.
@@ -5147,6 +5199,84 @@ void OnTimer()
    //--- this EA, so the row is reconstructed from history here, after the
    //--- management loop, where the position selection is free.
    JournalWatchScan();
+  }
+//+------------------------------------------------------------------+
+//| v6.6.25 (F) TRADE_EVENT audit lines - InpLogTradeEvents (OFF).    |
+//|                                                                   |
+//| The 2026-11-27 journal shows TRADE_EVENT lines for deals at       |
+//| 02:05-05:17 and 11:34/11:55 (retcode 10009) whose direction and   |
+//| owner cannot be read from the line, and their producer is not in  |
+//| this repository. With the switch ON this EA prints one complete,  |
+//| attributable line per deal on the ACCOUNT (MT5 delivers DEAL_ADD  |
+//| for every deal, whoever sent it) and per request THIS EA sent     |
+//| (MT5 delivers REQUEST only to the sender). Log-only: nothing here |
+//| touches an order, a position or a guard.                          |
+//+------------------------------------------------------------------+
+string TradeEventDealSide(const long deal_type)
+  {
+   if(deal_type==(long)DEAL_TYPE_BUY)  return "BUY";
+   if(deal_type==(long)DEAL_TYPE_SELL) return "SELL";
+   return EnumToString((ENUM_DEAL_TYPE)deal_type);
+  }
+
+string TradeEventOrderSide(const ENUM_ORDER_TYPE order_type)
+  {
+   if(order_type==ORDER_TYPE_BUY || order_type==ORDER_TYPE_BUY_LIMIT ||
+      order_type==ORDER_TYPE_BUY_STOP || order_type==ORDER_TYPE_BUY_STOP_LIMIT) return "BUY";
+   if(order_type==ORDER_TYPE_SELL || order_type==ORDER_TYPE_SELL_LIMIT ||
+      order_type==ORDER_TYPE_SELL_STOP || order_type==ORDER_TYPE_SELL_STOP_LIMIT) return "SELL";
+   return EnumToString(order_type);
+  }
+
+string TradeEventOwner(const long magic)
+  {
+   if(magic==(long)InpMagic) return "this EA";
+   if(magic==0) return "manual/terminal";
+   return "FOREIGN";
+  }
+
+void OnTradeTransaction(const MqlTradeTransaction &trans,const MqlTradeRequest &request,const MqlTradeResult &result)
+  {
+   if(!InpLogTradeEvents) return;
+   if(trans.type==TRADE_TRANSACTION_DEAL_ADD)
+     {
+      ulong d=trans.deal;
+      if(d==0 || !HistoryDealSelect(d))
+        {
+         Print("[QSMC_AT] TRADE_EVENT DEAL #",IntegerToString((long)d)," ",trans.symbol,
+               " - deal not in the history cache yet (order #",IntegerToString((long)trans.order),")");
+         return;
+        }
+      string sym=HistoryDealGetString(d,DEAL_SYMBOL);
+      int dg=(int)SymbolInfoInteger(sym,SYMBOL_DIGITS);
+      long magic=HistoryDealGetInteger(d,DEAL_MAGIC);
+      Print("[QSMC_AT] TRADE_EVENT DEAL #",IntegerToString((long)d)," ",
+            TradeEventDealSide(HistoryDealGetInteger(d,DEAL_TYPE))," ",sym,
+            " volume=",DoubleToString(HistoryDealGetDouble(d,DEAL_VOLUME),2),
+            " price=",DoubleToString(HistoryDealGetDouble(d,DEAL_PRICE),dg),
+            " sl=",DoubleToString(HistoryDealGetDouble(d,DEAL_SL),dg),
+            " tp=",DoubleToString(HistoryDealGetDouble(d,DEAL_TP),dg),
+            " entry=",EnumToString((ENUM_DEAL_ENTRY)HistoryDealGetInteger(d,DEAL_ENTRY)),
+            " reason=",EnumToString((ENUM_DEAL_REASON)HistoryDealGetInteger(d,DEAL_REASON)),
+            " order=#",IntegerToString(HistoryDealGetInteger(d,DEAL_ORDER)),
+            " position=#",IntegerToString(HistoryDealGetInteger(d,DEAL_POSITION_ID)),
+            " magic=",IntegerToString(magic)," (",TradeEventOwner(magic),")",
+            " comment='",HistoryDealGetString(d,DEAL_COMMENT),"'");
+      return;
+     }
+   if(trans.type==TRADE_TRANSACTION_REQUEST)
+     {
+      int dg=(int)SymbolInfoInteger(request.symbol,SYMBOL_DIGITS);
+      Print("[QSMC_AT] TRADE_EVENT REQUEST ",EnumToString(request.action)," ",
+            TradeEventOrderSide(request.type)," ",request.symbol,
+            " volume=",DoubleToString(request.volume,2),
+            " price=",DoubleToString(request.price,dg),
+            " sl=",DoubleToString(request.sl,dg)," tp=",DoubleToString(request.tp,dg),
+            " magic=",IntegerToString((long)request.magic)," (",TradeEventOwner((long)request.magic),")",
+            " comment='",request.comment,"'",
+            " retcode=",IntegerToString((long)result.retcode)," (",result.comment,")",
+            " order=#",IntegerToString((long)result.order)," deal=#",IntegerToString((long)result.deal));
+     }
   }
 //+------------------------------------------------------------------+
 
