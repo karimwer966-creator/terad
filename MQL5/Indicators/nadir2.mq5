@@ -21640,8 +21640,9 @@ int TopDownPickTarget(const double &cands[],const string &labels[],const int n,
 bool QSMC_WeakPolicyAllows(const STradeSetup &setup,string &why)
 {
    why="";
-   int closed=g_rates_total-2;
-   datetime boundary=(closed>=0 && closed+1<ArraySize(g_buf_t) ? g_buf_t[closed+1] : 0);
+   int decision_closed=g_rates_total-2;
+   datetime boundary=(decision_closed>=0 && decision_closed+1<ArraySize(g_buf_t) ?
+                      g_buf_t[decision_closed+1] : 0);
    int need=(setup.is_buy ? 1 : -1);
    int h1=H1StructureBiasAsOf(boundary);
    if(h1!=need)
@@ -35686,6 +35687,7 @@ void TopDown_Evaluate()
    // chosen target is handed to the legacy check below as its only candidate.
    if(InpTargetLiquidityAware)
    {
+      double la_floor=InpTopDownMinRR;   // the SAME hard floor - never lowered
       double lc[];
       string ls[];
       int lcap=nc+ArraySize(g_liquidity);
@@ -35702,7 +35704,7 @@ void TopDown_Evaluate()
          lc[ln]=lp; ls[ln]=(d1_dir>0 ? "EQH liquidity pool" : "EQL liquidity pool"); ln++;
       }
       string skipped="";
-      int pick=TopDownPickTarget(lc,ls,ln,entry,risk,d1_dir,InpTopDownMinRR,skipped);
+      int pick=TopDownPickTarget(lc,ls,ln,entry,risk,d1_dir,la_floor,skipped);
       if(pick>=0)
       {
          cands[0]=lc[pick];
@@ -35710,12 +35712,12 @@ void TopDown_Evaluate()
       }
       else
       {
-         double need_atr=(atr15>0.0 ? InpTopDownMinRR*risk/atr15 : 0.0);
+         double need_atr=(atr15>0.0 ? la_floor*risk/atr15 : 0.0);
          double mult=MathCeil(need_atr*2.0-1e-9)/2.0;
          if(atr15<=0.0 || mult>8.0)
          {
             TopDown_Fail(StringFormat("M5 liquidity-aware: no target pays R:R %.2f (%s) and the ATR projection needs %.1f x ATR15 (cap 8.0)",
-                                      InpTopDownMinRR,(skipped=="" ? "no candidates" : "skipped "+skipped),mult));
+                                      la_floor,(skipped=="" ? "no candidates" : "skipped "+skipped),mult));
             return;
          }
          cands[0]=(d1_dir>0 ? entry+mult*atr15 : entry-mult*atr15);

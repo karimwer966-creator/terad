@@ -494,7 +494,7 @@ DELTA = {
     "AccountInfoDouble(": 2,      # 1 before + 1
     "AccountInfoString(": 2,      # 1 before + 1
     "PA_ZoneAt(": 7,              # 6 -> 7: the AUDIT-SC1 edge leg reuses the same single zone scan
-    "InpTopDownMinRR": 7,         # 4 before + 3 (the reused hard R:R floor)
+    "InpTopDownMinRR": 8,         # 4 before + 3 (the reused hard R:R floor) + 1 v6.6.25 liquidity-aware TP1 alias (same floor, never lowered)
     "InpSniperMaxRiskPct": 3,     # 2 before + 1 (the reused risk percentage)
     # untouched: no new call into ANY scoring system
     "ScoreStructure(": 6, "ScoreLiquidity(": 5, "ScoreSession(": 5, "ScoreHTF(": 3,
