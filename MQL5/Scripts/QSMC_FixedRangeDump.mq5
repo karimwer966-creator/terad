@@ -46,7 +46,7 @@
 //+------------------------------------------------------------------+
 #property strict
 #property script_show_inputs
-#property version "6.624"
+#property version "6.625"
 #property description "Diagnostic-only fixed-range closed-bar dump of nadir2 buffers 0..25"
 
 #include <QSMC/QSMC_OpportunityFunnel.mqh>

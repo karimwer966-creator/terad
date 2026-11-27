@@ -1,4 +1,43 @@
 //+------------------------------------------------------------------+
+//| v6.6.25 MISSED-TRADE FIXES - 2026-11-27 XAUUSD M15 Asia rally     |
+//| (3562-3570 range, vertical leg to ~3684, no CORE signal). Root    |
+//| causes and evidence: docs/MISSED_TRADE_2026-11-27_HYPOTHESES.md.  |
+//| EVERY switch below defaults OFF; with all of them OFF this file   |
+//| computes exactly what v6.6.24 computed (buffers 0-25, journal,    |
+//| CSV, causal fingerprint, logs).                                   |
+//|                                                                   |
+//| InpRearmStructureAfterBreak  (false)                              |
+//| InpRearmStructureBars        (5)                                  |
+//|   B. After a BOS/MSS/CHoCH consumes the swing reference, arm a    |
+//|   PROVISIONAL reference K closed bars later = highest high /      |
+//|   lowest low of bars B+1..B+K. A confirmed fractal always         |
+//|   replaces it. Classification unchanged; incremental == full.     |
+//| InpAllowContinuationChain    (false)                              |
+//| InpSweepToStructureMaxBarsContinuation (12)                       |
+//|   C. A with-trend BOS with NO qualifying sweep may form a         |
+//|   CONTINUATION chain: leg origin in [BOS-12, BOS-2], impulse body |
+//|   >= InpDisplacementATR x ATR, unmitigated OB / unfilled FVG      |
+//|   bound to that impulse, H1 structure bias (as of the BOS close)  |
+//|   agrees. A reversal chain always wins. Tagged CONTINUATION in    |
+//|   the log, GateAudit, SigLog CSV (causal_chain=P(CONTINUATION))   |
+//|   and export buffer 26 (0 off/none, 1 REVERSAL, 2 CONTINUATION).  |
+//| InpTargetLiquidityAware      (false)                              |
+//|   D. Top-down TP1 = nearest liquidity pool / swing / half-ATR15   |
+//|   multiple (<= 8) that PAYS InpTopDownMinRR; WEAK only when the   |
+//|   H1 bias agrees AND Asia/London AND RR1 >= InpWeakSignalMinRR.   |
+//|   No RR floor is lowered; WEAK still needs InpAllowWeakSignals.   |
+//| InpWarmupWaitHTFData         (false)                              |
+//|   E. While the Sniper HTF buffers (ADX_H1, ATR W1..M30) are not   |
+//|   DATA_READY the CORE evaluation is deferred and logged WARMUP    |
+//|   (quality class WARMUP, not NO_SETUP); the same closed bar is    |
+//|   re-evaluated as soon as they are ready.                         |
+//| InpLogCompactBarLine         (false)                              |
+//|   G. One [BAR] line per closed bar: structure refs + last break,  |
+//|   chain hops + kind, top-down verdict, RR1, first failing gate.   |
+//| Execution-side switches (F) are in MQL5/Experts/QSMC_AutoTrader.  |
+//| Compiled with MetaEditor: NOT RUN in this environment (press F7). |
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //| v6.6.9 ONE CAUSAL ZONE ROLE / SIGNAL DIRECTION FIX             |
 //| Support vs resistance is resolved from ONE closed-bar fact -   |
 //| the same one the arbiter registry publishes - so a level that  |
@@ -611,7 +650,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.624"
+#property version   "6.625"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -622,7 +661,7 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.15).
-#define QSMC_VERSION_TEXT "v6.6.24"
+#define QSMC_VERSION_TEXT "v6.6.25"
 #property indicator_chart_window
 #property indicator_buffers 27   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21), 26 CORE chain kind (v6.6.25)
 #property indicator_plots   7

@@ -133,9 +133,24 @@
 //|  InpMinReliability" without opening a single chart. The codes are |
 //|  the DIAG_TABLE block below; it is shared verbatim with nadir2    |
 //|  and checked by tools/test_diag_bridge.py.                        |
+//|                                                                   |
+//|  v6.6.25 SWITCHES (all default OFF = v6.6.24 behaviour)           |
+//|  ------------------------------------------------------           |
+//|  InpPinIdleOnMismatch (false): on a chart that is not the pinned  |
+//|    timeframe stay attached but IDLE - no indicator handle, no     |
+//|    signal, no order - with one warning naming the required        |
+//|    timeframe at most every 300 s; resume on the pinned timeframe. |
+//|    OFF: refuse init (MT5 removes the EA, legacy).                 |
+//|  InpKeepStateOnChartChange (false): on deinit reason 3 (chart     |
+//|    symbol/timeframe change) keep the seen-keys and ladder memory  |
+//|    instead of purging them. OFF: purge on every deinit (legacy).  |
+//|  InpLogTradeEvents (false): one TRADE_EVENT line per deal on the  |
+//|    account (any magic: this EA / manual / FOREIGN) and per request|
+//|    this EA sent - BUY/SELL, symbol, volume, price, SL, TP, entry, |
+//|    reason, order, position, magic, comment, retcode. Log-only.    |
 //+------------------------------------------------------------------+
 #property copyright "KLJ / QSMC"
-#property version   "6.624"
+#property version   "6.625"
 #property description "Companion execution EA for QSMC. Default: DEMO armed, REAL disarmed."
 #property strict
 // iCustom uses a name input, so the tester cannot infer this dependency.
@@ -4962,7 +4977,7 @@ int OnInit()
    double eff_daily=EffectiveDailyPercent();
    double eff_dd=EffectiveDDPct();
 
-   Print("[QSMC_AT] QSMC v6.624 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
+   Print("[QSMC_AT] QSMC v6.625 execution companion ON | ",_Symbol," ",EnumToString((ENUM_TIMEFRAMES)_Period),
          " | magic ",IntegerToString(InpMagic),
          " | mode ",(InpLotMode==QSMC_LOT_FIXED ? "FIXED" : "RISK%"),
          " risk ",(InpLotMode==QSMC_LOT_FIXED

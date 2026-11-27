@@ -669,7 +669,7 @@ check(upd.count(".met) LogLifecycle") == 5, "C every logged row is a MET row")
 # D. NOTHING EXISTING WAS MODIFIED (pure function of the file)
 # =====================================================================
 code_only = strip_comments(TEXT)
-check(TEXT.count('#property version   "6.624"') == 1, "D the version property is 6.624 (v6.6.24 audit release)")
+check(TEXT.count('#property version   "6.625"') == 1, "D the version property is 6.625 (v6.6.25 missed-trade fixes release)")
 check(len(re.findall(r'(?m)^#property indicator_buffers\s+27\b', TEXT)) == 1,
       "D indicator_buffers is 27 (21 shipped + 5 classification v6.6.21 + 1 chain kind v6.6.25)")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,

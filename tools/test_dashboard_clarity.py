@@ -159,7 +159,7 @@ checks["grouped panel keeps full rows in the hover tooltip"] = (
     "OBJPROP_TOOLTIP" in text
 )
 checks["grouped panel adds no input, header, object-create or redraw site"] = (
-    sum(1 for line in text.splitlines() if line.startswith("input ")) == 604 and
+    sum(1 for line in text.splitlines() if line.startswith("input ")) == 612 and   # 604 + v6.6.25 group banner + 7 switches
     text.count("#include") == 8 and
     text.count("ObjectCreate(") == 16 and
     text.count("ChartRedraw(") == 3

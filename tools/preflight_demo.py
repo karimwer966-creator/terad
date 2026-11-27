@@ -31,8 +31,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXPECT_VERSION_TEXT = "v6.6.24"
-EXPECT_PROPERTY = "6.624"
+EXPECT_VERSION_TEXT = "v6.6.25"
+EXPECT_PROPERTY = "6.625"
 
 # Programs exempt from the shared version property. These two carry their own
 # version scheme by design (see tools/check_repo_layout.py OWN_VERSION).

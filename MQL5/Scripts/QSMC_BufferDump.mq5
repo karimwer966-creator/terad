@@ -24,7 +24,7 @@
 //| touches nothing the indicator owns.
 //+------------------------------------------------------------------+
 #property copyright   "QSMC"
-#property version     "6.624"
+#property version     "6.625"
 #property description "Dump CORE buffers 7..12 and classification buffers 21..25 to CSV for a build-to-build diff."
 #property script_show_inputs
 #property strict

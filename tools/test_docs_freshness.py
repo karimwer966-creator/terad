@@ -127,118 +127,118 @@ def find_def(name):
 # (label, cited_line, regex the cited line must match, optional def-of)
 ANCHORS = [
     # --- structure the doc's whole argument leans on
-    ('OnCalculate starts at L15918', 15918, r"^int OnCalculate\(", None),
-    ('#property indicator_buffers 27 at L627', 627,
+    ('OnCalculate starts at L16153', 16153, r"^int OnCalculate\(", None),
+    ('#property indicator_buffers 27 at L666', 666,
      r"^#property indicator_buffers\s+27\b", None),
-    ('#property indicator_plots 7 at L628', 628,
+    ('#property indicator_plots 7 at L667', 667,
      r"^#property indicator_plots\s+7\b", None),
-    ('enum ENUM_P3_PHASE at L756', 756, r"^enum\s+ENUM_P3_PHASE\s*$", None),
-    ('enum ENUM_WYCKOFF_EVENT at L766', 766, r"^enum\s+ENUM_WYCKOFF_EVENT\s*$", None),
-    ('struct STopDownState at L2140', 2140, r"^struct\s+STopDownState\s*$", None),
+    ('enum ENUM_P3_PHASE at L795', 795, r"^enum\s+ENUM_P3_PHASE\s*$", None),
+    ('enum ENUM_WYCKOFF_EVENT at L805', 805, r"^enum\s+ENUM_WYCKOFF_EVENT\s*$", None),
+    ('struct STopDownState at L2188', 2188, r"^struct\s+STopDownState\s*$", None),
 
     # --- reused risk constants / inputs (Phase 7's "reused, not invented" claim)
-    ('SNIPER_SL_BUFFER_ATR 0.30 at L2106', 2106,
+    ('SNIPER_SL_BUFFER_ATR 0.30 at L2154', 2154,
      r"^#define\s+SNIPER_SL_BUFFER_ATR\s+0\.30\b", None),
-    ('SNIPER_SL_HARD_MAX_H1_ATR 2.00 at L2107', 2107,
+    ('SNIPER_SL_HARD_MAX_H1_ATR 2.00 at L2155', 2155,
      r"^#define\s+SNIPER_SL_HARD_MAX_H1_ATR\s+2\.00\b", None),
-    ('SNIPER_BE_DISP_ATR 2.00 at L2108', 2108,
+    ('SNIPER_BE_DISP_ATR 2.00 at L2156', 2156,
      r"^#define\s+SNIPER_BE_DISP_ATR\s+2\.00\b", None),
-    ('SNIPER_TRAIL_M15_ATR 0.50 at L2109', 2109,
+    ('SNIPER_TRAIL_M15_ATR 0.50 at L2157', 2157,
      r"^#define\s+SNIPER_TRAIL_M15_ATR\s+0\.50\b", None),
-    ('InpUseHTFBias declared at L1283', 1283,
+    ('InpUseHTFBias declared at L1322', 1322,
      r"^input\s+.*\bInpUseHTFBias\s*=", None),
-    ('InpTopDownMinRR = 2.0 declared at L1298', 1298,
+    ('InpTopDownMinRR = 2.0 declared at L1337', 1337,
      r"^input\s+.*\bInpTopDownMinRR\s*=\s*2\.0\b", None),
-    ('InpMTEERunSelfTest declared at L1937', 1937,
+    ('InpMTEERunSelfTest declared at L1976', 1976,
      r"^input\s+.*\bInpMTEERunSelfTest\s*=", None),
-    ('InpSniperMaxRiskPct = 1.50 declared at L1947', 1947,
+    ('InpSniperMaxRiskPct = 1.50 declared at L1986', 1986,
      r"^input\s+.*\bInpSniperMaxRiskPct\s*=\s*1\.50\b", None),
-    ('InpLogLifecycleTransitions declared at L1394', 1394,
+    ('InpLogLifecycleTransitions declared at L1433', 1433,
      r"^input\s+.*\bInpLogLifecycleTransitions\s*=", None),
-    ('InpCFWeightStructure declared at L1006', 1006,
+    ('InpCFWeightStructure declared at L1045', 1045,
      r"^input\s+.*\bInpCFWeightStructure\s*=", None),
-    ('InpCFMinDisplayScore = 60 declared at L1012', 1012,
+    ('InpCFMinDisplayScore = 60 declared at L1051', 1051,
      r"^input\s+.*\bInpCFMinDisplayScore\s*=\s*60\b", None),
 
     # --- input group banners (doc 3.1-3.7)
-    ('SB1 input group at L915', 915, r"^input\s+group\s+\"====== Silver Bullet", None),
-    ('WY1 input group at L937', 937, r"^input\s+group\s+\"====== Wyckoff", None),
-    ('PA1 input group at L958', 958, r"^input\s+group\s+\"====== Pure Price Action", None),
-    ('MR1 input group at L978', 978, r"^input\s+group\s+\"====== Mean Reversion", None),
-    ('CF1 input group at L1003', 1003, r"^input\s+group\s+\"====== Confluence Engine", None),
-    ('RM1 input group at L1015', 1015, r"^input\s+group\s+\"====== Risk Model", None),
-    ('OB1 opt-in inputs at L817', 817,
+    ('SB1 input group at L954', 954, r"^input\s+group\s+\"====== Silver Bullet", None),
+    ('WY1 input group at L976', 976, r"^input\s+group\s+\"====== Wyckoff", None),
+    ('PA1 input group at L997', 997, r"^input\s+group\s+\"====== Pure Price Action", None),
+    ('MR1 input group at L1017', 1017, r"^input\s+group\s+\"====== Mean Reversion", None),
+    ('CF1 input group at L1042', 1042, r"^input\s+group\s+\"====== Confluence Engine", None),
+    ('RM1 input group at L1054', 1054, r"^input\s+group\s+\"====== Risk Model", None),
+    ('OB1 opt-in inputs at L856', 856,
      r"^input\s+.*\bInpOBUseAgeExpiry\s*=", None),
 
     # --- module sections and definitions (doc 4)
-    ('OB1 age-bound banner at L18497', 18497, r"AUDIT-OB1\s+ORDER BLOCK AGE BOUND", None),
-    ('SB1 section at L25540', 25540, r"AUDIT-SB1\s+POWER OF 3", None),
-    ('WY1 section at L26119', 26119, r"AUDIT-WY1\s+WYCKOFF", None),
-    ('PA1 section at L26558', 26558, r"AUDIT-PA1\s+PURE PRICE ACTION", None),
-    ('MR1 section at L26981', 26981, r"AUDIT-MR1\s+MEAN REVERSION", None),
-    ('CF1 section at L27582', 27582, r"AUDIT-CF1 CONFLUENCE ENGINE", None),
-    ('RM1 section at L28078', 28078, r"AUDIT-RM1 RISK MODEL", None),
-    ('P3_Update defined at L25668', 25668, r"^void\s+P3_Update\s*\(", "P3_Update"),
-    ('SB_Update defined at L25844', 25844, r"^void\s+SB_Update\s*\(", "SB_Update"),
-    ('WY_Update defined at L26308', 26308, r"^void\s+WY_Update\s*\(", "WY_Update"),
-    ('PA_Update defined at L26784', 26784, r"^void\s+PA_Update\s*\(", "PA_Update"),
-    ('MR_Update defined at L27239', 27239, r"^void\s+MR_Update\s*\(", "MR_Update"),
-    ('CF_Update defined at L27747', 27747, r"^void\s+CF_Update\s*\(", "CF_Update"),
-    ('RM_Update defined at L28307', 28307, r"^void\s+RM_Update\s*\(", "RM_Update"),
-    ('RM self-test at L28504', 28504, r"AUDIT-RM1 synthetic self-test", None),
+    ('OB1 age-bound banner at L19107', 19107, r"AUDIT-OB1\s+ORDER BLOCK AGE BOUND", None),
+    ('SB1 section at L26357', 26357, r"AUDIT-SB1\s+POWER OF 3", None),
+    ('WY1 section at L26936', 26936, r"AUDIT-WY1\s+WYCKOFF", None),
+    ('PA1 section at L27375', 27375, r"AUDIT-PA1\s+PURE PRICE ACTION", None),
+    ('MR1 section at L27798', 27798, r"AUDIT-MR1\s+MEAN REVERSION", None),
+    ('CF1 section at L28399', 28399, r"AUDIT-CF1 CONFLUENCE ENGINE", None),
+    ('RM1 section at L28895', 28895, r"AUDIT-RM1 RISK MODEL", None),
+    ('P3_Update defined at L26485', 26485, r"^void\s+P3_Update\s*\(", "P3_Update"),
+    ('SB_Update defined at L26661', 26661, r"^void\s+SB_Update\s*\(", "SB_Update"),
+    ('WY_Update defined at L27125', 27125, r"^void\s+WY_Update\s*\(", "WY_Update"),
+    ('PA_Update defined at L27601', 27601, r"^void\s+PA_Update\s*\(", "PA_Update"),
+    ('MR_Update defined at L28056', 28056, r"^void\s+MR_Update\s*\(", "MR_Update"),
+    ('CF_Update defined at L28564', 28564, r"^void\s+CF_Update\s*\(", "CF_Update"),
+    ('RM_Update defined at L29124', 29124, r"^void\s+RM_Update\s*\(", "RM_Update"),
+    ('RM self-test at L29321', 29321, r"AUDIT-RM1 synthetic self-test", None),
 
     # --- the pre-existing helpers the doc cites as reused / conflicted (doc 8)
-    ('AnalyzeClosedCandle defined at L5673', 5673,
+    ('AnalyzeClosedCandle defined at L5797', 5797,
      r"\bAnalyzeClosedCandle\s*\(", "AnalyzeClosedCandle"),
-    ('AnalyzeCandleIntelligence defined at L20729', 20729,
+    ('AnalyzeCandleIntelligence defined at L21342', 21342,
      r"\bAnalyzeCandleIntelligence\s*\(", "AnalyzeCandleIntelligence"),
-    ('MTF_SniperEvaluateEntryTriggers defined at L44859', 44859,
+    ('MTF_SniperEvaluateEntryTriggers defined at L45723', 45723,
      r"\bMTF_SniperEvaluateEntryTriggers\s*\(", "MTF_SniperEvaluateEntryTriggers"),
-    ('MTF_SniperComputeTradeManagement defined at L45012', 45012,
+    ('MTF_SniperComputeTradeManagement defined at L45876', 45876,
      r"\bMTF_SniperComputeTradeManagement\s*\(", "MTF_SniperComputeTradeManagement"),
-    ('IsFractalHigh defined at L35078', 35078, r"\bIsFractalHigh\s*\(", "IsFractalHigh"),
-    ('IsFractalLow defined at L35089', 35089, r"\bIsFractalLow\s*\(", "IsFractalLow"),
-    ('FractalRightBars defined at L24521', 24521,
+    ('IsFractalHigh defined at L35942', 35942, r"\bIsFractalHigh\s*\(", "IsFractalHigh"),
+    ('IsFractalLow defined at L35953', 35953, r"\bIsFractalLow\s*\(", "IsFractalLow"),
+    ('FractalRightBars defined at L25250', 25250,
      r"\bFractalRightBars\s*\(", "FractalRightBars"),
-    ('ScoreStructure defined at L18456', 18456,
+    ('ScoreStructure defined at L19066', 19066,
      r"^double\s+ScoreStructure\s*\(", "ScoreStructure"),
-    ('ScoreLiquidity defined at L18477', 18477,
+    ('ScoreLiquidity defined at L19087', 19087,
      r"^double\s+ScoreLiquidity\s*\(", "ScoreLiquidity"),
-    ('ScoreSession defined at L18608', 18608,
+    ('ScoreSession defined at L19218', 19218,
      r"^double\s+ScoreSession\s*\(", "ScoreSession"),
-    ('ScoreHTF defined at L18617', 18617, r"^double\s+ScoreHTF\s*\(", "ScoreHTF"),
-    ('PA_ZoneAt defined at L26714', 26714, r"\bPA_ZoneAt\s*\(", "PA_ZoneAt"),
-    ('SigLog_BufWrite defined at L14457', 14457,
+    ('ScoreHTF defined at L19227', 19227, r"^double\s+ScoreHTF\s*\(", "ScoreHTF"),
+    ('PA_ZoneAt defined at L27531', 27531, r"\bPA_ZoneAt\s*\(", "PA_ZoneAt"),
+    ('SigLog_BufWrite defined at L14587', 14587,
      r"\bSigLog_BufWrite\s*\(", "SigLog_BufWrite"),
-    ('CalculateAITradeSetup defined at L21519', 21519,
+    ('CalculateAITradeSetup defined at L22222', 22222,
      r"\bCalculateAITradeSetup\s*\(", "CalculateAITradeSetup"),
-    ('TheoreticalRiskMoney defined at L23778', 23778,
+    ('TheoreticalRiskMoney defined at L24507', 24507,
      r"\bTheoreticalRiskMoney\s*\(", "TheoreticalRiskMoney"),
-    ('TopDown_Evaluate defined at L34718', 34718,
+    ('TopDown_Evaluate defined at L35535', 35535,
      r"^void\s+TopDown_Evaluate\s*\(", "TopDown_Evaluate"),
-    ('TopDown_Update defined at L34949', 34949,
+    ('TopDown_Update defined at L35813', 35813,
      r"^void\s+TopDown_Update\s*\(", "TopDown_Update"),
-    ('existing R:R gate at L34910', 34910,
+    ('existing R:R gate at L35774', 35774,
      r"if\(rr\+1e-9<InpTopDownMinRR\)", None),
-    ('existing R:R failure message at L34912', 34912,
+    ('existing R:R failure message at L35776', 35776,
      r"R:R %\.2f below required %\.2f", None),
-    ('final_score assignments begin at L21983', 21983, r"\bfinal_score\s*=", None),
-    ('OBIsExpired called at L16188', 16188, r"\bOBIsExpired\s*\(", None),
-    ('OB1 age-bound comment at L16183', 16183, r"AUDIT-OB1 AGE BOUND", None),
+    ('final_score assignments begin at L22694', 22694, r"\bfinal_score\s*=", None),
+    ('OBIsExpired called at L16423', 16423, r"\bOBIsExpired\s*\(", None),
+    ('OB1 age-bound comment at L16418', 16418, r"AUDIT-OB1 AGE BOUND", None),
 
     # --- OnInit / self-test wiring
-    ('RM_Clear() in OnInit at L15677', 15677, r"^\s+RM_Clear\(\);", None),
-    ('SB self-test PASS (9/9) at L15691', 15691,
+    ('RM_Clear() in OnInit at L15833', 15833, r"^\s+RM_Clear\(\);", None),
+    ('SB self-test PASS (9/9) at L15847', 15847,
      r"Power-of-3 / Silver-Bullet self-test: PASS \(9/9\)", None),
-    ('WY self-test PASS (9/9) at L15695', 15695,
+    ('WY self-test PASS (9/9) at L15851', 15851,
      r"Wyckoff Spring/Upthrust self-test: PASS \(9/9\)", None),
-    ('PA self-test PASS (9/9) at L15699', 15699,
+    ('PA self-test PASS (9/9) at L15855', 15855,
      r"Pure Price Action self-test: PASS \(9/9\)", None),
-    ('MR self-test PASS (9/9) at L15703', 15703,
+    ('MR self-test PASS (9/9) at L15859', 15859,
      r"Mean-reversion / momentum self-test: PASS \(9/9\)", None),
-    ('CF self-test PASS (10/10) at L15707', 15707,
+    ('CF self-test PASS (10/10) at L15863', 15863,
      r"Confluence Engine self-test: PASS \(10/10\)", None),
-    ('RM self-test PASS (10/10) at L15711', 15711,
+    ('RM self-test PASS (10/10) at L15867', 15867,
      r"Risk model self-test: PASS \(10/10\)", None),
 ]
 
@@ -269,18 +269,18 @@ for label, cited, pat, defname in ANCHORS:
 # The doc's section 5 asserts this exact order. RM must run after CF (whose
 # verdict it attaches to) and after TopDown (whose plan it may adopt).
 ORDER = [
-    (16183, r"AUDIT-OB1 AGE BOUND", "OB age bound"),
-    (16297, r"P3_Update\(closed\);", "P3_Update"),
-    (16298, r"SB_Update\(closed\);", "SB_Update"),
-    (16302, r"WY_Update\(closed\);", "WY_Update"),
-    (16348, r"TopDown_Update\(rates_total,false\);", "TopDown_Update"),
-    (16370, r"PMI_Update\(\);", "PMI_Update"),
-    (16529, r"MVP_Update\(", "MVP_Update"),
-    (16538, r"PA_Update\(closed\);", "PA_Update"),
-    (16546, r"MR_Update\(closed,rates_total,full_indicators\);", "MR_Update"),
-    (16559, r"CF_Update\(closed,rates_total\);", "CF_Update"),
-    (16564, r"RM_Update\(closed,rates_total\);", "RM_Update"),
-    (16571, r"ZRE_Update\(", "ZRE_Update"),
+    (16418, r"AUDIT-OB1 AGE BOUND", "OB age bound"),
+    (16532, r"P3_Update\(closed\);", "P3_Update"),
+    (16533, r"SB_Update\(closed\);", "SB_Update"),
+    (16537, r"WY_Update\(closed\);", "WY_Update"),
+    (16583, r"TopDown_Update\(rates_total,false\);", "TopDown_Update"),
+    (16605, r"PMI_Update\(\);", "PMI_Update"),
+    (16786, r"MVP_Update\(", "MVP_Update"),
+    (16795, r"PA_Update\(closed\);", "PA_Update"),
+    (16803, r"MR_Update\(closed,rates_total,full_indicators\);", "MR_Update"),
+    (16816, r"CF_Update\(closed,rates_total\);", "CF_Update"),
+    (16821, r"RM_Update\(closed,rates_total\);", "RM_Update"),
+    (16828, r"ZRE_Update\(", "ZRE_Update"),
 ]
 for cited, pat, name in ORDER:
     check(re.search(pat, line_at(cited)) is not None,
@@ -323,13 +323,13 @@ check(RM_DEF < RM_GUARD < RM_DEF + 40,
 
 # ==================================================== C. dashboard tooltip guards
 GUARDS = [
-    (33945, r"InpEnableConfluence\|\|InpEnableAllModules\) && \(InpCFShowOnDashboard\|\|InpEnableAllModules", "CF"),
-    (33976, r"InpEnableRiskModel\|\|InpEnableAllModules\) && \(InpRMShowOnDashboard\|\|InpEnableAllModules", "RM"),
-    (34004, r"InpEnablePowerOf3\|\|InpEnableAllModules\) && \(InpP3ShowOnDashboard\|\|InpEnableAllModules", "P3"),
-    (34016, r"InpEnableSilverBullet\|\|InpEnableAllModules\) && \(InpSBShowOnDashboard\|\|InpEnableAllModules", "SB"),
-    (34033, r"InpEnableWyckoff\|\|InpEnableAllModules\) && \(InpWyckoffShowOnDashboard\|\|InpEnableAllModules", "WY"),
-    (34053, r"InpEnablePriceAction\|\|InpEnableAllModules\) && \(InpPAShowOnDashboard\|\|InpEnableAllModules", "PA"),
-    (34071, r"InpEnableMeanReversion\|\|InpEnableAllModules\) && \(InpMRShowOnDashboard\|\|InpEnableAllModules", "MR"),
+    (34762, r"InpEnableConfluence\|\|InpEnableAllModules\) && \(InpCFShowOnDashboard\|\|InpEnableAllModules", "CF"),
+    (34793, r"InpEnableRiskModel\|\|InpEnableAllModules\) && \(InpRMShowOnDashboard\|\|InpEnableAllModules", "RM"),
+    (34821, r"InpEnablePowerOf3\|\|InpEnableAllModules\) && \(InpP3ShowOnDashboard\|\|InpEnableAllModules", "P3"),
+    (34833, r"InpEnableSilverBullet\|\|InpEnableAllModules\) && \(InpSBShowOnDashboard\|\|InpEnableAllModules", "SB"),
+    (34850, r"InpEnableWyckoff\|\|InpEnableAllModules\) && \(InpWyckoffShowOnDashboard\|\|InpEnableAllModules", "WY"),
+    (34870, r"InpEnablePriceAction\|\|InpEnableAllModules\) && \(InpPAShowOnDashboard\|\|InpEnableAllModules", "PA"),
+    (34888, r"InpEnableMeanReversion\|\|InpEnableAllModules\) && \(InpMRShowOnDashboard\|\|InpEnableAllModules", "MR"),
 ]
 for cited, pat, name in GUARDS:
     check(re.search(pat, line_at(cited)) is not None,
@@ -396,9 +396,9 @@ check("71 new inputs" in DOC_FLAT or "**71 new inputs**" in DOC_FLAT,
       "D the doc states 71 new inputs", "phrase absent from the doc")
 
 ALL_INPUTS = len(re.findall(r"(?m)^input\s", RAW))
-check(ALL_INPUTS == 604, "D nadir2.mq5 declares `input` lines in total",
+check(ALL_INPUTS == 612, "D nadir2.mq5 declares `input` lines in total",
       "actual %d" % ALL_INPUTS)
-check("604 total" in DOC_FLAT, "D the doc states the total `input` lines",
+check("612 total" in DOC_FLAT, "D the doc states the total `input` lines",
       "phrase absent from the doc")
 
 ENUMS = len(re.findall(r"(?m)^enum\s+\w+", RAW))
@@ -419,15 +419,15 @@ check("indicator_buffers 27" in DOC_FLAT or "indicator_buffers` 27" in DOC_FLAT,
 # pair now in force - not the historical value.
 _VERSION_TEXT = re.search(r'QSMC_VERSION_TEXT\s+"(v[\d.]+)"', RAW)
 _PROP = re.search(r'#property version\s+"([\d.]+)"', RAW)
-check(_VERSION_TEXT is not None and _VERSION_TEXT.group(1) == "v6.6.24",
-      "D QSMC_VERSION_TEXT is v6.6.24 (v6.6.24 audit release); AUDIT-G1's "
+check(_VERSION_TEXT is not None and _VERSION_TEXT.group(1) == "v6.6.25",
+      "D QSMC_VERSION_TEXT is v6.6.25 (v6.6.25 missed-trade fixes release); AUDIT-G1's "
       "one-triple rule still holds",
       str(_VERSION_TEXT.group(1) if _VERSION_TEXT else None))
-check(_PROP is not None and _PROP.group(1) == "6.624",
-      "D #property version is \"6.624\" - the X.(Y+Z) form G1 requires",
+check(_PROP is not None and _PROP.group(1) == "6.625",
+      "D #property version is \"6.625\" - the X.(Y+Z) form G1 requires",
       str(_PROP.group(1) if _PROP else None))
-check("v6.6.24" in DOC_FLAT and '"6.624"' in DOC_FLAT,
-      "D the doc reports the triple in force: v6.6.24 / \"6.624\"",
+check("v6.6.25" in DOC_FLAT and '"6.625"' in DOC_FLAT,
+      "D the doc reports the triple in force: v6.6.25 / \"6.625\"",
       "the doc still states an older release as current")
 
 # six module self-tests, 9+9+9+9+10+10 = 56 in-file checks
@@ -574,18 +574,18 @@ check("arena/643314e5-terad" in DOC_FLAT and "**#15**" in DOC_FLAT,
 # Derive the real risk percentage from source rather than hard-coding "1.50":
 # a bare substring check is satisfied by InpRMNoZoneSLATR's 1.50 default too, so
 # it could not tell a deleted disclosure from a present one (mutation M05).
-_risk_m = re.search(r"\bInpSniperMaxRiskPct\s*=\s*([0-9.]+)", line_at(1947))
+_risk_m = re.search(r"\bInpSniperMaxRiskPct\s*=\s*([0-9.]+)", line_at(1986))
 _risk = _risk_m.group(1) if _risk_m else None
 check(_risk == "1.50",
-      "E source still declares InpSniperMaxRiskPct = 1.50 at L1947", str(_risk))
+      "E source still declares InpSniperMaxRiskPct = 1.50 at L1986", str(_risk))
 check("the risk percentage the module reports defaults to %s, not 1.0" % _risk
       in DOC_FLAT,
       "E the doc states the risk %% the module REPORTS defaults to %s, not 1.0" % _risk)
 check(("the reported risk percentage is **%s, not 1.0**" % _risk) in DOC_FLAT,
       "E the conflict section repeats that deviation (%s, not 1.0)" % _risk)
-check(("InpSniperMaxRiskPct` (**L1947**)" in DOC_FLAT and
+check(("InpSniperMaxRiskPct` (**L1986**)" in DOC_FLAT and
        ("| **`%s`** |" % _risk) in DOC_FLAT),
-      "E the reuse table cites InpSniperMaxRiskPct at L1947 with default %s" % _risk)
+      "E the reuse table cites InpSniperMaxRiskPct at L1986 with default %s" % _risk)
 check("InpMinRR" in DOC_FLAT and "do not exist" in DOC_FLAT,
       "E the doc still records that the brief's named inputs do not exist")
 check("+3 983 / −1" in DOC_FLAT or "+3983/−1" in DOC_FLAT,
@@ -662,7 +662,7 @@ for m in re.finditer(r"\bL(\d{3,5})\s*[\u2013\u2014-]\s*(?:L)?(\d{3,5})", DOC_TE
 # Pins this test holds that the doc legitimately does not cite, with the reason.
 # Anything added here must be justified - it is a hole in the binding.
 TEST_ONLY = {
-    16188: "the doc cites the age-bound banner (L16178), not the OBIsExpired call line",
+    16423: "the doc cites the age-bound banner (L16413), not the OBIsExpired call line",
 }
 
 pin_total = 0
