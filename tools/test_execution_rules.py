@@ -45,8 +45,12 @@ PRELUDE = r'''
 #include <cmath>
 #include <cassert>
 #include <iostream>
+#include <limits>
 using std::string;
 using datetime = long long;
+// MQL5's finiteness test. The shipped QER_SpreadOk fails closed on a quote that
+// is not a finite number (v6.6.25 AUD-03), so the harness needs the predicate.
+static bool MathIsValidNumber(double x) { return std::isfinite(x); }
 // ulong already exists as unsigned long on glibc; MQL5's ulong is the same width.
 '''
 
@@ -160,6 +164,16 @@ void ReviewConditions()
    CHECK(!QER_SpreadOk(10.0, 20, 30.0, 0.25, share), "R4 33% of the stop fails a 25% share cap");
    CHECK(QER_SpreadOk(20.0, 20, 100.0, 0.20, share), "R4 exactly on both caps passes");
    CHECK(QER_SpreadOk(10.0, 20, 0.0, 0.25, share), "R4 a zero-width stop cannot divide by zero");
+   //--- v6.6.25 (AUD-03): the cap is a real number of points, not an int cast.
+   CHECK(!QER_SpreadOk(20.9, 20, 100.0, 0.0, share),
+         "R4 a fractional spread above the cap fails (no int truncation)");
+   CHECK(QER_SpreadOk(20.9, 21, 100.0, 0.0, share),
+         "R4 the same spread passes a cap one point higher");
+   CHECK(QER_SpreadOk(10.0, 0, 100.0, 0.0, share),
+         "R4 cap 0 disables the absolute cap, as SpreadOK() does");
+   CHECK(!QER_SpreadOk(std::numeric_limits<double>::quiet_NaN(), 20, 100.0, 0.0, share),
+         "R4 a NaN quote fails closed");
+   CHECK(!QER_SpreadOk(-1.0, 20, 100.0, 0.0, share), "R4 a negative spread fails closed");
 
    //--- R5 session (the resolver's own arithmetic is covered above)
    CHECK(QER_SessionOk(true), "R5 inside");

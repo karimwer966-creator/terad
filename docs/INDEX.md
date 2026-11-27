@@ -25,6 +25,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`DEMO_AUTO_DEFAULTS_2026-11-09.md`](DEMO_AUTO_DEFAULTS_2026-11-09.md) | what the compiled defaults arm, and why |
 | [`QSMC_SCALPER_M5_RUNBOOK_AR.md`](QSMC_SCALPER_M5_RUNBOOK_AR.md) | سكالبنج M5: الإعداد، الأوقات، وحدود الخطر |
 | [`DEMO_TRIAL_RUNBOOK.md`](DEMO_TRIAL_RUNBOOK.md) | the v6.6.24 demo trial: pre-attach, week 0 dry run, weeks 1–8, stop conditions, how to read `analyze_trial.py` |
+| [`QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md`](QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md) | the two v6.6.25 steps no sandbox can do: the ten-file F7 set and the four init-log lines that prove the right build loaded, the flags-OFF buffer/CSV comparison, the R0–R5 tester matrix with rejection thresholds, and the entry-review check |
 
 ## 2. Operate and read the chart
 

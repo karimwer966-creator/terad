@@ -435,7 +435,7 @@ input double InpWeakRiskMultiplier    = 0.25;  // risk multiplier for WEAK_VALID
 input double InpModerateRiskMultiplier= 0.50;  // risk multiplier for MODERATE_VALID
 input double InpStrongRiskMultiplier  = 1.00;  // risk multiplier for STRONG_VALID
 input bool   InpOwnExecutionLane      = true;  // claim a cross-EA ownership global per signal identity; a second EA declines instead of doubling
-input bool   InpPrintEntryReview       = true;  // print the 12-line [QSMC_ENTRY_REVIEW] checklist before every order attempt
+input bool   InpPrintEntryReview       = true;  // print the 12-line [QSMC_ENTRY_REVIEW] checklist (the review itself always runs)
 //--- R1 (v6.6.24): one CSV row per execution event in
 //--- MQL5/Files/QSMC_trial_<login>.csv. Display only: a write failure
 //--- disables the journal and NEVER affects an order.
@@ -2404,6 +2404,8 @@ double PlanTP(const int shift,const double base,const bool buy)
 //| reason is the line itself - never "unknown error". This is the      |
 //| difference between an EA that refuses and an EA that fails quietly. |
 //+------------------------------------------------------------------+
+// v6.6.25 (AUD-03): "every line is printed" is what InpPrintEntryReview=true
+// does. The twelve checks themselves are not optional - see RunEntryReview().
 #define QSMC_AT_REVIEW_CHECKS 12
 
 string ReviewName(const int i)
@@ -2428,20 +2430,32 @@ string ReviewName(const int i)
 
 void ReviewLine(const int i,const bool ok,const string detail)
   {
+   if(!InpPrintEntryReview) return;   // v6.6.25 (AUD-03): the LOG is optional
    Print("[QSMC_ENTRY_REVIEW]   ",(ok?"PASS ":"FAIL "),ReviewName(i)," - ",detail);
   }
 
 // Returns the first failing check name, or "" when every check passed.
 // It prints every line either way: a review you can only see when it passes
 // is not a review.
+//
+// v6.6.25 (AUD-03 / P1): this body used to begin with
+//     if(!InpPrintEntryReview) return "";
+// so switching the LOG off switched all twelve checks off, and the call site
+// read the empty string as READY. A print input is not an execution
+// authorization. The review now always runs and InpPrintEntryReview decides
+// only whether the checklist reaches the Journal - the same split the indicator
+// already uses (QSMC_BuildEntryReview computes the verdict,
+// QSMC_PrintEntryReview prints it). tools/test_entry_review_gate.py compiles
+// these three bodies with deterministic stubs and proves the verdict is
+// identical with the switch ON and OFF for all twelve conditions.
 string RunEntryReview(const SQsigSignal &s,const string sym,const double price,
                       const double lots,const ulong opposite,const bool buy)
   {
-   if(!InpPrintEntryReview) return "";
    string first_fail="";
-   Print("[QSMC_ENTRY_REVIEW] BEGIN key=",SignalKey(s.bar_time,s.dir),
-         " ",DirText(s.dir)," ",sym," @ ",DoubleToString(price,_Digits),
-         " class=",ClassName(s.cls));
+   if(InpPrintEntryReview)
+      Print("[QSMC_ENTRY_REVIEW] BEGIN key=",SignalKey(s.bar_time,s.dir),
+            " ",DirText(s.dir)," ",sym," @ ",DoubleToString(price,_Digits),
+            " class=",ClassName(s.cls));
 
    // R1 class
    string cls_why="";
@@ -2534,8 +2548,9 @@ string RunEntryReview(const SQsigSignal &s,const string sym,const double price,
                             : "opposite position #"+IntegerToString((long)opposite)+" is live");
    if(!ok12 && first_fail=="") first_fail=ReviewName(11);
 
-   Print("[QSMC_ENTRY_REVIEW] END key=",SignalKey(s.bar_time,s.dir),
-         " verdict=",(first_fail==""?"READY":"BLOCKED by "+first_fail));
+   if(InpPrintEntryReview)
+      Print("[QSMC_ENTRY_REVIEW] END key=",SignalKey(s.bar_time,s.dir),
+            " verdict=",(first_fail==""?"READY":"BLOCKED by "+first_fail));
    return first_fail;
   }
 
