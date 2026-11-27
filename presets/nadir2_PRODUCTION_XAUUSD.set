@@ -639,3 +639,5 @@ InpModerateSignalMinRR=1.5
 InpStrongSignalMinRR=1.5
 InpTopDownHardGateForWeak=true
 InpPrintEntryReview=true
+InpRearmStructureAfterBreak=false
+InpRearmStructureBars=5

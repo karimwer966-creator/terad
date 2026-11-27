@@ -1999,6 +1999,9 @@ input double InpStrongSignalMinRR   = 1.50;  // STRONG_VALID RR1 floor (matches 
 input bool   InpTopDownHardGateForWeak = true;  // TopDown veto is HARD for WEAK signals even when InpRequireInstitutionalConfirm=false (weak needs stronger protection)
 input bool   InpPrintEntryReview        = true;  // print the [QSMC_ENTRY_REVIEW] checklist (12 checks with PASS/FAIL) before a signal is published
 
+input group "====== v6.6.25 MISSED-TRADE FIXES (every switch defaults OFF = v6.6.24 behaviour) ======"
+input bool   InpRearmStructureAfterBreak = false; // B: after a break consumes the swing reference, re-arm a PROVISIONAL one (highest high / lowest low of the K closed bars after the break) until a confirmed fractal replaces it
+input int    InpRearmStructureBars       = 5;     // B: K = closed bars after the break that form the provisional reference (clamped to >= 2)
 //====================================================================
 // v6.6.15 iCustom init-race WRITABLE SHADOWS for threshold ATR doubles.
 //
@@ -2494,6 +2497,12 @@ int    g_struct_trend              = 0;     // +1 bullish, -1 bearish, 0 neutral
 int    g_struct_last_processed_bar = -1;    // last bar checked for structure break
 int    g_struct_last_break_bar     = -1;    // last bar where BOS/CHOCH/MSS occurred
 datetime g_last_ob_struct_time     = 0;     // stable OB processing cursor
+// v6.6.25 (B, InpRearmStructureAfterBreak): provisional re-arm state. Written only
+// while the switch is ON; reset on every full DetectStructure() pass and in OnInit.
+int    g_struct_rearm_high_from    = -1;    // bar of the bullish break awaiting a provisional high (-1 none)
+int    g_struct_rearm_low_from     = -1;    // bar of the bearish break awaiting a provisional low (-1 none)
+bool   g_struct_last_high_prov     = false; // g_struct_last_high is a provisional K-bar reference
+bool   g_struct_last_low_prov      = false; // g_struct_last_low is a provisional K-bar reference
 double g_d1_high=0, g_d1_low=0, g_d1_close=0;
 // v6.5.3: provenance of the ONE prior-D1 reference published to every consumer
 // (price levels, PMI ledger, S/R cluster, targets, dashboards, zone age).
@@ -15591,6 +15600,8 @@ AlertDispatcherClear();
    g_committed_pv=0; g_committed_v=0; g_cur_bar_pv=0; g_cur_bar_v=0; g_cur_bar_time=0;
    g_struct_last_high=0; g_struct_last_low=0; g_struct_trend=0;
    g_struct_last_processed_bar=-1; g_struct_last_break_bar=-1;
+   g_struct_rearm_high_from=-1; g_struct_rearm_low_from=-1;          // v6.6.25 (B)
+   g_struct_last_high_prov=false; g_struct_last_low_prov=false;
    g_last_ob_struct_time=0;
    g_d1_cache_time=0; g_htf_cache_time=0; g_last_confirmed_alert_id="";
    g_htf_structure_state="NEUTRAL"; g_d1_structure_state="NEUTRAL";
@@ -18218,6 +18229,13 @@ ulong CausalGraphFingerprint()
       (long)g_d1_last_availability_time,selected_sweep,selected_disp,
       selected_structure,selected_zone,g_signal_mask,g_trade_setup.confidence,
       g_trade_setup.reliability);
+   // v6.6.25 (B): the provisional re-arm state drives later transitions, so the
+   // incremental==full replay audit covers it. Appended only while the switch is
+   // ON, so the switch-OFF fingerprint is byte-identical to v6.6.24.
+   if(InpRearmStructureAfterBreak)
+      state_row+=StringFormat("|REARM|%d|%d|%d|%d",g_struct_rearm_high_from,
+                              g_struct_rearm_low_from,g_struct_last_high_prov?1:0,
+                              g_struct_last_low_prov?1:0);
    for(int k=0;k<StringLen(state_row);k++)
    {
       hash^=(ulong)StringGetCharacter(state_row,k);
@@ -24581,6 +24599,10 @@ void DetectStructure(const int total,const double &o[],const double &h[],const d
       g_struct_trend=0;
       g_struct_last_processed_bar=-1;
       g_struct_last_break_bar=-1;
+      g_struct_rearm_high_from=-1;     // v6.6.25 (B): provisional state is part of
+      g_struct_rearm_low_from=-1;      // the replayed state machine, so a full pass
+      g_struct_last_high_prov=false;   // starts it from scratch exactly like the
+      g_struct_last_low_prov=false;    // swing references above
       ArrayResize(g_structures,0,32);
    }
 
@@ -24606,6 +24628,45 @@ void DetectStructure(const int total,const double &o[],const double &h[],const d
             g_struct_last_high=h[f];
          if(is_low && (g_struct_last_low<=0.0 || l[f]!=g_struct_last_low))
             g_struct_last_low=l[f];
+         // v6.6.25 (B): a CONFIRMED fractal always replaces a provisional
+         // reference and cancels a pending provisional re-arm.
+         if(InpRearmStructureAfterBreak)
+         {
+            if(is_high){ g_struct_last_high_prov=false; g_struct_rearm_high_from=-1; }
+            if(is_low){ g_struct_last_low_prov=false; g_struct_rearm_low_from=-1; }
+         }
+      }
+
+      // 1b) v6.6.25 (B) PROVISIONAL RE-ARM. A break zeroes the consumed swing
+      // reference and, legacy, only a NEW confirmed N-fractal re-arms it - a
+      // vertical leg prints no such fractal, so every later close beyond the
+      // leg was structurally invisible. When ON, K closed bars after the break
+      // the reference becomes the extreme of exactly those K bars (B+1..B+K),
+      // all <= b: closed-bar only, deterministic, no lookahead. The arming bar
+      // itself can never break it (its close is inside its own range), so the
+      // earliest break of a provisional reference is bar B+K+1. Classification
+      // (BOS / CHoCH / MSS) below is unchanged.
+      if(InpRearmStructureAfterBreak)
+      {
+         int rk=MathMax(2,InpRearmStructureBars);
+         if(g_struct_last_high<=0.0 && g_struct_rearm_high_from>=0 &&
+            b-g_struct_rearm_high_from>=rk)
+         {
+            double ref=0.0;
+            for(int k=g_struct_rearm_high_from+1;k<=g_struct_rearm_high_from+rk && k<=b;k++)
+               if(h[k]>ref) ref=h[k];
+            if(ref>0.0){ g_struct_last_high=ref; g_struct_last_high_prov=true; }
+            g_struct_rearm_high_from=-1;
+         }
+         if(g_struct_last_low<=0.0 && g_struct_rearm_low_from>=0 &&
+            b-g_struct_rearm_low_from>=rk)
+         {
+            double ref=0.0;
+            for(int k=g_struct_rearm_low_from+1;k<=g_struct_rearm_low_from+rk && k<=b;k++)
+               if(l[k]>0.0 && (ref<=0.0 || l[k]<ref)) ref=l[k];
+            if(ref>0.0){ g_struct_last_low=ref; g_struct_last_low_prov=true; }
+            g_struct_rearm_low_from=-1;
+         }
       }
 
       // 2) first seeding pass establishes a baseline without events
@@ -24650,8 +24711,21 @@ void DetectStructure(const int total,const double &o[],const double &h[],const d
          g_struct_trend=1;
          g_struct_last_break_bar=b;
          g_struct_last_high=0.0; // consumed; next confirmed fractal re-arms
+         bool consumed_prov_high=g_struct_last_high_prov;
+         if(InpRearmStructureAfterBreak)
+         {
+            g_struct_last_high_prov=false;
+            g_struct_rearm_high_from=b;   // v6.6.25 (B): provisional re-arm after K bars
+         }
          if(InpLogLifecycleTransitions)
-            LogLifecycle(StringFormat("STRUCT %s bull @ %s",br.type,TimeToString(t[b])));
+         {
+            if(InpRearmStructureAfterBreak)
+               LogLifecycle(StringFormat("STRUCT %s bull @ %s ref=%s (re-arm in %d bars)",br.type,
+                                         TimeToString(t[b]),(consumed_prov_high?"PROVISIONAL":"FRACTAL"),
+                                         MathMax(2,InpRearmStructureBars)));
+            else
+               LogLifecycle(StringFormat("STRUCT %s bull @ %s",br.type,TimeToString(t[b])));
+         }
       }
       else if(g_struct_last_low>0.0 && c[b]<g_struct_last_low)
       {
@@ -24673,8 +24747,21 @@ void DetectStructure(const int total,const double &o[],const double &h[],const d
          g_struct_trend=-1;
          g_struct_last_break_bar=b;
          g_struct_last_low=0.0;
+         bool consumed_prov_low=g_struct_last_low_prov;
+         if(InpRearmStructureAfterBreak)
+         {
+            g_struct_last_low_prov=false;
+            g_struct_rearm_low_from=b;    // v6.6.25 (B): provisional re-arm after K bars
+         }
          if(InpLogLifecycleTransitions)
-            LogLifecycle(StringFormat("STRUCT %s bear @ %s",br.type,TimeToString(t[b])));
+         {
+            if(InpRearmStructureAfterBreak)
+               LogLifecycle(StringFormat("STRUCT %s bear @ %s ref=%s (re-arm in %d bars)",br.type,
+                                         TimeToString(t[b]),(consumed_prov_low?"PROVISIONAL":"FRACTAL"),
+                                         MathMax(2,InpRearmStructureBars)));
+            else
+               LogLifecycle(StringFormat("STRUCT %s bear @ %s",br.type,TimeToString(t[b])));
+         }
       }
       g_struct_last_processed_bar=b;
    }
