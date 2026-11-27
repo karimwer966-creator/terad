@@ -937,6 +937,65 @@ check("return INIT_PARAMETERS_INCORRECT;" in siz_src,
 check("INIT_SUCCEEDED" not in siz_src,
       "D15 and it never answers the bad input with INIT_SUCCEEDED")
 
+# ---------------------------------------------------------------- D17
+# docs/F7_CHECKLIST.md section 1.5 quotes the three attach-time log messages
+# VERBATIM, because that is what the operator compares against the Journal. A
+# quotation nobody checks is how a tester ends up staring at a correct line and
+# concluding the build is wrong. Each quoted message is split at the values it
+# cannot know (<n>, <symbol>, <tf>, and the 2.00 that comes from
+# HardMaxAggregateRiskPercent()) and every remaining fragment has to appear in
+# the concatenated string literals of the file that prints it.
+IND = ROOT / "nadir2.mq5"
+ROOT_MQH = ROOT / "MQL5" / "Include" / "QSMC" / "QSMC_Root.mqh"
+CHECKLIST = ROOT / "docs" / "F7_CHECKLIST.md"
+
+
+def literals(path):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    text = re.sub(r"//[^\n]*", "", text)
+    parts = re.findall(r'"((?:[^"\\]|\\.)*)"', text)
+    return re.sub(r"\s+", " ", "".join(parts))
+
+
+log_srcs = {p.name: literals(p) for p in (EA, IND, ROOT_MQH) if p.exists()}
+check(len(log_srcs) == 3,
+      "D17 all three files that print a section-1.5 message were read: %s"
+      % sorted(log_srcs))
+
+cl = CHECKLIST.read_text(encoding="utf-8", errors="replace")
+sec15_start = cl.find("### 1.5")
+sec15_end = cl.find("## Part 2", sec15_start + 1)
+check(sec15_start >= 0 and sec15_end > sec15_start,
+      "D17 F7_CHECKLIST.md section 1.5 located (the section that quotes the "
+      "attach-time messages)")
+sec15 = cl[sec15_start:sec15_end] if sec15_start >= 0 else ""
+
+quoted = []
+for fenced in re.findall(r"```\n(.*?)```", sec15, re.S):
+    current = []
+    for ln in fenced.rstrip().split("\n"):
+        if ln.startswith("[QSMC_"):
+            if current:
+                quoted.append(" ".join(current))
+            current = [ln.strip()]
+        else:
+            current.append(ln.strip())
+    if current:
+        quoted.append(" ".join(current))
+check(len(quoted) == 4,
+      "D17 section 1.5 quotes 4 messages (session hours, root Init, root create, "
+      "sizing inputs); found %d" % len(quoted))
+
+for msg in quoted:
+    msg = re.sub(r"\s+", " ", msg).replace("2.00%", "<n>%")
+    frags = [f.strip() for f in re.split(r"<n>|<symbol>|<tf>", msg)
+             if len(f.strip()) > 12]
+    where = [name for name, text in log_srcs.items()
+             if all(f in text for f in frags)]
+    check(bool(frags) and bool(where),
+          "D17 the quoted message %r is traceable to string literals in %s"
+          % (msg[:52], where or "NOTHING - the source text has drifted"))
+
 print("=" * 60)
 TOTAL = ea.count("\n")
 print("AUDIT-EX1 execution-safety checks: %d checks, failures: %d" % (CHECKS[0], len(FAILURES)))
