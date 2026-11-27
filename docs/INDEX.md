@@ -1,7 +1,7 @@
 # Index — every document, by what it is for
 
-97 documents accumulated across eleven releases. This file is the map: which ones
-are **instructions** (true today, follow them), which ones are **architecture**
+113 documents in this folder, plus 5 more in `history/` and the incident
+subfolders. This file is the map: which ones are **instructions** (true today, follow them), which ones are **architecture**
 (explain the code as it is now), which ones are **QATS** (a separate product), and
 which ones are **frozen history** (true on the date printed inside them, and not a
 statement about the current build).
