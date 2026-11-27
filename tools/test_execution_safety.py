@@ -707,6 +707,62 @@ check("SymbolInfoTick() returned false" in noc,
 check(_guard.count("return;") >= 2,
       "D12 both the stale-tick and the no-tick branches refuse (two refusals, one send)")
 
+# ------------------------------------------- D13 (AUD-06) session hours are real hours
+# The session window is a pair of server hours. QER_SessionInside() handles the
+# half-open window and the wrap over midnight correctly, so 22 -> 6 is a
+# legitimate window - but 25 -> 6 is not, and nothing said so. OnInit returned
+# INIT_SUCCEEDED with a window no hour can ever satisfy, so the session filter
+# refused every signal for the entire session and the operator's only evidence
+# was an absence. A window that can never open is a configuration error, and a
+# configuration error belongs at attach, not at the fortieth refused signal.
+#
+# Every lookup below uses .find() and reports a clean FAIL on -1. The first
+# draft used .index(), so removing the validation crashed the suite with a
+# ValueError instead of naming what was missing - red either way, but a gate
+# that cannot say why it is red is a gate nobody can act on.
+_on = code.index("int OnInit()")
+_init = _matched(code, _on)
+
+RANGE = ("InpSessionStartHour<0", "InpSessionStartHour>23",
+         "InpSessionEndHour<0", "InpSessionEndHour>23")
+# A range comparison anywhere in the file is not the same as one in OnInit:
+# InpSessionEndHour also appears in the preset-delta rows and the attach line.
+_i = _init.find(RANGE[0])
+check(_i >= 0, "D13 OnInit range-checks InpSessionStartHour against 0",
+      )
+check(_init.find(RANGE[1]) >= 0, "D13 OnInit range-checks InpSessionStartHour against 23")
+check(_init.find(RANGE[2]) >= 0, "D13 OnInit range-checks InpSessionEndHour against 0")
+check(_init.find(RANGE[3]) >= 0, "D13 OnInit range-checks InpSessionEndHour against 23")
+
+if _i >= 0:
+    # _matched() returns the brace block only, so the condition is taken
+    # separately: the four comparisons live in the if(...) and the refusal in
+    # the {...}.
+    _ifpos = _init.rindex("if(", 0, _i)
+    _bstart = _init.index("{", _ifpos)
+    _body = _matched(_init, _bstart)
+    _blk = _init[_ifpos:_bstart + len(_body)]
+    check(all(p in _blk for p in RANGE),
+          "D13 all four comparisons sit in ONE condition, not scattered")
+    check("INIT_PARAMETERS_INCORRECT" in _blk,
+          "D13 an impossible session window refuses the attach, it does not run")
+    check(_blk.count("INIT_PARAMETERS_INCORRECT") == 1,
+          "D13 and it refuses exactly once, on its own branch")
+    check("InpSessionStartHour==InpSessionEndHour" not in _blk,
+          "D13 the range check leaves the documented OFF switch alone")
+else:
+    for _ in range(5):
+        check(False, "D13 (skipped - the range check is absent, so its shape "
+                     "cannot be examined)")
+
+check("session hours out of range" in ea,
+      "D13 the refusal says what is wrong and prints both values it was given")
+check("wrap over midnight" in ea,
+      "D13 the message keeps the documented wrap-around legal, so the fix does "
+      "not read as a new restriction")
+check("InpSessionStartHour==InpSessionEndHour" in code,
+      "D13 Start == End is still the way to switch the filter off")
+
 print("=" * 60)
 TOTAL = ea.count("\n")
 print("AUDIT-EX1 execution-safety checks: %d checks, failures: %d" % (CHECKS[0], len(FAILURES)))

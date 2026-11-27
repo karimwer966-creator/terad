@@ -162,11 +162,23 @@ review has something to reject.
 
 ## Still open in this repository
 
-- **AUD-05 (P1)** — `HandleSignal()` has no `else` on `if(SymbolInfoTick(sym,tk))`,
-  so a failed tick read falls through to the order path. Not part of the AUD-03
-  approval; unchanged. Its blast radius is smaller now that R3 always runs.
-- **AUD-06/07 (P2/P1)** — EA session-hour range validation, and `QSMC_RootCreate()`
-  returning `true` over a half-initialised root. Both deferred, both unchanged.
+- ~~**AUD-05 (P1)**~~ — **fixed.** `HandleSignal()` now has the `else`: when
+  `SymbolInfoTick()` returns false the order is refused, because a symbol with no
+  tick has an *unknown* feed age and unknown age must refuse exactly like old age
+  (`QSMC_AutoTrader.mq5:2753`–`2764`). Asserted by `test_execution_safety.py`
+  block **D12**.
+- ~~**AUD-06 (P2)**~~ — **fixed.** `OnInit()` now range-checks
+  `InpSessionStartHour` / `InpSessionEndHour` against `0..23` and refuses the
+  attach with `INIT_PARAMETERS_INCORRECT` (`QSMC_AutoTrader.mq5:4523`–`4540`).
+  A window no hour can satisfy used to return `INIT_SUCCEEDED` and then refuse
+  every signal for the whole session. The wrap over midnight (`22 -> 6`) and the
+  `Start == End` OFF switch are both still legal. Asserted by block **D13**.
+- **AUD-07 (P1)** — `QSMC_RootCreate()` returning `true` over a half-initialised
+  root. Still open.
+
+`docs/QSMC_AUDIT_2026-11-25.md` still lists all three as deferred. That document
+is the audit as it stood on its date and has not been rewritten; this list is the
+current state.
 - The seven relaxed thresholds in
   [`SIGNAL_VISIBILITY_DIAGNOSIS.md`](SIGNAL_VISIBILITY_DIAGNOSIS.md) still have no
   before/after measurement; Step 3 is where that number would come from.

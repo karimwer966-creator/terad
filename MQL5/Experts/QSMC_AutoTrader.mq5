@@ -4520,6 +4520,24 @@ int OnInit()
       Print("[QSMC_AT] InpPinTimeframeMinutes must be >= 0 (0 = off)");
       return INIT_PARAMETERS_INCORRECT;
      }
+   // AUD-06 (P2): the session window is a pair of server hours, and both ends
+   // have to be real hours. QER_SessionInside() handles the half-open and the
+   // wrap-over-midnight cases correctly, so 22 -> 6 is a legitimate window -
+   // but 25 -> 6 is not, and before this check it was accepted: the EA
+   // returned INIT_SUCCEEDED with a window that no hour can ever satisfy, so
+   // the session filter silently refused every signal for the whole session
+   // instead of the attach being refused with a reason. Start == End is still
+   // legal: it is the documented way to switch the filter off.
+   if(InpSessionStartHour<0 || InpSessionStartHour>23 ||
+      InpSessionEndHour<0   || InpSessionEndHour>23)
+     {
+      Print("[QSMC_AT] session hours out of range: 0 <= InpSessionStartHour <= 23 and "
+            "0 <= InpSessionEndHour <= 23. Got ",IntegerToString(InpSessionStartHour),
+            " and ",IntegerToString(InpSessionEndHour),". A wrap over midnight is "
+            "allowed (22 -> 6); an hour outside 0..23 is not, and Start == End "
+            "switches the filter off.");
+      return INIT_PARAMETERS_INCORRECT;
+     }
    if(InpMaxDailyLossMoney<0.0 || InpFixedLotsMaxRiskPercent<0.0)
      {
       Print("[QSMC_AT] InpMaxDailyLossMoney and InpFixedLotsMaxRiskPercent must be >= 0 (0 = off). ",
