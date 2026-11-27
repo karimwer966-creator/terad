@@ -148,6 +148,26 @@ whether the checklist reaches the Journal. Verify it in the terminal:
 
 If step 3 shows no refusal, the fix is not in the build you compiled.
 
+### The spread gate inside that review also changed (AUD-04)
+
+Review line **R4** delegates to `QER_SpreadOk()`
+(`QSMC_ExecutionRules.mqh:173`–`190`, called from `QSMC_AutoTrader.mq5:2492`).
+Three of its behaviours are new in v6.6.25, and all three can produce a refusal
+that did not happen before:
+
+- a spread that is not a finite number — no tick yet, or a NaN out of a broken
+  feed — now **fails closed** instead of casting to garbage and passing;
+- the spread is compared as a real number, so a `20.9`-point spread no longer
+  truncates to `20` and slips under a 20-point cap;
+- `InpMaxSpreadPoints=0` now **disables** the absolute cap instead of vetoing
+  every order, matching how the EA's own `SpreadOK()` reads a zero.
+
+None of this is a new restriction on a healthy feed. If R4 refuses during your
+run, the journal line prints the measured spread and both caps
+(`… pts (abs cap …) = …% of a …-pt stop`), so read the number before concluding
+the gate is wrong — a refusal with a sane spread means the cap inputs are tight,
+and a refusal with a nonsense spread means the feed, not the EA.
+
 ## What to send back
 
 - the F7 output for each file (errors **and** warnings);
