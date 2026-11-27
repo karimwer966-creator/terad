@@ -110,6 +110,47 @@ should read:
 If they do not, you are not running the shipped defaults and the A/B below is
 measuring the wrong thing.
 
+### 1.5 Two attach-time behaviours added after the v6.6.25 handoff
+
+Both come from the audit fixes in this branch and neither existed when
+`QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md` was written. Neither is an error — but
+if you see one and do not know it is deliberate, it looks like a broken build.
+
+**AUD-06 — a session window that cannot open now refuses the attach.** If
+`InpSessionStartHour` or `InpSessionEndHour` is outside `0..23` the EA stops at
+`OnInit` with:
+
+```
+[QSMC_AT] session hours out of range: 0 <= InpSessionStartHour <= 23 and
+          0 <= InpSessionEndHour <= 23. Got <n> and <n>. A wrap over midnight is
+          allowed (22 -> 6); an hour outside 0..23 is not, and Start == End
+          switches the filter off.
+```
+
+Before the fix the EA started happily with a window no hour could satisfy and
+then refused every signal for the whole session, with no line explaining why.
+**Every preset shipped in `presets/` is in range** — measured: `10/18`, `10/18`,
+`10/18`, `8/20`, and `0/0` (filter off) — so this only fires if you type an hour
+in yourself.
+
+**AUD-07 — a root that failed to initialise now says so.** If the arbitration
+root cannot initialise (market-data failure or a failed `ConfigureStructure()`),
+you will see one of:
+
+```
+[QSMC_ARB] root Init() failed - destroying the half-initialised root so the next
+           attempt starts clean; arbitration is OFF for this instance
+[QSMC_ARB] root create FAILED (AUD-07) - arbitration OFF for this instance;
+           signals and buffers are unaffected
+```
+
+Arbitration is analytical, so this does **not** stop the indicator publishing
+signals or filling buffers. Before the fix the same failure was silent and the
+next attach reported success over a root that had never become ready.
+
+Record whichever of these you see in §10 of
+[`F7_RESULTS_TEMPLATE.md`](F7_RESULTS_TEMPLATE.md), with the line verbatim.
+
 ---
 
 ## Part 2 — Strategy Tester plan
