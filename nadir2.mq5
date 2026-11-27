@@ -2006,6 +2006,7 @@ input bool   InpAllowContinuationChain   = false; // C: accept a sweep-less CONT
 input int    InpSweepToStructureMaxBarsContinuation = 12; // C: max bars from the continuation leg origin to the BOS (InpSweepToStructureMaxBars is untouched)
 input bool   InpTargetLiquidityAware     = false; // D: top-down TP1 = nearest liquidity pool / swing / ATR multiple that PAYS InpTopDownMinRR (floor unchanged); WEAK only with H1 bias + Asia/London + RR1 >= InpWeakSignalMinRR
 input bool   InpWarmupWaitHTFData        = false; // E: defer CORE evaluation (log WARMUP, not NO_SETUP) until the Sniper HTF buffers (ADX_H1, ATR W1..M30) are DATA_READY, then re-evaluate the last closed bar
+input bool   InpLogCompactBarLine        = false; // G: print ONE compact [BAR] line per closed bar: structure refs (armed/provisional/consumed) + last break, chain SWP/DISP/STRUCT/ZONE + kind, top-down verdict, RR1, first failing gate
 
 //====================================================================
 // v6.6.15 iCustom init-race WRITABLE SHADOWS for threshold ATR doubles.
@@ -2525,6 +2526,10 @@ int      g_h1bias_cache_n=0;
 bool     g_warmup_pending=false;       // a closed bar's CORE evaluation is owed
 bool     g_warmup_deferred_now=false;  // this pass deferred it (replay audit is not armed)
 datetime g_warmup_logged_bar=0;        // one [WARMUP] line per closed bar
+// v6.6.25 (G, InpLogCompactBarLine): what the CORE evaluation saw on this bar.
+// Written by CalculateAITradeSetup (diagnostic only, read only by the [BAR] line).
+datetime g_bar_eval_time=0;            // open time of the closed bar last evaluated
+double   g_bar_eval_rr1=-1.0;          // RR1 computed on that evaluation (-1 = not reached)
 double g_d1_high=0, g_d1_low=0, g_d1_close=0;
 // v6.5.3: provenance of the ONE prior-D1 reference published to every consumer
 // (price levels, PMI ledger, S/R cluster, targets, dashboards, zone age).
@@ -16046,6 +16051,64 @@ void WarmupLogDeferred(const int closed)
 }
 
 //====================================================================
+// v6.6.25 (G) COMPACT BAR LINE - InpLogCompactBarLine (default OFF)
+// One line per closed bar of this chart timeframe with everything the
+// 2026-11-27 investigation had to assemble from four panels and three log
+// streams: structure references (FRACTAL / PROV / consumed) and the last break,
+// the CORE chain hops of this bar's evaluation and its kind, the top-down
+// verdict, RR1 and the gate that stopped the bar. Read-only.
+//====================================================================
+string CompactRefText(const double price,const bool provisional)
+{
+   if(price<=0.0) return "consumed";
+   return DoubleToString(price,_Digits)+(provisional ? "(PROV)" : "(FRACTAL)");
+}
+
+string CompactBarLine(const int closed)
+{
+   if(closed<0 || closed>=ArraySize(g_buf_t)) return "";
+   string s="[BAR] "+_Symbol+" "+TFName((ENUM_TIMEFRAMES)_Period)+" "+
+            TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES);
+   s+=" | struct H="+CompactRefText(g_struct_last_high,g_struct_last_high_prov)+
+      " L="+CompactRefText(g_struct_last_low,g_struct_last_low_prov)+
+      " trend="+(g_struct_trend>0 ? "BULL" : (g_struct_trend<0 ? "BEAR" : "FLAT"));
+   string last="none";
+   for(int i=ArraySize(g_structures)-1;i>=0;i--)
+      if(g_structures[i].type!="INIT")
+      {
+         last=g_structures[i].type+(g_structures[i].bullish ? " bull @" : " bear @")+
+              TimeToString(g_structures[i].time,TIME_DATE|TIME_MINUTES);
+         break;
+      }
+   s+=" last="+last;
+   bool fresh=(g_bar_eval_time==g_buf_t[closed]);
+   if(InpUseRetestLifecycle && g_active_setup.active)
+      s+=" | chain owner=ACTIVE "+g_active_setup.setup_event_id+
+         (g_active_setup.continuation ? " [CONTINUATION]" : "");
+   else if(!fresh)
+      s+=" | chain not evaluated this bar"+(g_warmup_deferred_now ? " (WARMUP)" : "");
+   else
+   {
+      string kind=(g_selected_structure_event<0 ? "-" :
+                   (IsContinuationEvent(g_selected_structure_event) ? "CONTINUATION" : "REVERSAL"));
+      s+=StringFormat(" | chain SWP%s DISP%s STRUCT%s ZONE%s [%s]",
+                      (g_causal_diag.sweep_event_ok ? "+" : "-"),(g_causal_diag.disp_event_ok ? "+" : "-"),
+                      (g_causal_diag.mss_event_ok ? "+" : "-"),(g_causal_diag.zone_valid ? "+" : "-"),kind);
+   }
+   string td=(!g_td.computed ? "n/a" : (g_td.dir>0 ? "BUY" : (g_td.dir<0 ? "SELL" : "WAIT")));
+   if(g_td.computed && g_td.dir==0 && g_td.blocker!="") td+=" ("+g_td.blocker+")";
+   s+=" | TD "+td;
+   s+=" | RR1 "+((fresh && g_bar_eval_rr1>0.0) ? DoubleToString(g_bar_eval_rr1,2) : "n/a");
+   string fail="n/a";
+   if(fresh) fail=(g_causal_diag.watch ? (g_causal_diag.causal_fail_reason!="" ?
+                    g_causal_diag.causal_fail_reason : "watch") : "none (setup seeded)");
+   s+=" | first-fail "+fail;
+   string top=GateAuditTopReason();
+   if(top!="") s+=" | top blocker "+top;
+   return s;
+}
+
+//====================================================================
 // MAIN - OnCalculate with chronological enforcement & delta rendering
 //====================================================================
 int OnCalculate(const int rates_total, const int prev_calculated,
@@ -16761,6 +16824,9 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // v6.6.10: publish the verdict of this closed bar for QSMC_AutoTrader.
    DiagPublishCoreState(closed);
    GateProfilePublish(closed);
+   // v6.6.25 (G): one compact line per closed bar of this timeframe.
+   if(InpLogCompactBarLine && is_new_bar && !QSMC_IsReaderSilent())
+      Print(CompactBarLine(closed));
    // Give the private reader one audit at its first completed closed-bar
    // pass, then honor the configured cadence. No audits when disabled.
    if(is_new_bar && InpGateAuditLogEveryBars>0 &&
@@ -22142,6 +22208,8 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    double price=c[closed];
    double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0) ? g_atr_buf[closed] : g_atr;
    if(atr<=0.0) return;
+   g_bar_eval_time=(closed<ArraySize(g_buf_t) ? g_buf_t[closed] : 0);   // v6.6.25 (G) diagnostic
+   g_bar_eval_rr1=-1.0;
 
    UpdateSignalMask(total,c);
 
@@ -22795,6 +22863,7 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    g_trade_setup.mtf_conflict_label=conflict_label;
 
    GateProfileNote("rr1",rr1);
+   g_bar_eval_rr1=rr1;   // v6.6.25 (G) diagnostic
    if(rr1<EffMinRR1())
    {
       GateProfileNeed("rrneed",EffMinRR1()-rr1);

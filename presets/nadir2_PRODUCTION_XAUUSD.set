@@ -645,3 +645,4 @@ InpAllowContinuationChain=false
 InpSweepToStructureMaxBarsContinuation=12
 InpTargetLiquidityAware=false
 InpWarmupWaitHTFData=false
+InpLogCompactBarLine=false
