@@ -282,6 +282,48 @@ def check_index() -> None:
            % (m.group(1), actual))
 
 
+# --------------------------------------------------------------------------- #
+# L9 - an audit marker in shipped source is a promise the release note keeps
+# --------------------------------------------------------------------------- #
+def check_audit_markers() -> None:
+    # AUD-06 and AUD-07 shipped in the EA, the root header and the host with the
+    # marker written into the source comments, while CHANGELOG.md - the document
+    # an operator reads to learn what a release changed - never mentioned either
+    # one. Nothing compared the two, because the marker is a comment and the
+    # release note is prose: no compiler reads either. A fix that changes
+    # behaviour and never reaches the release note is a fix the operator cannot
+    # find, and the note's own "behave exactly as the previous version" claim
+    # goes quietly false on the same day.
+    changelog = ROOT / "CHANGELOG.md"
+    if not changelog.is_file():
+        fail("L9 CHANGELOG.md is missing, so no audit marker can be recorded")
+        return
+    note = io.open(changelog, encoding="utf-8", errors="replace").read()
+
+    markers: dict[str, list[str]] = {}
+    for sub in ("MQL5/Experts", "MQL5/Indicators", "MQL5/Scripts", "MQL5/Include"):
+        for p in sorted((ROOT / sub).glob("**/*.mq5")) + sorted((ROOT / sub).glob("**/*.mqh")):
+            text = io.open(p, encoding="utf-8", errors="replace").read()
+            for marker in re.findall(r"\bAUD-[0-9]+\b", text):
+                markers.setdefault(marker, []).append(str(p.relative_to(ROOT)))
+    host = io.open(ROOT / "nadir2.mq5", encoding="utf-8", errors="replace").read()
+    for marker in re.findall(r"\bAUD-[0-9]+\b", host):
+        markers.setdefault(marker, []).append("nadir2.mq5")
+
+    if not markers:
+        fail("L9 no AUD-xx marker found in shipped source - the scan is broken, "
+             "not the release note")
+        return
+    missing = sorted(m for m in markers if m not in note)
+    for marker in missing:
+        fail("L9 %s is marked in shipped source (%s) but CHANGELOG.md never "
+             "records it - an operator reading the release note cannot find the "
+             "behaviour change" % (marker, ", ".join(sorted(set(markers[marker])))))
+    if not missing:
+        ok("L9 all %d audit markers in shipped source are recorded in "
+           "CHANGELOG.md (%s)" % (len(markers), ", ".join(sorted(markers))))
+
+
 def main(argv: list[str]) -> int:
     verbose = "--verbose" in argv
     check_root()
@@ -291,6 +333,7 @@ def main(argv: list[str]) -> int:
     check_paths()
     check_versions()
     check_index()
+    check_audit_markers()
 
     if verbose:
         for line in PASSES:
