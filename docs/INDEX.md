@@ -58,6 +58,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`QSMC_QUANT_STATS.md`](QSMC_QUANT_STATS.md) | quant statistics used by the gates |
 | [`QSMC_ENTRY_REVIEW_v6.6.21.md`](QSMC_ENTRY_REVIEW_v6.6.21.md) | the 12-line entry-review checklist |
 | [`QSMC_CORE_ZERO_INVESTIGATION.md`](QSMC_CORE_ZERO_INVESTIGATION.md) | why CORE published nothing, with the evidence boundary |
+| [`SIGNAL_VISIBILITY_DIAGNOSIS.md`](SIGNAL_VISIBILITY_DIAGNOSIS.md) | the seven relaxed thresholds the `// was X` input comments cite: what each one actually gates (function / line / refusal string), the ZRE and v6.6.25-C interactions, and what no measurement has proven |
 | [`QSMC_SMCVP_ENGINE_AUDIT_2026-11-11.md`](QSMC_SMCVP_ENGINE_AUDIT_2026-11-11.md) | SMC+VP engine audit (G1–G7) |
 | [`QSMC_ROBUSTNESS_PLAYBOOK.md`](QSMC_ROBUSTNESS_PLAYBOOK.md) | how not to over-fit: WFA, state isolation, gates |
 | [`QSMC_ROBUSTNESS_PLAYBOOK_AR.md`](QSMC_ROBUSTNESS_PLAYBOOK_AR.md) | نفس الدليل بالعربية |

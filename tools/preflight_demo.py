@@ -70,6 +70,27 @@ def read(path: str) -> str:
         return fh.read()
 
 
+# Runtime announcements: the strings an operator reads in the Journal, which
+# must name the release that is shipping. Each entry is a regex with ONE version
+# capture group plus the version it must carry. Unlike the stale-window regex in
+# main(), these are compared with the release constant, so a bump moves them.
+ANNOUNCEMENTS = (
+    (re.compile(r"\[QSMC_ARB\]\s+(v\d\.\d\.\d+)\b"), EXPECT_VERSION_TEXT),
+    (re.compile(r"QSMC_ArbiterTest - (v\d\.\d\.\d+)\b"), EXPECT_VERSION_TEXT),
+)
+
+
+def scan_announcements(sources: "list[tuple[str, str]]") -> list[str]:
+    """Return "where: announces vX, want vY" for every stale announcement."""
+    bad: list[str] = []
+    for where, src in sources:
+        for rx, want in ANNOUNCEMENTS:
+            for got in rx.findall(src):
+                if got != want:
+                    bad.append("%s: announces %s, want %s" % (where, got, want))
+    return bad
+
+
 def mql_sources(subdirs=("Include", "Indicators", "Scripts", "Experts")) -> list[str]:
     out = []
     for sub in subdirs:
@@ -127,6 +148,29 @@ def main() -> int:
             stale.append(os.path.relpath(path, ROOT))
     check(not stale, "no shipped program ANNOUNCES v6.6.20..v6.6.23 "
                      "(historical comments are kept on purpose)", ", ".join(stale))
+
+    #--- The window above is hardcoded, so it is one release behind by
+    #--- construction: v6.6.25 shipped with QSMC_ArbiterTest still PRINTING
+    #--- "v6.6.24 signal arbitration harness" because v6.6.24 sat outside
+    #--- v6.6.2[0-3] and nothing else compared the banner with the build. The
+    #--- Journal lines are compared with EXPECT_VERSION_TEXT instead, so bumping
+    #--- the release constant moves this check with it. Header prose is NOT in
+    #--- scope: "QSMC v6.6.24 (2026-11-16)" and "R4 of the v6.6.24 audit" date
+    #--- the work a file was written for and are supposed to stay.
+    stale_announce = scan_announcements(
+        [(os.path.relpath(p, ROOT), read(p)) for p in mql_sources()])
+    check(not stale_announce,
+          "every runtime announcement ([QSMC_ARB], QSMC_ArbiterTest) names %s"
+          % EXPECT_VERSION_TEXT, ", ".join(stale_announce))
+    #--- Mutation self-test: a scan that cannot flag the defect it was written
+    #--- for is a tautology. Both announcement forms must be caught here.
+    mutant = scan_announcements([("<mutant>",
+                                  'Print(" QSMC_ArbiterTest - v6.6.24 signal arbitration harness");\n'
+                                  'Print("[QSMC_ARB] v6.6.20 arbitration layer ON");')])
+    mutant_txt = ", ".join(mutant)
+    check(len(mutant) == 2 and "v6.6.24" in mutant_txt and "v6.6.20" in mutant_txt,
+          "the announcement scan catches a stale harness banner AND a stale ARB banner",
+          mutant_txt or "nothing flagged")
 
     # ---------------------------------------------------------------- 2 presets
     rc = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "check_presets.py")],
