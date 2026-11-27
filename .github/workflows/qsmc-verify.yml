@@ -306,6 +306,116 @@ jobs:
       - name: Why-no-trades classification
         run: python3 tools/test_why_no_trades.py 2>&1 | tee out/why_no_trades.log
 
+      # ---------------------------------------------------------------------
+      # Every remaining offline suite, wired on 2026-11-27.
+      #
+      # 22 suites in tools/ were green but unrun by CI: 66 of 88 were invoked by
+      # a real `python3 tools/...` line and these were not, so a regression in
+      # any of them was invisible until someone ran it by hand. All 22 run here
+      # in 22.4 seconds combined on this host, so none of them is excluded for
+      # being slow. Nothing in this block is environment-bound either - the five
+      # that need a host compiler follow the same exit-77 skip contract as the
+      # five native suites already wired above, and ubuntu-latest has g++.
+      #
+      # Deliberately NOT added, with the reason in each case:
+      #   * the eight suites in the `pin-drift` job below stay report-only. They
+      #     pass locally now that tools/pinmap.json re-anchors them, but moving
+      #     them into this job turns eight report-only steps into blocking
+      #     gates, which is a policy change and not a wiring fix.
+      #   * tools/qats_sim/ and tools/smcvp_sim/ are harnesses, not suites.
+      # ---------------------------------------------------------------------
+
+      # The four source contracts added in this repair round: the 27-buffer map
+      # against the #defines, the seven relaxed thresholds against their read
+      # sites, the generated 934-input reference, and the frozen incident
+      # evidence folder against the README that explains which subtree to read.
+      - name: Buffer contract (27 buffers, doc <-> #define agreement)
+        run: python3 tools/test_buffer_contract.py 2>&1 | tee out/test_buffer_contract.log
+
+      - name: Seven relaxed thresholds (declared default, read sites, kill switch)
+        run: python3 tools/test_seven_thresholds.py 2>&1 | tee out/test_seven_thresholds.log
+
+      - name: Generated input reference (934 inputs, meanings are source comments)
+        run: python3 tools/test_inputs_reference.py 2>&1 | tee out/test_inputs_reference.log
+
+      - name: Frozen incident evidence map (which subtree is authoritative)
+        run: python3 tools/test_incident_evidence_map.py 2>&1 | tee out/test_incident_evidence_map.log
+
+      # Two include-graph gates. The graph is 12 programs / 34 headers / 78
+      # resolvable edges and acyclic; a cycle or a header included without its
+      # guard is a compile failure that no offline source check would catch.
+      - name: Include graph (fan-in, cycles, orphans)
+        run: python3 tools/check_include_graph.py 2>&1 | tee out/check_include_graph.log
+
+      - name: Include-graph gate (comment trap, cycles, guards, coupling)
+        run: python3 tools/test_include_graph.py 2>&1 | tee out/test_include_graph.log
+
+      # Compile-error classes that were real MetaEditor failures before: a lost
+      # '//', a comma-separated input declaration, a shadowed global. This is a
+      # pattern gate over the text - it is NOT a compile and does not prove the
+      # file builds. F7 is still the only proof of that.
+      - name: Compile-error classes (lost comment, comma declarators, shadows)
+        run: python3 tools/test_compile_errors.py 2>&1 | tee out/test_compile_errors.log
+
+      - name: Causal chain regressions (order of operations in the signal path)
+        run: python3 tools/test_causal_chain_regressions.py 2>&1 | tee out/test_causal_chain_regressions.log
+
+      # Display authority: three suites that keep the chart from saying
+      # something the signal path did not decide - which is the exact failure
+      # mode the 2026-11-01 incident was about.
+      - name: Display authority (non-Core vocabulary cannot authorize)
+        run: python3 tools/test_display_authority.py 2>&1 | tee out/test_display_authority.log
+
+      - name: Incident compact badge (measurement, panel avoidance, ownership)
+        run: python3 tools/test_incident_compact.py 2>&1 | tee out/test_incident_compact.log
+
+      - name: Scanner snapshot rendered before reset
+        run: python3 tools/test_scanner_snapshot.py 2>&1 | tee out/test_scanner_snapshot.log
+
+      # Provenance: a number on the chart must be attributable to a quote or to
+      # a closed bar. Both suites EXECUTE the real MQL5 bodies with g++ when a
+      # compiler is present and skip visibly when one is not.
+      - name: Price provenance (Bid/Ask vs CLOSED[1] separation)
+        run: python3 tools/test_price_provenance.py 2>&1 | tee out/test_price_provenance.log
+
+      - name: Zone provenance (symbol-history plausibility gate) - executed
+        run: python3 tools/test_zone_provenance.py 2>&1 | tee out/test_zone_provenance.log
+
+      - name: Volatility window (causal percentiles, no look-ahead) - executed
+        run: python3 tools/test_volatility_window.py 2>&1 | tee out/test_volatility_window.log
+
+      - name: EL data integrity (copy gate bodies) - executed
+        run: python3 tools/test_el_data_integrity.py 2>&1 | tee out/test_el_data_integrity.log
+
+      - name: EL Sniper readiness (zone detection bodies) - executed
+        run: python3 tools/test_el_sniper_readiness.py 2>&1 | tee out/test_el_sniper_readiness.log
+
+      - name: Opportunity funnel (the "no trades" explanation) - executed
+        run: python3 tools/test_opportunity_funnel.py 2>&1 | tee out/test_opportunity_funnel.log
+
+      # The comma-separated-declarator parser that caused 32 MetaEditor errors,
+      # plus the input-manifest identity it feeds. The second one shells out to
+      # tools/generate_input_fingerprint.py --check, so it also pins the
+      # generated header to its generator.
+      - name: Input fingerprint parser (comma declarators, native checksum) - executed
+        run: python3 tools/test_input_fingerprint_parser.py 2>&1 | tee out/test_input_fingerprint_parser.log
+
+      - name: Instance identity (per-config diagnostics, default binding)
+        run: python3 tools/test_instance_identity.py 2>&1 | tee out/test_instance_identity.log
+
+      # The curated gate over the whole native estate: it asserts that every
+      # native suite either runs for real or exits 77 with its source checks
+      # still reported, and never passes silently. Wiring it means a suite that
+      # quietly stops compiling is caught even on a host with no compiler.
+      - name: Native toolchain contract (a skip is visible, never a pass)
+        run: python3 tools/test_native_toolchain.py 2>&1 | tee out/test_native_toolchain.log
+
+      - name: Scalper preset (the shipped .set matches the documented behaviour)
+        run: python3 tools/test_scalper_preset.py 2>&1 | tee out/test_scalper_preset.log
+
+      - name: Signal execution profiles (source + reference parity)
+        run: python3 tools/test_signal_execution_profiles.py 2>&1 | tee out/test_signal_execution_profiles.log
+
       - name: No stale copy of a header may be committed
         run: |
           dup=$(git ls-files 'MQL5/**' | while read -r f; do basename "$f"; done | sort | uniq -d)
