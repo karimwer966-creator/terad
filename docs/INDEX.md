@@ -132,7 +132,9 @@ behind decisions, not because they are instructions.
 `PRODUCTION_READINESS_REVIEW_2026-11-08_AR.md` · `PHASE2_FIXSET_v6.6.14.md` ·
 `PHASE5_AT_RISK_REPORT.md` · `PHASE2A_RESOLVER.diff` · `PHASE2B_HOST.diff` ·
 `REPORT_AR_2026-11-06_CAUSAL_CHAIN.md` · `QSMC_REVIEW_v6.6.1.md` ·
-`incident-20261101/` · `wfa/` · the replay artefacts
+`incident-20261101/` (113 frozen files — start at its
+[`README.md`](incident-20261101/README.md), which says which of the two log
+subtrees is authoritative and for what) · `wfa/` · the replay artefacts
 (`qats_backtest_study_2026-11-11.json`,
 `qsmc_smcvp_replay_xauusd_m15_2024_2025.json` and its `_signals.csv`) ·
 `img/`
