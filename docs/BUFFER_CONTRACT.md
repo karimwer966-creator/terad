@@ -164,6 +164,35 @@ prevent.
 what the EA trades. It is not a display-only switch. Read buffer 26 (or the
 SigLog CSV column `causal_chain`) afterwards to split the results.
 
+### 5.1 Export-only buffers — a decision, not an omission
+
+Seven of the twenty-seven buffers have **no reader in the EA**, and that is the
+intended state rather than unfinished work:
+
+| Buffers | Name | Why they stay unwired |
+|---|---|---|
+| 13–18 | `BufSigZREDir/Entry/SL/T1/T2/T3` | **the EA never executes ZRE.** `nadir2.mq5:14618` says so: *"ZRE (src==1) has no class: the EA never executes ZRE, so 21-25 stay 0 for ZRE."* They are the ZRE leg's full trade geometry, published so an operator or an offline study can read it without re-deriving it |
+| 26 | `BufSigCoreChain` | a **kind label** for a signal the EA already receives through buffer 7. Reading it in the execution path would make the EA re-derive a decision the indicator already made |
+
+Calling these *export-only* is precise about what is being claimed:
+
+* they **are** written, on every closed bar, by the same registration path as
+  everything else (§3), so they are never stale relative to buffers 7–12;
+* they are **not** inputs to any order decision, any gate, or any alert;
+* nothing in this repository plans to wire them. Wiring one is a change to what
+  the EA trades and needs its own approval, its own preset and its own tester
+  measurement — not a one-line `CopyBuffer`.
+
+If you are looking for a place to add a reader: **do not add it here.** The
+reason the EA reads exactly 13 of 27 buffers is that those 13 are the decision
+the indicator made, and the other 14 are either display (0–6), the unexecuted ZRE
+leg (13–18), or labels (26). `QSMC_AutoTrader.mq5:181-183` exists to stop exactly
+this kind of second-guessing.
+
+`tools/test_buffer_contract.py` block **B7** fails if any of the seven grows an
+EA-side reader, and block **B9** fails if this section stops saying so — so the
+decision cannot quietly become an accident.
+
 ---
 
 ## 6. Compatibility rules for anyone changing this

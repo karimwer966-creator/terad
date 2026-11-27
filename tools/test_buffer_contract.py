@@ -234,6 +234,42 @@ check(bufs[newest][0] in zero_body or "SigLog_BufWriteChain(" in zero_body,
       "B8 the newest buffer (%d, %s) is covered by the purge path"
       % (newest, bufs[newest][0]))
 
+# B9 - the export-only buffers stay export-only, and the document keeps saying so.
+# B7 proves the EA reads none of them today. This block exists because "no reader
+# today" and "no reader by decision" are different claims, and only the second one
+# survives a well-meaning patch: someone looking for a way to act on the ZRE leg
+# or the chain kind will find a buffer that is already populated on every bar and
+# add one CopyBuffer. That is a change to what the EA trades, and it must arrive
+# as a decision with its own approval and its own tester measurement, not as a
+# one-line reader.
+export_only = sorted(i for i in bufs
+                     if (bufs[i][0].startswith("BufSigZRE") and bufs[i][0] != "BufSigZREVerdict")
+                     or bufs[i][0] == "BufSigCoreChain")
+check(len(export_only) == 7,
+      "B9 exactly seven buffers are export-only (13-18 plus the chain label) - "
+      "found %d: %s" % (len(export_only), export_only))
+check(all(i not in by_index for i in export_only),
+      "B9 none of the seven has a QSMC_BUF_* macro in the EA")
+
+# and none of them may be named by index anywhere in the EA's CopyBuffer calls
+ea_src = io.open(EA, encoding="utf-8", errors="replace").read()
+ea_code = re.sub(r'"(?:\\.|[^"\\\n])*"', '""', ea_src)
+ea_code = re.sub(r"//[^\n]*", "", ea_code)
+for i in export_only:
+    check(re.search(r"CopyBuffer\s*\([^)]*,\s*%d\s*," % i, ea_code) is None,
+          "B9 the EA never CopyBuffers index %d directly, bypassing the macro" % i)
+
+check("Export-only buffers" in doc,
+      "B9 the document has an explicit export-only section")
+check("a decision, not an omission" in doc,
+      "B9 and it states that this is a decision, so it cannot be read as TODO")
+check("do not add it here" in doc.lower() or "Do not add it here" in doc,
+      "B9 and it tells the next reader not to wire one")
+check("the EA never executes ZRE" in doc,
+      "B9 and it gives the reason for 13-18: the EA never executes ZRE")
+check(str(export_only[0]) in doc and str(export_only[-1]) in doc,
+      "B9 the section names the first and last export-only index")
+
 print("=" * 60)
 print("buffer-contract checks: %d checks, failures: %d" % (CHECKS[0], len(FAILURES)))
 if FAILURES:
