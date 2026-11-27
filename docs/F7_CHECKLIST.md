@@ -227,6 +227,8 @@ RR1 is worse. The acceptance evidence is all three of:
 Minimum set, in this order:
 
 1. The **complete F7 output for each of the nine files** — errors *and* warnings.
+   Fill in [`F7_RESULTS_TEMPLATE.md`](F7_RESULTS_TEMPLATE.md) if that is easier
+   than pasting raw logs; the template covers all eleven programs.
 2. The **init log of one attach** (indicator + EA), including the four identity
    lines and the seven-threshold block.
 3. **Run A and Run B reports** plus both SigLog CSVs.
@@ -241,6 +243,85 @@ unverified claim left in this repository.
 
 ---
 
+## Part 4 — other releases (experimental)
+
+These two programs live in this tree but are **not part of v6.6.25**. They carry
+their own version scheme on purpose — `OWN_VERSION` at
+`tools/preflight_demo.py:39` lists both by name and the version check skips them,
+so `check_repo_layout.py` and `preflight_demo.py` will not complain that they do
+not read `6.625`.
+
+Compile them only if you intend to use them. Their acceptance is **compile-only**:
+nothing in this release depends on either of them, so a failure here does not
+block v6.6.25 and a success here proves nothing about it.
+
+### 4.1 `MQL5/Experts/QuantumAutonomousTradingSystem.mq5` — QATS v1.23
+
+| | |
+|---|---|
+| Lines | 5,112 |
+| `#property version` | `1.23` |
+| `#define QATS_VERSION` | `"1.23"` (`:93`) |
+| Includes | **one**: `<Trade/Trade.mqh>`, the standard library (`:84`) |
+| What it is | a standalone, self-contained autonomous SMC EA. No indicator dependency, no preset file, no DLL, no `QSMC_*` header. D1 bias → H4 → H1 → liquidity → sweep → displacement → BOS/CHoCH → OB/FVG → premium/discount → VWAP → M15 confirmation → M5 trigger, scored for both directions on every closed M5 bar |
+| What it does that the QSMC EA does not | it **executes real market orders** with server-side SL/TP via `CTrade`, sized from current equity |
+
+**Compile it, then read its init line.** Because it shares no header with the
+QSMC stack, a stale `.ex5` here cannot be spotted from a QSMC banner — the
+version in its own startup line is the only identity check it has.
+
+**Do not attach it to a chart alongside `QSMC_AutoTrader`.** Two EAs on one
+account is two magic numbers, two position sets and one shared drawdown, and
+nothing in either program arbitrates between them. The three magics in play, all
+measured:
+
+| Program | Magic | Where |
+|---|---|---|
+| `QuantumAutonomousTradingSystem` | `26011091` | `:165`, and it manages only positions carrying it (`:3074`) |
+| `QSMC_AutoTrader` | `20261027` | `:285`, same self-only rule |
+| the external **QME** instance | `20261110` | reserved by `tools/preflight_demo.py:43`; `:209` fails the build if the QSMC executor ever reuses it |
+
+Different magics stop one EA from closing the other's positions. They do **not**
+stop two EAs from trading the same symbol into one shared equity and one shared
+daily-loss breaker.
+
+**What to paste back:** the F7 output, and the init line. Nothing else is
+requested — there is no Strategy Tester step for it in this release.
+
+Its offline estate is separate and already green: `test_qats_native_build.py`,
+`test_qats_dual_direction.py`, `test_qats_journal_report.py`,
+`test_qats_limit_entry.py`, plus the `tools/qats_sim/` harness.
+
+### 4.2 `MQL5/Indicators/QSMC_SmcVpEngine.mq5` — SMC + Volume Profile v1.00
+
+| | |
+|---|---|
+| Lines | 495 |
+| `#property version` | `1.00` |
+| Includes | **one**: `<QSMC/QSMC_SvpChart.mqh>` (`:58`) — the `QSMC_Svp*` module family, not `QSMC_Types`/`QSMC_Root` |
+| What it is | a thin host for the SMC + Volume Profile modules. H4 bias → H1 structure → M15 liquidity → sweep → displacement → BOS/CHoCH → OB/FVG → volume profile → entry validation → RR ⇒ BUY SETUP / SELL SETUP / WAIT, once per closed M15 bar |
+| What it is not | **it places no order and reads no account.** Analysis and chart objects only |
+| Object namespace | `QSVP_*`. It never touches another object, so it can share a chart with `nadir2` without a name collision |
+
+**Compile it, attach it to a chart, and confirm the init line reads v1.00.** That
+is the whole acceptance for this release.
+
+Its engine is already executed offline: `test_qsmc_smcvp.py` builds the modules
+with the runner's g++, replays a series and its mirror image through
+`OnInit`/`OnCalculate`/`OnDeinit`, and repeats under ASan + UBSan. That is wired
+in CI. It is **not** MetaEditor, and it does not prove this host file compiles —
+which is why it is in this part and not in Part 1's acceptance.
+
+### 4.3 Acceptance for both
+
+**0 errors.** Warnings: paste them back, they are not a gate.
+
+A failure in either program is recorded, reported, and **does not hold the
+v6.6.25 release gate**. Say so explicitly in what you paste back so the two
+results are never merged into one verdict.
+
+---
+
 ## What this document deliberately does not claim
 
 * It does not claim the source compiles. That is item 1 of the open register and
@@ -249,6 +330,9 @@ unverified claim left in this repository.
   measurement exists in either direction.
 * It does not claim a win rate, a probability, or an expectancy. One week of one
   symbol cannot support any of them.
+* It does not claim the two experimental programs of Part 4 belong to this
+  release, work, or are safe to attach. They are listed so you can compile them
+  and report a result, not because anything here depends on them.
 * It does not describe live or real-account behaviour. Every preset here is
   demo-armed by default; arming REAL requires three separate confirmations that
   are re-verified before every order (`tools/test_execution_safety.py`, block D9).
