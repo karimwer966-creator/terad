@@ -2004,6 +2004,7 @@ input bool   InpRearmStructureAfterBreak = false; // B: after a break consumes t
 input int    InpRearmStructureBars       = 5;     // B: K = closed bars after the break that form the provisional reference (clamped to >= 2)
 input bool   InpAllowContinuationChain   = false; // C: accept a sweep-less CONTINUATION chain: H1-aligned BOS + displacement leg (impulse body >= InpDisplacementATR x ATR) bound to an unmitigated OB/FVG; tagged CONTINUATION everywhere
 input int    InpSweepToStructureMaxBarsContinuation = 12; // C: max bars from the continuation leg origin to the BOS (InpSweepToStructureMaxBars is untouched)
+input bool   InpTargetLiquidityAware     = false; // D: top-down TP1 = nearest liquidity pool / swing / ATR multiple that PAYS InpTopDownMinRR (floor unchanged); WEAK only with H1 bias + Asia/London + RR1 >= InpWeakSignalMinRR
 //====================================================================
 // v6.6.15 iCustom init-race WRITABLE SHADOWS for threshold ATR doubles.
 //
@@ -21484,6 +21485,44 @@ int BinarySearchNearestLiquidity(const double price,const bool find_above,const 
 // Preserved intentionally under R8 as the PRIMARY/SECONDARY scaffold until a
 // documented decision is made to revive or remove it. Do not enable silently.
 
+//====================================================================
+// v6.6.25 (D) InpTargetLiquidityAware (default OFF)
+//====================================================================
+// Index of the NEAREST direction-valid candidate whose reward:risk meets floor_rr,
+// or -1. `skipped` names every nearer candidate that could not pay, with its RR -
+// the exact reason it was passed over. Pure: reads only its arguments.
+int TopDownPickTarget(const double &cands[],const string &labels[],const int n,
+                      const double entry,const double risk,const int dir,
+                      const double floor_rr,string &skipped)
+{
+   skipped="";
+   if(n<=0 || risk<=0.0 || dir==0 || n>ArraySize(cands) || n>ArraySize(labels)) return -1;
+   bool used[];
+   ArrayResize(used,n);
+   ArrayInitialize(used,false);
+   for(int pass=0;pass<n;pass++)
+   {
+      int bi=-1;
+      for(int i=0;i<n;i++)
+      {
+         if(used[i]) continue;
+         if((dir>0 && cands[i]<=entry) || (dir<0 && cands[i]>=entry)){ used[i]=true; continue; }
+         if(bi<0 || (dir>0 ? cands[i]<cands[bi] : cands[i]>cands[bi])) bi=i;
+      }
+      if(bi<0) break;
+      used[bi]=true;
+      double rr=(dir>0 ? (cands[bi]-entry)/risk : (entry-cands[bi])/risk);
+      if(rr+1e-9>=floor_rr) return bi;
+      skipped+=(skipped=="" ? "" : ", ")+labels[bi]+" RR "+DoubleToString(rr,2);
+   }
+   return -1;
+}
+
+// WEAK publication policy that REPLACES the top-down hard veto while
+// InpTargetLiquidityAware is ON: H1 closed-structure bias agrees (as of the
+// decision boundary) AND the boundary is in the Asia or London session AND
+// RR1 >= InpWeakSignalMinRR. `why` names every failing condition.
+bool QSMC_WeakPolicyAllows(const STradeSetup &setup,string &why)
 {
    why="";
    int closed=g_rates_total-2;
@@ -21550,9 +21589,23 @@ bool QSMC_ApplyExecClassification(STradeSetup &setup,string &why)
    bool expired=(setup.created_bar>=0 && ArraySize(g_buf_t)>0 &&
                  g_rates_total-2-setup.created_bar>InpRetestTimeoutBars);
 
+   // v6.6.25 (D): with InpTargetLiquidityAware the WEAK top-down hard veto is
+   // replaced by QSMC_WeakPolicyAllows() (H1 bias + Asia/London + RR1). OFF: the
+   // classifier sees the real top-down state exactly as before.
+   bool td_gate_computed=(InpTargetLiquidityAware ? true : td_computed);
+   bool td_gate_agrees=(InpTargetLiquidityAware ? true : td_agrees);
    int cls=QSMC_ClassifySignal((double)setup.confidence,(double)setup.reliability,
                                setup.rr1,geometry_ok,causal_ok,data_ready,
-                               td_computed,td_agrees,invalidated,expired,why);
+                               td_gate_computed,td_gate_agrees,invalidated,expired,why);
+   if(InpTargetLiquidityAware && cls==QSMC_CLASS_WEAK_VALID)
+   {
+      string weak_why="";
+      if(!QSMC_WeakPolicyAllows(setup,weak_why))
+      {
+         why="WEAK vetoed by the liquidity-aware policy (InpTargetLiquidityAware): "+weak_why;
+         cls=QSMC_CLASS_REJECTED;
+      }
+   }
    if(cls!=QSMC_CLASS_WEAK_VALID && cls!=QSMC_CLASS_MODERATE_VALID &&
       cls!=QSMC_CLASS_STRONG_VALID)
    {
@@ -35506,6 +35559,52 @@ void TopDown_Evaluate()
    { cands[nc]=g_d1_high; csrc[nc]="PDH"; nc++; }
    if(d1_dir<0 && g_d1_low>0.0 && g_d1_low<entry)
    { cands[nc]=g_d1_low; csrc[nc]="PDL"; nc++; }
+   // v6.6.25 (D) InpTargetLiquidityAware: TP1 = the NEAREST target that PAYS
+   // InpTopDownMinRR. Unswept opposing EQH/EQL pools of this chart join the
+   // candidates above; nearer ones that cannot pay are skipped and named in the
+   // published source; when none pays, the smallest half-ATR15 multiple that meets
+   // the floor (capped at 8 x ATR15) is used. The floor is never lowered. The
+   // chosen target is handed to the legacy check below as its only candidate.
+   if(InpTargetLiquidityAware)
+   {
+      double lc[];
+      string ls[];
+      int lcap=nc+ArraySize(g_liquidity);
+      ArrayResize(lc,MathMax(1,lcap));
+      ArrayResize(ls,MathMax(1,lcap));
+      int ln=0;
+      for(int i=0;i<nc;i++){ lc[ln]=cands[i]; ls[ln]=csrc[i]; ln++; }
+      for(int i=0;i<ArraySize(g_liquidity) && ln<lcap;i++)
+      {
+         if(g_liquidity[i].swept) continue;
+         if(d1_dir>0 ? g_liquidity[i].type!="EQH" : g_liquidity[i].type!="EQL") continue;
+         double lp=g_liquidity[i].price;
+         if(d1_dir>0 ? lp<=entry : lp>=entry) continue;
+         lc[ln]=lp; ls[ln]=(d1_dir>0 ? "EQH liquidity pool" : "EQL liquidity pool"); ln++;
+      }
+      string skipped="";
+      int pick=TopDownPickTarget(lc,ls,ln,entry,risk,d1_dir,InpTopDownMinRR,skipped);
+      if(pick>=0)
+      {
+         cands[0]=lc[pick];
+         csrc[0]=ls[pick]+(skipped!="" ? " [liquidity-aware; skipped "+skipped+"]" : " [liquidity-aware]");
+      }
+      else
+      {
+         double need_atr=(atr15>0.0 ? InpTopDownMinRR*risk/atr15 : 0.0);
+         double mult=MathCeil(need_atr*2.0-1e-9)/2.0;
+         if(atr15<=0.0 || mult>8.0)
+         {
+            TopDown_Fail(StringFormat("M5 liquidity-aware: no target pays R:R %.2f (%s) and the ATR projection needs %.1f x ATR15 (cap 8.0)",
+                                      InpTopDownMinRR,(skipped=="" ? "no candidates" : "skipped "+skipped),mult));
+            return;
+         }
+         cands[0]=(d1_dir>0 ? entry+mult*atr15 : entry-mult*atr15);
+         csrc[0]=StringFormat("ATR15 x%.1f projection [liquidity-aware; skipped %s]",mult,
+                              (skipped=="" ? "none" : skipped));
+      }
+      nc=1;
+   }
    if(nc==0){ TopDown_Fail("M5: no opposing liquidity target"); return; }
    int bi=0;
    for(int i=1;i<nc;i++)
