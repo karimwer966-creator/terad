@@ -197,7 +197,7 @@ of rows, is a forecast.**
 
 ## 8. What the verification actually proves
 
-88 offline suites, all passing. `tools/qats_sim/` (8,539 lines) and
+89 offline suites, all passing. `tools/qats_sim/` (8,539 lines) and
 `tools/smcvp_sim/` (4,019 lines) are a host-side MQL5 simulator: shim headers
 plus drivers that compile **real** `.mq5` bodies with a strict C++ compiler.
 That is what lets this project claim "the shipped function body ran" without a
@@ -206,7 +206,9 @@ terminal.
 They prove: source contracts hold, the include graph is a DAG, buffers / inputs
 / versions / presets agree, doc citations resolve, pinned line numbers still
 point at the right code, and specific shipped bodies behave correctly on
-synthetic data.
+synthetic data. The reaction layer's "CLASSIFICATION ONLY" promise is one of
+those contracts (`tools/test_rxn_classification_only.py`), as is the frozen
+incident evidence folder (`tools/test_incident_evidence_map.py`).
 
 They do not prove: that MetaEditor compiles anything, that a signal fires on
 real bars, or that a trade fills.

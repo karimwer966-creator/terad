@@ -366,6 +366,15 @@ jobs:
       - name: Display authority (non-Core vocabulary cannot authorize)
         run: python3 tools/test_display_authority.py 2>&1 | tee out/test_display_authority.log
 
+      # The v6.5.0 reaction layer promises "CLASSIFICATION ONLY" at nadir2.mq5:40185.
+      # This is the suite that holds it to that: no trading API in any of the 86
+      # RXN_* definitions, no signal buffer written or named, no write to the
+      # authoritative signal state, and an exhaustive pinned list of the seven
+      # non-RXN functions allowed to read g_rxn_* at all - so a new reader fails
+      # even if it looks harmless.
+      - name: RXN classification-only contract (no trading function of any kind)
+        run: python3 tools/test_rxn_classification_only.py 2>&1 | tee out/test_rxn_classification_only.log
+
       - name: Incident compact badge (measurement, panel avoidance, ownership)
         run: python3 tools/test_incident_compact.py 2>&1 | tee out/test_incident_compact.log
 
