@@ -161,7 +161,6 @@ PATH_ALLOWLIST = {
     "MQL5/Experts/rollback/": "gitignored local rollback snapshots (audit history)",
     "MQL5/Include/QSMC/QSMC_DryRunAudit.mqh": "removed in v6.6.16; cited by its own RCA",
     "MQL5/Logs/": "runtime: the terminal writes these, not the repository",
-    "docs/KLJ_V6.5.4_REACTION_CONFLICT_FIX.md": "documented as absent from this checkout",
     "presets/QSMC_v6.6.15_trial_5k.set": "historical $5k trial, frozen in docs/history/",
     "presets/QSMC_v6.6.16_trial_5k.set": "historical $5k trial, frozen in docs/history/",
 }

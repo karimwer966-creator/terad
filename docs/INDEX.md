@@ -36,6 +36,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`BUFFER_CONTRACT.md`](BUFFER_CONTRACT.md) | the 27-buffer contract between the indicator and the EA: index, array, writer, whether the EA reads it, value range — and why buffer 26 is a label, not a gate |
 | [`SEVEN_THRESHOLDS_2026-11-27.md`](SEVEN_THRESHOLDS_2026-11-27.md) | the seven thresholds behind the missed trade: current value, the `was` value its comment claims, every code site, what it gates — and the exact Strategy Tester A/B that would validate it |
 | [`INPUTS_REFERENCE.md`](INPUTS_REFERENCE.md) | **generated** — every input in every shipped program and header: type, default, group, and the source's own one-line meaning (`UNDOCUMENTED IN SOURCE` where the author wrote none) |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | the whole system on one page: size, dependency graph, internal modules, the market→buffer→EA→trade data flow, the signal outcome model, and where the risk is concentrated |
 | [`QSMC_CHART_READING_AR.md`](QSMC_CHART_READING_AR.md) | معنى كل نص على الشارت، وترتيب سلطة الطبقات |
 | [`QSMC_DASHBOARD_CLARITY.md`](QSMC_DASHBOARD_CLARITY.md) | compact decision card, grouped SMC explainability panel, `DATA_WAITING`, verdict codes and caps |
 | [`QSMC_WHY_NO_TRADES.md`](QSMC_WHY_NO_TRADES.md) | triage: a trade is missing — which gate refused it |
@@ -140,3 +141,25 @@ behind decisions, not because they are instructions.
 > tells you to load a preset, run a command or expect a version that does not
 > appear in [`../README.md`](../README.md), the file is history: trust the
 > repository, then `tools/check_repo_layout.py`, then this index.
+
+### Placeholders for documents that were never committed
+
+Each of these is cited by the source or by a preset but was never committed
+here. Rather than leave a dead link — or edit a 46,847-line file to delete the
+citations, which would invalidate 291 pinned line numbers — each is a short
+stub that says plainly it is not the original, names its citing line, separates
+verified fact from what the citation merely implies, and points at where the
+current truth lives. `tools/test_tool_reference_integrity.py` now reports zero
+dangling citations.
+
+| Placeholder | Cited by |
+|---|---|
+| [`KLJ_V6.5.0_REACTION_LAYER_AUDIT.md`](KLJ_V6.5.0_REACTION_LAYER_AUDIT.md) | `nadir2.mq5:202`, `:4451`, `:40188` |
+| [`KLJ_V6.5.0_REACTION_LAYER_REPORT.md`](KLJ_V6.5.0_REACTION_LAYER_REPORT.md) | `nadir2.mq5:203` |
+| [`KLJ_V6.5.1_FORENSIC_AUDIT.md`](KLJ_V6.5.1_FORENSIC_AUDIT.md) | `nadir2.mq5:1859` |
+| [`KLJ_V6.5.2_FILE_AUDIT.md`](KLJ_V6.5.2_FILE_AUDIT.md) | `nadir2.mq5:143` |
+| [`KLJ_V6.5.4_REACTION_CONFLICT_FIX.md`](KLJ_V6.5.4_REACTION_CONFLICT_FIX.md) | `nadir2.mq5:55` and `KLJ_V6.6.0_SIGNAL_ARBITRATION.md` |
+| [`PART_A_REPAIR_HANDOFF.md`](PART_A_REPAIR_HANDOFF.md) | `nadir2.mq5:118` |
+| [`PREDICTIVE_ENGINE_AUDIT.md`](PREDICTIVE_ENGINE_AUDIT.md) | `nadir2.mq5:1756` |
+| [`QSMC_UNIFIED_DEMO_REAL_2026-11-09.md`](QSMC_UNIFIED_DEMO_REAL_2026-11-09.md) | two shipped `.set` presets |
+
