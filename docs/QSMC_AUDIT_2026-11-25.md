@@ -88,6 +88,31 @@ specific source changes are deferred while independent safe repairs continue.
 | AUD-04 | P1 | `MQL5/Include/QSMC/QSMC_ExecutionRules.mqh`, `QER_SpreadOk()` L173–185 | `bool abs_ok=((int)spread_points<=cap_points);` truncates fractional spreads; NaN and negative spreads are not rejected. | `20.9` points passes a `20`-point cap, `60.9` passes `60`, a NaN quote and a `-5` quote PASS with the share cap off. A spread gate can admit a quote the documented cap should refuse. | Same approval boundary as AUD-03. No source change made. | `out/repro/spread_repro.cpp` compiled the shipped header with g++ and printed `PASS` for all four cases (`out/repro/spread_repro` binary, console captured in `out/repro/entry_review_gate_before.log` source-contract run). The new review-gate suite also fails `20.9 pts` and `NaN` cases. |
 | AUD-05 | P1 | `MQL5/Experts/QSMC_AutoTrader.mq5`, `HandleSignal()` L2706–2720 | `if(SymbolInfoTick(sym,tk)) { ... refuse stale ... }` has no `else`. A failed tick read falls through to the terminal-connected check and later order path. | A broker-feed API failure can bypass the explicit `InpMaxDataAgeSeconds` stale-feed refusal. The separate `RunEntryReview()` R3 uses `SymbolInfoInteger(SYMBOL_TIME)` and fails closed, but with AUD-03 the review can be disabled. | Execution-path change; approval skipped. No source change made. | Source review; no native reproduction performed. Exact lines cited. |
 
+**Resolution, v6.6.25 (2026-11-27).** AUD-03 and AUD-04 were approved and fixed on
+branch `arena/b7726771-terad`. The rows above are kept exactly as written: they
+record what the audit found and why it was deferred at the time.
+
+- **AUD-03 — fixed.** `RunEntryReview()` no longer returns `""` on the print
+  switch. The review always runs; `InpPrintEntryReview` now guards only the
+  `BEGIN`/`END` lines and `ReviewLine()`, which is the split the indicator
+  already used (`QSMC_BuildEntryReview()` computes the verdict,
+  `QSMC_PrintEntryReview()` prints it). The call site is unchanged.
+- **AUD-04 — fixed.** `QER_SpreadOk()` compares the spread as a real number of
+  points (`spread_points<=(double)cap_points`), fails closed on a non-finite or
+  negative quote, and treats `cap_points<=0` as "absolute cap disabled" exactly
+  as the EA's own `SpreadOK()` does. 20.9 points now fails a 20-point cap.
+- **Both are in CI.** `tools/test_entry_review_gate.py` joined
+  `.github/workflows/qsmc-verify.yml` (job `offline-gates`): it compiles the
+  shipped review bodies against the shipped header and requires the verdict to be
+  identical with the print switch ON and OFF for all twelve conditions, plus the
+  20.9-point and NaN spread cases. `tools/test_execution_rules.py` gained five
+  pins on the same behaviour. Mutation-checked in both directions: restoring
+  `if(!InpPrintEntryReview) return "";` or `(int)spread_points<=cap_points` turns
+  both suites red.
+- **AUD-05 is still open** and was not part of this approval: `HandleSignal()`
+  still falls through when `SymbolInfoTick()` fails. Its blast radius is smaller
+  now that R3 always runs, but the missing `else` is unchanged.
+
 ### B3. Other findings and audit observations
 
 | ID | Priority | Area | Finding | Status / evidence |

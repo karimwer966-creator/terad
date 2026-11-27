@@ -1,4 +1,4 @@
-# QSMC — Quantum SMC Intelligence Engine **v6.6.24**
+# QSMC — Quantum SMC Intelligence Engine **v6.6.25**
 
 Two MQL5 products live in this repository. They are not the same product, they do
 not share a preset format contract, and only one of them is production-ready.
@@ -15,9 +15,9 @@ not share a preset format contract, and only one of them is production-ready.
 ```
 nadir2.mq5                          canonical host: 45 002 lines, 599 `input`
                                     declarations (65 of them groups), 47 enums,
-                                    26 buffers / 7 plots - byte-identical mirror
+                                    27 buffers / 7 plots - byte-identical mirror
                                     in MQL5/Indicators/nadir2.mq5
-MQL5/Experts/QSMC_AutoTrader.mq5    the companion EA: 67 inputs, reads buffers 7-12
+MQL5/Experts/QSMC_AutoTrader.mq5    the companion EA: 71 inputs, reads buffers 7-12
 MQL5/Experts/KLJ_DataFeeder.mq5     feed sanity companion, no trading
 MQL5/Include/QSMC/*.mqh             34 headers, aggregated by QSMC_Root.mqh
 MQL5/Indicators/QSMC_ScannerProbe.mq5, QSMC_SmcVpEngine.mq5

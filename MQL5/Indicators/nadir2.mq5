@@ -1,4 +1,43 @@
 //+------------------------------------------------------------------+
+//| v6.6.25 MISSED-TRADE FIXES - 2026-11-27 XAUUSD M15 Asia rally     |
+//| (3562-3570 range, vertical leg to ~3684, no CORE signal). Root    |
+//| causes and evidence: docs/MISSED_TRADE_2026-11-27_HYPOTHESES.md.  |
+//| EVERY switch below defaults OFF; with all of them OFF this file   |
+//| computes exactly what v6.6.24 computed (buffers 0-25, journal,    |
+//| CSV, causal fingerprint, logs).                                   |
+//|                                                                   |
+//| InpRearmStructureAfterBreak  (false)                              |
+//| InpRearmStructureBars        (5)                                  |
+//|   B. After a BOS/MSS/CHoCH consumes the swing reference, arm a    |
+//|   PROVISIONAL reference K closed bars later = highest high /      |
+//|   lowest low of bars B+1..B+K. A confirmed fractal always         |
+//|   replaces it. Classification unchanged; incremental == full.     |
+//| InpAllowContinuationChain    (false)                              |
+//| InpSweepToStructureMaxBarsContinuation (12)                       |
+//|   C. A with-trend BOS with NO qualifying sweep may form a         |
+//|   CONTINUATION chain: leg origin in [BOS-12, BOS-2], impulse body |
+//|   >= InpDisplacementATR x ATR, unmitigated OB / unfilled FVG      |
+//|   bound to that impulse, H1 structure bias (as of the BOS close)  |
+//|   agrees. A reversal chain always wins. Tagged CONTINUATION in    |
+//|   the log, GateAudit, SigLog CSV (causal_chain=P(CONTINUATION))   |
+//|   and export buffer 26 (0 off/none, 1 REVERSAL, 2 CONTINUATION).  |
+//| InpTargetLiquidityAware      (false)                              |
+//|   D. Top-down TP1 = nearest liquidity pool / swing / half-ATR15   |
+//|   multiple (<= 8) that PAYS InpTopDownMinRR; WEAK only when the   |
+//|   H1 bias agrees AND Asia/London AND RR1 >= InpWeakSignalMinRR.   |
+//|   No RR floor is lowered; WEAK still needs InpAllowWeakSignals.   |
+//| InpWarmupWaitHTFData         (false)                              |
+//|   E. While the Sniper HTF buffers (ADX_H1, ATR W1..M30) are not   |
+//|   DATA_READY the CORE evaluation is deferred and logged WARMUP    |
+//|   (quality class WARMUP, not NO_SETUP); the last closed bar is   |
+//|   re-evaluated as soon as they are ready.                         |
+//| InpLogCompactBarLine         (false)                              |
+//|   G. One [BAR] line per closed bar: structure refs + last break,  |
+//|   chain hops + kind, top-down verdict, RR1, first failing gate.   |
+//| Execution-side switches (F) are in MQL5/Experts/QSMC_AutoTrader.  |
+//| Compiled with MetaEditor: NOT RUN in this environment (press F7). |
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //| v6.6.9 ONE CAUSAL ZONE ROLE / SIGNAL DIRECTION FIX             |
 //| Support vs resistance is resolved from ONE closed-bar fact -   |
 //| the same one the arbiter registry publishes - so a level that  |
@@ -611,7 +650,7 @@
 //|    change to CalculateAITradeSetup / ManageSetupLifecycle.       |
 //+------------------------------------------------------------------+
 #property copyright "Quantum SMC Intelligence Engine"
-#property version   "6.624"
+#property version   "6.625"
 // PHASE 59 (dashboard fixes) D4: single source of truth for the build
 // version shown on the dashboard titles and in the init/deinit journal
 // banners. The titles used to hardcode "v6.0"/"v6.0.0" and the stop banner
@@ -622,9 +661,9 @@
 // init/deinit banners and the journal named a build that did not contain the
 // code that was running (audit rule: version bump). The macro, the
 // #property version and the banner now use this release's value (v6.6.15).
-#define QSMC_VERSION_TEXT "v6.6.24"
+#define QSMC_VERSION_TEXT "v6.6.25"
 #property indicator_chart_window
-#property indicator_buffers 26   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)
+#property indicator_buffers 27   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21), 26 CORE chain kind (v6.6.25)
 #property indicator_plots   7
 //+------------------------------------------------------------------+
 //| v6.6.0 SIGNAL ARBITRATION LAYER                                  |
@@ -1999,6 +2038,15 @@ input double InpStrongSignalMinRR   = 1.50;  // STRONG_VALID RR1 floor (matches 
 input bool   InpTopDownHardGateForWeak = true;  // TopDown veto is HARD for WEAK signals even when InpRequireInstitutionalConfirm=false (weak needs stronger protection)
 input bool   InpPrintEntryReview        = true;  // print the [QSMC_ENTRY_REVIEW] checklist (12 checks with PASS/FAIL) before a signal is published
 
+input group "====== v6.6.25 MISSED-TRADE FIXES (every switch defaults OFF = v6.6.24 behaviour) ======"
+input bool   InpRearmStructureAfterBreak = false; // B: after a break consumes the swing reference, re-arm a PROVISIONAL one (highest high / lowest low of the K closed bars after the break) until a confirmed fractal replaces it
+input int    InpRearmStructureBars       = 5;     // B: K = closed bars after the break that form the provisional reference (clamped to >= 2)
+input bool   InpAllowContinuationChain   = false; // C: accept a sweep-less CONTINUATION chain: H1-aligned BOS + displacement leg (impulse body >= InpDisplacementATR x ATR) bound to an unmitigated OB/FVG; tagged CONTINUATION everywhere
+input int    InpSweepToStructureMaxBarsContinuation = 12; // C: max bars from the continuation leg origin to the BOS (InpSweepToStructureMaxBars is untouched)
+input bool   InpTargetLiquidityAware     = false; // D: top-down TP1 = nearest liquidity pool / swing / ATR multiple that PAYS InpTopDownMinRR (floor unchanged); WEAK only with H1 bias + Asia/London + RR1 >= InpWeakSignalMinRR
+input bool   InpWarmupWaitHTFData        = false; // E: defer CORE evaluation (log WARMUP, not NO_SETUP) until the Sniper HTF buffers (ADX_H1, ATR W1..M30) are DATA_READY, then re-evaluate the last closed bar
+input bool   InpLogCompactBarLine        = false; // G: print ONE compact [BAR] line per closed bar: structure refs (armed/provisional/consumed) + last break, chain SWP/DISP/STRUCT/ZONE + kind, top-down verdict, RR1, first failing gate
+
 //====================================================================
 // v6.6.15 iCustom init-race WRITABLE SHADOWS for threshold ATR doubles.
 //
@@ -2494,6 +2542,33 @@ int    g_struct_trend              = 0;     // +1 bullish, -1 bearish, 0 neutral
 int    g_struct_last_processed_bar = -1;    // last bar checked for structure break
 int    g_struct_last_break_bar     = -1;    // last bar where BOS/CHOCH/MSS occurred
 datetime g_last_ob_struct_time     = 0;     // stable OB processing cursor
+// v6.6.25 (B, InpRearmStructureAfterBreak): provisional re-arm state. Written only
+// while the switch is ON; reset on every full DetectStructure() pass and in OnInit.
+int    g_struct_rearm_high_from    = -1;    // bar of the bullish break awaiting a provisional high (-1 none)
+int    g_struct_rearm_low_from     = -1;    // bar of the bearish break awaiting a provisional low (-1 none)
+bool   g_struct_last_high_prov     = false; // g_struct_last_high is a provisional K-bar reference
+bool   g_struct_last_low_prov      = false; // g_struct_last_low is a provisional K-bar reference
+// v6.6.25 (C, InpAllowContinuationChain): continuation-chain bookkeeping. Written
+// only while the switch is ON (see the CONTINUATION CHAIN block before
+// BuildCausalEventGraph); reset in OnInit.
+string   g_cont_why[];          // per g_structures index: exact continuation veto of the latest graph pass
+int      g_cont_graph_ok=0;     // continuation structures accepted by the latest graph pass
+int      g_cont_graph_rej=0;    // continuation candidates rejected by the latest graph pass
+string   g_cont_last_reject=""; // newest rejection text (for the GateAudit line)
+int      g_cont_armed=0;        // CONTINUATION setups created this attach
+int      g_cont_confirmed=0;    // CONTINUATION signals confirmed (journal facts) this attach
+#define  QSMC_H1BIAS_CACHE 64
+datetime g_h1bias_cache_t[QSMC_H1BIAS_CACHE];
+int      g_h1bias_cache_v[QSMC_H1BIAS_CACHE];
+int      g_h1bias_cache_n=0;
+// v6.6.25 (E, InpWarmupWaitHTFData): HTF warm-up deferral state (inert while OFF).
+bool     g_warmup_pending=false;       // a closed bar's CORE evaluation is owed
+bool     g_warmup_deferred_now=false;  // this pass deferred it (replay audit is not armed)
+datetime g_warmup_logged_bar=0;        // one [WARMUP] line per closed bar
+// v6.6.25 (G, InpLogCompactBarLine): what the CORE evaluation saw on this bar.
+// Written by CalculateAITradeSetup (diagnostic only, read only by the [BAR] line).
+datetime g_bar_eval_time=0;            // open time of the closed bar last evaluated
+double   g_bar_eval_rr1=-1.0;          // RR1 computed on that evaluation (-1 = not reached)
 double g_d1_high=0, g_d1_low=0, g_d1_close=0;
 // v6.5.3: provenance of the ONE prior-D1 reference published to every consumer
 // (price levels, PMI ledger, S/R cluster, targets, dashboards, zone age).
@@ -2881,6 +2956,7 @@ struct SConfirmedSignalJournalEntry
    int      exec_reliability;
    double   exec_rr1;
    double   exec_risk_mult;
+   bool     continuation;        // v6.6.25 (C): the published chain was CONTINUATION (no sweep)
 };
 
 // Phase 44: Statistical Analysis Metrics
@@ -3700,6 +3776,7 @@ struct STradeSetup
    int    exec_reliability;      // reliability the class was derived from
    double exec_rr1;              // RR1 the class was derived from
    double exec_risk_mult;        // 0.25 / 0.50 / 1.00 for the companions
+   bool   continuation;          // v6.6.25 (C): built from a sweep-less CONTINUATION chain
 };
 
 // These declarations require the complete STradeSetup type above.
@@ -3839,6 +3916,7 @@ struct SActiveSetup
    int      confirmed_bar;
    datetime confirmed_time;
    bool     alert_fired;
+   bool     continuation;   // v6.6.25 (C): built from a sweep-less CONTINUATION chain
 };
 struct SDealingRange
 {
@@ -3893,6 +3971,7 @@ struct SCausalEvent
    bool     invalidated;
    int      age;
    int      source_index;
+   bool     continuation;   // v6.6.25 (C): sweep-less CONTINUATION displacement/structure; only ever true with InpAllowContinuationChain
 };
 
 // One canonical Core path resolved from immutable setup IDs, current selected
@@ -5324,6 +5403,10 @@ int FindNearestCausalAncestor(const int child,const ENUM_CAUSAL_EVENT_TYPE type,
 int FindParentEventOfType(const int child,const ENUM_CAUSAL_EVENT_TYPE type);
 bool IsCausallyConnected(const int ancestor,const int descendant);
 bool ResolveCoreCausalPath(const int closed,SResolvedCorePath &path);
+bool IsContinuationEvent(const int e);            // v6.6.25 (C)
+bool ResolveCausalZones(const int structure_event,const int displacement_event,
+                        int &ob_event,int &fvg_event);   // v6.6.25 (C)
+string ContinuationGateAuditLine();               // v6.6.25 (C)
 //============================================================================
 // SHARED CORE-PATH RESOLVER (Core -> PMI/UI, read-only)
 // Precedence: immutable active/trade setup IDs, current selected Core indices,
@@ -5354,12 +5437,53 @@ bool CorePathEventAvailable(const int event_index,const int closed)
            ev.availability_time>0 && ev.availability_time<=boundary);
 }
 
+// v6.6.25 (C): the PMI/UI resolver for a sweep-less CONTINUATION chain. Same
+// availability and connectivity rules as CorePathTryBuild, minus the sweep hop.
+bool CorePathTryBuildContinuation(const int displacement,const int structure,const int zone,
+                                  const int closed,const string source,SResolvedCorePath &path)
+{
+   CorePathInit(path);
+   int n=ArraySize(g_causal_events);
+   if(displacement<0 || structure<0 || displacement>=n || structure>=n) return false;
+   SCausalEvent dp=g_causal_events[displacement];
+   SCausalEvent st=g_causal_events[structure];
+   if(st.type!=CE_BOS || dp.type!=CE_DISPLACEMENT || !dp.continuation || !st.continuation ||
+      InpRequireMSSAfterSweep ||
+      !CorePathEventAvailable(displacement,closed) ||
+      !CorePathEventAvailable(structure,closed)) return false;
+   if(!dp.confirmed || dp.invalidated || !st.confirmed || st.invalidated) return false;
+   if(dp.bullish!=st.bullish) return false;
+   if(!(dp.event_bar<st.event_bar && dp.event_time<st.event_time &&
+        dp.availability_time<=st.event_time)) return false;
+   if(!IsCausallyConnected(displacement,structure)) return false;
+   int valid_zone=-1;
+   if(zone>=0 && zone<n)
+   {
+      SCausalEvent zn=g_causal_events[zone];
+      bool zone_type_ok=(zn.type==CE_ORDER_BLOCK || zn.type==CE_FVG);
+      if(zone_type_ok && zn.bullish==st.bullish && !zn.invalidated &&
+         CorePathEventAvailable(zone,closed) &&
+         IsCausallyConnected(structure,zone))
+         valid_zone=zone;
+   }
+   path.valid=true;
+   path.direction=(st.bullish?1:-1);
+   path.sweep=-1;
+   path.displacement=displacement;
+   path.structure=structure;
+   path.zone=valid_zone;
+   path.source=source;
+   return true;
+}
+
 bool CorePathTryBuild(const int sweep,const int displacement,const int structure,
                       const int zone,const int closed,const string source,
                       SResolvedCorePath &path)
 {
    CorePathInit(path);
    int n=ArraySize(g_causal_events);
+   if(sweep<0 && IsContinuationEvent(structure))   // v6.6.25 (C)
+      return CorePathTryBuildContinuation(displacement,structure,zone,closed,source,path);
    if(sweep<0 || displacement<0 || structure<0 ||
       sweep>=n || displacement>=n || structure>=n) return false;
 
@@ -13756,6 +13880,10 @@ double BufSigCoreVerdict[],BufSigZREVerdict[];
 // score-based risk scaling without re-deriving the class from score alone.
 // 21=confidence 22=class(1/2/3) 23=reliability 24=RR1 25=risk-mult(0.25/0.5/1.0)
 double BufSigCoreScore[],BufSigCoreClass[],BufSigCoreReliability[],BufSigCoreRR1[],BufSigCoreRiskMult[];
+// v6.6.25 (C): buffer 26, chain kind of a published CORE signal. 0 = no signal or
+// InpAllowContinuationChain OFF (so the OFF output of buffers 0-25 is unchanged and
+// 26 stays all-zero), 1 = REVERSAL (sweep chain), 2 = CONTINUATION (sweep-less).
+double BufSigCoreChain[];
 
 // SIGLOG_CORE_BEGIN - pure functions: no chart state, no globals, no I/O
 void SigLog_RecInit(SSigLogRec &r)
@@ -14399,6 +14527,7 @@ int        g_sigbuf_src[];
 double     g_sigbuf_dir[],g_sigbuf_e[],g_sigbuf_sl[],g_sigbuf_tp1[],g_sigbuf_tp2[],g_sigbuf_tp3[];
 double     g_sigbuf_score[],g_sigbuf_reliability[],g_sigbuf_rr1[];
 int        g_sigbuf_class[];
+int        g_sigbuf_chain[];   // v6.6.25 (C): 0 none/OFF, 1 REVERSAL, 2 CONTINUATION
 
 void SigLog_Init()
 {
@@ -14422,6 +14551,7 @@ void SigLog_Init()
    ArrayResize(g_sigbuf_reliability,0);
    ArrayResize(g_sigbuf_rr1,0);
    ArrayResize(g_sigbuf_class,0);
+   ArrayResize(g_sigbuf_chain,0);
 }
 
 bool SigLog_SeenHas(const string id)
@@ -14500,18 +14630,26 @@ void SigLog_BufWriteClass(const int idx,const double score,const int cls,
    BufSigCoreRiskMult[idx]=risk_mult;
 }
 
+// v6.6.25 (C): chain-kind buffer 26 (CORE only).
+void SigLog_BufWriteChain(const int idx,const int chain)
+{
+   if(idx<0 || idx>=ArraySize(BufSigCoreChain)) return;
+   BufSigCoreChain[idx]=(double)chain;
+}
+
 void SigLog_BufZero(const int idx)
 {
    SigLog_BufWrite(idx,0,0.0,0.0,0.0,0.0,0.0,0.0);
    SigLog_BufWrite(idx,1,0.0,0.0,0.0,0.0,0.0,0.0);
    SigLog_BufWriteClass(idx,0.0,QSMC_CLASS_NONE,0.0,0.0,0.0);
+   SigLog_BufWriteChain(idx,0);
 }
 
 // Registers a published signal for the calculation buffers and writes it.
 void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,const double e,
                         const double sl,const double t1,const double t2,const double t3,const int rates_total,
                         const double score=0.0,const int cls=QSMC_CLASS_NONE,
-                        const double reliability=0.0,const double rr1=0.0)
+                        const double reliability=0.0,const double rr1=0.0,const int chain=0)
 {
    int n=ArraySize(g_sigbuf_time);
    if(n>=SIGLOG_BUF_MAX)
@@ -14532,6 +14670,7 @@ void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,con
          g_sigbuf_reliability[i]=g_sigbuf_reliability[j];
          g_sigbuf_rr1[i]=g_sigbuf_rr1[j];
          g_sigbuf_class[i]=g_sigbuf_class[j];
+         g_sigbuf_chain[i]=g_sigbuf_chain[j];
       }
       n=keep;
    }
@@ -14547,6 +14686,7 @@ void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,con
    ArrayResize(g_sigbuf_reliability,n+1,256);
    ArrayResize(g_sigbuf_rr1,n+1,256);
    ArrayResize(g_sigbuf_class,n+1,256);
+   ArrayResize(g_sigbuf_chain,n+1,256);
    g_sigbuf_time[n]=bar_time;
    g_sigbuf_src[n]=src;
    g_sigbuf_dir[n]=(buy ? 1.0 : -1.0);
@@ -14559,11 +14699,13 @@ void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,con
    g_sigbuf_reliability[n]=reliability;
    g_sigbuf_rr1[n]=rr1;
    g_sigbuf_class[n]=cls;
+   g_sigbuf_chain[n]=(src==0 ? chain : 0);
    int idx=SigLog_FindBar(bar_time,rates_total);
    if(idx>=0)
    {
       SigLog_BufWrite(idx,src,g_sigbuf_dir[n],e,sl,t1,t2,t3);
       if(src==0) SigLog_BufWriteClass(idx,score,cls,reliability,rr1,QSMC_RiskMultForClass(cls));
+      if(src==0) SigLog_BufWriteChain(idx,g_sigbuf_chain[n]);
    }
 }
 
@@ -14581,7 +14723,7 @@ void SigLog_PrepareBuffers(const int rates_total,const int prev_calculated)
       ArraySize(BufSigZRETP2)<rates_total || ArraySize(BufSigZRETP3)<rates_total ||
       ArraySize(BufSigCoreScore)<rates_total || ArraySize(BufSigCoreClass)<rates_total ||
       ArraySize(BufSigCoreReliability)<rates_total || ArraySize(BufSigCoreRR1)<rates_total ||
-      ArraySize(BufSigCoreRiskMult)<rates_total) return;
+      ArraySize(BufSigCoreRiskMult)<rates_total || ArraySize(BufSigCoreChain)<rates_total) return;
    int from=(prev_calculated>0 ? (int)MathMax(0,MathMin(prev_calculated,rates_total)-1) : 0);
    if(from==0)
    {
@@ -14609,6 +14751,7 @@ void SigLog_PrepareBuffers(const int rates_total,const int prev_calculated)
       ArrayInitialize(BufSigCoreReliability,0.0);
       ArrayInitialize(BufSigCoreRR1,0.0);
       ArrayInitialize(BufSigCoreRiskMult,0.0);
+      ArrayInitialize(BufSigCoreChain,0.0);        // v6.6.25 (C)
       ArrayInitialize(BufEntryBuy0,EMPTY_VALUE);    // v6.4.1: marks must start EMPTY.
       ArrayInitialize(BufEntrySell0,EMPTY_VALUE);   // Uninitialised 0.0 would paint a
       ArrayInitialize(BufPrevBuy0,EMPTY_VALUE);     // stray arrow at price 0 on every
@@ -14629,6 +14772,7 @@ void SigLog_PrepareBuffers(const int rates_total,const int prev_calculated)
             SigLog_BufWriteClass(idx,g_sigbuf_score[i],g_sigbuf_class[i],
                                  g_sigbuf_reliability[i],g_sigbuf_rr1[i],
                                  QSMC_RiskMultForClass(g_sigbuf_class[i]));
+         if(g_sigbuf_src[i]==0) SigLog_BufWriteChain(idx,g_sigbuf_chain[i]);
       }
    }
 }
@@ -14749,7 +14893,9 @@ void SigLog_AddCore(const SConfirmedSignalJournalEntry &je,const int idx,const i
    string g="";
    int nf=0;
    string ff="";
-   SigLog_GateAdd(g,nf,ff,"causal_chain",1,"");
+   // v6.6.25 (C): a CONTINUATION fact is tagged in the gates column; a reversal
+   // fact (and every fact while the switch is OFF) keeps the legacy empty value.
+   SigLog_GateAdd(g,nf,ff,"causal_chain",1,(je.continuation ? "CONTINUATION" : ""));
    SigLog_GateAdd(g,nf,ff,(InpUseRetestLifecycle ? "retest_close_holds" : "next_bar_confirm"),1,"");
    if(same)
       SigLog_GateAdd(g,nf,ff,"confidence>="+IntegerToString(EffMinConfidenceScore()),
@@ -14856,7 +15002,9 @@ void SigLog_CollectCore(const int rates_total,const int closed)
                             (double)g_confirmed_signal_journal[i].exec_score,
                             g_confirmed_signal_journal[i].exec_class,
                             (double)g_confirmed_signal_journal[i].exec_reliability,
-                            g_confirmed_signal_journal[i].exec_rr1);
+                            g_confirmed_signal_journal[i].exec_rr1,
+                            (InpAllowContinuationChain ?
+                             (g_confirmed_signal_journal[i].continuation ? 2 : 1) : 0));
       if(want_csv) SigLog_AddCore(g_confirmed_signal_journal[i],idx,closed);
    }
    g_siglog_core_seen=n;
@@ -15184,7 +15332,9 @@ AlertDispatcherClear();
       (InpChaseFilter && g_cfgChaseMaxATR<=0.0) ||
       InpMaxChartObjects<0 || InpMaxZonesPerSide<1 ||
       (InpLabelFontSize<0 || InpLabelFontSize>72) ||
-      InpSignalDedupCooldownBars<0)
+      InpSignalDedupCooldownBars<0 ||
+      (InpRearmStructureAfterBreak && InpRearmStructureBars<2) ||
+      (InpAllowContinuationChain && InpSweepToStructureMaxBarsContinuation<2))
    {
       // v6.6.15: name the offending parameter so an operator (or the EA's
       // iCustom default-input path) can tell which input was wrong rather
@@ -15220,6 +15370,8 @@ AlertDispatcherClear();
       else if(InpMaxZonesPerSide<1) bad="InpMaxZonesPerSide";
       else if(InpLabelFontSize<0 || InpLabelFontSize>72) bad="InpLabelFontSize";
       else if(InpSignalDedupCooldownBars<0) bad="InpSignalDedupCooldownBars";
+      else if(InpRearmStructureAfterBreak && InpRearmStructureBars<2) bad="InpRearmStructureBars (must be >= 2)";
+      else if(InpAllowContinuationChain && InpSweepToStructureMaxBarsContinuation<2) bad="InpSweepToStructureMaxBarsContinuation (must be >= 2)";
       else if(InpAsianStart<0 || InpAsianStart>23) bad="InpAsianStart";
       else if(InpAsianEnd<0 || InpAsianEnd>23) bad="InpAsianEnd";
       else if(InpLondonStart<0 || InpLondonStart>23) bad="InpLondonStart";
@@ -15370,6 +15522,7 @@ AlertDispatcherClear();
    SetIndexBuffer(23, BufSigCoreReliability, INDICATOR_CALCULATIONS);
    SetIndexBuffer(24, BufSigCoreRR1,         INDICATOR_CALCULATIONS);
    SetIndexBuffer(25, BufSigCoreRiskMult,    INDICATOR_CALCULATIONS);
+   SetIndexBuffer(26, BufSigCoreChain,       INDICATOR_CALCULATIONS);   // v6.6.25 (C) chain kind
    ArraySetAsSeries(BufSigCoreDir,false);
    ArraySetAsSeries(BufSigCoreEntry,false);
    ArraySetAsSeries(BufSigCoreSL,false);
@@ -15389,6 +15542,7 @@ AlertDispatcherClear();
    ArraySetAsSeries(BufSigCoreReliability,false);
    ArraySetAsSeries(BufSigCoreRR1,false);
    ArraySetAsSeries(BufSigCoreRiskMult,false);
+   ArraySetAsSeries(BufSigCoreChain,false);
 
    h_ema_fast = iMA(_Symbol, PERIOD_CURRENT, InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
    h_ema_slow = iMA(_Symbol, PERIOD_CURRENT, InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
@@ -15563,6 +15717,7 @@ AlertDispatcherClear();
    g_trade_setup.confirmation_bar=-1; g_trade_setup.confirmation_time=0;
    g_trade_setup.availability_bar=-1; g_trade_setup.availability_time=0;
    g_trade_setup.ob_uid=""; g_trade_setup.ob_index=-1;
+   g_trade_setup.continuation=false;                                  // v6.6.25 (C)
    g_current_signal_state=STATE_WATCH;
    g_signal_state_setup_id=""; g_signal_state_bar=-1;
    g_active_setup.active=false; g_active_setup.state=STATE_WATCH; g_active_setup.id="";
@@ -15571,6 +15726,9 @@ AlertDispatcherClear();
    g_active_setup.sweep_event_id=""; g_active_setup.displacement_event_id="";
    g_active_setup.structure_event_id=""; g_active_setup.zone_event_id="";
    g_active_setup.setup_event_id="";
+   g_active_setup.continuation=false;                                 // v6.6.25 (C)
+   g_h1bias_cache_n=0; g_cont_armed=0; g_cont_confirmed=0;            // v6.6.25 (C)
+   g_cont_graph_ok=0; g_cont_graph_rej=0; g_cont_last_reject="";
    g_active_setup.immutable_target_barrier=0.0;
    g_active_setup.immutable_target_barrier_type="";
    g_active_setup.immutable_target_barrier_event_id="";
@@ -15591,6 +15749,8 @@ AlertDispatcherClear();
    g_committed_pv=0; g_committed_v=0; g_cur_bar_pv=0; g_cur_bar_v=0; g_cur_bar_time=0;
    g_struct_last_high=0; g_struct_last_low=0; g_struct_trend=0;
    g_struct_last_processed_bar=-1; g_struct_last_break_bar=-1;
+   g_struct_rearm_high_from=-1; g_struct_rearm_low_from=-1;          // v6.6.25 (B)
+   g_struct_last_high_prov=false; g_struct_last_low_prov=false;
    g_last_ob_struct_time=0;
    g_d1_cache_time=0; g_htf_cache_time=0; g_last_confirmed_alert_id="";
    g_htf_structure_state="NEUTRAL"; g_d1_structure_state="NEUTRAL";
@@ -15910,6 +16070,85 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       g_last_bar_time=0;
       if(InpShowDebugAlerts) Print(">>> Custom event triggered - Will recalculate on next tick");
    }
+}
+
+//====================================================================
+// v6.6.25 (E) HTF WARM-UP - InpWarmupWaitHTFData (default OFF)
+// At attach the Sniper engine's HTF handles (ADX_H1, ATR W1/D1/H4/H1/M30) are
+// often not calculated yet ("BarsCalculated -1 < 5", DATA_INCOMPLETE H1_ADX).
+// Legacy evaluates CORE anyway and reports NO_SETUP. With the switch ON the
+// closed bar is deferred, reported once as WARMUP, and re-evaluated on the
+// first pass where the Sniper data is DATA_READY. Closed-bar data only: the
+// deferred evaluation reads exactly what the bar-open pass would have read.
+//====================================================================
+void WarmupLogDeferred(const int closed)
+{
+   if(closed<0 || closed>=ArraySize(g_buf_t)) return;
+   if(g_warmup_logged_bar==g_buf_t[closed]) return;
+   g_warmup_logged_bar=g_buf_t[closed];
+   Print("[WARMUP] ",_Symbol," ",TFName((ENUM_TIMEFRAMES)_Period)," closed_bar=",
+         TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES),
+         " | HTF data not ready (",(g_sniper_data_status=="" ? "no Sniper status yet" : g_sniper_data_status),
+         ") - CORE evaluation deferred: this bar is WARMUP, not NO_SETUP; it is re-evaluated",
+         " as soon as ADX_H1 / ATR W1..M30 are DATA_READY (InpWarmupWaitHTFData=true)");
+}
+
+//====================================================================
+// v6.6.25 (G) COMPACT BAR LINE - InpLogCompactBarLine (default OFF)
+// One line per closed bar of this chart timeframe with everything the
+// 2026-11-27 investigation had to assemble from four panels and three log
+// streams: structure references (FRACTAL / PROV / consumed) and the last break,
+// the CORE chain hops of this bar's evaluation and its kind, the top-down
+// verdict, RR1 and the gate that stopped the bar. Read-only.
+//====================================================================
+string CompactRefText(const double price,const bool provisional)
+{
+   if(price<=0.0) return "consumed";
+   return DoubleToString(price,_Digits)+(provisional ? "(PROV)" : "(FRACTAL)");
+}
+
+string CompactBarLine(const int closed)
+{
+   if(closed<0 || closed>=ArraySize(g_buf_t)) return "";
+   string s="[BAR] "+_Symbol+" "+TFName((ENUM_TIMEFRAMES)_Period)+" "+
+            TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES);
+   s+=" | struct H="+CompactRefText(g_struct_last_high,g_struct_last_high_prov)+
+      " L="+CompactRefText(g_struct_last_low,g_struct_last_low_prov)+
+      " trend="+(g_struct_trend>0 ? "BULL" : (g_struct_trend<0 ? "BEAR" : "FLAT"));
+   string last="none";
+   for(int i=ArraySize(g_structures)-1;i>=0;i--)
+      if(g_structures[i].type!="INIT")
+      {
+         last=g_structures[i].type+(g_structures[i].bullish ? " bull @" : " bear @")+
+              TimeToString(g_structures[i].time,TIME_DATE|TIME_MINUTES);
+         break;
+      }
+   s+=" last="+last;
+   bool fresh=(g_bar_eval_time==g_buf_t[closed]);
+   if(InpUseRetestLifecycle && g_active_setup.active)
+      s+=" | chain owner=ACTIVE "+g_active_setup.setup_event_id+
+         (g_active_setup.continuation ? " [CONTINUATION]" : "");
+   else if(!fresh)
+      s+=" | chain not evaluated this bar"+(g_warmup_deferred_now ? " (WARMUP)" : "");
+   else
+   {
+      string kind=(g_selected_structure_event<0 ? "-" :
+                   (IsContinuationEvent(g_selected_structure_event) ? "CONTINUATION" : "REVERSAL"));
+      s+=StringFormat(" | chain SWP%s DISP%s STRUCT%s ZONE%s [%s]",
+                      (g_causal_diag.sweep_event_ok ? "+" : "-"),(g_causal_diag.disp_event_ok ? "+" : "-"),
+                      (g_causal_diag.mss_event_ok ? "+" : "-"),(g_causal_diag.zone_valid ? "+" : "-"),kind);
+   }
+   string td=(!g_td.computed ? "n/a" : (g_td.dir>0 ? "BUY" : (g_td.dir<0 ? "SELL" : "WAIT")));
+   if(g_td.computed && g_td.dir==0 && g_td.blocker!="") td+=" ("+g_td.blocker+")";
+   s+=" | TD "+td;
+   s+=" | RR1 "+((fresh && g_bar_eval_rr1>0.0) ? DoubleToString(g_bar_eval_rr1,2) : "n/a");
+   string fail="n/a";
+   if(fresh) fail=(g_causal_diag.watch ? (g_causal_diag.causal_fail_reason!="" ?
+                    g_causal_diag.causal_fail_reason : "watch") : "none (setup seeded)");
+   s+=" | first-fail "+fail;
+   string top=GateAuditTopReason();
+   if(top!="") s+=" | top blocker "+top;
+   return s;
 }
 
 //====================================================================
@@ -16370,7 +16609,30 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    PMI_Update();
    MTF_SniperZone_Update();
 
-   if(detection_updated && !direct_confirmed_now &&
+   // v6.6.25 (E): defer the CORE evaluation while the HTF buffers warm up and
+   // re-run it for the last closed bar once they are ready. OFF: no effect.
+   g_warmup_deferred_now=false;
+   bool warmup_rerun=false;
+   if(InpWarmupWaitHTFData && InpUseSniperZoneEngine)
+   {
+      if(!g_sniper_data_ready)
+      {
+         if(detection_updated) g_warmup_pending=true;
+         g_warmup_deferred_now=g_warmup_pending;
+         if(g_warmup_deferred_now && !QSMC_IsReaderSilent()) WarmupLogDeferred(closed);
+      }
+      else if(g_warmup_pending)
+      {
+         g_warmup_pending=false;
+         warmup_rerun=true;
+         if(!QSMC_IsReaderSilent())
+            Print("[WARMUP] ",_Symbol," ",TFName((ENUM_TIMEFRAMES)_Period),
+                  " HTF data DATA_READY - re-evaluating closed bar ",
+                  TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES));
+      }
+   }
+
+   if((detection_updated || warmup_rerun) && !g_warmup_deferred_now && !direct_confirmed_now &&
       (!InpUseRetestLifecycle || (!g_active_setup.active && !g_trade_setup.valid)))
       CalculateAITradeSetup(rates_total,g_buf_o,g_buf_h,g_buf_l,g_buf_c);
 
@@ -16389,7 +16651,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // Periodically snapshot the incremental market-event graph and force a
    // same-bar full replay on the next tick.
    if(InpEnableCausalInvariantChecks && InpReplayAuditEveryBars>0 && useIncremental &&
-      detection_updated && !g_replay_audit_pending &&
+      detection_updated && !g_replay_audit_pending && !g_warmup_deferred_now &&
       (closed%InpReplayAuditEveryBars)==0)
    {
       g_replay_expected_time=g_buf_t[closed];
@@ -16606,6 +16868,9 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // v6.6.10: publish the verdict of this closed bar for QSMC_AutoTrader.
    DiagPublishCoreState(closed);
    GateProfilePublish(closed);
+   // v6.6.25 (G): one compact line per closed bar of this timeframe.
+   if(InpLogCompactBarLine && is_new_bar && !QSMC_IsReaderSilent())
+      Print(CompactBarLine(closed));
    // Give the private reader one audit at its first completed closed-bar
    // pass, then honor the configured cadence. No audits when disabled.
    if(is_new_bar && InpGateAuditLogEveryBars>0 &&
@@ -16620,6 +16885,8 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       Print("[GateAudit] ",audit_origin," | ",SignalGateAuditLine());
       Print("[GateAudit] ",audit_origin," | ",SignalGateSourceLine()," | ",TopDown_GatingModeLine());
       Print("[GateAudit] ",audit_origin," | ",SignalGateRXNLine());
+      if(InpAllowContinuationChain)   // v6.6.25 (C)
+         Print("[GateAudit] ",audit_origin," | ",ContinuationGateAuditLine());
       string leg=SignalGateLegDiagLine();
       if(leg!="") Print("[GateLeg] ",audit_origin," | ",leg);
    }
@@ -17024,6 +17291,7 @@ int AddCausalEvent(const string id,const ENUM_CAUSAL_EVENT_TYPE type,const int b
    g_causal_events[idx].age=(g_rates_total>0 ?
                              MathMax(0,g_rates_total-2-final_availability_bar) : 0);
    g_causal_events[idx].source_index=source_index;
+   g_causal_events[idx].continuation=false;   // v6.6.25 (C): set by the continuation branch only
    LinkCausalEvents(p1,idx);
    if(p2!=p1) LinkCausalEvents(p2,idx);
    return idx;
@@ -17389,6 +17657,204 @@ bool ValidateCausalFVGAsOf(const int fvg_index,const int sweep_bar,const int str
    return (raw_top<=leg_high+_Point && raw_bottom>=leg_low-_Point);
 }
 
+//====================================================================
+// v6.6.25 (C) CONTINUATION CHAIN - InpAllowContinuationChain (default OFF)
+//
+// The legacy chain is reversal-only: a structure event is valid only with a
+// confirmed same-side LIQ_SWEEP within InpSweepToStructureMaxBars that was
+// available before the displacement candle. A trend leg that never sweeps (the
+// 2026-11-27 XAUUSD rally) therefore cannot produce a CORE anchor at all.
+//
+// With the switch ON, a with-trend BOS for which NO reversal sweep qualified may
+// instead be accepted as a CONTINUATION chain when ALL of these hold:
+//   1. leg origin = most extreme opposite-side bar in the closed window
+//      [BOS-InpSweepToStructureMaxBarsContinuation, BOS-2] (latest bar on ties);
+//   2. the BOS candle closed beyond the level and the net origin->break move is
+//      >= InpDisplacementATR x ATR;
+//   3. an impulse candle strictly between origin and BOS has a directional body
+//      >= InpDisplacementATR x ATR (0.90, stricter than the reversal path's
+//      0.35, because no liquidity event backs this leg);
+//   4. an unmitigated causal OB or an unfilled causal FVG is bound to exactly
+//      that impulse candle (the existing ValidateCausalOB/FVGAsOf rules, with the
+//      leg origin in the place of the sweep);
+//   5. the H1 closed-structure bias AS OF the BOS close agrees with the BOS.
+// The events carry SCausalEvent.continuation, the invariants police them
+// separately, the score is lower than a reversal path, and every surface tags
+// them CONTINUATION. Nothing here runs, and no state changes, while OFF.
+//====================================================================
+// (state: g_cont_* / g_h1bias_cache_* are declared with the other engine globals)
+
+int ContinuationLegOrigin(const int structure_bar,const bool bullish,const double &h[],
+                          const double &l[],const int max_bars)
+{
+   if(structure_bar<2 || max_bars<2) return -1;
+   int lo_bar=MathMax(0,structure_bar-max_bars);
+   int hi_bar=structure_bar-2;
+   if(hi_bar<lo_bar || hi_bar>=ArraySize(l) || hi_bar>=ArraySize(h)) return -1;
+   int best=-1;
+   for(int k=lo_bar;k<=hi_bar;k++)
+      if(best<0 || (bullish ? l[k]<=l[best] : h[k]>=h[best])) best=k;
+   return best;
+}
+
+bool ValidateContinuationLeg(const int origin_bar,const int structure_bar,const bool bullish,
+                             const double break_price,const double &o[],const double &h[],
+                             const double &l[],const double &c[],int &impulse_bar,string &why)
+{
+   impulse_bar=-1;
+   why="";
+   int total=ArraySize(c);
+   if(origin_bar<0 || structure_bar<=origin_bar+1 || structure_bar>=total ||
+      origin_bar>=ArraySize(l) || origin_bar>=ArraySize(h))
+   {
+      why="continuation: leg origin and break are not >= 2 bars apart";
+      return false;
+   }
+   double atr=(structure_bar<ArraySize(g_atr_buf) && g_atr_buf[structure_bar]>0.0 ?
+               g_atr_buf[structure_bar] : g_atr);
+   if(atr<=0.0){ why="continuation: ATR unavailable"; return false; }
+   if((bullish && c[structure_bar]<=break_price) || (!bullish && c[structure_bar]>=break_price))
+   {
+      why="continuation: break candle did not close beyond the level";
+      return false;
+   }
+   double net=(bullish ? c[structure_bar]-l[origin_bar] : h[origin_bar]-c[structure_bar]);
+   if(net<atr*InpDisplacementATR)
+   {
+      why="continuation: net leg move < InpDisplacementATR x ATR";
+      return false;
+   }
+   double best=0.0;
+   for(int k=origin_bar+1;k<structure_bar;k++)
+   {
+      double ak=(k<ArraySize(g_atr_buf) && g_atr_buf[k]>0.0) ? g_atr_buf[k] : atr;
+      if(ak<=0.0) continue;
+      double ratio=(bullish ? c[k]-o[k] : o[k]-c[k])/ak;
+      if(ratio>=InpDisplacementATR && ratio>best){ best=ratio; impulse_bar=k; }
+   }
+   if(impulse_bar<0)
+   {
+      why="continuation: no impulse candle with body >= InpDisplacementATR x ATR before the BOS";
+      return false;
+   }
+   return true;
+}
+
+string ContinuationBiasWord(const int bias)
+{
+   return (bias>0 ? "BULLISH" : (bias<0 ? "BEARISH" : "NEUTRAL"));
+}
+
+// H1 closed-structure bias AS OF `boundary` through the existing as-of path of
+// ComputeClosedStructureBias(): only H1 bars whose close is <= boundary are read.
+// v6.6.25: an answer computed from data that WAS present is immutable for a past
+// boundary, so it is cached - a true NEUTRAL 0 too; a NO_DATA 0 is not, and retries.
+int H1StructureBiasAsOf(const datetime boundary)
+{
+   if(boundary<=0) return 0;
+   int n=MathMin(g_h1bias_cache_n,QSMC_H1BIAS_CACHE);
+   for(int i=0;i<n;i++)
+      if(g_h1bias_cache_t[i]==boundary) return g_h1bias_cache_v[i];
+   double eq=0.0;
+   string st="";
+   datetime ev=0,cf=0,av=0;
+   int bias=ComputeClosedStructureBias(PERIOD_H1,InpSwingLookback,InpHTFStructureFractalN,
+                                       eq,st,ev,cf,av,boundary);
+   if(bias!=0 || StringFind(st,"NO_DATA")<0)
+   {
+      int slot=g_h1bias_cache_n%QSMC_H1BIAS_CACHE;
+      g_h1bias_cache_t[slot]=boundary;
+      g_h1bias_cache_v[slot]=bias;
+      g_h1bias_cache_n++;
+      if(g_h1bias_cache_n>=2*QSMC_H1BIAS_CACHE) g_h1bias_cache_n-=QSMC_H1BIAS_CACHE;
+   }
+   return bias;
+}
+
+bool ContinuationChainQualifies(const SStructureBreak &st,const double &o[],const double &h[],
+                                const double &l[],const double &c[],const datetime &t[],
+                                int &origin_bar,int &impulse_bar,string &why)
+{
+   origin_bar=-1;
+   impulse_bar=-1;
+   why="";
+   if(st.type!="BOS")
+   {
+      why="continuation: only a with-trend BOS can continue (got "+st.type+")";
+      return false;
+   }
+   if(st.bar<0 || st.bar+1>=ArraySize(c) || st.bar+1>=ArraySize(t))
+   {
+      why="continuation: the BOS bar has no closed boundary yet";
+      return false;
+   }
+   origin_bar=ContinuationLegOrigin(st.bar,st.bullish,h,l,InpSweepToStructureMaxBarsContinuation);
+   if(origin_bar<0)
+   {
+      why="continuation: no leg window before the BOS";
+      return false;
+   }
+   if(!ValidateContinuationLeg(origin_bar,st.bar,st.bullish,st.price,o,h,l,c,impulse_bar,why))
+      return false;
+   bool zone=false;
+   for(int oi=0;oi<ArraySize(g_order_blocks) && !zone;oi++)
+   {
+      if(g_order_blocks[oi].origin_struct_bar!=st.bar) continue;
+      if(g_order_blocks[oi].source_displacement_bar!=impulse_bar) continue;
+      if(ValidateCausalOB(oi,origin_bar,impulse_bar,st.bar,st.bullish,o,c)) zone=true;
+   }
+   datetime boundary=t[st.bar+1];
+   for(int fi=0;fi<ArraySize(g_fvgs) && !zone;fi++)
+   {
+      if(g_fvgs[fi].source_structure_event_id!="") continue;
+      if(g_fvgs[fi].source_displacement_bar!=impulse_bar) continue;
+      double raw_top=0.0,raw_bottom=0.0;
+      bool filled=false;
+      if(ValidateCausalFVGAsOf(fi,origin_bar,st.bar,impulse_bar,st.bar,boundary,st.bullish,
+                               o,h,l,c,raw_top,raw_bottom,filled)) zone=true;
+   }
+   if(!zone)
+   {
+      why="continuation: no unmitigated OB/FVG bound to the displacement candle";
+      return false;
+   }
+   int need=(st.bullish ? 1 : -1);
+   int h1=H1StructureBiasAsOf(boundary);
+   if(h1!=need)
+   {
+      why=StringFormat("continuation: H1 structure bias %s at the break does not agree with the %s BOS",
+                       ContinuationBiasWord(h1),(st.bullish ? "bullish" : "bearish"));
+      return false;
+   }
+   return true;
+}
+
+bool IsContinuationEvent(const int e)
+{
+   return (InpAllowContinuationChain && e>=0 && e<ArraySize(g_causal_events) &&
+           g_causal_events[e].continuation);
+}
+
+// Lower base than the reversal score (45 vs 55): the chain has no liquidity event.
+double ContinuationPathScore(const int displacement_event,const int structure_event,
+                             const int ob_event,const int fvg_event)
+{
+   if(!IsContinuationEvent(structure_event) || !IsContinuationEvent(displacement_event) ||
+      !IsCausallyConnected(displacement_event,structure_event)) return 0.0;
+   double score=45.0+8.0;   // BOS only
+   if(ob_event>=0 && IsCausallyConnected(structure_event,ob_event)) score+=15.0;
+   if(fvg_event>=0 && IsCausallyConnected(displacement_event,fvg_event)) score+=10.0;
+   if(ob_event>=0 && fvg_event>=0) score+=5.0;
+   return MathMin(100.0,score);
+}
+
+string ContinuationGateAuditLine()
+{
+   return StringFormat("CONTINUATION chain (InpAllowContinuationChain=ON): latest graph accepted %d / rejected %d | setups %d | confirmed %d%s",
+                       g_cont_graph_ok,g_cont_graph_rej,g_cont_armed,g_cont_confirmed,
+                       (g_cont_last_reject!="" ? " | last veto: "+g_cont_last_reject : ""));
+}
+
 void BuildCausalEventGraph(const int total,const double &o[],const double &h[],const double &l[],
                            const double &c[],const datetime &t[])
 {
@@ -17448,6 +17914,15 @@ void BuildCausalEventGraph(const int total,const double &o[],const double &h[],c
       g_fvgs[fi].source_structure_event_id="";
    }
 
+   // v6.6.25 (C): per-pass continuation verdicts, indexed like g_structures.
+   if(InpAllowContinuationChain)
+   {
+      ArrayResize(g_cont_why,ArraySize(g_structures));
+      for(int ci=0;ci<ArraySize(g_cont_why);ci++) g_cont_why[ci]="";
+      g_cont_graph_ok=0;
+      g_cont_graph_rej=0;
+   }
+
    for(int si=0;si<ArraySize(g_structures);si++)
    {
       SStructureBreak st=g_structures[si];
@@ -17486,9 +17961,31 @@ void BuildCausalEventGraph(const int total,const double &o[],const double &h[],c
 
       bool valid_disp=(sweep>=0 && impulse_bar>g_causal_events[sweep].event_bar &&
                        impulse_bar<st.bar);
+      // v6.6.25 (C) CONTINUATION: tried only when NO reversal sweep qualified, so a
+      // reversal chain always wins and the OFF path below is byte-for-byte legacy.
+      bool cont=false;
+      int cont_origin=-1;
+      if(sweep<0 && InpAllowContinuationChain && st.type=="BOS")
+      {
+         string cont_why="";
+         int cont_impulse=-1;
+         cont=ContinuationChainQualifies(st,o,h,l,c,t,cont_origin,cont_impulse,cont_why);
+         if(cont)
+         {
+            impulse_bar=cont_impulse;
+            valid_disp=(cont_origin>=0 && impulse_bar>cont_origin && impulse_bar<st.bar);
+            if(!valid_disp){ cont=false; cont_why="continuation: impulse not strictly inside the leg"; }
+         }
+         if(!cont)
+         {
+            if(si<ArraySize(g_cont_why)) g_cont_why[si]=cont_why;
+            g_cont_graph_rej++;
+            g_cont_last_reject=cont_why;
+         }
+      }
       int disp=-1;
       string did="";
-      if(valid_disp)
+      if(valid_disp && !cont)
       {
          did=StringFormat("CE_DISP_%s_%s_%I64d",_Symbol,st.bullish?"B":"S",
                           (long)t[impulse_bar]);
@@ -17497,6 +17994,31 @@ void BuildCausalEventGraph(const int total,const double &o[],const double &h[],c
                              st.strength*20.0,true,false,si);
          valid_disp=(disp>=0 && !g_causal_events[disp].invalidated &&
                      g_causal_events[disp].parent_primary==sweep);
+      }
+      else if(valid_disp && cont)
+      {
+         // Root displacement (no sweep parent); origin_bar/origin_time carry the
+         // leg origin so the zone invariants can re-validate the exact leg.
+         // The leg origin is part of the identity: two BOS events sharing one
+         // impulse candle but measured from different origins are two legs.
+         did=StringFormat("CE_DISP_CONT_%s_%s_%I64d_%I64d",_Symbol,st.bullish?"B":"S",
+                          (long)t[impulse_bar],(long)t[cont_origin]);
+         disp=AddCausalEvent(did,CE_DISPLACEMENT,impulse_bar,t[impulse_bar],st.bullish,
+                             c[impulse_bar],h[impulse_bar],l[impulse_bar],-1,-1,
+                             st.strength*20.0,true,false,si,cont_origin,t[cont_origin]);
+         if(disp>=0 && g_causal_events[disp].parent_primary<0 &&
+            g_causal_events[disp].origin_bar==cont_origin)
+            g_causal_events[disp].continuation=true;
+         valid_disp=(disp>=0 && !g_causal_events[disp].invalidated &&
+                     g_causal_events[disp].continuation);
+         if(!valid_disp)
+         {
+            if(si<ArraySize(g_cont_why))
+               g_cont_why[si]="continuation: displacement event rejected by the graph";
+            g_cont_graph_rej++;
+            g_cont_last_reject="continuation: displacement event rejected by the graph";
+            cont=false;
+         }
       }
 
       ENUM_CAUSAL_EVENT_TYPE et=(st.type=="MSS" ? CE_MSS :
@@ -17507,14 +18029,22 @@ void BuildCausalEventGraph(const int total,const double &o[],const double &h[],c
                              st.price,st.price,valid_disp?disp:-1,
                              valid_disp?sweep:-1,st.strength*20.0,true,
                              !valid_disp,si);
+      if(cont && valid_disp && sev>=0 && !g_causal_events[sev].invalidated)
+      {
+         g_causal_events[sev].continuation=true;   // v6.6.25 (C): sweep-less BOS
+         g_cont_graph_ok++;
+      }
       if(!valid_disp || sev<0 || g_causal_events[sev].invalidated) continue;
 
       datetime structure_boundary=t[st.bar+1];
+      // v6.6.25 (C): the leg start that bounds the zone search - the sweep for a
+      // reversal chain (legacy), the leg origin for a CONTINUATION chain.
+      int leg_bar=(cont ? cont_origin : g_causal_events[sweep].event_bar);
       for(int oi=0;oi<ArraySize(g_order_blocks);oi++)
       {
          if(g_order_blocks[oi].origin_struct_bar!=st.bar) continue;
          if(g_order_blocks[oi].source_displacement_bar!=impulse_bar) continue;
-         if(!ValidateCausalOB(oi,g_causal_events[sweep].event_bar,impulse_bar,
+         if(!ValidateCausalOB(oi,leg_bar,impulse_bar,
                               st.bar,st.bullish,o,c)) continue;
 
          g_order_blocks[oi].source_displacement_event_id=did;
@@ -17540,7 +18070,7 @@ void BuildCausalEventGraph(const int total,const double &o[],const double &h[],c
          if(g_fvgs[fi].source_displacement_bar!=impulse_bar) continue;
          double raw_top=0.0,raw_bottom=0.0;
          bool filled_at_structure=false;
-         if(!ValidateCausalFVGAsOf(fi,g_causal_events[sweep].event_bar,st.bar,
+         if(!ValidateCausalFVGAsOf(fi,leg_bar,st.bar,
                                    impulse_bar,st.bar,structure_boundary,st.bullish,
                                    o,h,l,c,raw_top,raw_bottom,filled_at_structure)) continue;
 
@@ -17906,10 +18436,21 @@ bool ValidateCausalGraphInvariants(string &reason)
             ev.availability_bar!=ev.event_bar ||
             ev.availability_time!=g_buf_t[ev.event_bar+1])
          {reason="Displacement not available at its own close: "+ev.id; return false;}
+         if(ev.continuation)
+         {
+            // v6.6.25 (C): a CONTINUATION displacement is a root event (no sweep by
+            // construction) whose origin_bar is the leg origin strictly before it.
+            if(!InpAllowContinuationChain || ev.parent_primary>=0 || ev.parent_secondary>=0 ||
+               ev.origin_bar<0 || ev.origin_bar>=ev.event_bar || ev.origin_time>=ev.event_time)
+            {reason="Continuation displacement must be a switch-enabled root with an earlier leg origin: "+ev.id; return false;}
+         }
+         else
+         {
          int sw=FindParentEventOfType(i,CE_LIQ_SWEEP);
          int pool=(sw>=0 ? FindParentEventOfType(sw,CE_LIQ_POOL) : -1);
          if(sw<0 || pool<0 || !g_causal_events[sw].confirmed)
          {reason="Displacement lacks pool->sweep ancestry: "+ev.id; return false;}
+         }
       }
       else if(ev.type==CE_BOS || ev.type==CE_CHOCH || ev.type==CE_MSS)
       {
@@ -17920,6 +18461,17 @@ bool ValidateCausalGraphInvariants(string &reason)
          int dp=FindParentEventOfType(i,CE_DISPLACEMENT);
          int sw=FindParentEventOfType(i,CE_LIQ_SWEEP);
          int pool=(sw>=0 ? FindParentEventOfType(sw,CE_LIQ_POOL) : -1);
+         if(ev.continuation)
+         {
+            // v6.6.25 (C): CONTINUATION BOS = continuation displacement -> BOS, no sweep.
+            if(!InpAllowContinuationChain || ev.type!=CE_BOS || dp<0 ||
+               !g_causal_events[dp].continuation || sw>=0)
+            {reason="Continuation structure ancestry invalid: "+ev.id; return false;}
+            if(!(g_causal_events[dp].event_time<ev.event_time &&
+                 g_causal_events[dp].availability_time<=ev.availability_time))
+            {reason="Continuation structure chronology invalid: "+ev.id; return false;}
+            continue;
+         }
          if(dp<0 || sw<0 || pool<0)
          {reason="Structure ancestry incomplete: "+ev.id; return false;}
          if(!(g_causal_events[pool].event_time<g_causal_events[sw].event_time &&
@@ -17939,8 +18491,14 @@ bool ValidateCausalGraphInvariants(string &reason)
          int dp=FindParentEventOfType(i,CE_DISPLACEMENT);
          int sw=FindParentEventOfType(i,CE_LIQ_SWEEP);
          int pool=(sw>=0 ? FindParentEventOfType(sw,CE_LIQ_POOL) : -1);
-         if(st<0 || dp<0 || sw<0 || pool<0)
+         // v6.6.25 (C): a zone of a CONTINUATION chain has no sweep ancestor; its
+         // leg is re-validated from the displacement's recorded leg origin.
+         bool cont_zone=(st>=0 && g_causal_events[st].continuation);
+         if(cont_zone && (!InpAllowContinuationChain || dp<0 || !g_causal_events[dp].continuation))
+         {reason="Continuation zone ancestry invalid: "+ev.id; return false;}
+         if(st<0 || dp<0 || (!cont_zone && (sw<0 || pool<0)))
          {reason="Zone ancestry incomplete: "+ev.id; return false;}
+         int zone_leg_bar=(cont_zone ? g_causal_events[dp].origin_bar : g_causal_events[sw].event_bar);
          if(ev.type==CE_FVG)
          {
             if(ev.source_index<0 || ev.source_index>=ArraySize(g_fvgs) ||
@@ -17960,7 +18518,7 @@ bool ValidateCausalGraphInvariants(string &reason)
             {reason="FVG exact displacement/structure binding mismatch: "+ev.id; return false;}
             double raw_top=0.0,raw_bottom=0.0;
             bool filled_at_structure=false;
-            if(!ValidateCausalFVGAsOf(ev.source_index,g_causal_events[sw].event_bar,
+            if(!ValidateCausalFVGAsOf(ev.source_index,zone_leg_bar,
                g_causal_events[st].event_bar,g_causal_events[dp].event_bar,
                g_causal_events[st].event_bar,g_causal_events[st].availability_time,
                ev.bullish,g_buf_o,g_buf_h,g_buf_l,g_buf_c,raw_top,raw_bottom,
@@ -18015,6 +18573,17 @@ bool ValidateCausalGraphInvariants(string &reason)
          int st=FindParentEventOfType(i,CE_MSS);
          if(st<0) st=FindParentEventOfType(i,CE_CHOCH);
          if(st<0) st=FindParentEventOfType(i,CE_BOS);
+         if(st>=0 && g_causal_events[st].continuation)
+         {
+            // v6.6.25 (C): CONTINUATION setup = displacement -> BOS -> zone, no sweep.
+            if(!InpAllowContinuationChain || dp<0 || !g_causal_events[dp].continuation || sw>=0)
+            {reason="Continuation setup ancestry invalid: "+ev.id; return false;}
+            if(!(g_causal_events[dp].availability_time<=g_causal_events[st].availability_time &&
+                 g_causal_events[st].availability_time<=ev.event_time &&
+                 g_causal_events[st].event_time<ev.event_time))
+            {reason="Continuation setup causal availability chain invalid: "+ev.id; return false;}
+            continue;
+         }
          if(pool<0 || sw<0 || dp<0 || st<0)
          {reason="Setup ancestry incomplete: "+ev.id; return false;}
          if(!(g_causal_events[pool].availability_time<=g_causal_events[sw].availability_time &&
@@ -18218,6 +18787,13 @@ ulong CausalGraphFingerprint()
       (long)g_d1_last_availability_time,selected_sweep,selected_disp,
       selected_structure,selected_zone,g_signal_mask,g_trade_setup.confidence,
       g_trade_setup.reliability);
+   // v6.6.25 (B): the provisional re-arm state drives later transitions, so the
+   // incremental==full replay audit covers it. Appended only while the switch is
+   // ON, so the switch-OFF fingerprint is byte-identical to v6.6.24.
+   if(InpRearmStructureAfterBreak)
+      state_row+=StringFormat("|REARM|%d|%d|%d|%d",g_struct_rearm_high_from,
+                              g_struct_rearm_low_from,g_struct_last_high_prov?1:0,
+                              g_struct_last_low_prov?1:0);
    for(int k=0;k<StringLen(state_row);k++)
    {
       hash^=(ulong)StringGetCharacter(state_row,k);
@@ -18265,7 +18841,13 @@ bool ResolveCausalPath(const int structure_source,int &sweep_event,int &displace
    }
    if(structure_event<0 || g_causal_events[structure_event].invalidated)
    {
-      GateAuditReject("chain: structure event missing/invalidated in the graph");
+      // v6.6.25 (C): with the switch ON, name the exact continuation veto.
+      if(InpAllowContinuationChain && structure_source>=0 &&
+         structure_source<ArraySize(g_cont_why) && g_cont_why[structure_source]!="")
+         GateAuditReject("chain: structure event missing/invalidated in the graph (CONTINUATION rejected - "+
+                         g_cont_why[structure_source]+")");
+      else
+         GateAuditReject("chain: structure event missing/invalidated in the graph");
       return false;
    }
    displacement_event=FindParentEventOfType(structure_event,CE_DISPLACEMENT);
@@ -18273,6 +18855,20 @@ bool ResolveCausalPath(const int structure_source,int &sweep_event,int &displace
    {
       GateAuditReject("chain: no displacement event behind the break");
       return false;
+   }
+   if(IsContinuationEvent(structure_event))
+   {
+      // v6.6.25 (C) CONTINUATION: no liquidity event by construction.
+      if(!IsContinuationEvent(displacement_event))
+      {
+         GateAuditReject("chain: CONTINUATION break without a continuation displacement");
+         return false;
+      }
+      sweep_event=-1;
+      GateProfileNote("dispbreak",
+         (double)MathAbs(g_causal_events[structure_event].event_bar-
+                         g_causal_events[displacement_event].event_bar));
+      return ResolveCausalZones(structure_event,displacement_event,ob_event,fvg_event);
    }
    sweep_event=FindParentEventOfType(displacement_event,CE_LIQ_SWEEP);
    if(sweep_event<0 || g_causal_events[sweep_event].invalidated ||
@@ -18296,7 +18892,15 @@ bool ResolveCausalPath(const int structure_source,int &sweep_event,int &displace
    GateProfileNote("dispbreak",
       (double)MathAbs(g_causal_events[structure_event].event_bar-
                       g_causal_events[displacement_event].event_bar));
+   return ResolveCausalZones(structure_event,displacement_event,ob_event,fvg_event);
+}
 
+// The strongest confirmed causal OB/FVG of a resolved break (extracted unchanged
+// from ResolveCausalPath in v6.6.25 so the CONTINUATION path uses the same rule).
+bool ResolveCausalZones(const int structure_event,const int displacement_event,
+                        int &ob_event,int &fvg_event)
+{
+   ob_event=fvg_event=-1;
    double best_ob=-DBL_MAX,best_fvg=-DBL_MAX;
    string best_ob_id="",best_fvg_id="";
    for(int e=0;e<ArraySize(g_causal_events);e++)
@@ -18324,6 +18928,8 @@ bool ResolveCausalPath(const int structure_source,int &sweep_event,int &displace
 double CausalPathScore(const int sweep_event,const int displacement_event,const int structure_event,
                        const int ob_event,const int fvg_event)
 {
+   if(sweep_event<0 && IsContinuationEvent(structure_event))   // v6.6.25 (C)
+      return ContinuationPathScore(displacement_event,structure_event,ob_event,fvg_event);
    if(sweep_event<0 || displacement_event<0 || structure_event<0) return 0.0;
    int pool_event=FindParentEventOfType(sweep_event,CE_LIQ_POOL);
    if(pool_event<0 || !g_causal_events[sweep_event].confirmed ||
@@ -18374,14 +18980,23 @@ int SelectBestStructureAnchor(const int total,const double &c[],int &sweep_event
          bool filled_now=false;
          int decision_bar=total-2;
          datetime decision_boundary=(total-1<ArraySize(g_buf_t) ? g_buf_t[total-1] : 0);
-         bool fvg_available_now=ValidateCausalFVGAsOf(fi,g_causal_events[sw].event_bar,
+         int fvg_leg_bar=(sw>=0 ? g_causal_events[sw].event_bar :
+                          (dp>=0 ? g_causal_events[dp].origin_bar : -1));   // v6.6.25 (C)
+         bool fvg_available_now=ValidateCausalFVGAsOf(fi,fvg_leg_bar,
             st.bar,g_causal_events[dp].event_bar,decision_bar,decision_boundary,
             st.bullish,g_buf_o,g_buf_h,g_buf_l,c,raw_top,raw_bottom,filled_now);
          if(!fvg_available_now ||
             MathAbs(raw_top-g_causal_events[fv].top)>_Point ||
             MathAbs(raw_bottom-g_causal_events[fv].bottom)>_Point) fv=-1;
       }
-      if(sw<0 || dp<0 || se<0 ||
+      bool cont_path=(sw<0 && IsContinuationEvent(se));   // v6.6.25 (C)
+      if(cont_path)
+      {
+         if(dp<0 || !g_causal_events[dp].confirmed || !g_causal_events[se].confirmed ||
+            g_causal_events[dp].availability_time>decision_time ||
+            g_causal_events[se].availability_time>decision_time) continue;
+      }
+      else if(sw<0 || dp<0 || se<0 ||
          !g_causal_events[sw].confirmed || !g_causal_events[dp].confirmed ||
          !g_causal_events[se].confirmed ||
          g_causal_events[sw].availability_time>decision_time ||
@@ -20100,7 +20715,8 @@ void QSMC_BuildEntryReview(SEntryReview &r,const STradeSetup &setup)
    bool sweep_ok=(setup.sweep_event_id!="" && setup.sweep_price>0.0);
    QSMC_ReviewSet(r,0,sweep_ok,
       sweep_ok ? StringFormat("swept %.5f on bar %d",setup.sweep_price,setup.sweep_bar)
-               : "no confirmed sweep event on this chain");
+               : (setup.continuation ? "CONTINUATION chain - no liquidity sweep by design (H1-aligned BOS + displacement)"
+                                     : "no confirmed sweep event on this chain"));
 
    // 02 the sweep must be of the side this trade needs. A BUY that swept a HIGH
    // is a breakout chase, not a reversal - and it is the single most common way
@@ -20117,6 +20733,8 @@ void QSMC_BuildEntryReview(SEntryReview &r,const STradeSetup &setup)
       side_detail=StringFormat("swept %.5f vs zone %.5f-%.5f (%s)",setup.sweep_price,
                                setup.zone_bottom,setup.zone_top,need);
      }
+   if(setup.continuation && !sweep_ok)
+      side_detail="n/a - CONTINUATION chain has no sweep";   // v6.6.25 (C)
    QSMC_ReviewSet(r,1,side_ok,side_detail);
 
    // 03 displacement: the causal chain must contain one.
@@ -21026,6 +21644,69 @@ int BinarySearchNearestLiquidity(const double price,const bool find_above,const 
 // Preserved intentionally under R8 as the PRIMARY/SECONDARY scaffold until a
 // documented decision is made to revive or remove it. Do not enable silently.
 
+//====================================================================
+// v6.6.25 (D) InpTargetLiquidityAware (default OFF)
+//====================================================================
+// Index of the NEAREST direction-valid candidate whose reward:risk meets floor_rr,
+// or -1. `skipped` names every nearer candidate that could not pay, with its RR -
+// the exact reason it was passed over. Pure: reads only its arguments.
+int TopDownPickTarget(const double &cands[],const string &labels[],const int n,
+                      const double entry,const double risk,const int dir,
+                      const double floor_rr,string &skipped)
+{
+   skipped="";
+   if(n<=0 || risk<=0.0 || dir==0 || n>ArraySize(cands) || n>ArraySize(labels)) return -1;
+   bool used[];
+   ArrayResize(used,n);
+   ArrayInitialize(used,false);
+   for(int pass=0;pass<n;pass++)
+   {
+      int bi=-1;
+      for(int i=0;i<n;i++)
+      {
+         if(used[i]) continue;
+         if((dir>0 && cands[i]<=entry) || (dir<0 && cands[i]>=entry)){ used[i]=true; continue; }
+         if(bi<0 || (dir>0 ? cands[i]<cands[bi] : cands[i]>cands[bi])) bi=i;
+      }
+      if(bi<0) break;
+      used[bi]=true;
+      double rr=(dir>0 ? (cands[bi]-entry)/risk : (entry-cands[bi])/risk);
+      if(rr+1e-9>=floor_rr) return bi;
+      skipped+=(skipped=="" ? "" : ", ")+labels[bi]+" RR "+DoubleToString(rr,2);
+   }
+   return -1;
+}
+
+// WEAK publication policy that REPLACES the top-down hard veto while
+// InpTargetLiquidityAware is ON: H1 closed-structure bias agrees (as of the
+// decision boundary) AND the boundary is in the Asia or London session AND
+// RR1 >= InpWeakSignalMinRR. `why` names every failing condition.
+bool QSMC_WeakPolicyAllows(const STradeSetup &setup,string &why)
+{
+   why="";
+   int decision_closed=g_rates_total-2;
+   datetime boundary=(decision_closed>=0 && decision_closed+1<ArraySize(g_buf_t) ?
+                      g_buf_t[decision_closed+1] : 0);
+   int need=(setup.is_buy ? 1 : -1);
+   int h1=H1StructureBiasAsOf(boundary);
+   if(h1!=need)
+      why+="H1 structure bias "+ContinuationBiasWord(h1)+" does not agree with the "+
+           (setup.is_buy ? "BUY" : "SELL")+"; ";
+   bool asia=(boundary>0 && IsInSession(boundary,SESSION_ASIA));
+   bool london=(boundary>0 && IsInSession(boundary,SESSION_LONDON));
+   if(!asia && !london)
+      why+="decision boundary is in neither the Asia nor the London session; ";
+   if(setup.rr1+1e-9<InpWeakSignalMinRR)
+      why+="RR1 "+DoubleToString(setup.rr1,2)+" < InpWeakSignalMinRR "+
+           DoubleToString(InpWeakSignalMinRR,2)+"; ";
+   if(why!="")
+   {
+      why=StringSubstr(why,0,StringLen(why)-2);
+      return false;
+   }
+   return true;
+}
+
 // Append exactly one immutable confirmed-signal fact record per stable setup id.
 // v6.6.21: decide the execution class ONCE, at confirmation time, before the
 // journal append. Returns false when the candidate must NOT publish (the
@@ -21055,7 +21736,9 @@ bool QSMC_ApplyExecClassification(STradeSetup &setup,string &why)
       geometry_ok=(risk>0.0 && reward>0.0 && setup.rr1+1e-9>=QSMC_RRAcceptFloor()*0.5);
    }
    // Causality: the chain that produced this setup must be complete.
-   bool causal_ok=(setup.sweep_event_id!="" && setup.displacement_event_id!="" &&
+   // v6.6.25 (C): a CONTINUATION chain is complete without a sweep id.
+   bool causal_ok=((setup.sweep_event_id!="" || (InpAllowContinuationChain && setup.continuation)) &&
+                   setup.displacement_event_id!="" &&
                    setup.structure_event_id!="" && setup.zone_event_id!="");
    bool td_computed=g_td.computed;
    bool td_agrees=(g_td.computed && g_td.dir!=0 &&
@@ -21066,9 +21749,23 @@ bool QSMC_ApplyExecClassification(STradeSetup &setup,string &why)
    bool expired=(setup.created_bar>=0 && ArraySize(g_buf_t)>0 &&
                  g_rates_total-2-setup.created_bar>InpRetestTimeoutBars);
 
+   // v6.6.25 (D): with InpTargetLiquidityAware the WEAK top-down hard veto is
+   // replaced by QSMC_WeakPolicyAllows() (H1 bias + Asia/London + RR1). OFF: the
+   // classifier sees the real top-down state exactly as before.
+   bool td_gate_computed=(InpTargetLiquidityAware ? true : td_computed);
+   bool td_gate_agrees=(InpTargetLiquidityAware ? true : td_agrees);
    int cls=QSMC_ClassifySignal((double)setup.confidence,(double)setup.reliability,
                                setup.rr1,geometry_ok,causal_ok,data_ready,
-                               td_computed,td_agrees,invalidated,expired,why);
+                               td_gate_computed,td_gate_agrees,invalidated,expired,why);
+   if(InpTargetLiquidityAware && cls==QSMC_CLASS_WEAK_VALID)
+   {
+      string weak_why="";
+      if(!QSMC_WeakPolicyAllows(setup,weak_why))
+      {
+         why="WEAK vetoed by the liquidity-aware policy (InpTargetLiquidityAware): "+weak_why;
+         cls=QSMC_CLASS_REJECTED;
+      }
+   }
    if(cls!=QSMC_CLASS_WEAK_VALID && cls!=QSMC_CLASS_MODERATE_VALID &&
       cls!=QSMC_CLASS_STRONG_VALID)
    {
@@ -21159,6 +21856,17 @@ bool AppendConfirmedSignalJournal(const STradeSetup &setup,const string candle_c
    g_confirmed_signal_journal[n].exec_reliability=setup.exec_reliability;
    g_confirmed_signal_journal[n].exec_rr1=setup.exec_rr1;
    g_confirmed_signal_journal[n].exec_risk_mult=setup.exec_risk_mult;
+   g_confirmed_signal_journal[n].continuation=setup.continuation;   // v6.6.25 (C)
+   if(setup.continuation)
+   {
+      g_cont_confirmed++;
+      Print("[CONTINUATION] CONFIRMED ",(setup.is_buy?"BUY":"SELL")," ",_Symbol," ",
+            TFName((ENUM_TIMEFRAMES)_Period)," ",setup.setup_event_id," entry ",
+            DoubleToString(setup.entry,_Digits)," SL ",DoubleToString(setup.sl,_Digits),
+            " TP1 ",DoubleToString(setup.tp1,_Digits)," RR1 ",DoubleToString(setup.rr1,2),
+            " | chain CONTINUATION: ",setup.displacement_event_id," -> ",setup.structure_event_id,
+            " -> ",setup.zone_event_id," (no liquidity sweep by design)");
+   }
    return true;
 }
 
@@ -21545,6 +22253,8 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    double price=c[closed];
    double atr=(closed<ArraySize(g_atr_buf) && g_atr_buf[closed]>0.0) ? g_atr_buf[closed] : g_atr;
    if(atr<=0.0) return;
+   g_bar_eval_time=(closed<ArraySize(g_buf_t) ? g_buf_t[closed] : 0);   // v6.6.25 (G) diagnostic
+   g_bar_eval_rr1=-1.0;
 
    UpdateSignalMask(total,c);
 
@@ -21648,11 +22358,13 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    }
 
    bool is_buy=(best_dir>0);
+   // v6.6.25 (C): the selected chain is a sweep-less CONTINUATION chain.
+   bool best_cont=(best_sw<0 && IsContinuationEvent(best_se) && IsContinuationEvent(best_dp));
    g_gate_audit.path_ok++;   // sweep -> displacement -> break -> zone resolved
    g_causal_diag.hop_mss_zone=(best_ob>=0 || best_fv>=0);
    g_causal_diag.zone_kind=(best_ob>=0?"CAUSAL OB":(best_fv>=0?"CAUSAL FVG":""));
    g_causal_diag.path_text=StringFormat("%s -> %s -> %s -> %s",
-        (best_sw>=0?"SWEEP":"-"),(best_dp>=0?"DISP":"-"),
+        (best_sw>=0?"SWEEP":(best_cont?"CONTINUATION":"-")),(best_dp>=0?"DISP":"-"),
         (best_se>=0?CausalTypeName(g_causal_events[best_se].type):"-"),
         g_causal_diag.zone_kind==""?"-":g_causal_diag.zone_kind);
    // record the hop chain for the dashboard causal audit line
@@ -21684,6 +22396,8 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
                       g_causal_events[best_fv].strength);
    g_causal_diag.causal_valid=(best_sw>=0 && best_dp>=0 && best_se>=0 &&
                                g_causal_diag.hop_sweep_disp && g_causal_diag.hop_disp_mss);
+   if(best_cont)   // v6.6.25 (C): displacement -> BOS -> zone, no sweep hop by design
+      g_causal_diag.causal_valid=(best_dp>=0 && best_se>=0 && g_causal_diag.hop_disp_mss);
 
    //--- zone geometry from the causal events themselves
    double zone_top=0.0,zone_bottom=0.0;
@@ -21827,10 +22541,12 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
 
    //--- entry / stop geometry (fixed at decision time; never re-anchored)
    double entry=(is_buy ? zone_top : zone_bottom);
-   int sweep_bar=g_causal_events[best_sw].event_bar;
-   double sweep_price=g_causal_events[best_sw].price;
+   // v6.6.25 (C): a CONTINUATION chain has no sweep (best_sw<0) - its stop goes
+   // beyond the bound zone. The reversal path (best_sw>=0) is unchanged.
+   int sweep_bar=(best_sw>=0 ? g_causal_events[best_sw].event_bar : -1);
+   double sweep_price=(best_sw>=0 ? g_causal_events[best_sw].price : 0.0);
    double sl;
-   if(InpSLBeyondSweep)
+   if(InpSLBeyondSweep && sweep_bar>=0)
       sl=(is_buy ? MathMin(g_buf_l[sweep_bar],zone_bottom)
                  : MathMax(g_buf_h[sweep_bar],zone_top));
    else
@@ -21923,7 +22639,7 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    g_score.algo=causal_path;
    g_score.candle_context=(double)ContextualCandleScore(candle,is_buy,price,
                             zone_top,zone_bottom,atr,
-                            true /*sweep ok by construction*/,
+                            !best_cont /*sweep ok by construction (v6.6.25: not for CONTINUATION)*/,
                             g_causal_diag.mss_event_ok,
                             g_causal_diag.zone_valid,regime);
    SSignalFactor factors[12];
@@ -22172,7 +22888,8 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    g_trade_setup.zone_source=zone_source;
    g_trade_setup.sweep_bar=sweep_bar;
    g_trade_setup.sweep_price=sweep_price;
-   g_trade_setup.sweep_event_id=g_causal_events[best_sw].id;
+   g_trade_setup.sweep_event_id=(best_sw>=0 ? g_causal_events[best_sw].id : "");
+   g_trade_setup.continuation=best_cont;   // v6.6.25 (C)
    g_trade_setup.displacement_event_id=g_causal_events[best_dp].id;
    g_trade_setup.structure_event_id=g_causal_events[best_se].id;
    g_trade_setup.zone_event_id=g_causal_events[zone_event].id;
@@ -22191,6 +22908,7 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    g_trade_setup.mtf_conflict_label=conflict_label;
 
    GateProfileNote("rr1",rr1);
+   g_bar_eval_rr1=rr1;   // v6.6.25 (G) diagnostic
    if(rr1<EffMinRR1())
    {
       GateProfileNeed("rrneed",EffMinRR1()-rr1);
@@ -22207,7 +22925,8 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
    g_gate_audit.geometry_ok++;
 
    //--- reasons / blockers (for the panel)
-   AddReason(g_causal_events[best_sw].id);
+   if(best_sw>=0) AddReason(g_causal_events[best_sw].id);
+   else if(best_cont) AddReason("CONTINUATION (H1-aligned BOS + displacement, no sweep)");
    AddReason(g_causal_events[best_dp].id);
    AddReason(CausalTypeName(g_causal_events[best_se].type));
    AddReason(zone_source);
@@ -22271,6 +22990,18 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       DiagnoseCausalChain(total,o,h,l,c,g_buf_t);
       return;
    }
+   if(g_trade_setup.continuation)   // v6.6.25 (C): only reachable with the switch ON
+   {
+      g_cont_armed++;
+      Print("[CONTINUATION] setup ",setup_id," ",(is_buy?"BUY":"SELL")," ",_Symbol," ",
+            TFName((ENUM_TIMEFRAMES)_Period)," entry ",DoubleToString(entry,_Digits),
+            " SL ",DoubleToString(sl,_Digits)," TP1 ",DoubleToString(tp1,_Digits),
+            " RR1 ",DoubleToString(rr1,2)," conf ",IntegerToString(conf),
+            " rel ",IntegerToString(reliability)," grade ",g_trade_setup.quality_grade,
+            " | chain CONTINUATION: ",g_trade_setup.displacement_event_id," -> ",
+            g_trade_setup.structure_event_id," -> ",g_trade_setup.zone_event_id,
+            " (H1-aligned BOS, no liquidity sweep by design)");
+   }
 
    if(InpUseRetestLifecycle)
    {
@@ -22316,6 +23047,7 @@ void CalculateAITradeSetup(const int total,const double &o[],const double &h[],c
       g_active_setup.sweep_bar=sweep_bar;
       g_active_setup.sweep_price=sweep_price;
       g_active_setup.sweep_event_id=g_trade_setup.sweep_event_id;
+      g_active_setup.continuation=g_trade_setup.continuation;   // v6.6.25 (C)
       g_active_setup.displacement_event_id=g_trade_setup.displacement_event_id;
       g_active_setup.structure_event_id=g_trade_setup.structure_event_id;
       g_active_setup.zone_event_id=g_trade_setup.zone_event_id;
@@ -22653,6 +23385,7 @@ void ManageSetupLifecycle(const int total,const double &o[],const double &h[],co
       g_trade_setup.zone_event_id=g_active_setup.zone_event_id;
       g_trade_setup.structure_event_id=g_active_setup.structure_event_id;
       g_trade_setup.sweep_event_id=g_active_setup.sweep_event_id;
+      g_trade_setup.continuation=g_active_setup.continuation;   // v6.6.25 (C)
       g_trade_setup.displacement_event_id=g_active_setup.displacement_event_id;
       g_trade_setup.zone_source=g_active_setup.zone_source;
       g_trade_setup.sweep_bar=g_active_setup.sweep_bar;
@@ -23680,7 +24413,8 @@ void ComputeEntryQuality(const int total)
    //--- quality class (classification, NOT a probability)
    bool candidate=(g_quality.gate_structure_event || have_setup);
    if(!candidate)
-      g_quality.quality_class="NO_SETUP";
+      g_quality.quality_class=((InpWarmupWaitHTFData && InpUseSniperZoneEngine && !g_sniper_data_ready) ?
+                               "WARMUP" : "NO_SETUP");   // v6.6.25 (E)
    else if(g_quality.gates_passed<8 && !confirmed)
       g_quality.quality_class="WATCH";
    else
@@ -24581,6 +25315,10 @@ void DetectStructure(const int total,const double &o[],const double &h[],const d
       g_struct_trend=0;
       g_struct_last_processed_bar=-1;
       g_struct_last_break_bar=-1;
+      g_struct_rearm_high_from=-1;     // v6.6.25 (B): provisional state is part of
+      g_struct_rearm_low_from=-1;      // the replayed state machine, so a full pass
+      g_struct_last_high_prov=false;   // starts it from scratch exactly like the
+      g_struct_last_low_prov=false;    // swing references above
       ArrayResize(g_structures,0,32);
    }
 
@@ -24606,6 +25344,45 @@ void DetectStructure(const int total,const double &o[],const double &h[],const d
             g_struct_last_high=h[f];
          if(is_low && (g_struct_last_low<=0.0 || l[f]!=g_struct_last_low))
             g_struct_last_low=l[f];
+         // v6.6.25 (B): a CONFIRMED fractal always replaces a provisional
+         // reference and cancels a pending provisional re-arm.
+         if(InpRearmStructureAfterBreak)
+         {
+            if(is_high){ g_struct_last_high_prov=false; g_struct_rearm_high_from=-1; }
+            if(is_low){ g_struct_last_low_prov=false; g_struct_rearm_low_from=-1; }
+         }
+      }
+
+      // 1b) v6.6.25 (B) PROVISIONAL RE-ARM. A break zeroes the consumed swing
+      // reference and, legacy, only a NEW confirmed N-fractal re-arms it - a
+      // vertical leg prints no such fractal, so every later close beyond the
+      // leg was structurally invisible. When ON, K closed bars after the break
+      // the reference becomes the extreme of exactly those K bars (B+1..B+K),
+      // all <= b: closed-bar only, deterministic, no lookahead. The arming bar
+      // itself can never break it (its close is inside its own range), so the
+      // earliest break of a provisional reference is bar B+K+1. Classification
+      // (BOS / CHoCH / MSS) below is unchanged.
+      if(InpRearmStructureAfterBreak)
+      {
+         int rk=MathMax(2,InpRearmStructureBars);
+         if(g_struct_last_high<=0.0 && g_struct_rearm_high_from>=0 &&
+            b-g_struct_rearm_high_from>=rk)
+         {
+            double ref=0.0;
+            for(int k=g_struct_rearm_high_from+1;k<=g_struct_rearm_high_from+rk && k<=b;k++)
+               if(h[k]>ref) ref=h[k];
+            if(ref>0.0){ g_struct_last_high=ref; g_struct_last_high_prov=true; }
+            g_struct_rearm_high_from=-1;
+         }
+         if(g_struct_last_low<=0.0 && g_struct_rearm_low_from>=0 &&
+            b-g_struct_rearm_low_from>=rk)
+         {
+            double ref=0.0;
+            for(int k=g_struct_rearm_low_from+1;k<=g_struct_rearm_low_from+rk && k<=b;k++)
+               if(l[k]>0.0 && (ref<=0.0 || l[k]<ref)) ref=l[k];
+            if(ref>0.0){ g_struct_last_low=ref; g_struct_last_low_prov=true; }
+            g_struct_rearm_low_from=-1;
+         }
       }
 
       // 2) first seeding pass establishes a baseline without events
@@ -24650,8 +25427,21 @@ void DetectStructure(const int total,const double &o[],const double &h[],const d
          g_struct_trend=1;
          g_struct_last_break_bar=b;
          g_struct_last_high=0.0; // consumed; next confirmed fractal re-arms
+         bool consumed_prov_high=g_struct_last_high_prov;
+         if(InpRearmStructureAfterBreak)
+         {
+            g_struct_last_high_prov=false;
+            g_struct_rearm_high_from=b;   // v6.6.25 (B): provisional re-arm after K bars
+         }
          if(InpLogLifecycleTransitions)
-            LogLifecycle(StringFormat("STRUCT %s bull @ %s",br.type,TimeToString(t[b])));
+         {
+            if(InpRearmStructureAfterBreak)
+               LogLifecycle(StringFormat("STRUCT %s bull @ %s ref=%s (re-arm in %d bars)",br.type,
+                                         TimeToString(t[b]),(consumed_prov_high?"PROVISIONAL":"FRACTAL"),
+                                         MathMax(2,InpRearmStructureBars)));
+            else
+               LogLifecycle(StringFormat("STRUCT %s bull @ %s",br.type,TimeToString(t[b])));
+         }
       }
       else if(g_struct_last_low>0.0 && c[b]<g_struct_last_low)
       {
@@ -24673,8 +25463,21 @@ void DetectStructure(const int total,const double &o[],const double &h[],const d
          g_struct_trend=-1;
          g_struct_last_break_bar=b;
          g_struct_last_low=0.0;
+         bool consumed_prov_low=g_struct_last_low_prov;
+         if(InpRearmStructureAfterBreak)
+         {
+            g_struct_last_low_prov=false;
+            g_struct_rearm_low_from=b;    // v6.6.25 (B): provisional re-arm after K bars
+         }
          if(InpLogLifecycleTransitions)
-            LogLifecycle(StringFormat("STRUCT %s bear @ %s",br.type,TimeToString(t[b])));
+         {
+            if(InpRearmStructureAfterBreak)
+               LogLifecycle(StringFormat("STRUCT %s bear @ %s ref=%s (re-arm in %d bars)",br.type,
+                                         TimeToString(t[b]),(consumed_prov_low?"PROVISIONAL":"FRACTAL"),
+                                         MathMax(2,InpRearmStructureBars)));
+            else
+               LogLifecycle(StringFormat("STRUCT %s bear @ %s",br.type,TimeToString(t[b])));
+         }
       }
       g_struct_last_processed_bar=b;
    }
@@ -24745,10 +25548,29 @@ void DetectOrderBlocks(const int total,const double &o[],const double &h[],const
       // of history, so the leg was evaluated against a 50k-bar-wide "leg" and the
       // diagnostic reported sweep_bar 0 / bars_apart=closed. There is no causal
       // anchor without a swept pool, so this structure break cannot own an OB.
+      // v6.6.25 (C): no aligned sweep - a with-trend BOS may still own an OB
+      // through a sweep-less CONTINUATION leg (origin in the sweep's place). This
+      // only builds the candidate block; the graph decides whether the chain
+      // qualifies (zone binding + H1 bias). OFF: unchanged.
+      bool cont_ob=false;
+      if(sweep_bar<0 && InpAllowContinuationChain && st.type=="BOS")
+      {
+         int cont_origin=ContinuationLegOrigin(st.bar,st.bullish,h,l,
+                                               InpSweepToStructureMaxBarsContinuation);
+         if(cont_origin>=0){ sweep_bar=cont_origin; cont_ob=true; }
+      }
       if(sweep_bar<0) continue;
 
       int impulse_bar=-1;
-      bool leg_ok=ValidateDisplacementLeg(sweep_bar,st.bar,st.bullish,
+      bool leg_ok=false;
+      if(cont_ob)
+      {
+         string cont_why="";
+         leg_ok=ValidateContinuationLeg(sweep_bar,st.bar,st.bullish,st.price,o,h,l,c,
+                                        impulse_bar,cont_why);
+      }
+      else
+         leg_ok=ValidateDisplacementLeg(sweep_bar,st.bar,st.bullish,
                                           st.price,o,h,l,c,impulse_bar,false);
       if(!leg_ok)
       {
@@ -34901,6 +35723,53 @@ void TopDown_Evaluate()
    { cands[nc]=g_d1_high; csrc[nc]="PDH"; nc++; }
    if(d1_dir<0 && g_d1_low>0.0 && g_d1_low<entry)
    { cands[nc]=g_d1_low; csrc[nc]="PDL"; nc++; }
+   // v6.6.25 (D) InpTargetLiquidityAware: TP1 = the NEAREST target that PAYS
+   // InpTopDownMinRR. Unswept opposing EQH/EQL pools of this chart join the
+   // candidates above; nearer ones that cannot pay are skipped and named in the
+   // published source; when none pays, the smallest half-ATR15 multiple that meets
+   // the floor (capped at 8 x ATR15) is used. The floor is never lowered. The
+   // chosen target is handed to the legacy check below as its only candidate.
+   if(InpTargetLiquidityAware)
+   {
+      double la_floor=InpTopDownMinRR;   // the SAME hard floor - never lowered
+      double lc[];
+      string ls[];
+      int lcap=nc+ArraySize(g_liquidity);
+      ArrayResize(lc,MathMax(1,lcap));
+      ArrayResize(ls,MathMax(1,lcap));
+      int ln=0;
+      for(int i=0;i<nc;i++){ lc[ln]=cands[i]; ls[ln]=csrc[i]; ln++; }
+      for(int i=0;i<ArraySize(g_liquidity) && ln<lcap;i++)
+      {
+         if(g_liquidity[i].swept) continue;
+         if(d1_dir>0 ? g_liquidity[i].type!="EQH" : g_liquidity[i].type!="EQL") continue;
+         double lp=g_liquidity[i].price;
+         if(d1_dir>0 ? lp<=entry : lp>=entry) continue;
+         lc[ln]=lp; ls[ln]=(d1_dir>0 ? "EQH liquidity pool" : "EQL liquidity pool"); ln++;
+      }
+      string skipped="";
+      int pick=TopDownPickTarget(lc,ls,ln,entry,risk,d1_dir,la_floor,skipped);
+      if(pick>=0)
+      {
+         cands[0]=lc[pick];
+         csrc[0]=ls[pick]+(skipped!="" ? " [liquidity-aware; skipped "+skipped+"]" : " [liquidity-aware]");
+      }
+      else
+      {
+         double need_atr=(atr15>0.0 ? la_floor*risk/atr15 : 0.0);
+         double mult=MathCeil(need_atr*2.0-1e-9)/2.0;
+         if(atr15<=0.0 || mult>8.0)
+         {
+            TopDown_Fail(StringFormat("M5 liquidity-aware: no target pays R:R %.2f (%s) and the ATR projection needs %.1f x ATR15 (cap 8.0)",
+                                      la_floor,(skipped=="" ? "no candidates" : "skipped "+skipped),mult));
+            return;
+         }
+         cands[0]=(d1_dir>0 ? entry+mult*atr15 : entry-mult*atr15);
+         csrc[0]=StringFormat("ATR15 x%.1f projection [liquidity-aware; skipped %s]",mult,
+                              (skipped=="" ? "none" : skipped));
+      }
+      nc=1;
+   }
    if(nc==0){ TopDown_Fail("M5: no opposing liquidity target"); return; }
    int bi=0;
    for(int i=1;i<nc;i++)

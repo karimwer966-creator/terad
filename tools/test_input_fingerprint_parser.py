@@ -39,7 +39,7 @@ print('PASS comma declarations, all eight End inputs, literals, nesting, comment
 import re
 import tempfile
 entries=[entry for path in m.paths for entry in m.parse_inputs((r/path).read_text())]
-assert len(entries)==603   # 591 + the eight v6.6.22 chart-profile inputs (QSMC_ChartLayers.mqh) + the four AUDIT-A2 inputs (nadir2.mq5)
+assert len(entries)==610   # 591 + the eight v6.6.22 chart-profile inputs (QSMC_ChartLayers.mqh) + the four AUDIT-A2 inputs (nadir2.mq5) + the seven v6.6.25 switches (nadir2.mq5)
 identifiers=set()
 for kind,name,default in entries:
     if kind!='string':

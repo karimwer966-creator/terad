@@ -88,6 +88,9 @@ jobs:
       - name: Causal structure-event contracts
         run: python3 tools/test_structure.py 2>&1 | tee out/test_structure.log
 
+      - name: v6.6.25 missed-trade fixes (real MQL5 bodies on the host - not F7, not the tester)
+        run: python3 tools/test_missed_trade_fixes_native.py 2>&1 | tee out/test_missed_trade_fixes_native.log
+
       - name: Historical ATR causality
         run: python3 tools/test_historical_atr_contract.py 2>&1 | tee out/test_historical_atr.log
 
@@ -130,6 +133,21 @@ jobs:
       # invisible to a source contract and expensive in production.
       - name: Execution rules (day/drawdown/streak/cooldown floors + 12 review conditions)
         run: python3 tools/test_execution_rules.py 2>&1 | tee out/test_execution_rules.log
+
+      # v6.6.25 / AUD-03 (P1). RunEntryReview() began with
+      #   if(!InpPrintEntryReview) return "";
+      # so switching the LOG off switched all twelve final safety checks off, and
+      # the call site read the empty string as READY. A print input is not an
+      # execution authorization. This step compiles the shipped
+      # ReviewName/ReviewLine/RunEntryReview bodies against the shipped
+      # QSMC_ExecutionRules.mqh and proves the verdict is identical with the
+      # print switch ON and OFF for every one of the twelve conditions, plus
+      # that a fractional spread above the cap (20.9 pts vs a 20-pt cap, the
+      # int-cast truncation) and a NaN quote both fail closed. The suite existed
+      # before the source was fixed and was red the whole time; it is in CI now
+      # because it is green, and it is not report-only.
+      - name: Entry review is a gate, not a print option (AUD-03 / P1)
+        run: python3 tools/test_entry_review_gate.py 2>&1 | tee out/entry_review_gate.log
 
       # v6.6.24 / F-008. "piercing" and "dark cloud" demanded a close both above
       # and below the same price, so two of the four named reversal patterns

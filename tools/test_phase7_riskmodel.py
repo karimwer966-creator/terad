@@ -494,7 +494,7 @@ DELTA = {
     "AccountInfoDouble(": 2,      # 1 before + 1
     "AccountInfoString(": 2,      # 1 before + 1
     "PA_ZoneAt(": 7,              # 6 -> 7: the AUDIT-SC1 edge leg reuses the same single zone scan
-    "InpTopDownMinRR": 7,         # 4 before + 3 (the reused hard R:R floor)
+    "InpTopDownMinRR": 8,         # 4 before + 3 (the reused hard R:R floor) + 1 v6.6.25 liquidity-aware TP1 alias (same floor, never lowered)
     "InpSniperMaxRiskPct": 3,     # 2 before + 1 (the reused risk percentage)
     # untouched: no new call into ANY scoring system
     "ScoreStructure(": 6, "ScoreLiquidity(": 5, "ScoreSession(": 5, "ScoreHTF(": 3,
@@ -504,7 +504,7 @@ DELTA = {
     # untouched: existing scoring state
     "g_score.": 73, "final_score": 21, "setup_quality_score": 5,   # -1 each: one dead setter
     # untouched: buffers, objects, closed-bar conventions
-    "SetIndexBuffer(": 26, "ObjectCreate(": 16,   # 24 -> 16 dead renderers; 21 -> 26 v6.6.21 classification buffers
+    "SetIndexBuffer(": 27, "ObjectCreate(": 16,   # 24 -> 16 dead renderers; 21 -> 26 v6.6.21 classification buffers; 27 v6.6.25 chain kind
     "int closed=rates_total-2;": 12, "int closed=ArraySize(g_buf_c)-2;": 2,   # 3 -> 2: purge
     "int closed=g_rates_total-2;": 8,
 }
@@ -703,8 +703,8 @@ check(input_default("InpTopDownMinRR") == "2.0",
 check(input_default("InpSniperMaxRiskPct") == "1.50",
       "E the reused risk percentage InpSniperMaxRiskPct still defaults to 1.50")
 
-check(re.search(r"#property\s+indicator_buffers\s+26\b", TEXT) is not None,
-      "E indicator_buffers is still 21 - no buffer was added")
+check(re.search(r"#property\s+indicator_buffers\s+27\b", TEXT) is not None,
+      "E indicator_buffers is 27 (v6.6.21 classification + v6.6.25 chain kind) - this phase added none")
 check(re.search(r"#property\s+indicator_plots\s+7\b", TEXT) is not None,
       "E indicator_plots is still 7 - no plot was added")
 

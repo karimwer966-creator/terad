@@ -87,6 +87,9 @@ InpStopAfterConsecLoss=2
 InpResetBreakersAtInit=true
 ; InpPinTimeframeMinutes: pin M15: refuse to run on any other chart timeframe (the 2026-11-06 log cycled M1..H4)
 InpPinTimeframeMinutes=15
+InpPinIdleOnMismatch=false
+InpKeepStateOnChartChange=false
+InpLogTradeEvents=false
 InpMaxDataAgeSeconds=30
 ; InpMaxSignalAgeBars: only the bar that just closed is tradable (a signal is stale one bar later)
 InpMaxSignalAgeBars=1

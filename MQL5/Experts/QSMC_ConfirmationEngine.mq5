@@ -4,7 +4,7 @@
 //| Adds a new order boundary; QSMC_AutoTrader.mq5 is unchanged.     |
 //+------------------------------------------------------------------+
 #property copyright "Arena"
-#property version   "6.624"
+#property version   "6.625"
 #property description "Confirmation-score zone engine, UTC clock, replayable logs"
 
 #include <Trade/Trade.mqh>

@@ -174,7 +174,15 @@ bool QER_SpreadOk(const double spread_points,const int cap_points,
                   const double stop_points,const double max_frac,double &share)
   {
    share=0.0;
-   bool abs_ok=((int)spread_points<=cap_points);
+   //--- v6.6.25 (AUD-03 / P1): the spread is a real number of points, so it is
+   //--- compared as one. `(int)spread_points<=cap_points` truncated first: a
+   //--- 20.9-point spread became 20 and passed a 20-point cap. A quote that is
+   //--- not a finite number (no tick yet, or a NaN out of a broken feed) now
+   //--- fails closed instead of casting to garbage, and cap_points<=0 disables
+   //--- the absolute cap exactly as SpreadOK() in the EA does - a tuning input
+   //--- set to 0 must not silently veto every order.
+   if(!MathIsValidNumber(spread_points) || spread_points<0.0) return false;
+   bool abs_ok=(cap_points<=0 || spread_points<=(double)cap_points);
    bool share_ok=true;
    if(max_frac>0.0 && stop_points>0.0)
      {

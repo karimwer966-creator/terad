@@ -1036,15 +1036,15 @@
     },
     "627": {
      "line": 627,
-     "line_text": "#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)",
-     "text": "#property indicator_chart_window\n#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7",
-     "wide": "#define QSMC_VERSION_TEXT \"v6.6.24\"\n#property indicator_chart_window\n#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7\n//+------------------------------------------------------------------+"
+     "line_text": "#property indicator_buffers 27 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21), 26 CORE chain kind (v6.6.25)",
+     "text": "#property indicator_chart_window\n#property indicator_buffers 27 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21), 26 CORE chain kind (v6.6.25)\n#property indicator_plots 7",
+     "wide": "#define QSMC_VERSION_TEXT \"v6.6.24\"\n#property indicator_chart_window\n#property indicator_buffers 27 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21), 26 CORE chain kind (v6.6.25)\n#property indicator_plots 7\n//+------------------------------------------------------------------+"
     },
     "628": {
      "line": 628,
      "line_text": "#property indicator_plots 7",
-     "text": "#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7\n//+------------------------------------------------------------------+",
-     "wide": "#property indicator_chart_window\n#property indicator_buffers 26 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)\n#property indicator_plots 7\n//+------------------------------------------------------------------+\n//| v6.6.0 SIGNAL ARBITRATION LAYER |"
+     "text": "#property indicator_buffers 27 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21), 26 CORE chain kind (v6.6.25)\n#property indicator_plots 7\n//+------------------------------------------------------------------+",
+     "wide": "#property indicator_chart_window\n#property indicator_buffers 27 // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21), 26 CORE chain kind (v6.6.25)\n#property indicator_plots 7\n//+------------------------------------------------------------------+\n//| v6.6.0 SIGNAL ARBITRATION LAYER |"
     },
     "756": {
      "line": 756,

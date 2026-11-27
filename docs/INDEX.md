@@ -25,6 +25,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`DEMO_AUTO_DEFAULTS_2026-11-09.md`](DEMO_AUTO_DEFAULTS_2026-11-09.md) | what the compiled defaults arm, and why |
 | [`QSMC_SCALPER_M5_RUNBOOK_AR.md`](QSMC_SCALPER_M5_RUNBOOK_AR.md) | سكالبنج M5: الإعداد، الأوقات، وحدود الخطر |
 | [`DEMO_TRIAL_RUNBOOK.md`](DEMO_TRIAL_RUNBOOK.md) | the v6.6.24 demo trial: pre-attach, week 0 dry run, weeks 1–8, stop conditions, how to read `analyze_trial.py` |
+| [`QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md`](QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md) | the two v6.6.25 steps no sandbox can do: the ten-file F7 set and the four init-log lines that prove the right build loaded, the flags-OFF buffer/CSV comparison, the R0–R5 tester matrix with rejection thresholds, and the entry-review check |
 
 ## 2. Operate and read the chart
 
@@ -58,6 +59,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`QSMC_QUANT_STATS.md`](QSMC_QUANT_STATS.md) | quant statistics used by the gates |
 | [`QSMC_ENTRY_REVIEW_v6.6.21.md`](QSMC_ENTRY_REVIEW_v6.6.21.md) | the 12-line entry-review checklist |
 | [`QSMC_CORE_ZERO_INVESTIGATION.md`](QSMC_CORE_ZERO_INVESTIGATION.md) | why CORE published nothing, with the evidence boundary |
+| [`SIGNAL_VISIBILITY_DIAGNOSIS.md`](SIGNAL_VISIBILITY_DIAGNOSIS.md) | the seven relaxed thresholds the `// was X` input comments cite: what each one actually gates (function / line / refusal string), the ZRE and v6.6.25-C interactions, and what no measurement has proven |
 | [`QSMC_SMCVP_ENGINE_AUDIT_2026-11-11.md`](QSMC_SMCVP_ENGINE_AUDIT_2026-11-11.md) | SMC+VP engine audit (G1–G7) |
 | [`QSMC_ROBUSTNESS_PLAYBOOK.md`](QSMC_ROBUSTNESS_PLAYBOOK.md) | how not to over-fit: WFA, state isolation, gates |
 | [`QSMC_ROBUSTNESS_PLAYBOOK_AR.md`](QSMC_ROBUSTNESS_PLAYBOOK_AR.md) | نفس الدليل بالعربية |
@@ -81,6 +83,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`QSMC_AUDIT_2026-11-25.md`](QSMC_AUDIT_2026-11-25.md) | independent repository-wide audit: baseline, dependency map, reproduced/deferred execution defects, repaired diagnostic gates, regression analysis and readiness verdict |
 | [`CONFIRMATION_ENGINE_REPLAY_2026-11-25.md`](CONFIRMATION_ENGINE_REPLAY_2026-11-25.md) | deterministic replay of the two 2026-11-25 zone setups across parser/state/UTC/session/AI/risk layers; companion 42-column [`confirmation_replay_2026-11-25.csv`](confirmation_replay_2026-11-25.csv) |
 | [`CONFIRMATION_ENGINE_TEST_BACKTEST_2026-11-25.md`](CONFIRMATION_ENGINE_TEST_BACKTEST_2026-11-25.md) | deterministic 3-month synthetic M1 surrogate, walk-forward split and parameter sensitivity; explicitly not Strategy Tester, broker ticks or evidence of edge |
+| [`MISSED_TRADE_2026-11-27_HYPOTHESES.md`](MISSED_TRADE_2026-11-27_HYPOTHESES.md) | why the 2026-11-27 XAUUSD M15 Asia rally produced no CORE signal: five hypotheses verified in the v6.6.24 code (file / function / line / verdict), the v6.6.25 default-OFF switches B–G that address them, and the Strategy Tester plan (not run here) |
 | [`REVIEW_INCLUDE_QSMC_v6.6.24_AR.md`](REVIEW_INCLUDE_QSMC_v6.6.24_AR.md) | مراجعة الطبقة الداخلية `Include/QSMC` (33 ملفًا): 23 عيبًا أُصلحت، وحكم على التغييرات المقترحة، وما لم يُراجَع صريحًا |
 | [`QSMC_LINKS_REPAIR_2026-11-16_AR.md`](QSMC_LINKS_REPAIR_2026-11-16_AR.md) | إصلاح الروابط بين الأجزاء (الدورة السابقة) |
 | [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md) | خريطة المستودع: كل مجلد وماذا يحتوي |

@@ -98,6 +98,10 @@ InpOrderRetryMax=3
 
 ; ---- session / discipline ----------------------------------------------
 InpPinTimeframeMinutes=15
+; v6.6.25 (F): timeframe-pin idle mode, state kept on chart change, TRADE_EVENT lines - all OFF = v6.6.24 behaviour
+InpPinIdleOnMismatch=false
+InpKeepStateOnChartChange=false
+InpLogTradeEvents=false
 InpSessionStartHour=10
 InpSessionEndHour=18
 InpMaxTradesPerDay=3

@@ -1,3 +1,58 @@
+# Changelog
+
+## v6.6.25 — missed-trade fixes (2026-11-27)
+
+**Branch:** `arena/b7726771-terad` (Arena fixes the branch name; the requested
+`fix/structure-rearm-continuation` is disclosed as a deviation in the PR).<br>
+**Base:** `4bba08e` (v6.6.24).<br>
+**Why:** the 2026-11-27 XAUUSD M15 Asia rally (3562–3570 range, vertical leg to ~3684) produced
+no CORE signal. Root causes and evidence: [`docs/MISSED_TRADE_2026-11-27_HYPOTHESES.md`](docs/MISSED_TRADE_2026-11-27_HYPOTHESES.md).
+
+**Every new switch defaults OFF. With all of them OFF the indicator and the EA behave exactly
+as v6.6.24** (buffers 0–25, journal, SigLog CSV, causal fingerprint, refusal/purge paths).
+
+### New inputs — `nadir2.mq5` (group *v6.6.25 MISSED-TRADE FIXES*)
+
+| Input | Default | Fix | Effect when ON |
+|---|---|---|---|
+| `InpRearmStructureAfterBreak` | `false` | B | after a break, re-arm a provisional reference = highest high / lowest low of the K closed bars after it; a confirmed fractal replaces it |
+| `InpRearmStructureBars` | `5` | B | K (clamped to ≥ 2) |
+| `InpAllowContinuationChain` | `false` | C | sweep-less CONTINUATION chain: with-trend BOS + displacement leg (impulse body ≥ `InpDisplacementATR` × ATR) bound to an unmitigated OB/FVG + H1 bias agreeing as of the BOS close |
+| `InpSweepToStructureMaxBarsContinuation` | `12` | C | max bars from the continuation leg origin to the BOS (`InpSweepToStructureMaxBars` untouched) |
+| `InpTargetLiquidityAware` | `false` | D | top-down TP1 = nearest liquidity pool / swing / ATR multiple that pays `InpTopDownMinRR`; WEAK only with H1 bias + Asia/London + RR1 ≥ `InpWeakSignalMinRR` |
+| `InpWarmupWaitHTFData` | `false` | E | defer CORE (log `[WARMUP]`, class `WARMUP`) until the Sniper HTF buffers are ready, then re-evaluate the closed bar |
+| `InpLogCompactBarLine` | `false` | G | one `[BAR]` diagnostic line per closed bar |
+
+### New inputs — `MQL5/Experts/QSMC_AutoTrader.mq5`
+
+| Input | Default | Fix | Effect when ON |
+|---|---|---|---|
+| `InpPinIdleOnMismatch` | `false` | F(a) | stay attached but idle on a non-pinned timeframe; one 300-s rate-limited warning naming the required timeframe; resume on the pinned timeframe |
+| `InpKeepStateOnChartChange` | `false` | F(b) | keep seen-keys and ladder memory on deinit reason 3 (chart change) |
+| `InpLogTradeEvents` | `false` | F(c) | `TRADE_EVENT` line per account deal (any magic) and per own request: BUY/SELL, symbol, volume, price, SL, TP, comment, magic, owner, retcode |
+
+### Other changes
+
+- Export buffer **26** (`indicator_buffers` 26 → 27): CORE chain kind, 0 = none / switch OFF,
+  1 = REVERSAL, 2 = CONTINUATION. Buffers 0–25 unchanged.
+- Version triple v6.6.24 → **v6.6.25** / `"6.625"` across every shipped program and the
+  `[QSMC_ARB]` banner (one-version rule, `check_repo_layout.py` L6 / release gate G1).
+- Presets regenerated / extended with the new keys at their defaults; input-fingerprint
+  manifest regenerated (610 inputs).
+- `tools/test_missed_trade_fixes_native.py` (+ frozen `tools/fixtures/v6624_DetectStructure.mqh`):
+  host-compiled real MQL5 bodies — B OFF ≡ v6.6.24 bar by bar, B ON incremental ≡ full, C leg
+  helpers without lookahead, D target picker.
+- Suites that pin counts / versions / literal line numbers were moved to the new values
+  (buffers 27, inputs 612 / 71, version v6.6.25, re-anchored citations); no assertion was removed.
+
+### Not done here
+
+MetaEditor F7, the Strategy Tester and a replay of the real 2026-11-27 bars were not available
+in this environment; the tester plan is in the hypotheses report. No RR floor, risk control or
+`availability_time` rule was changed.
+
+---
+
 # Changelog — Confirmation Engine Phase 2
 
 **Date:** 2026-11-25<br>

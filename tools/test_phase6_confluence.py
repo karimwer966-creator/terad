@@ -803,8 +803,8 @@ for sw in ("InpEnableConfluence", "InpCFShowOnDashboard", "InpCFRequireActiveStr
           "E %s is a display-only switch defaulting to false" % sw)
 
 # buffers and plots are untouched
-check(re.search(r"#property\s+indicator_buffers\s+26\b", TEXT) is not None,
-      "E indicator_buffers is still 21 - no buffer was added")
+check(re.search(r"#property\s+indicator_buffers\s+27\b", TEXT) is not None,
+      "E indicator_buffers is 27 (v6.6.21 classification + v6.6.25 chain kind) - this phase added none")
 check(re.search(r"#property\s+indicator_plots\s+7\b", TEXT) is not None,
       "E indicator_plots is still 7 - no plot was added")
 
