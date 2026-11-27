@@ -669,6 +669,44 @@ check("under the minimum" in noc and "over the maximum" in noc and
 check("StopsModifyDistanceOK" in code,
       "D11 the repair path honours max(stops, freeze) and refuses to widen the stop to pass")
 
+# ------------------------------------------- D12 (AUD-05) freshness fails CLOSED
+# The data-age guard asked SymbolInfoTick() and only acted when the call SUCCEEDED.
+# A symbol for which the terminal holds no tick at all returned false, the whole
+# freshness test was skipped, and control fell through to the order send: the one
+# situation where the feed's age is truly unknowable was the one that was never
+# refused. Unknown age must refuse, exactly like old age.
+def _matched(src: str, open_pos: int) -> str:
+    """Text of the {...} block whose '{' is at/after open_pos, braces counted."""
+    i = src.index("{", open_pos)
+    depth = 0
+    for j in range(i, len(src)):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[i:j + 1]
+    return src[i:]
+
+_pos = code.index("SymbolInfoTick(sym,tk)")
+# HandleSignal's copy, not the OnInit one (that guard reads SYMBOL_TIME instead).
+_i = code.rindex("if(InpMaxDataAgeSeconds>0)", 0, _pos)
+_guard = _matched(code, _i)
+check(_guard.count("SymbolInfoTick(sym,tk)") == 1,
+      "D12 the freshness guard asks for a tick exactly once")
+check("SymbolInfoTick(sym,tk)" in _guard,
+      "D12 the guard under test is the SymbolInfoTick one")
+_after = _guard[_guard.index("SymbolInfoTick(sym,tk)"):]
+check(re.search(r"\}\s*else\s*\{", _after) is not None,
+      "D12 SymbolInfoTick()==false has its own branch (the old shape had no else)")
+_else = _after[re.search(r"\}\s*else\s*\{", _after).end():]
+check("return;" in _else.split("\n")[0:12][0] or "return;" in _else[:600],
+      "D12 a symbol with no tick is refused, never sent (fail closed)")
+check("SymbolInfoTick() returned false" in noc,
+      "D12 the refusal names its cause, so the journal does not read as a mystery")
+check(_guard.count("return;") >= 2,
+      "D12 both the stale-tick and the no-tick branches refuse (two refusals, one send)")
+
 print("=" * 60)
 TOTAL = ea.count("\n")
 print("AUDIT-EX1 execution-safety checks: %d checks, failures: %d" % (CHECKS[0], len(FAILURES)))

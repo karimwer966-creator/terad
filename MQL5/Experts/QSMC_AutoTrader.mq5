@@ -2750,6 +2750,18 @@ void HandleSignal(SQsigSignal &s)
             return;
            }
         }
+      else
+        {
+         // AUD-05: SymbolInfoTick() == false means the terminal holds NO tick
+         // for this symbol, so the age of the feed is unknown rather than
+         // known-young. The guard exists to refuse an order placed on
+         // unknown-age data, so the no-data branch must refuse too. The shape
+         // before v6.6.25 had no else: a symbol with no tick fell straight
+         // through the freshness test and reached the order send.
+         Note(key,"stale feed: SymbolInfoTick() returned false - no tick is "
+              "known for this symbol, so its age cannot be checked");
+         return;
+        }
      }
 
    // MQL5 has no global IsConnected() - connection state is per-terminal via
