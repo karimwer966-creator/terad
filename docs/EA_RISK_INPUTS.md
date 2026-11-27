@@ -190,7 +190,7 @@ one formula.
 
 ## 5. What is *not* enforced, stated plainly
 
-Verified by searching `OnInit()` (`:4490-5180`) for each name — **zero
+Verified by searching `OnInit()` (`:4490-5197`) for each name — **zero
 occurrences of all five**:
 
 | Input | `OnInit()` range check |
@@ -202,7 +202,10 @@ occurrences of all five**:
 | `InpStrongRiskMultiplier` | none |
 
 Contrast `InpRiskPercent` / `InpMaxRiskPercent`, which *are* rejected at attach
-with `INIT_PARAMETERS_INCORRECT` (`:4506-4512`). The five inputs here are instead
+with `INIT_PARAMETERS_INCORRECT` (`:4506-4512`). (A third attach-time check was
+added later, for a different input: `InpSessionStartHour` /
+`InpSessionEndHour` outside `0..23` are refused at `:4523-4540`. It does not
+touch any of the five inputs above.) The five inputs here are instead
 **clamped at use**, which is safe but silent: an operator who types
 `InpWeakRiskMultiplier = 3` gets WEAK sized as STRONG and sees no error at
 attach — only a `risk_mult=1.00` in the per-signal line (`:2277`, `:2541`).

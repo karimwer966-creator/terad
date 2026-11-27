@@ -763,6 +763,74 @@ check("wrap over midnight" in ea,
 check("InpSessionStartHour==InpSessionEndHour" in code,
       "D13 Start == End is still the way to switch the filter off")
 
+# ---------------------------------------------------------------- D14
+# docs/EA_RISK_INPUTS.md §5 states which sizing inputs have NO attach-time
+# validation, and it cites the line range of OnInit() that was searched to
+# prove it. That citation went stale when AUD-06 (D13 above) inserted 17 lines
+# into the same function: the searched range :4490-5180 became :4490-5197, so a
+# reader who re-ran the search over the cited range would have stopped 17 lines
+# short of the end of OnInit(). A citation that names a function range has to be
+# measured against the function, not remembered.
+EA_DOC = ROOT / "docs" / "EA_RISK_INPUTS.md"
+ea_doc = EA_DOC.read_text(encoding="utf-8", errors="replace")
+ea_lines = ea.split("\n")
+
+oninit_start = 0
+for n, ln in enumerate(ea_lines, 1):
+    if ln.startswith("int OnInit()"):
+        oninit_start = n
+        break
+oninit_end = 0
+if oninit_start:
+    depth = 0
+    seen = False
+    for n in range(oninit_start, len(ea_lines) + 1):
+        depth += ea_lines[n - 1].count("{") - ea_lines[n - 1].count("}")
+        if "{" in ea_lines[n - 1]:
+            seen = True
+        if seen and depth <= 0:
+            oninit_end = n
+            break
+check(oninit_start > 0 and oninit_end > oninit_start,
+      "D14 OnInit() located in QSMC_AutoTrader.mq5 by brace matching")
+
+m = re.search(r"`OnInit\(\)`\s*\(`:(\d+)-(\d+)`\)", ea_doc)
+check(m is not None,
+      "D14 EA_RISK_INPUTS.md section 5 cites the OnInit() range it searched")
+if m:
+    cited_start, cited_end = int(m.group(1)), int(m.group(2))
+    check((cited_start, cited_end) == (oninit_start, oninit_end),
+          "D14 the cited OnInit() range %d-%d is the function's real range "
+          "%d-%d (the doc is not stale)"
+          % (cited_start, cited_end, oninit_start, oninit_end))
+
+FIVE_SIZING = ("InpMaxAggregateRiskPercent", "InpRequireProfileMatch",
+               "InpWeakRiskMultiplier", "InpModerateRiskMultiplier",
+               "InpStrongRiskMultiplier")
+inside = [n for n in range(oninit_start, oninit_end + 1)
+          if any(name in ea_lines[n - 1] for name in FIVE_SIZING)]
+check(not inside,
+      "D14 none of the five sizing inputs is validated inside OnInit(), so the "
+      "doc's table is still true; found at lines %s" % inside[:5])
+# Scoped to section 5 on purpose: all five names also appear in section 4's
+# heading, so a document-wide search would keep passing after the table that
+# makes the claim was edited.
+sec5_start = ea_doc.find("## 5.")
+sec6_start = ea_doc.find("## 6.", sec5_start + 1)
+check(sec5_start >= 0 and sec6_start > sec5_start,
+      "D14 EA_RISK_INPUTS.md section 5 located (the section that makes the claim)")
+sec5 = ea_doc[sec5_start:sec6_start] if sec5_start >= 0 else ""
+for name in FIVE_SIZING:
+    check(("| `%s` |" % name) in sec5,
+          "D14 section 5's table still lists %s as unvalidated at attach" % name)
+
+check(":4506-4512" in ea_doc and "InpRiskPercent<0.0" in ea_lines[4505]
+      and "INIT_PARAMETERS_INCORRECT" in ea_lines[4510],
+      "D14 the :4506-4512 citation still lands on the risk-input rejection")
+check(":4523-4540" in ea_doc and "AUD-06" in ea_lines[4522]
+      and "INIT_PARAMETERS_INCORRECT" in ea_lines[4538],
+      "D14 the :4523-4540 citation still lands on the AUD-06 session check")
+
 print("=" * 60)
 TOTAL = ea.count("\n")
 print("AUDIT-EX1 execution-safety checks: %d checks, failures: %d" % (CHECKS[0], len(FAILURES)))

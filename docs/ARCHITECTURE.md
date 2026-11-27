@@ -213,18 +213,39 @@ incident evidence folder (`tools/test_incident_evidence_map.py`).
 They do not prove: that MetaEditor compiles anything, that a signal fires on
 real bars, or that a trade fills.
 
-## 9. Recommended after F7 — not done, deliberately
+## 9. Recommended after F7 — deliberately deferred
 
-None of these can be verified without a compiler, so none has been attempted:
+This section used to say that *none* of the items below could be verified
+without a compiler. That was wrong, and the fifth item proved it: narrowing one
+row of `docs/INDEX.md` needed no compiler at all, and it is now done. The list is
+split by what actually blocks it.
+
+**Blocked on a compiler (F7).** Both change the shape of 46,847 lines of source
+that nothing here can compile, so neither is safe to attempt before the F7 pass:
 
 - split `CalculateAITradeSetup()` (887), `OnInit()` (809) and
   `OnCalculate()` (754) into named stages;
 - reduce the 586 globals, starting with the ones read by more than one module
-  prefix;
+  prefix.
+
+**Not blocked on a compiler — but not free either.** A source edit plus a static
+gate is sufficient, which is exactly the shape of AUD-06
+(`QSMC_AutoTrader.mq5:4523-4540`) and AUD-07 (`QSMC_Root.mqh:1118-1134`), both of
+which landed without one. What blocks these is not tooling: each changes
+observable behaviour, so each needs an explicit go-ahead rather than a tidy-up:
+
 - attach-time validation for the five risk inputs that are currently only
-  clamped at use (see [`EA_RISK_INPUTS.md`](EA_RISK_INPUTS.md) §5);
+  clamped at use (see [`EA_RISK_INPUTS.md`](EA_RISK_INPUTS.md) §5) — a preset
+  that loads today could start refusing to load;
 - a log line when `InpRequireMSSAfterSweep=true` disables the CONTINUATION path
-  (currently silent, `nadir2.mq5:5451`);
-- reconcile `docs/QSMC_AUTOTRADER.md` with the generated
+  (currently silent, `nadir2.mq5:5451`).
+
+**Done.**
+
+- ~~reconcile `docs/QSMC_AUTOTRADER.md` with the generated
   [`INPUTS_REFERENCE.md`](INPUTS_REFERENCE.md), or narrow its claim in
-  `docs/INDEX.md`.
+  `docs/INDEX.md`~~ — the second option was taken: `docs/INDEX.md` no longer
+  calls the operator guide *"every input, every guard"*, because the guide names
+  34 of the EA's 71 inputs. `tools/test_inputs_reference.py` block R8 holds both
+  counts. The guide is still an operator guide and not an input reference; the
+  reconciliation option stays open.
