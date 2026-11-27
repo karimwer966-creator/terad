@@ -234,13 +234,22 @@ gate is sufficient, which is exactly the shape of AUD-06
 which landed without one. What blocks these is not tooling: each changes
 observable behaviour, so each needs an explicit go-ahead rather than a tidy-up:
 
-- attach-time validation for the five risk inputs that are currently only
-  clamped at use (see [`EA_RISK_INPUTS.md`](EA_RISK_INPUTS.md) §5) — a preset
-  that loads today could start refusing to load;
 - a log line when `InpRequireMSSAfterSweep=true` disables the CONTINUATION path
   (currently silent, `nadir2.mq5:5451`).
 
 **Done.**
+
+- ~~attach-time validation for the five risk inputs that are currently only
+  clamped at use~~ — done after an explicit go-ahead. The four numeric ones are
+  now refused outside their bounds at `QSMC_AutoTrader.mq5:4548-4582`, asking the
+  same `1.0` and `HardMaxAggregateRiskPercent()` the enforcement applies, so
+  "accepted at attach" and "clamped at use" cannot disagree. `0.00` stays legal
+  for all four, `InpRequireProfileMatch` is a `bool` with no range to fail, and
+  **all ten shipped presets still load** — measured. Blocks **D14/D15/D16** in
+  `tools/test_execution_safety.py` hold the bounds, the refusal and the document.
+  The REAL profile's `InpRealMaxRiskPercent` / `InpRealMaxAggregateRiskPercent`
+  are still clamp-at-use only; closing those changes which presets load on a live
+  account, so they need their own go-ahead.
 
 - ~~reconcile `docs/QSMC_AUTOTRADER.md` with the generated
   [`INPUTS_REFERENCE.md`](INPUTS_REFERENCE.md), or narrow its claim in

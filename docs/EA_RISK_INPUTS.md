@@ -188,31 +188,47 @@ one formula.
 
 ---
 
-## 5. What is *not* enforced, stated plainly
+## 5. What is enforced at attach, and what is still only clamped at use
 
-Verified by searching `OnInit()` (`:4490-5197`) for each name — **zero
-occurrences of all five**:
+Verified by searching `OnInit()` (`:4490-5232`) for each name. Four of the five
+were **clamped at use only** until v6.6.25, which was safe but silent: an
+operator who typed `InpWeakRiskMultiplier = 3` got WEAK sized as STRONG and saw
+no error at attach — only a `risk_mult=1.00` in the per-signal line (`:2277`,
+`:2541`). That is now refused at attach instead, at `:4548-4582`.
 
-| Input | `OnInit()` range check |
-|---|---|
-| `InpMaxAggregateRiskPercent` | none |
-| `InpRequireProfileMatch` | none (`bool`) |
-| `InpWeakRiskMultiplier` | none |
-| `InpModerateRiskMultiplier` | none |
-| `InpStrongRiskMultiplier` | none |
+| Input | Accepted at attach | What the enforcement does |
+|---|---|---|
+| `InpWeakRiskMultiplier` | `0.00` … `1.00` | `CalcLots()` caps a class multiplier at `1.0`; `0.00` means that class is not executed |
+| `InpModerateRiskMultiplier` | `0.00` … `1.00` | same cap, same meaning for `0.00` |
+| `InpStrongRiskMultiplier` | `0.00` … `1.00` | same cap, same meaning for `0.00` |
+| `InpMaxAggregateRiskPercent` | `0.00` … `HardMaxAggregateRiskPercent()` | `EffectiveAggregateRiskPct()` caps at the same bound; `0.00` switches the cap OFF |
+| `InpRequireProfileMatch` | any value — it is a `bool` | no range exists to fail; `ClassAllowed()` reads it directly |
 
-Contrast `InpRiskPercent` / `InpMaxRiskPercent`, which *are* rejected at attach
-with `INIT_PARAMETERS_INCORRECT` (`:4506-4512`). (A third attach-time check was
-added later, for a different input: `InpSessionStartHour` /
-`InpSessionEndHour` outside `0..23` are refused at `:4523-4540`. It does not
-touch any of the five inputs above.) The five inputs here are instead
-**clamped at use**, which is safe but silent: an operator who types
-`InpWeakRiskMultiplier = 3` gets WEAK sized as STRONG and sees no error at
-attach — only a `risk_mult=1.00` in the per-signal line (`:2277`, `:2541`).
+The bounds the attach accepts are **the same numbers the enforcement applies** —
+`1.0` for a class multiplier, `HardMaxAggregateRiskPercent()` for the aggregate
+cap. That is deliberate: a validation that invented its own bound would be worse
+than none, because "accepted at attach" and "clamped at use" would then disagree
+in a way the operator could not predict. Nothing about a size changed — every
+value the check accepts is sized exactly as it was sized before. What changed is
+that a value the enforcement would have silently rewritten now refuses the attach
+with `INIT_PARAMETERS_INCORRECT` and prints all four numbers it was given.
 
-Adding attach-time validation would change behaviour (a preset that currently
-loads could start refusing to load), so it is deliberately **not** done here.
-It is listed under *recommended after F7*.
+Contrast `InpRiskPercent` / `InpMaxRiskPercent`, which were always rejected at
+attach (`:4506-4512`), and `InpSessionStartHour` / `InpSessionEndHour`, added at
+`:4523-4540`. **All ten shipped presets load under the new check**: the four that
+set these inputs use `0.25 / 0.50 / 1.00` and an aggregate cap of `1.00` or
+`0.50`, so nothing that worked before now refuses.
+
+Still deliberately *not* checked at attach, and still clamped at use:
+
+- `InpRealMaxRiskPercent` (`:318`) and `InpRealMaxAggregateRiskPercent` (`:321`)
+  — the REAL profile's counterparts have **zero** occurrences inside `OnInit()`,
+  so they carry exactly the silent-clamp behaviour the four above just lost.
+  `CalcLots()` bounds the first with `MathMin(InpRealMaxRiskPercent,
+  HardMaxRiskPercent())` and `EffectiveAggregateRiskPct()` bounds the second.
+  REAL is the higher-stakes profile, so this is the next one to close; it was
+  left alone here because widening the check to the REAL inputs changes which
+  presets load on a live account, and that needs its own go-ahead.
 
 ---
 

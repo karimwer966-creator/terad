@@ -60,7 +60,7 @@ Folder and every later observation is worthless:
 
 Sources: `QSMC_Root.mqh:464` (printed only by the non-silent instance — an
 EA-reader copy stays quiet by design), `nadir2.mq5:15771` (behind
-`!QSMC_IsReaderSilent()`), `QSMC_AutoTrader.mq5:4993`, `QSMC_ArbiterTest.mq5:47`.
+`!QSMC_IsReaderSilent()`), `QSMC_AutoTrader.mq5:5028`, `QSMC_ArbiterTest.mq5:47`.
 
 The same block also prints the seven thresholds documented in
 [`SIGNAL_VISIBILITY_DIAGNOSIS.md`](SIGNAL_VISIBILITY_DIAGNOSIS.md) — `- Displacement
@@ -200,8 +200,18 @@ review has something to reject.
   a root that is allocated but not ready (`nadir2.mq5:15107`). Asserted by
   `test_runtime_diagnostics.py`, including a native harness that runs the
   lifecycle and reproduces the old shape as the defect.
+- **Sizing inputs (P2)** — **fixed after an explicit go-ahead.**
+  `InpWeakRiskMultiplier`, `InpModerateRiskMultiplier`, `InpStrongRiskMultiplier`
+  and `InpMaxAggregateRiskPercent` are now refused at attach outside
+  `0.00..1.00` and `0.00..HardMaxAggregateRiskPercent()`
+  (`QSMC_AutoTrader.mq5:4548`–`4582`) instead of being silently rewritten at
+  sizing time. The bounds are the enforcement's own numbers, so **no size
+  changed**; `0.00` stays legal, and all ten shipped presets still load.
+  Asserted by blocks **D14/D15/D16**. The REAL profile's
+  `InpRealMaxRiskPercent` / `InpRealMaxAggregateRiskPercent` are **still**
+  clamp-at-use only — see [`EA_RISK_INPUTS.md`](EA_RISK_INPUTS.md) §5.
 
-`docs/QSMC_AUDIT_2026-11-25.md` still lists all three as deferred. That document
+`docs/QSMC_AUDIT_2026-11-25.md` still lists the first three as deferred. That document
 is the audit as it stood on its date and has not been rewritten; this list is the
 current state.
 - The seven relaxed thresholds in

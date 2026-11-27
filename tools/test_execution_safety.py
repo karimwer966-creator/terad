@@ -804,14 +804,22 @@ if m:
           "%d-%d (the doc is not stale)"
           % (cited_start, cited_end, oninit_start, oninit_end))
 
-FIVE_SIZING = ("InpMaxAggregateRiskPercent", "InpRequireProfileMatch",
-               "InpWeakRiskMultiplier", "InpModerateRiskMultiplier",
-               "InpStrongRiskMultiplier")
-inside = [n for n in range(oninit_start, oninit_end + 1)
-          if any(name in ea_lines[n - 1] for name in FIVE_SIZING)]
-check(not inside,
-      "D14 none of the five sizing inputs is validated inside OnInit(), so the "
-      "doc's table is still true; found at lines %s" % inside[:5])
+FOUR_NUMERIC = ("InpWeakRiskMultiplier", "InpModerateRiskMultiplier",
+                "InpStrongRiskMultiplier", "InpMaxAggregateRiskPercent")
+inside = {name: [n for n in range(oninit_start, oninit_end + 1)
+                 if name in ea_lines[n - 1]] for name in FOUR_NUMERIC}
+for name in FOUR_NUMERIC:
+    check(bool(inside[name]),
+          "D14 %s is named inside OnInit() - it is no longer an input the "
+          "attach never looks at" % name)
+# Scanned over the comment-stripped view on purpose: the block's own comment
+# names InpRequireProfileMatch to explain why there is no check for it, and a
+# scan over raw text would report that sentence as a range check.
+code_lines = code.split("\n")
+check(not [n for n in range(oninit_start, oninit_end + 1)
+           if "InpRequireProfileMatch" in code_lines[n - 1]],
+      "D14 InpRequireProfileMatch is a bool, so OnInit() invents no range "
+      "check for it")
 # Scoped to section 5 on purpose: all five names also appear in section 4's
 # heading, so a document-wide search would keep passing after the table that
 # makes the claim was edited.
@@ -820,9 +828,34 @@ sec6_start = ea_doc.find("## 6.", sec5_start + 1)
 check(sec5_start >= 0 and sec6_start > sec5_start,
       "D14 EA_RISK_INPUTS.md section 5 located (the section that makes the claim)")
 sec5 = ea_doc[sec5_start:sec6_start] if sec5_start >= 0 else ""
+FIVE_SIZING = FOUR_NUMERIC + ("InpRequireProfileMatch",)
 for name in FIVE_SIZING:
     check(("| `%s` |" % name) in sec5,
-          "D14 section 5's table still lists %s as unvalidated at attach" % name)
+          "D14 section 5's table still accounts for %s" % name)
+
+# ---------------------------------------------------------------- D16
+# Section 5 used to be the document that said these inputs are NOT checked. It
+# cannot keep saying that, and it cannot quietly become a table that lists the
+# new bounds either: the numbers it states have to be the numbers the source
+# enforces, or the document is a second, drifting copy of the gate.
+for name in ("InpWeakRiskMultiplier", "InpModerateRiskMultiplier",
+             "InpStrongRiskMultiplier"):
+    check(("| `%s` | `0.00`" % name) in sec5,
+          "D16 section 5 states the 0.00..1.00 bound for %s" % name)
+# Scoped to the table row: the prose paragraph below the table also names the
+# function, so a document-wide search would keep passing after the row itself
+# was edited to copy the literal 2.00.
+agg_row = next((ln for ln in sec5.split("\n")
+                if ln.startswith("| `InpMaxAggregateRiskPercent` |")), "")
+check(agg_row.startswith("| `InpMaxAggregateRiskPercent` | `0.00`"),
+      "D16 section 5's table row gives InpMaxAggregateRiskPercent a 0.00 floor")
+check("HardMaxAggregateRiskPercent()" in agg_row,
+      "D16 that row states the ceiling by naming the function that supplies it, "
+      "not by copying 2.00")
+check("| `InpRequireProfileMatch` |" in sec5 and "bool" in sec5,
+      "D16 section 5 still explains why the bool has no range to fail")
+check("no attach-time validation" not in sec5 and "| none |" not in sec5,
+      "D16 section 5 no longer claims these inputs are unchecked at attach")
 
 check(":4506-4512" in ea_doc and "InpRiskPercent<0.0" in ea_lines[4505]
       and "INIT_PARAMETERS_INCORRECT" in ea_lines[4510],
@@ -830,6 +863,79 @@ check(":4506-4512" in ea_doc and "InpRiskPercent<0.0" in ea_lines[4505]
 check(":4523-4540" in ea_doc and "AUD-06" in ea_lines[4522]
       and "INIT_PARAMETERS_INCORRECT" in ea_lines[4538],
       "D14 the :4523-4540 citation still lands on the AUD-06 session check")
+
+# ---------------------------------------------------------------- D15
+# The sizing inputs are now refused at attach instead of being clamped at use.
+# The point of this block is not "a check exists" - it is that the check asks
+# for the SAME numbers the enforcement applies. A validation that invented its
+# own bound would be worse than none, because "accepted at attach" and "clamped
+# at use" would disagree in a way the operator could not predict.
+oninit_src = "\n".join(ea_lines[oninit_start - 1:oninit_end])
+check("HardMaxAggregateRiskPercent()" in oninit_src,
+      "D15 the aggregate bound is asked of HardMaxAggregateRiskPercent(), not "
+      "restated as a literal that can drift from the enforcement")
+check(re.search(r"InpMaxAggregateRiskPercent>HardMaxAggregateRiskPercent\(\)",
+                oninit_src) is not None,
+      "D15 InpMaxAggregateRiskPercent is refused above the HARD aggregate bound")
+for name in ("InpWeakRiskMultiplier", "InpModerateRiskMultiplier",
+             "InpStrongRiskMultiplier"):
+    check(re.search(re.escape(name) + r"<0\.0", oninit_src) is not None
+          and re.search(re.escape(name) + r">1\.0", oninit_src) is not None,
+          "D15 %s is refused outside 0.00..1.00" % name)
+
+# The other side of the same contract: CalcLots() still caps a class multiplier
+# at 1.0, and 1.0 is the same number the attach now refuses to exceed.
+calc_start = 0
+for n, ln in enumerate(ea_lines, 1):
+    if ln.startswith("double CalcLots("):
+        calc_start = n
+        break
+calc_src = "\n".join(ea_lines[calc_start - 1:calc_start + 30]) if calc_start else ""
+check("if(class_mult>1.0) class_mult=1.0;" in calc_src,
+      "D15 CalcLots() still caps a class multiplier at 1.0 - the same bound the "
+      "attach now enforces, so nothing is silently resized any more")
+check("if(class_mult<=0.0)" in calc_src,
+      "D15 a 0.00 multiplier still means that class is not executed, which is "
+      "why 0.00 stays legal at attach")
+check("if(v > HardMaxAggregateRiskPercent()) v = HardMaxAggregateRiskPercent();"
+      in "\n".join(ea_lines),
+      "D15 EffectiveAggregateRiskPct() still caps at the same HARD bound")
+
+# The refusal has to say what was wrong and name the values it was given, or the
+# operator sees INIT_PARAMETERS_INCORRECT with no cause - the AUD-06 lesson.
+siz_block = oninit_src[oninit_src.find("sizing inputs out of range"):]
+siz_block = siz_block[:siz_block.find("INIT_PARAMETERS_INCORRECT")]
+check("sizing inputs out of range" in oninit_src,
+      "D15 the refusal names the problem, not just the verdict")
+check(all(("DoubleToString(%s,2)" % n) in siz_block for n in FOUR_NUMERIC),
+      "D15 the refusal prints every value it was given")
+check("0.00 stays legal" in siz_block,
+      "D15 the refusal says that zero is still allowed, so it does not read as "
+      "a new restriction on the OFF settings")
+
+# The message is worthless unless the branch actually refuses. Scoped to the
+# brace-matched block: a document-wide search finds INIT_PARAMETERS_INCORRECT in
+# the neighbouring checks and passes even when this one returns INIT_SUCCEEDED.
+siz_start = next((n for n in range(oninit_start, oninit_end + 1)
+                  if ea_lines[n - 1].strip().startswith("if(InpWeakRiskMultiplier<0.0")), 0)
+siz_end, depth, seen = 0, 0, False
+if siz_start:
+    for n in range(siz_start, oninit_end + 1):
+        depth += ea_lines[n - 1].count("{") - ea_lines[n - 1].count("}")
+        if "{" in ea_lines[n - 1]:
+            seen = True
+        if seen and depth <= 0:
+            siz_end = n
+            break
+siz_src = "\n".join(ea_lines[siz_start - 1:siz_end]) if siz_start else ""
+check(siz_start > 0 and siz_end > siz_start,
+      "D15 the sizing check located as one brace-matched block (:4564-4582 "
+      "shape) rather than found by text")
+check("return INIT_PARAMETERS_INCORRECT;" in siz_src,
+      "D15 that block ends by refusing the attach, not by printing and carrying "
+      "on")
+check("INIT_SUCCEEDED" not in siz_src,
+      "D15 and it never answers the bad input with INIT_SUCCEEDED")
 
 print("=" * 60)
 TOTAL = ea.count("\n")

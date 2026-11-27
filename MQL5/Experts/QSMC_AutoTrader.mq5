@@ -4545,6 +4545,41 @@ int OnInit()
             DoubleToString(InpFixedLotsMaxRiskPercent,2));
       return INIT_PARAMETERS_INCORRECT;
      }
+   // 2026-11-27 (v6.6.25, approved): the four numeric inputs that decide HOW
+   // BIG an order is were the only risk inputs with no attach-time check. Each
+   // was clamped at use instead, which is safe but silent:
+   //   - a class multiplier above 1.00 was capped to 1.00 in CalcLots(), so
+   //     InpWeakRiskMultiplier=3 sized a WEAK signal like a STRONG one and the
+   //     only trace was "risk_mult=1.00" in the per-signal line;
+   //   - InpMaxAggregateRiskPercent above the HARD aggregate bound was capped
+   //     in EffectiveAggregateRiskPct() with nothing said at attach.
+   // The bounds below are the SAME numbers the enforcement uses - 1.00 for a
+   // class multiplier, HardMaxAggregateRiskPercent() for the aggregate cap - so
+   // "accepted at attach" and "clamped at use" cannot disagree. Zero stays legal
+   // for all four because zero already has a documented meaning: 0.00 for a
+   // multiplier means that class is not executed, 0.00 for the aggregate cap
+   // means the cap is OFF. InpRequireProfileMatch is a bool, so there is no
+   // range for it to fail. Nothing here changes a size: every value this check
+   // accepts is sized exactly as it was sized before.
+   if(InpWeakRiskMultiplier<0.0       || InpWeakRiskMultiplier>1.0 ||
+      InpModerateRiskMultiplier<0.0   || InpModerateRiskMultiplier>1.0 ||
+      InpStrongRiskMultiplier<0.0     || InpStrongRiskMultiplier>1.0 ||
+      InpMaxAggregateRiskPercent<0.0  ||
+      InpMaxAggregateRiskPercent>HardMaxAggregateRiskPercent())
+     {
+      Print("[QSMC_AT] sizing inputs out of range: 0.00 <= InpWeakRiskMultiplier, ",
+            "InpModerateRiskMultiplier and InpStrongRiskMultiplier <= 1.00, and ",
+            "0.00 <= InpMaxAggregateRiskPercent <= ",
+            DoubleToString(HardMaxAggregateRiskPercent(),2),"% (HARD aggregate bound). ",
+            "Got ",DoubleToString(InpWeakRiskMultiplier,2)," / ",
+            DoubleToString(InpModerateRiskMultiplier,2)," / ",
+            DoubleToString(InpStrongRiskMultiplier,2)," / ",
+            DoubleToString(InpMaxAggregateRiskPercent,2),
+            ". A multiplier above 1.00 used to be capped to 1.00, so a WEAK signal ",
+            "was sized like a STRONG one; 0.00 stays legal (0 = that class is not ",
+            "executed, or the aggregate cap is OFF).");
+      return INIT_PARAMETERS_INCORRECT;
+     }
    if(InpLotMode==QSMC_LOT_FIXED && InpFixedLots<=0.0)
      {
       Print("[QSMC_AT] InpLotMode=FIXED but InpFixedLots=",DoubleToString(InpFixedLots,2),

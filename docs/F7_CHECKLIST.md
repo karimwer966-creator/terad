@@ -110,11 +110,11 @@ should read:
 If they do not, you are not running the shipped defaults and the A/B below is
 measuring the wrong thing.
 
-### 1.5 Two attach-time behaviours added after the v6.6.25 handoff
+### 1.5 Three attach-time behaviours added after the v6.6.25 handoff
 
-Both come from the audit fixes in this branch and neither existed when
-`QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md` was written. Neither is an error — but
-if you see one and do not know it is deliberate, it looks like a broken build.
+All three come from the audit fixes in this branch and none existed when
+`QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md` was written. None is an error — but if
+you see one and do not know it is deliberate, it looks like a broken build.
 
 **AUD-06 — a session window that cannot open now refuses the attach.** If
 `InpSessionStartHour` or `InpSessionEndHour` is outside `0..23` the EA stops at
@@ -147,6 +147,33 @@ you will see one of:
 Arbitration is analytical, so this does **not** stop the indicator publishing
 signals or filling buffers. Before the fix the same failure was silent and the
 next attach reported success over a root that had never become ready.
+
+**Sizing inputs — a multiplier the EA would have rewritten now refuses the
+attach.** `InpWeakRiskMultiplier`, `InpModerateRiskMultiplier`,
+`InpStrongRiskMultiplier` and `InpMaxAggregateRiskPercent` were the only risk
+inputs with no attach-time check; each was clamped at use instead. A class
+multiplier above `1.00` was capped to `1.00` in `CalcLots()`, so
+`InpWeakRiskMultiplier = 3` sized a WEAK signal like a STRONG one and the only
+trace was `risk_mult=1.00` in a per-signal line. Now:
+
+```
+[QSMC_AT] sizing inputs out of range: 0.00 <= InpWeakRiskMultiplier,
+          InpModerateRiskMultiplier and InpStrongRiskMultiplier <= 1.00, and
+          0.00 <= InpMaxAggregateRiskPercent <= 2.00% (HARD aggregate bound).
+          Got <n> / <n> / <n> / <n>. A multiplier above 1.00 used to be capped
+          to 1.00, so a WEAK signal was sized like a STRONG one; 0.00 stays
+          legal (0 = that class is not executed, or the aggregate cap is OFF).
+```
+
+The bounds are the same numbers the enforcement already applied, so **no size
+changed** — only the silent rewrite became a refusal. `0.00` stays legal for all
+four because zero already means something (that class is not executed / the
+aggregate cap is OFF). `InpRequireProfileMatch` is a `bool`, so there is no range
+for it to fail. **All ten shipped presets load**: the four that set these inputs
+use `0.25 / 0.50 / 1.00` with an aggregate cap of `1.00` or `0.50`. The REAL
+profile's `InpRealMaxRiskPercent` and `InpRealMaxAggregateRiskPercent` are
+**still** clamp-at-use only — see
+[`EA_RISK_INPUTS.md`](EA_RISK_INPUTS.md) §5.
 
 Record whichever of these you see in §10 of
 [`F7_RESULTS_TEMPLATE.md`](F7_RESULTS_TEMPLATE.md), with the line verbatim.
