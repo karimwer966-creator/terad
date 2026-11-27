@@ -32,6 +32,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | Document | What it answers |
 |---|---|
 | [`QSMC_AUTOTRADER.md`](QSMC_AUTOTRADER.md) | the companion EA: every input, every guard, what it refuses |
+| [`EA_RISK_INPUTS.md`](EA_RISK_INPUTS.md) | the five EA inputs that size the order: aggregate risk cap, profile match, and the WEAK/MODERATE/STRONG multipliers — meaning, units, default, effect on lots, and the two hard ceilings that bound them |
 | [`QSMC_CHART_READING_AR.md`](QSMC_CHART_READING_AR.md) | معنى كل نص على الشارت، وترتيب سلطة الطبقات |
 | [`QSMC_DASHBOARD_CLARITY.md`](QSMC_DASHBOARD_CLARITY.md) | compact decision card, grouped SMC explainability panel, `DATA_WAITING`, verdict codes and caps |
 | [`QSMC_WHY_NO_TRADES.md`](QSMC_WHY_NO_TRADES.md) | triage: a trade is missing — which gate refused it |
