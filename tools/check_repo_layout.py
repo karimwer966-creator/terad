@@ -161,7 +161,6 @@ PATH_ALLOWLIST = {
     "MQL5/Experts/rollback/": "gitignored local rollback snapshots (audit history)",
     "MQL5/Include/QSMC/QSMC_DryRunAudit.mqh": "removed in v6.6.16; cited by its own RCA",
     "MQL5/Logs/": "runtime: the terminal writes these, not the repository",
-    "docs/KLJ_V6.5.4_REACTION_CONFLICT_FIX.md": "documented as absent from this checkout",
     "presets/QSMC_v6.6.15_trial_5k.set": "historical $5k trial, frozen in docs/history/",
     "presets/QSMC_v6.6.16_trial_5k.set": "historical $5k trial, frozen in docs/history/",
 }
@@ -258,7 +257,8 @@ def check_index() -> None:
     docs = sorted(p for p in (ROOT / "docs").glob("*.md"))
     index = ROOT / "docs" / "INDEX.md"
     if not index.is_file():
-        fail("L7 docs/INDEX.md is missing: 71 documents with no catalogue")
+        fail("L7 docs/INDEX.md is missing: %d documents with no catalogue"
+             % (len(docs) - 1))
         return
     text = io.open(index, encoding="utf-8", errors="replace").read()
     orphans = [p.name for p in docs if p.name != "INDEX.md" and p.name not in text]
@@ -266,6 +266,20 @@ def check_index() -> None:
         fail("L7 document(s) absent from docs/INDEX.md: %s" % ", ".join(orphans))
     else:
         ok("L7 all %d documents in docs/ appear in docs/INDEX.md" % (len(docs) - 1))
+
+    # L8 - the count INDEX.md states in its own opening sentence. It said "97
+    # documents" while the tree held 105, and nothing compared the two: the
+    # number is prose, so no test read it. Now it is computed.
+    m = re.search(r"(\d+)\s+documents\b", text)
+    actual = len(docs) - 1
+    if not m:
+        fail("L8 docs/INDEX.md states no document count in its opening sentence")
+    elif int(m.group(1)) != actual:
+        fail("L8 docs/INDEX.md says %s documents, the tree holds %d - update the sentence"
+             % (m.group(1), actual))
+    else:
+        ok("L8 the document count INDEX.md states (%s) equals the tree (%d)"
+           % (m.group(1), actual))
 
 
 def main(argv: list[str]) -> int:

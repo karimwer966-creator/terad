@@ -306,6 +306,176 @@ jobs:
       - name: Why-no-trades classification
         run: python3 tools/test_why_no_trades.py 2>&1 | tee out/why_no_trades.log
 
+      # ---------------------------------------------------------------------
+      # Every remaining offline suite, wired on 2026-11-27.
+      #
+      # 22 suites in tools/ were green but unrun by CI: 66 of 88 were invoked by
+      # a real `python3 tools/...` line and these were not, so a regression in
+      # any of them was invisible until someone ran it by hand. All 22 run here
+      # in 22.4 seconds combined on this host, so none of them is excluded for
+      # being slow. Nothing in this block is environment-bound either - the five
+      # that need a host compiler follow the same exit-77 skip contract as the
+      # five native suites already wired above, and ubuntu-latest has g++.
+      #
+      # Deliberately NOT added, with the reason in each case:
+      #   * the eight suites in the `pin-drift` job below stay report-only. They
+      #     pass locally now that tools/pinmap.json re-anchors them, but moving
+      #     them into this job turns eight report-only steps into blocking
+      #     gates, which is a policy change and not a wiring fix.
+      #   * tools/qats_sim/ and tools/smcvp_sim/ are harnesses, not suites.
+      # ---------------------------------------------------------------------
+
+      # The four source contracts added in this repair round: the 27-buffer map
+      # against the #defines, the seven relaxed thresholds against their read
+      # sites, the generated 934-input reference, and the frozen incident
+      # evidence folder against the README that explains which subtree to read.
+      - name: Buffer contract (27 buffers, doc <-> #define agreement)
+        run: python3 tools/test_buffer_contract.py 2>&1 | tee out/test_buffer_contract.log
+
+      - name: Seven relaxed thresholds (declared default, read sites, kill switch)
+        run: python3 tools/test_seven_thresholds.py 2>&1 | tee out/test_seven_thresholds.log
+
+      - name: Generated input reference (934 inputs, meanings are source comments)
+        run: python3 tools/test_inputs_reference.py 2>&1 | tee out/test_inputs_reference.log
+
+      - name: Frozen incident evidence map (which subtree is authoritative)
+        run: python3 tools/test_incident_evidence_map.py 2>&1 | tee out/test_incident_evidence_map.log
+
+      # Two include-graph gates. The graph is 12 programs / 34 headers / 78
+      # resolvable edges and acyclic; a cycle or a header included without its
+      # guard is a compile failure that no offline source check would catch.
+      - name: Include graph (fan-in, cycles, orphans)
+        run: python3 tools/check_include_graph.py 2>&1 | tee out/check_include_graph.log
+
+      - name: Include-graph gate (comment trap, cycles, guards, coupling)
+        run: python3 tools/test_include_graph.py 2>&1 | tee out/test_include_graph.log
+
+      # Compile-error classes that were real MetaEditor failures before: a lost
+      # '//', a comma-separated input declaration, a shadowed global. This is a
+      # pattern gate over the text - it is NOT a compile and does not prove the
+      # file builds. F7 is still the only proof of that.
+      - name: Compile-error classes (lost comment, comma declarators, shadows)
+        run: python3 tools/test_compile_errors.py 2>&1 | tee out/test_compile_errors.log
+
+      - name: Causal chain regressions (order of operations in the signal path)
+        run: python3 tools/test_causal_chain_regressions.py 2>&1 | tee out/test_causal_chain_regressions.log
+
+      # Display authority: three suites that keep the chart from saying
+      # something the signal path did not decide - which is the exact failure
+      # mode the 2026-11-01 incident was about.
+      - name: Display authority (non-Core vocabulary cannot authorize)
+        run: python3 tools/test_display_authority.py 2>&1 | tee out/test_display_authority.log
+
+      # The v6.5.0 reaction layer promises "CLASSIFICATION ONLY" at nadir2.mq5:40185.
+      # This is the suite that holds it to that: no trading API in any of the 86
+      # RXN_* definitions, no signal buffer written or named, no write to the
+      # authoritative signal state, and an exhaustive pinned list of the seven
+      # non-RXN functions allowed to read g_rxn_* at all - so a new reader fails
+      # even if it looks harmless.
+      - name: RXN classification-only contract (no trading function of any kind)
+        run: python3 tools/test_rxn_classification_only.py 2>&1 | tee out/test_rxn_classification_only.log
+
+      - name: Incident compact badge (measurement, panel avoidance, ownership)
+        run: python3 tools/test_incident_compact.py 2>&1 | tee out/test_incident_compact.log
+
+      - name: Scanner snapshot rendered before reset
+        run: python3 tools/test_scanner_snapshot.py 2>&1 | tee out/test_scanner_snapshot.log
+
+      # Provenance: a number on the chart must be attributable to a quote or to
+      # a closed bar. Both suites EXECUTE the real MQL5 bodies with g++ when a
+      # compiler is present and skip visibly when one is not.
+      - name: Price provenance (Bid/Ask vs CLOSED[1] separation)
+        run: python3 tools/test_price_provenance.py 2>&1 | tee out/test_price_provenance.log
+
+      - name: Zone provenance (symbol-history plausibility gate) - executed
+        run: python3 tools/test_zone_provenance.py 2>&1 | tee out/test_zone_provenance.log
+
+      - name: Volatility window (causal percentiles, no look-ahead) - executed
+        run: python3 tools/test_volatility_window.py 2>&1 | tee out/test_volatility_window.log
+
+      - name: EL data integrity (copy gate bodies) - executed
+        run: python3 tools/test_el_data_integrity.py 2>&1 | tee out/test_el_data_integrity.log
+
+      - name: EL Sniper readiness (zone detection bodies) - executed
+        run: python3 tools/test_el_sniper_readiness.py 2>&1 | tee out/test_el_sniper_readiness.log
+
+      - name: Opportunity funnel (the "no trades" explanation) - executed
+        run: python3 tools/test_opportunity_funnel.py 2>&1 | tee out/test_opportunity_funnel.log
+
+      # The comma-separated-declarator parser that caused 32 MetaEditor errors,
+      # plus the input-manifest identity it feeds. The second one shells out to
+      # tools/generate_input_fingerprint.py --check, so it also pins the
+      # generated header to its generator.
+      - name: Input fingerprint parser (comma declarators, native checksum) - executed
+        run: python3 tools/test_input_fingerprint_parser.py 2>&1 | tee out/test_input_fingerprint_parser.log
+
+      - name: Instance identity (per-config diagnostics, default binding)
+        run: python3 tools/test_instance_identity.py 2>&1 | tee out/test_instance_identity.log
+
+      # The curated gate over the whole native estate: it asserts that every
+      # native suite either runs for real or exits 77 with its source checks
+      # still reported, and never passes silently. Wiring it means a suite that
+      # quietly stops compiling is caught even on a host with no compiler.
+      - name: Native toolchain contract (a skip is visible, never a pass)
+        run: python3 tools/test_native_toolchain.py 2>&1 | tee out/test_native_toolchain.log
+
+      - name: Scalper preset (the shipped .set matches the documented behaviour)
+        run: python3 tools/test_scalper_preset.py 2>&1 | tee out/test_scalper_preset.log
+
+      - name: Signal execution profiles (source + reference parity)
+        run: python3 tools/test_signal_execution_profiles.py 2>&1 | tee out/test_signal_execution_profiles.log
+
+      # ---------------------------------------------------------------------
+      # Pinned audit contracts, promoted from the report-only `pin-drift` job
+      # on 2026-11-27.
+      #
+      # These seven were demoted to report-only on 2026-11-06 because they were
+      # red on `main` for several merges: each asserts against a snapshot of
+      # nadir2.mq5 that had moved - literal line numbers, a literal brace count,
+      # a literal enum count, a literal total line count. The code they describe
+      # was intact; the pins were coordinates in a file that had since been
+      # re-typeset. Keeping them blocking was not making the build safer, it was
+      # making the whole signal red, which is how a real regression gets ignored.
+      #
+      # tools/pinmap.py was the fix: it translates a pinned line number through a
+      # committed crosswalk (tools/pinmap.json) and the suite then asserts on the
+      # CONTENT it lands on, so a moved line is followed and a changed line still
+      # fails. The crosswalk is now consistent - `pinmap.py --check` reports 292
+      # pins, 0 unresolvable, and its stats block is itself gated - and every one
+      # of these suites passes on this tree. The demotion's own exit condition
+      # ("when a suite here goes green, move its step back up") has been met, so
+      # they are gates again.
+      #
+      # The eighth step of the old job, test_gate_profile.py, is NOT re-added: it
+      # has been running as a blocking step in this job all along, so the
+      # report-only copy was a duplicate that could only ever disagree with it.
+      #
+      # If one of these goes red again after an edit to nadir2.mq5, the right
+      # response is to re-anchor the pin with tools/pinmap.py --build (which
+      # needs git history) and check the suite still asserts what it meant - not
+      # to weaken the assertion and not to demote the step again.
+      # ---------------------------------------------------------------------
+      - name: The pin crosswalk must be consistent before the pinned suites run
+        run: python3 tools/pinmap.py --check 2>&1 | tee out/pinmap_check.log
+
+      - name: Final-signal resolver contract (AUDIT-RS1)
+        run: python3 tools/test_resolver.py 2>&1 | tee out/resolver.log
+
+      - name: Weighted evidence gates contract (AUDIT-GS1)
+        run: python3 tools/test_weighted_gates.py 2>&1 | tee out/weighted_gates.log
+
+      - name: Scalping overlay contract (AUDIT-SC1)
+        run: python3 tools/test_scalping.py 2>&1 | tee out/scalping.log
+
+      - name: Decision journal contract (AUDIT-OBS1)
+        run: python3 tools/test_decision_journal.py 2>&1 | tee out/decision_journal.log
+
+      - name: Declutter cap contract (AUDIT-D1)
+        run: python3 tools/test_declutter_cap.py 2>&1 | tee out/declutter_cap.log
+
+      - name: Mean reversion / momentum (confirmed swings only, MACD veto-only, display only)
+        run: python3 tools/test_phase5_meanreversion.py 2>&1 | tee out/phase5_meanreversion.log
+
       - name: No stale copy of a header may be committed
         run: |
           dup=$(git ls-files 'MQL5/**' | while read -r f; do basename "$f"; done | sort | uniq -d)
@@ -326,100 +496,5 @@ jobs:
         if: always()
         with:
           name: offline-gates
-          path: out/
-          if-no-files-found: ignore
-
-  # ---------------------------------------------------------------------------
-  # The drift-report job.
-  #
-  # These eight suites are audit contracts from earlier phases, and their failure
-  # today is NOT a code failure: measured on 2026-11-06, every one of them is red
-  # on `main` as well, and has been for several merges. They assert against a
-  # snapshot of nadir2.mq5 that has moved - literal line numbers, a literal
-  # brace count, a literal enum count, a literal total line count - and the file
-  # has grown by ~800 lines since. The code they describe is intact; the pins are
-  # coordinates in a document that has since been re-typeset.
-  #
-  # They are therefore reported, not gated. Keeping them as blocking checks was
-  # not making the build safer, it was making the whole signal red, which is how
-  # a real regression gets ignored. This job still runs them on every push, still
-  # uploads their logs, and still shows red - it just cannot fail the pull
-  # request while its pins are being rebuilt. When a suite here goes green, move
-  # its step back up into `offline-gates`.
-  #
-  # tools/pinmap.py is the rebuild: it translates a pinned line number through a
-  # committed crosswalk (tools/pinmap.json) and the suite then asserts on the
-  # content it lands on, so a moved line is followed but a changed line still
-  # fails. test_scalping.py is already converted and green this way.
-  # ---------------------------------------------------------------------------
-  pin-drift:
-    name: audit suites still pinned to an old snapshot (report only)
-    runs-on: ubuntu-latest
-    # No job-level continue-on-error: that keeps the job red and only stops the
-    # RUN from failing, which leaves the pull request permanently "unstable" and
-    # teaches everyone to ignore the row. Each step carries its own
-    # continue-on-error instead, so a stale suite is reported as a failed STEP
-    # with its log attached while the job itself concludes green: the drift is
-    # visible, and it is not a gate.
-    defaults:
-      run:
-        shell: bash -o pipefail -e {0}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: The crosswalk itself must be consistent
-        continue-on-error: true
-        run: |
-          mkdir -p out
-          python3 tools/pinmap.py --check 2>&1 | tee out/pinmap_check.log
-
-      - name: Final-signal resolver contract (AUDIT-RS1)
-        continue-on-error: true
-        run: python3 tools/test_resolver.py 2>&1 | tee out/resolver.log
-
-      - name: Weighted evidence gates contract (AUDIT-GS1)
-        continue-on-error: true
-        run: python3 tools/test_weighted_gates.py 2>&1 | tee out/weighted_gates.log
-
-      - name: Scalping overlay contract (AUDIT-SC1)
-        continue-on-error: true
-        run: python3 tools/test_scalping.py 2>&1 | tee out/scalping.log
-
-      - name: Decision journal contract (AUDIT-OBS1)
-        continue-on-error: true
-        run: python3 tools/test_decision_journal.py 2>&1 | tee out/decision_journal.log
-
-      - name: Declutter cap contract (AUDIT-D1)
-        continue-on-error: true
-        run: python3 tools/test_declutter_cap.py 2>&1 | tee out/declutter_cap.log
-
-      - name: Gate profile (STRICT by default, five thresholds, logged, reversible)
-        continue-on-error: true
-        run: python3 tools/test_gate_profile.py 2>&1 | tee out/gate_profile.log
-
-      - name: Mean reversion / momentum (confirmed swings only, MACD veto-only, display only)
-        continue-on-error: true
-        run: python3 tools/test_phase5_meanreversion.py 2>&1 | tee out/phase5_meanreversion.log
-
-      - name: Summary
-        if: always()
-        run: |
-          echo "Report only. A red step here means a suite is pinned to an older"
-          echo "nadir2.mq5 than the one in this checkout - not that the code broke."
-          echo "See tools/pinmap.py and the comment above this job."
-          for f in out/*.log; do
-            [ -f "$f" ] || continue
-            printf '\n===== %s =====\n' "$f"
-            grep -E 'failures|FAILED|unresolvable' "$f" | tail -5 || true
-          done
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: pin-drift
           path: out/
           if-no-files-found: ignore

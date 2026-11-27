@@ -669,6 +669,333 @@ check("under the minimum" in noc and "over the maximum" in noc and
 check("StopsModifyDistanceOK" in code,
       "D11 the repair path honours max(stops, freeze) and refuses to widen the stop to pass")
 
+# ------------------------------------------- D12 (AUD-05) freshness fails CLOSED
+# The data-age guard asked SymbolInfoTick() and only acted when the call SUCCEEDED.
+# A symbol for which the terminal holds no tick at all returned false, the whole
+# freshness test was skipped, and control fell through to the order send: the one
+# situation where the feed's age is truly unknowable was the one that was never
+# refused. Unknown age must refuse, exactly like old age.
+def _matched(src: str, open_pos: int) -> str:
+    """Text of the {...} block whose '{' is at/after open_pos, braces counted."""
+    i = src.index("{", open_pos)
+    depth = 0
+    for j in range(i, len(src)):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[i:j + 1]
+    return src[i:]
+
+_pos = code.index("SymbolInfoTick(sym,tk)")
+# HandleSignal's copy, not the OnInit one (that guard reads SYMBOL_TIME instead).
+_i = code.rindex("if(InpMaxDataAgeSeconds>0)", 0, _pos)
+_guard = _matched(code, _i)
+check(_guard.count("SymbolInfoTick(sym,tk)") == 1,
+      "D12 the freshness guard asks for a tick exactly once")
+check("SymbolInfoTick(sym,tk)" in _guard,
+      "D12 the guard under test is the SymbolInfoTick one")
+_after = _guard[_guard.index("SymbolInfoTick(sym,tk)"):]
+check(re.search(r"\}\s*else\s*\{", _after) is not None,
+      "D12 SymbolInfoTick()==false has its own branch (the old shape had no else)")
+_else = _after[re.search(r"\}\s*else\s*\{", _after).end():]
+check("return;" in _else.split("\n")[0:12][0] or "return;" in _else[:600],
+      "D12 a symbol with no tick is refused, never sent (fail closed)")
+check("SymbolInfoTick() returned false" in noc,
+      "D12 the refusal names its cause, so the journal does not read as a mystery")
+check(_guard.count("return;") >= 2,
+      "D12 both the stale-tick and the no-tick branches refuse (two refusals, one send)")
+
+# ------------------------------------------- D13 (AUD-06) session hours are real hours
+# The session window is a pair of server hours. QER_SessionInside() handles the
+# half-open window and the wrap over midnight correctly, so 22 -> 6 is a
+# legitimate window - but 25 -> 6 is not, and nothing said so. OnInit returned
+# INIT_SUCCEEDED with a window no hour can ever satisfy, so the session filter
+# refused every signal for the entire session and the operator's only evidence
+# was an absence. A window that can never open is a configuration error, and a
+# configuration error belongs at attach, not at the fortieth refused signal.
+#
+# Every lookup below uses .find() and reports a clean FAIL on -1. The first
+# draft used .index(), so removing the validation crashed the suite with a
+# ValueError instead of naming what was missing - red either way, but a gate
+# that cannot say why it is red is a gate nobody can act on.
+_on = code.index("int OnInit()")
+_init = _matched(code, _on)
+
+RANGE = ("InpSessionStartHour<0", "InpSessionStartHour>23",
+         "InpSessionEndHour<0", "InpSessionEndHour>23")
+# A range comparison anywhere in the file is not the same as one in OnInit:
+# InpSessionEndHour also appears in the preset-delta rows and the attach line.
+_i = _init.find(RANGE[0])
+check(_i >= 0, "D13 OnInit range-checks InpSessionStartHour against 0",
+      )
+check(_init.find(RANGE[1]) >= 0, "D13 OnInit range-checks InpSessionStartHour against 23")
+check(_init.find(RANGE[2]) >= 0, "D13 OnInit range-checks InpSessionEndHour against 0")
+check(_init.find(RANGE[3]) >= 0, "D13 OnInit range-checks InpSessionEndHour against 23")
+
+if _i >= 0:
+    # _matched() returns the brace block only, so the condition is taken
+    # separately: the four comparisons live in the if(...) and the refusal in
+    # the {...}.
+    _ifpos = _init.rindex("if(", 0, _i)
+    _bstart = _init.index("{", _ifpos)
+    _body = _matched(_init, _bstart)
+    _blk = _init[_ifpos:_bstart + len(_body)]
+    check(all(p in _blk for p in RANGE),
+          "D13 all four comparisons sit in ONE condition, not scattered")
+    check("INIT_PARAMETERS_INCORRECT" in _blk,
+          "D13 an impossible session window refuses the attach, it does not run")
+    check(_blk.count("INIT_PARAMETERS_INCORRECT") == 1,
+          "D13 and it refuses exactly once, on its own branch")
+    check("InpSessionStartHour==InpSessionEndHour" not in _blk,
+          "D13 the range check leaves the documented OFF switch alone")
+else:
+    for _ in range(5):
+        check(False, "D13 (skipped - the range check is absent, so its shape "
+                     "cannot be examined)")
+
+check("session hours out of range" in ea,
+      "D13 the refusal says what is wrong and prints both values it was given")
+check("wrap over midnight" in ea,
+      "D13 the message keeps the documented wrap-around legal, so the fix does "
+      "not read as a new restriction")
+check("InpSessionStartHour==InpSessionEndHour" in code,
+      "D13 Start == End is still the way to switch the filter off")
+
+# ---------------------------------------------------------------- D14
+# docs/EA_RISK_INPUTS.md §5 states which sizing inputs have NO attach-time
+# validation, and it cites the line range of OnInit() that was searched to
+# prove it. That citation went stale when AUD-06 (D13 above) inserted 17 lines
+# into the same function: the searched range :4490-5180 became :4490-5197, so a
+# reader who re-ran the search over the cited range would have stopped 17 lines
+# short of the end of OnInit(). A citation that names a function range has to be
+# measured against the function, not remembered.
+EA_DOC = ROOT / "docs" / "EA_RISK_INPUTS.md"
+ea_doc = EA_DOC.read_text(encoding="utf-8", errors="replace")
+ea_lines = ea.split("\n")
+
+oninit_start = 0
+for n, ln in enumerate(ea_lines, 1):
+    if ln.startswith("int OnInit()"):
+        oninit_start = n
+        break
+oninit_end = 0
+if oninit_start:
+    depth = 0
+    seen = False
+    for n in range(oninit_start, len(ea_lines) + 1):
+        depth += ea_lines[n - 1].count("{") - ea_lines[n - 1].count("}")
+        if "{" in ea_lines[n - 1]:
+            seen = True
+        if seen and depth <= 0:
+            oninit_end = n
+            break
+check(oninit_start > 0 and oninit_end > oninit_start,
+      "D14 OnInit() located in QSMC_AutoTrader.mq5 by brace matching")
+
+m = re.search(r"`OnInit\(\)`\s*\(`:(\d+)-(\d+)`\)", ea_doc)
+check(m is not None,
+      "D14 EA_RISK_INPUTS.md section 5 cites the OnInit() range it searched")
+if m:
+    cited_start, cited_end = int(m.group(1)), int(m.group(2))
+    check((cited_start, cited_end) == (oninit_start, oninit_end),
+          "D14 the cited OnInit() range %d-%d is the function's real range "
+          "%d-%d (the doc is not stale)"
+          % (cited_start, cited_end, oninit_start, oninit_end))
+
+FOUR_NUMERIC = ("InpWeakRiskMultiplier", "InpModerateRiskMultiplier",
+                "InpStrongRiskMultiplier", "InpMaxAggregateRiskPercent")
+inside = {name: [n for n in range(oninit_start, oninit_end + 1)
+                 if name in ea_lines[n - 1]] for name in FOUR_NUMERIC}
+for name in FOUR_NUMERIC:
+    check(bool(inside[name]),
+          "D14 %s is named inside OnInit() - it is no longer an input the "
+          "attach never looks at" % name)
+# Scanned over the comment-stripped view on purpose: the block's own comment
+# names InpRequireProfileMatch to explain why there is no check for it, and a
+# scan over raw text would report that sentence as a range check.
+code_lines = code.split("\n")
+check(not [n for n in range(oninit_start, oninit_end + 1)
+           if "InpRequireProfileMatch" in code_lines[n - 1]],
+      "D14 InpRequireProfileMatch is a bool, so OnInit() invents no range "
+      "check for it")
+# Scoped to section 5 on purpose: all five names also appear in section 4's
+# heading, so a document-wide search would keep passing after the table that
+# makes the claim was edited.
+sec5_start = ea_doc.find("## 5.")
+sec6_start = ea_doc.find("## 6.", sec5_start + 1)
+check(sec5_start >= 0 and sec6_start > sec5_start,
+      "D14 EA_RISK_INPUTS.md section 5 located (the section that makes the claim)")
+sec5 = ea_doc[sec5_start:sec6_start] if sec5_start >= 0 else ""
+FIVE_SIZING = FOUR_NUMERIC + ("InpRequireProfileMatch",)
+for name in FIVE_SIZING:
+    check(("| `%s` |" % name) in sec5,
+          "D14 section 5's table still accounts for %s" % name)
+
+# ---------------------------------------------------------------- D16
+# Section 5 used to be the document that said these inputs are NOT checked. It
+# cannot keep saying that, and it cannot quietly become a table that lists the
+# new bounds either: the numbers it states have to be the numbers the source
+# enforces, or the document is a second, drifting copy of the gate.
+for name in ("InpWeakRiskMultiplier", "InpModerateRiskMultiplier",
+             "InpStrongRiskMultiplier"):
+    check(("| `%s` | `0.00`" % name) in sec5,
+          "D16 section 5 states the 0.00..1.00 bound for %s" % name)
+# Scoped to the table row: the prose paragraph below the table also names the
+# function, so a document-wide search would keep passing after the row itself
+# was edited to copy the literal 2.00.
+agg_row = next((ln for ln in sec5.split("\n")
+                if ln.startswith("| `InpMaxAggregateRiskPercent` |")), "")
+check(agg_row.startswith("| `InpMaxAggregateRiskPercent` | `0.00`"),
+      "D16 section 5's table row gives InpMaxAggregateRiskPercent a 0.00 floor")
+check("HardMaxAggregateRiskPercent()" in agg_row,
+      "D16 that row states the ceiling by naming the function that supplies it, "
+      "not by copying 2.00")
+check("| `InpRequireProfileMatch` |" in sec5 and "bool" in sec5,
+      "D16 section 5 still explains why the bool has no range to fail")
+check("no attach-time validation" not in sec5 and "| none |" not in sec5,
+      "D16 section 5 no longer claims these inputs are unchecked at attach")
+
+check(":4506-4512" in ea_doc and "InpRiskPercent<0.0" in ea_lines[4505]
+      and "INIT_PARAMETERS_INCORRECT" in ea_lines[4510],
+      "D14 the :4506-4512 citation still lands on the risk-input rejection")
+check(":4523-4540" in ea_doc and "AUD-06" in ea_lines[4522]
+      and "INIT_PARAMETERS_INCORRECT" in ea_lines[4538],
+      "D14 the :4523-4540 citation still lands on the AUD-06 session check")
+
+# ---------------------------------------------------------------- D15
+# The sizing inputs are now refused at attach instead of being clamped at use.
+# The point of this block is not "a check exists" - it is that the check asks
+# for the SAME numbers the enforcement applies. A validation that invented its
+# own bound would be worse than none, because "accepted at attach" and "clamped
+# at use" would disagree in a way the operator could not predict.
+oninit_src = "\n".join(ea_lines[oninit_start - 1:oninit_end])
+check("HardMaxAggregateRiskPercent()" in oninit_src,
+      "D15 the aggregate bound is asked of HardMaxAggregateRiskPercent(), not "
+      "restated as a literal that can drift from the enforcement")
+check(re.search(r"InpMaxAggregateRiskPercent>HardMaxAggregateRiskPercent\(\)",
+                oninit_src) is not None,
+      "D15 InpMaxAggregateRiskPercent is refused above the HARD aggregate bound")
+for name in ("InpWeakRiskMultiplier", "InpModerateRiskMultiplier",
+             "InpStrongRiskMultiplier"):
+    check(re.search(re.escape(name) + r"<0\.0", oninit_src) is not None
+          and re.search(re.escape(name) + r">1\.0", oninit_src) is not None,
+          "D15 %s is refused outside 0.00..1.00" % name)
+
+# The other side of the same contract: CalcLots() still caps a class multiplier
+# at 1.0, and 1.0 is the same number the attach now refuses to exceed.
+calc_start = 0
+for n, ln in enumerate(ea_lines, 1):
+    if ln.startswith("double CalcLots("):
+        calc_start = n
+        break
+calc_src = "\n".join(ea_lines[calc_start - 1:calc_start + 30]) if calc_start else ""
+check("if(class_mult>1.0) class_mult=1.0;" in calc_src,
+      "D15 CalcLots() still caps a class multiplier at 1.0 - the same bound the "
+      "attach now enforces, so nothing is silently resized any more")
+check("if(class_mult<=0.0)" in calc_src,
+      "D15 a 0.00 multiplier still means that class is not executed, which is "
+      "why 0.00 stays legal at attach")
+check("if(v > HardMaxAggregateRiskPercent()) v = HardMaxAggregateRiskPercent();"
+      in "\n".join(ea_lines),
+      "D15 EffectiveAggregateRiskPct() still caps at the same HARD bound")
+
+# The refusal has to say what was wrong and name the values it was given, or the
+# operator sees INIT_PARAMETERS_INCORRECT with no cause - the AUD-06 lesson.
+siz_block = oninit_src[oninit_src.find("sizing inputs out of range"):]
+siz_block = siz_block[:siz_block.find("INIT_PARAMETERS_INCORRECT")]
+check("sizing inputs out of range" in oninit_src,
+      "D15 the refusal names the problem, not just the verdict")
+check(all(("DoubleToString(%s,2)" % n) in siz_block for n in FOUR_NUMERIC),
+      "D15 the refusal prints every value it was given")
+check("0.00 stays legal" in siz_block,
+      "D15 the refusal says that zero is still allowed, so it does not read as "
+      "a new restriction on the OFF settings")
+
+# The message is worthless unless the branch actually refuses. Scoped to the
+# brace-matched block: a document-wide search finds INIT_PARAMETERS_INCORRECT in
+# the neighbouring checks and passes even when this one returns INIT_SUCCEEDED.
+siz_start = next((n for n in range(oninit_start, oninit_end + 1)
+                  if ea_lines[n - 1].strip().startswith("if(InpWeakRiskMultiplier<0.0")), 0)
+siz_end, depth, seen = 0, 0, False
+if siz_start:
+    for n in range(siz_start, oninit_end + 1):
+        depth += ea_lines[n - 1].count("{") - ea_lines[n - 1].count("}")
+        if "{" in ea_lines[n - 1]:
+            seen = True
+        if seen and depth <= 0:
+            siz_end = n
+            break
+siz_src = "\n".join(ea_lines[siz_start - 1:siz_end]) if siz_start else ""
+check(siz_start > 0 and siz_end > siz_start,
+      "D15 the sizing check located as one brace-matched block (:4564-4582 "
+      "shape) rather than found by text")
+check("return INIT_PARAMETERS_INCORRECT;" in siz_src,
+      "D15 that block ends by refusing the attach, not by printing and carrying "
+      "on")
+check("INIT_SUCCEEDED" not in siz_src,
+      "D15 and it never answers the bad input with INIT_SUCCEEDED")
+
+# ---------------------------------------------------------------- D17
+# docs/F7_CHECKLIST.md section 1.5 quotes the three attach-time log messages
+# VERBATIM, because that is what the operator compares against the Journal. A
+# quotation nobody checks is how a tester ends up staring at a correct line and
+# concluding the build is wrong. Each quoted message is split at the values it
+# cannot know (<n>, <symbol>, <tf>, and the 2.00 that comes from
+# HardMaxAggregateRiskPercent()) and every remaining fragment has to appear in
+# the concatenated string literals of the file that prints it.
+IND = ROOT / "nadir2.mq5"
+ROOT_MQH = ROOT / "MQL5" / "Include" / "QSMC" / "QSMC_Root.mqh"
+CHECKLIST = ROOT / "docs" / "F7_CHECKLIST.md"
+
+
+def literals(path):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    text = re.sub(r"//[^\n]*", "", text)
+    parts = re.findall(r'"((?:[^"\\]|\\.)*)"', text)
+    return re.sub(r"\s+", " ", "".join(parts))
+
+
+log_srcs = {p.name: literals(p) for p in (EA, IND, ROOT_MQH) if p.exists()}
+check(len(log_srcs) == 3,
+      "D17 all three files that print a section-1.5 message were read: %s"
+      % sorted(log_srcs))
+
+cl = CHECKLIST.read_text(encoding="utf-8", errors="replace")
+sec15_start = cl.find("### 1.5")
+sec15_end = cl.find("## Part 2", sec15_start + 1)
+check(sec15_start >= 0 and sec15_end > sec15_start,
+      "D17 F7_CHECKLIST.md section 1.5 located (the section that quotes the "
+      "attach-time messages)")
+sec15 = cl[sec15_start:sec15_end] if sec15_start >= 0 else ""
+
+quoted = []
+for fenced in re.findall(r"```\n(.*?)```", sec15, re.S):
+    current = []
+    for ln in fenced.rstrip().split("\n"):
+        if ln.startswith("[QSMC_"):
+            if current:
+                quoted.append(" ".join(current))
+            current = [ln.strip()]
+        else:
+            current.append(ln.strip())
+    if current:
+        quoted.append(" ".join(current))
+check(len(quoted) == 4,
+      "D17 section 1.5 quotes 4 messages (session hours, root Init, root create, "
+      "sizing inputs); found %d" % len(quoted))
+
+for msg in quoted:
+    msg = re.sub(r"\s+", " ", msg).replace("2.00%", "<n>%")
+    frags = [f.strip() for f in re.split(r"<n>|<symbol>|<tf>", msg)
+             if len(f.strip()) > 12]
+    where = [name for name, text in log_srcs.items()
+             if all(f in text for f in frags)]
+    check(bool(frags) and bool(where),
+          "D17 the quoted message %r is traceable to string literals in %s"
+          % (msg[:52], where or "NOTHING - the source text has drifted"))
+
 print("=" * 60)
 TOTAL = ea.count("\n")
 print("AUDIT-EX1 execution-safety checks: %d checks, failures: %d" % (CHECKS[0], len(FAILURES)))

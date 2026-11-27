@@ -3,8 +3,8 @@
  "note": "'text' is the normalised source context of the pin in the snapshot that suite was pinned against; 'line' is where that context was last seen. Suites translate the coordinate through this table and then assert on the content they land on, so a moved line is followed and a changed line still fails.",
  "source": "nadir2.mq5",
  "stats": {
-  "pins": 291,
-  "resolved": 286
+  "pins": 292,
+  "resolved": 292
  },
  "suites": {
   "test_decision_journal": {

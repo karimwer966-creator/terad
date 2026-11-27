@@ -45,6 +45,19 @@ as v6.6.24** (buffers 0–25, journal, SigLog CSV, causal fingerprint, refusal/p
 - Suites that pin counts / versions / literal line numbers were moved to the new values
   (buffers 27, inputs 612 / 71, version v6.6.25, re-anchored citations); no assertion was removed.
 
+### Review fixes merged into the same release (`aa09275`, `9025e8e`, `287289c`, AUD-05)
+
+These are behaviour changes, so they are listed even though they add no new input.
+
+| Fix | What changed for the operator |
+|---|---|
+| AUD-03 | The 12-point `[QSMC_ENTRY_REVIEW]` checklist is a **gate**, not a print option. `RunEntryReview()` always runs and its verdict decides the order; `InpPrintEntryReview` now controls only whether the twelve lines are written to the Experts log. Before this fix, turning the input off also disabled the review. |
+| AUD-04 | `QER_SpreadOk()` compares the spread as a real number of points. The old `(int)spread_points<=cap_points` truncated first, so a 20.9-point spread passed a 20-point cap. A non-finite or negative spread now fails closed, and `cap_points<=0` disables the absolute cap instead of vetoing every order. |
+| AUD-05 | The data-freshness guard fails **closed**. When `SymbolInfoTick()` returns false the terminal holds no tick for the symbol, so the feed's age is unknown; the guard had no `else` and such a symbol fell through to the order send. It is now refused like a stale tick, with the cause in the journal line. |
+| Input validation | The seven new inputs are validated in `OnInit()` and rejected by name (`nadir2.mq5:15335`), so a bad value cannot reach the signal path silently. |
+| H1 bias cache | `H1StructureBiasAsOf()` caches only answers computed from data that was present (a true `NEUTRAL` 0 included); a `NO_DATA` 0 is not cached and is retried. |
+| Docs | [`docs/SIGNAL_VISIBILITY_DIAGNOSIS.md`](docs/SIGNAL_VISIBILITY_DIAGNOSIS.md) records the seven threshold relaxations and what each one is load-bearing for. [`docs/QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md`](docs/QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md) is the F7 / Strategy Tester plan. `test_tool_reference_integrity.py` now fails on a `docs/` citation that points at a file that does not exist. |
+
 ### Not done here
 
 MetaEditor F7, the Strategy Tester and a replay of the real 2026-11-27 bars were not available

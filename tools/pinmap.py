@@ -473,7 +473,65 @@ def check():
             print("PASS %-30s %3d pins resolve" % (suite, len(block["pins"])))
     print("")
     print("pinmap crosswalk: %d unresolvable pin(s)" % bad)
+    bad += check_stats(data)
     return 1 if bad else 0
+
+
+def check_stats(data):
+    """The `stats` block must agree with the file it sits in and with the
+    crosswalk just run. It is written by `--build`, which needs git history;
+    entries are hand-edited afterwards whenever a pin is re-anchored, and the
+    stats block does not travel with that edit. It had drifted to
+    {"pins": 291, "resolved": 286} - five "unresolved" pins - while the table
+    itself held 292 entries, every one with a live line. Anyone reading the
+    header of the file was told a lie about its own contents, and nothing
+    compared the two."""
+    suites = data.get("suites", {})
+    entries = sum(len(b["pins"]) for b in suites.values())
+    located = sum(1 for b in suites.values()
+                  for e in b["pins"].values() if e.get("line") is not None)
+    stats = data.get("stats", {})
+    bad = 0
+
+    if stats.get("pins") != entries:
+        bad += 1
+        print("FAIL stats.pins says %s, the table holds %d pin entries"
+              % (stats.get("pins"), entries))
+    else:
+        print("PASS stats.pins %d = the table's entry count" % entries)
+
+    if stats.get("resolved") != located:
+        bad += 1
+        print("FAIL stats.resolved says %s, %d entries carry a line"
+              % (stats.get("resolved"), located))
+    else:
+        print("PASS stats.resolved %d = entries carrying a line" % located)
+
+    missing = sorted(n for b in suites.values()
+                     for n, e in b["pins"].items() if e.get("line") is None)
+    if missing:
+        bad += len(missing)
+        print("FAIL %d pin(s) carry no resolved line: %s" % (len(missing), missing[:8]))
+    else:
+        print("PASS every pin carries a resolved line")
+
+    if sorted(suites) != sorted(SUITES):
+        bad += 1
+        print("FAIL the table's suites differ from pinmap.py SUITES: "
+              "only in table %s, only in code %s"
+              % (sorted(set(suites) - set(SUITES)), sorted(set(SUITES) - set(suites))))
+    else:
+        print("PASS the table covers all %d suites" % len(SUITES))
+
+    with io.open(str(ROOT / "tools" / "pinmap_bases.json"), encoding="utf-8") as fh:
+        bases = json.load(fh)
+    if sorted(bases) != sorted(SUITES):
+        bad += 1
+        print("FAIL pinmap_bases.json names %d suites, SUITES names %d"
+              % (len(bases), len(SUITES)))
+    else:
+        print("PASS pinmap_bases.json covers the same %d suites" % len(SUITES))
+    return bad
 
 
 # -------------------------------------------------------------- doc rewrite

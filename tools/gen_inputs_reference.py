@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""GENERATE docs/INPUTS_REFERENCE.md FROM THE MQL5 SOURCE.
+
+WHY THIS FILE EXISTS
+--------------------
+`nadir2.mq5` declares 545 inputs. Before v6.6.25, 303 of them - 56% - appeared
+in no document in this repository, and `QSMC_AutoTrader.mq5`'s own reference
+document was missing 37 of its 71. Every input is a promise to the operator; an
+undocumented one is a promise nobody can keep track of.
+
+A hand-written input list goes stale the first time somebody adds an input. So
+this generator reads the declarations straight out of the source and writes the
+table, and `tools/test_inputs_reference.py` fails the build when the checked-in
+document no longer matches what the generator would produce. Adding an input
+without regenerating is a build failure, not a review comment.
+
+WHAT IT RECORDS, PER INPUT
+--------------------------
+  name, type, default value, the `input group` it sits under, the program that
+  declares it, and a one-line meaning taken from the source's own comment:
+
+    1. the trailing `//` on the declaration line, if there is one;
+    2. otherwise the nearest contiguous comment line immediately above it;
+    3. otherwise the literal string UNDOCUMENTED IN SOURCE.
+
+It never invents a meaning. If the author of the input did not write one down,
+the table says so, and the count of those is printed at the end - that number is
+the real backlog.
+
+USAGE
+-----
+    python3 tools/gen_inputs_reference.py            # write the document
+    python3 tools/gen_inputs_reference.py --check    # exit 1 if it is stale
+
+The document is generated, so edit the source or this script, never the table.
+"""
+
+import io
+import os
+import re
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = os.path.join(ROOT, "docs", "INPUTS_REFERENCE.md")
+
+# Shipped programs first, then the headers that inject inputs into whichever
+# program includes them. Order is the order they appear in the document.
+PROGRAMS = [
+    "nadir2.mq5",
+    "MQL5/Experts/QSMC_AutoTrader.mq5",
+    "MQL5/Experts/QSMC_ConfirmationEngine.mq5",
+    "MQL5/Indicators/QSMC_SmcVpEngine.mq5",
+    "MQL5/Indicators/QSMC_ScannerProbe.mq5",
+    "MQL5/Experts/KLJ_DataFeeder.mq5",
+    "MQL5/Experts/QuantumAutonomousTradingSystem.mq5",
+    "MQL5/Scripts/QSMC_FixedRangeDump.mq5",
+    "MQL5/Scripts/QSMC_ResetGuards.mq5",
+    "MQL5/Scripts/QSMC_BufferDump.mq5",
+    "MQL5/Scripts/QSMC_ArbiterTest.mq5",
+]
+
+DECL = re.compile(r"^input\s+([A-Za-z_][\w:]*(?:\s*<[^>]*>)?)\s+(.+?);\s*(?://\s*(.*))?$")
+# One `input` line may declare several names: `input int A = 1, B = 2;`.
+# tools/test_input_fingerprint_parser.py exists because that form once produced
+# 32 MetaEditor errors, so it is real and it must not be silently dropped.
+PAIR = re.compile(r"([A-Za-z_]\w*)\s*=\s*([^,]+)$|([A-Za-z_]\w*)\s*=\s*([^,]+),")
+GROUP = re.compile(r'^input\s+group\s+"(.*)"')
+UNDOC = "UNDOCUMENTED IN SOURCE"
+
+
+def read(path):
+    return io.open(path, encoding="utf-8", errors="replace").read().replace("\r\n", "\n")
+
+
+def esc(s):
+    """Make a value safe inside a markdown table cell."""
+    return s.replace("|", "\\|").replace("\n", " ").strip()
+
+
+def header_inputs():
+    """Headers under MQL5/Include that declare inputs, with their fan-in."""
+    out = []
+    inc = os.path.join(ROOT, "MQL5", "Include")
+    for dirpath, _, files in os.walk(inc):
+        for f in sorted(files):
+            if not f.endswith(".mqh"):
+                continue
+            p = os.path.join(dirpath, f)
+            rel = os.path.relpath(p, ROOT).replace(os.sep, "/")
+            text = read(p)
+            if re.search(r"^input\s+", text, re.M):
+                out.append(rel)
+    return sorted(out)
+
+
+def collect(rel):
+    """[(group, type, name, default, meaning, line)] for one file."""
+    text = read(os.path.join(ROOT, rel))
+    lines = text.split("\n")
+    group = "(no group)"
+    rows = []
+    for i, l in enumerate(lines):
+        g = GROUP.match(l)
+        if g:
+            group = g.group(1).strip()
+            continue
+        m = DECL.match(l)
+        if not m:
+            continue
+        typ, body, trail = m.group(1), m.group(2), m.group(3)
+        names = re.findall(r"([A-Za-z_]\w*)\s*=\s*([^,]+?)(?=,\s*[A-Za-z_]\w*\s*=|$)", body)
+        if not names:
+            continue
+        for name, default in names[:-1]:
+            rows.append((group, typ.strip(), name, default.strip(),
+                         "declared alongside `%s` on one input line" % names[-1][0], i + 1))
+        name, default = names[-1]
+        meaning = (trail or "").strip()
+        if not meaning:
+            # walk up over a contiguous comment block and take its last line
+            j = i - 1
+            block = []
+            while j >= 0 and lines[j].lstrip().startswith("//"):
+                block.append(re.sub(r"^\s*//+\s?", "", lines[j]).strip())
+                j -= 1
+            block = [b for b in reversed(block) if b]
+            meaning = block[-1] if block else UNDOC
+        rows.append((group, typ.strip(), name, default.strip(), meaning, i + 1))
+    return rows
+
+
+def build():
+    parts = []
+    parts.append("""# Input reference — generated from source
+
+**This file is generated by `tools/gen_inputs_reference.py`. Do not edit it.**
+`tools/test_inputs_reference.py` fails the build when it no longer matches the
+source, so adding an input without regenerating is a build failure.
+
+The meaning column is the source's own comment: the trailing `//` on the
+declaration line, or the nearest comment line immediately above it. Where the
+author wrote nothing, the cell reads `UNDOCUMENTED IN SOURCE`. **No meaning in
+this file was invented.** The count of those cells is the documentation backlog,
+printed at the bottom.
+
+> **Status: source-contract ready. Nothing here has been compiled (F7) or
+> exercised in the Strategy Tester.**
+
+`MQL5/Indicators/nadir2.mq5` is deliberately absent: it is a byte-identical
+mirror of `nadir2.mq5` (enforced by `check_repo_layout.py`), so listing it twice
+would only invite the two to disagree.
+
+""")
+
+    grand_rows = 0
+    grand_undoc = 0
+    files = [(p, "program") for p in PROGRAMS if os.path.isfile(os.path.join(ROOT, p))]
+    files += [(h, "header") for h in header_inputs()]
+
+    toc = []
+    bodies = []
+    for rel, kind in files:
+        rows = collect(rel)
+        if not rows:
+            continue
+        anchor = re.sub(r"[^a-z0-9]+", "-", rel.lower()).strip("-")
+        undoc = sum(1 for r in rows if r[4] == UNDOC)
+        grand_rows += len(rows)
+        grand_undoc += undoc
+        toc.append("| [`%s`](#%s) | %s | %d | %d |" % (rel, anchor, kind, len(rows), undoc))
+
+        b = ["## %s" % rel, ""]
+        b.append("*%s · %d inputs · %d undocumented in source*" % (kind, len(rows), undoc))
+        b.append("")
+        b.append("| Input | Type | Default | Group | Meaning |")
+        b.append("|---|---|---|---|---|")
+        cur = None
+        for group, typ, name, default, meaning, ln in rows:
+            if group != cur:
+                cur = group
+                b.append("| **%s** | | | | |" % esc(group))
+            b.append("| `%s` | `%s` | `%s` | | %s |"
+                     % (esc(name), esc(typ), esc(default), esc(meaning)))
+        b.append("")
+        bodies.append("\n".join(b))
+
+    parts.append("## Contents\n")
+    parts.append("| File | Kind | Inputs | Undocumented in source |")
+    parts.append("|---|---|---|---|")
+    parts.append("\n".join(toc))
+    parts.append("")
+    parts.append("**Total: %d inputs across %d files, %d of them undocumented in source.**"
+                 % (grand_rows, len(toc), grand_undoc))
+    parts.append("")
+    parts.append("---\n")
+    parts.append("\n".join(bodies))
+    parts.append("""
+---
+
+## How to read this
+
+- **`Default`** is the compiled default, i.e. what a fresh attach uses. A
+  `.set` preset can override any of them; `tools/check_presets.py` binds every
+  preset to the program it belongs to.
+- **`Group`** is the `input group` heading the input appears under in MetaEditor's
+  inputs dialog. Rows are grouped under a bold separator rather than repeating
+  the group name on every line.
+- **Headers** declare inputs that become part of whichever program includes
+  them. `QSMC_Preset.mqh` alone contributes 40, so a host program's real input
+  surface is larger than its own `input` count.
+- The five inputs that size an order are documented in depth, with units, safe
+  ranges and the two hard ceilings that bound them, in
+  [`EA_RISK_INPUTS.md`](EA_RISK_INPUTS.md).
+- The seven thresholds implicated in the 2026-11-27 missed trade are in
+  [`SEVEN_THRESHOLDS_2026-11-27.md`](SEVEN_THRESHOLDS_2026-11-27.md).
+""")
+    return "\n".join(parts) + "\n"
+
+
+def main():
+    doc = build()
+    if "--check" in sys.argv:
+        current = read(OUT) if os.path.isfile(OUT) else ""
+        if current != doc:
+            sys.stderr.write(
+                "docs/INPUTS_REFERENCE.md is stale.\n"
+                "Run: python3 tools/gen_inputs_reference.py\n")
+            raise SystemExit(1)
+        n = doc.count("\n| `Inp") + doc.count("\n| `QSMC")
+        print("docs/INPUTS_REFERENCE.md is current (%d input rows)." % n)
+        return
+    io.open(OUT, "w", encoding="utf-8", newline="\n").write(doc)
+    rows = doc.count("\n| `")
+    m = re.search(r"\*\*Total: (\d+) inputs across (\d+) files, (\d+) of them", doc)
+    print("wrote docs/INPUTS_REFERENCE.md: %s inputs across %s files, %s undocumented in source."
+          % (m.group(1), m.group(2), m.group(3)) if m else
+          "wrote docs/INPUTS_REFERENCE.md: %d input rows." % rows)
+
+
+if __name__ == "__main__":
+    main()

@@ -60,7 +60,7 @@ Folder and every later observation is worthless:
 
 Sources: `QSMC_Root.mqh:464` (printed only by the non-silent instance — an
 EA-reader copy stays quiet by design), `nadir2.mq5:15771` (behind
-`!QSMC_IsReaderSilent()`), `QSMC_AutoTrader.mq5:4993`, `QSMC_ArbiterTest.mq5:47`.
+`!QSMC_IsReaderSilent()`), `QSMC_AutoTrader.mq5:5028`, `QSMC_ArbiterTest.mq5:47`.
 
 The same block also prints the seven thresholds documented in
 [`SIGNAL_VISIBILITY_DIAGNOSIS.md`](SIGNAL_VISIBILITY_DIAGNOSIS.md) — `- Displacement
@@ -148,6 +148,26 @@ whether the checklist reaches the Journal. Verify it in the terminal:
 
 If step 3 shows no refusal, the fix is not in the build you compiled.
 
+### The spread gate inside that review also changed (AUD-04)
+
+Review line **R4** delegates to `QER_SpreadOk()`
+(`QSMC_ExecutionRules.mqh:173`–`190`, called from `QSMC_AutoTrader.mq5:2492`).
+Three of its behaviours are new in v6.6.25, and all three can produce a refusal
+that did not happen before:
+
+- a spread that is not a finite number — no tick yet, or a NaN out of a broken
+  feed — now **fails closed** instead of casting to garbage and passing;
+- the spread is compared as a real number, so a `20.9`-point spread no longer
+  truncates to `20` and slips under a 20-point cap;
+- `InpMaxSpreadPoints=0` now **disables** the absolute cap instead of vetoing
+  every order, matching how the EA's own `SpreadOK()` reads a zero.
+
+None of this is a new restriction on a healthy feed. If R4 refuses during your
+run, the journal line prints the measured spread and both caps
+(`… pts (abs cap …) = …% of a …-pt stop`), so read the number before concluding
+the gate is wrong — a refusal with a sane spread means the cap inputs are tight,
+and a refusal with a nonsense spread means the feed, not the EA.
+
 ## What to send back
 
 - the F7 output for each file (errors **and** warnings);
@@ -162,11 +182,38 @@ review has something to reject.
 
 ## Still open in this repository
 
-- **AUD-05 (P1)** — `HandleSignal()` has no `else` on `if(SymbolInfoTick(sym,tk))`,
-  so a failed tick read falls through to the order path. Not part of the AUD-03
-  approval; unchanged. Its blast radius is smaller now that R3 always runs.
-- **AUD-06/07 (P2/P1)** — EA session-hour range validation, and `QSMC_RootCreate()`
-  returning `true` over a half-initialised root. Both deferred, both unchanged.
+- ~~**AUD-05 (P1)**~~ — **fixed.** `HandleSignal()` now has the `else`: when
+  `SymbolInfoTick()` returns false the order is refused, because a symbol with no
+  tick has an *unknown* feed age and unknown age must refuse exactly like old age
+  (`QSMC_AutoTrader.mq5:2753`–`2764`). Asserted by `test_execution_safety.py`
+  block **D12**.
+- ~~**AUD-06 (P2)**~~ — **fixed.** `OnInit()` now range-checks
+  `InpSessionStartHour` / `InpSessionEndHour` against `0..23` and refuses the
+  attach with `INIT_PARAMETERS_INCORRECT` (`QSMC_AutoTrader.mq5:4523`–`4540`).
+  A window no hour can satisfy used to return `INIT_SUCCEEDED` and then refuse
+  every signal for the whole session. The wrap over midnight (`22 -> 6`) and the
+  `Start == End` OFF switch are both still legal. Asserted by block **D13**.
+- ~~**AUD-07 (P1)**~~ — **fixed.** `QSMC_RootCreate()` now reports `Ready()` for
+  an existing root instead of a bare `true`, and destroys the root when `Init()`
+  fails so the next call starts clean (`QSMC_Root.mqh:1118`–`1134`). The host no
+  longer discards the verdict (`nadir2.mq5:15276`), and the arbiter feed refuses
+  a root that is allocated but not ready (`nadir2.mq5:15107`). Asserted by
+  `test_runtime_diagnostics.py`, including a native harness that runs the
+  lifecycle and reproduces the old shape as the defect.
+- **Sizing inputs (P2)** — **fixed after an explicit go-ahead.**
+  `InpWeakRiskMultiplier`, `InpModerateRiskMultiplier`, `InpStrongRiskMultiplier`
+  and `InpMaxAggregateRiskPercent` are now refused at attach outside
+  `0.00..1.00` and `0.00..HardMaxAggregateRiskPercent()`
+  (`QSMC_AutoTrader.mq5:4548`–`4582`) instead of being silently rewritten at
+  sizing time. The bounds are the enforcement's own numbers, so **no size
+  changed**; `0.00` stays legal, and all ten shipped presets still load.
+  Asserted by blocks **D14/D15/D16**. The REAL profile's
+  `InpRealMaxRiskPercent` / `InpRealMaxAggregateRiskPercent` are **still**
+  clamp-at-use only — see [`EA_RISK_INPUTS.md`](EA_RISK_INPUTS.md) §5.
+
+`docs/QSMC_AUDIT_2026-11-25.md` still lists the first three as deferred. That document
+is the audit as it stood on its date and has not been rewritten; this list is the
+current state.
 - The seven relaxed thresholds in
   [`SIGNAL_VISIBILITY_DIAGNOSIS.md`](SIGNAL_VISIBILITY_DIAGNOSIS.md) still have no
   before/after measurement; Step 3 is where that number would come from.

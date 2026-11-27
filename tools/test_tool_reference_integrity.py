@@ -54,17 +54,23 @@ SELF = "tools/test_tool_reference_integrity.py"
 # `// was X` input comments in nadir2.mq5 cited it and it did not exist, so the
 # only record of seven relaxed thresholds was the comment itself. That is the
 # defect this half of the gate exists to stop repeating.
-KNOWN_DANGLING_DOCS = frozenset({
-    "docs/ARCHITECTURE.md",
-    "docs/KLJ_V6.5.0_REACTION_LAYER_AUDIT.md",
-    "docs/KLJ_V6.5.0_REACTION_LAYER_REPORT.md",
-    "docs/KLJ_V6.5.1_FORENSIC_AUDIT.md",
-    "docs/KLJ_V6.5.2_FILE_AUDIT.md",
-    "docs/KLJ_V6.5.4_REACTION_CONFLICT_FIX.md",
-    "docs/PART_A_REPAIR_HANDOFF.md",
-    "docs/PREDICTIVE_ENGINE_AUDIT.md",
-    "docs/QSMC_UNIFIED_DEMO_REAL_2026-11-09.md",
-})
+# As of v6.6.25 this set is EMPTY. The nine entries it held were resolved, not
+# deleted from the list:
+#   docs/ARCHITECTURE.md                        written (cited by nadir2.mq5:13771)
+#   docs/KLJ_V6.5.0_REACTION_LAYER_AUDIT.md     stub - cited by nadir2.mq5:202, 4451, 40188
+#   docs/KLJ_V6.5.0_REACTION_LAYER_REPORT.md    stub - cited by nadir2.mq5:203
+#   docs/KLJ_V6.5.1_FORENSIC_AUDIT.md           stub - cited by nadir2.mq5:1859
+#   docs/KLJ_V6.5.2_FILE_AUDIT.md               stub - cited by nadir2.mq5:143
+#   docs/KLJ_V6.5.4_REACTION_CONFLICT_FIX.md    stub - cited by nadir2.mq5:55 and
+#                                                     docs/KLJ_V6.6.0_SIGNAL_ARBITRATION.md
+#   docs/PART_A_REPAIR_HANDOFF.md               stub - cited by nadir2.mq5:118
+#   docs/PREDICTIVE_ENGINE_AUDIT.md             stub - cited by nadir2.mq5:1756
+#   docs/QSMC_UNIFIED_DEMO_REAL_2026-11-09.md   stub - cited by two shipped .set presets
+# The eight stubs are placeholders, not reconstructions: each says so, names its
+# citing line, and separates verified fact from what the citation merely implies.
+# They exist because the alternative was editing a 46,847-line file to delete
+# eight comments, which would invalidate 291 pinned line citations.
+KNOWN_DANGLING_DOCS = frozenset()
 
 
 def docs_ref_resolves(text, m):

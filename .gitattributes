@@ -1,8 +1,24 @@
 # The MQL5 sources are stored byte-exactly: no EOL conversion, no renormalising.
-# nadir2.mq5 is CRLF because MetaEditor wrote it that way (39 792 lines), every
-# QSMC header is LF. `text` would normalise the index to LF and turn the next
-# `git pull` on a Windows box with core.autocrlf=true into a whole-file diff -
-# the exact noise that hides a real change in a file this size.
+#
+# `text` would normalise the index to LF and turn the next `git pull` on a
+# Windows box with core.autocrlf=true into a whole-file diff - the exact noise
+# that hides a real change in a file this size.
+#
+# The endings are NOT uniform across the tree and no comment here should claim
+# they are. As of v6.6.25 it is 11 CRLF files and 36 LF files, with no file
+# mixed - but that split is history, not policy, and it has already drifted once
+# (this comment used to assert "every QSMC header is LF" while four of them,
+# QSMC_Types / QSMC_Root / QSMC_MarketData / QSMC_IncidentSafety, are CRLF).
+# What is actually required of anyone editing an MQL5 file here:
+#
+#   1. preserve the file's existing ending - do not let an editor normalise it;
+#   2. check before committing, do not trust a comment:
+#        git ls-files '*.mq5' '*.mqh' | while read f; do
+#          python3 -c "b=open('$f','rb').read();c=b.count(b'\r\n');print('$f',c,b.count(b'\n')-c)"
+#        done
+#      a file with both counts non-zero is mixed and must be fixed;
+#   3. nadir2.mq5 and MQL5/Indicators/nadir2.mq5 must stay byte-identical, which
+#      tools/check_repo_layout.py enforces - edit one, copy to the other.
 *.mq5  -text
 *.mqh  -text
 *.set  -text
