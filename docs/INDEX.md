@@ -35,6 +35,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`EA_RISK_INPUTS.md`](EA_RISK_INPUTS.md) | the five EA inputs that size the order: aggregate risk cap, profile match, and the WEAK/MODERATE/STRONG multipliers — meaning, units, default, effect on lots, and the two hard ceilings that bound them |
 | [`BUFFER_CONTRACT.md`](BUFFER_CONTRACT.md) | the 27-buffer contract between the indicator and the EA: index, array, writer, whether the EA reads it, value range — and why buffer 26 is a label, not a gate |
 | [`SEVEN_THRESHOLDS_2026-11-27.md`](SEVEN_THRESHOLDS_2026-11-27.md) | the seven thresholds behind the missed trade: current value, the `was` value its comment claims, every code site, what it gates — and the exact Strategy Tester A/B that would validate it |
+| [`INPUTS_REFERENCE.md`](INPUTS_REFERENCE.md) | **generated** — every input in every shipped program and header: type, default, group, and the source's own one-line meaning (`UNDOCUMENTED IN SOURCE` where the author wrote none) |
 | [`QSMC_CHART_READING_AR.md`](QSMC_CHART_READING_AR.md) | معنى كل نص على الشارت، وترتيب سلطة الطبقات |
 | [`QSMC_DASHBOARD_CLARITY.md`](QSMC_DASHBOARD_CLARITY.md) | compact decision card, grouped SMC explainability panel, `DATA_WAITING`, verdict codes and caps |
 | [`QSMC_WHY_NO_TRADES.md`](QSMC_WHY_NO_TRADES.md) | triage: a trade is missing — which gate refused it |
