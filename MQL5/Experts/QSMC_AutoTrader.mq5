@@ -5157,14 +5157,16 @@ void OnDeinit(const int reason)
    JournalClose();
    EventKillTimer();
    // v6.6.25 (F): a chart symbol/timeframe change is not a goodbye - the same EA is
-   // initialised again a moment later. With InpKeepStateOnChartChange the purge is
-   // skipped on that one reason, so a ladder key can never be dropped because a
-   // position was transiently unselectable during the change. OFF: legacy purge.
+   // initialised again a moment later. With InpKeepStateOnChartChange the ladder
+   // purge is skipped on that one reason, so a ladder key can never be dropped
+   // because a position was transiently unselectable during the change. The
+   // seen-keys purge still runs: it only deletes keys older than one day, which
+   // can never stop a re-fire. OFF: legacy purge of both.
    bool keep_state=(InpKeepStateOnChartChange && reason==REASON_CHARTCHANGE);
    if(keep_state)
-      Print("[QSMC_AT] chart symbol/timeframe change (deinit reason 3): seen-keys and ladder memory kept",
-            " (InpKeepStateOnChartChange=true); the next OnInit restores them");
-   if(!keep_state) PurgeStaleSignalGlobals();   // do not leave a year of seen-keys behind
+      Print("[QSMC_AT] chart symbol/timeframe change (deinit reason 3): ladder memory kept",
+            " (InpKeepStateOnChartChange=true); the next OnInit restores it");
+   PurgeStaleSignalGlobals();   // do not leave a year of seen-keys behind
    if(!keep_state) PurgeLadderGlobals();        // and no dead ticket memory either
    if(g_handle!=INVALID_HANDLE)
      {

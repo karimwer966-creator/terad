@@ -44,7 +44,7 @@ input bool   InpDumpLines  = false;     // re-print every assertion at the end
 void OnStart()
   {
    Print("=========================================================");
-   Print(" QSMC_ArbiterTest - v6.6.24 signal arbitration harness");
+   Print(" QSMC_ArbiterTest - v6.6.25 signal arbitration harness");
    Print(" symbol ",_Symbol,"  tf ",QSMC_TFName((ENUM_TIMEFRAMES)_Period),
          "  point ",DoubleToString(_Point,_Digits),
          "  tick ",DoubleToString(SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE),_Digits));

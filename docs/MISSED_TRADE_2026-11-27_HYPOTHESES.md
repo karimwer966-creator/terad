@@ -55,14 +55,19 @@ entry near 3570 now produces a BUY.
 | B | `InpRearmStructureAfterBreak`, `InpRearmStructureBars`=5 | K closed bars after a break, the consumed reference becomes the extreme of exactly bars B+1..B+K (provisional); a confirmed fractal replaces it. Classification unchanged. |
 | C | `InpAllowContinuationChain`, `InpSweepToStructureMaxBarsContinuation`=12 | A with-trend BOS with **no** qualifying sweep may form a CONTINUATION chain: leg origin in [BOS−12, BOS−2], net leg move **and** one impulse body ≥ `InpDisplacementATR` × ATR (0.90; the reversal leg asks only 0.35 × ATR of body, `InpCausalDisplacementBodyATR`), unmitigated OB / unfilled FVG bound to that impulse, H1 closed-structure bias **as of the BOS close** agrees. Tagged `CONTINUATION` in `[CONTINUATION]` log lines, a `[GateAudit]` line, the dashboard path, the SigLog CSV (`causal_chain=P(CONTINUATION)`) and buffer 26 (0 none/OFF, 1 REVERSAL, 2 CONTINUATION). SL goes beyond the zone (there is no sweep). |
 | D | `InpTargetLiquidityAware` | Top-down TP1 = nearest liquidity pool / swing / half-ATR15 multiple (≤ 8) that **pays** `InpTopDownMinRR`; skipped levels are named. WEAK only with H1 bias agreeing AND Asia/London AND RR1 ≥ `InpWeakSignalMinRR`; each failed condition is named. No RR floor is lowered. |
-| E | `InpWarmupWaitHTFData` | While the Sniper HTF buffers are not DATA_READY, CORE evaluation is deferred, logged `[WARMUP]`, quality class `WARMUP`; the same closed bar is re-evaluated once ready. |
-| F | `InpPinIdleOnMismatch`, `InpKeepStateOnChartChange`, `InpLogTradeEvents` (AutoTrader) | (a) stay attached but idle on a non-pinned TF with one 300-s rate-limited warning naming the required TF; (b) keep seen-keys/ladder memory on deinit reason 3; (c) one `TRADE_EVENT` line per account deal (any magic) and per own request with BUY/SELL, symbol, volume, price, SL, TP, comment, magic, owner, retcode. |
+| E | `InpWarmupWaitHTFData` | While the Sniper HTF buffers are not DATA_READY, CORE evaluation is deferred, logged `[WARMUP]`, quality class `WARMUP`; the last closed bar is re-evaluated once ready. Both `[WARMUP]` lines follow the file's silent-reader rule, so an attached EA-reader copy does not double-log them. |
+| F | `InpPinIdleOnMismatch`, `InpKeepStateOnChartChange`, `InpLogTradeEvents` (AutoTrader) | (a) stay attached but idle on a non-pinned TF with one 300-s rate-limited warning naming the required TF; (b) keep ladder memory on deinit reason 3 (the seen-key purge still runs: it only deletes keys whose bar time is more than a day old, so it cannot drop a key that could still re-fire); (c) one `TRADE_EVENT` line per account deal (any magic) and per own request with BUY/SELL, symbol, volume, price, SL, TP, comment, magic, owner, retcode. |
 | G | `InpLogCompactBarLine` | One `[BAR]` line per closed bar: structure refs (FRACTAL/PROV/consumed) + last break, chain hops + kind, top-down verdict, RR1, first failing gate, funnel leader. |
 
 **Flags-OFF identity.** Every new path is behind its switch; the reversal path keeps its exact
 expressions (e.g. `leg_bar` equals the sweep bar whenever a sweep exists); new state is reset
 on full passes and folded into the causal fingerprint only while ON; buffers 0–25, the CSV and
-the journal are unchanged while OFF; buffer 26 stays all-zero. The input-fingerprint manifest
+the journal are unchanged while OFF; buffer 26 stays all-zero. `OnInit` also refuses a switch
+paired with a window too small to use it (B with `InpRearmStructureBars`<2, C with
+`InpSweepToStructureMaxBarsContinuation`<2) and names the input; with the switches OFF neither
+condition can trigger. The H1 as-of bias cache now also stores a genuine `NEUTRAL` zero (a
+`NO_DATA` zero is still retried), which changes no verdict, only how often it is recomputed.
+The input-fingerprint manifest
 changes because seven inputs were added (its value is an identity of the input set, not a
 signal). `tools/test_missed_trade_fixes_native.py` proves `DetectStructure` OFF ≡ the frozen
 v6.6.24 body bar by bar (structures, state, log text) and ON incremental ≡ full rebuild; this is

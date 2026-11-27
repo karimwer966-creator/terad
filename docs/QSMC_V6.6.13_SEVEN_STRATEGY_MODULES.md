@@ -318,13 +318,13 @@ Sniper model too, which is out of scope.
 
 | Module | State globals | Declarations | Section | Definition range | Self-test |
 |---|---|---|---|---|---|
-| OB1 | *(existing OB structs)* | L5378 | L19107 | inline in the detection loop | *(none — reuses the OB suite)* |
-| SB1 / P3 | L2101 / L2116 | L5623 | L26357 | L26485 / L26661 | `PASS (9/9)` @L15847 |
-| WY1 | L2131 | L5650 | L26936 | L27125 | `PASS (9/9)` @L15851 |
-| PA1 | L2155 | L5669 | L27375 | L27601 | `PASS (9/9)` @L15855 |
-| MR1 | L2174 | L5687 | L27798 | L28056 | `PASS (9/9)` @L15859 |
-| CF1 | L2199 | L5706 | L28399 | L28564 | `PASS (10/10)` @L15863 |
-| RM1 | L2232 | L5724 | L28895 | L29124 | `PASS (10/10)` @L15867 |
+| OB1 | *(existing OB structs)* | L5378 | L19112 | inline in the detection loop | *(none — reuses the OB suite)* |
+| SB1 / P3 | L2101 / L2116 | L5623 | L26362 | L26490 / L26666 | `PASS (9/9)` @L15851 |
+| WY1 | L2131 | L5650 | L26941 | L27130 | `PASS (9/9)` @L15855 |
+| PA1 | L2155 | L5669 | L27380 | L27606 | `PASS (9/9)` @L15859 |
+| MR1 | L2174 | L5687 | L27803 | L28061 | `PASS (9/9)` @L15863 |
+| CF1 | L2199 | L5706 | L28404 | L28569 | `PASS (10/10)` @L15867 |
+| RM1 | L2232 | L5724 | L28900 | L29129 | `PASS (10/10)` @L15871 |
 
 **Six self-tests, 56 in-file checks** (9+9+9+9+10+10), all gated by the existing
 `InpMTEERunSelfTest` — no new gate was introduced. Phase 1 added no self-test
@@ -350,13 +350,13 @@ Supporting anchors, all verified at `ebc43bc`:
 | `struct STopDownState` | L2188 |
 | `InpUseHTFBias` / `InpTopDownMinRR` / `InpMTEERunSelfTest` / `InpSniperMaxRiskPct` | L1322 / L1337 / L1976 / L1986 |
 | `InpLogLifecycleTransitions` | L1433 |
-| `ScoreStructure` / `ScoreLiquidity` / `ScoreSession` / `ScoreHTF` (defs) | L19066 / L19087 / L19218 / L19227 |
-| `CalculateAITradeSetup` (def) — the only writer of `g_score` | L22222 |
-| `TheoreticalRiskMoney` (def) | L24507 |
-| `PA_ZoneAt` (def) | L27531 |
-| `TopDown_Evaluate` (def); its existing R:R gate | L35535; L35774–36035 |
-| `TopDown_Update` (def) | L35813 |
-| Module self-tests (SB / WY / PA / MR / CF / RM) | L25196 / L25755 / L26159 / L26699 / L27203 / L29321 |
+| `ScoreStructure` / `ScoreLiquidity` / `ScoreSession` / `ScoreHTF` (defs) | L19071 / L19092 / L19223 / L19232 |
+| `CalculateAITradeSetup` (def) — the only writer of `g_score` | L22227 |
+| `TheoreticalRiskMoney` (def) | L24512 |
+| `PA_ZoneAt` (def) | L27536 |
+| `TopDown_Evaluate` (def); its existing R:R gate | L35540; L35779–36035 |
+| `TopDown_Update` (def) | L35818 |
+| Module self-tests (SB / WY / PA / MR / CF / RM) | L25196 / L25755 / L26159 / L26699 / L27203 / L29326 |
 
 Every self-test exercises **pure cores with local values only**. None reads
 series data, account data or tick data, so all six are deterministic in the
@@ -366,21 +366,21 @@ Strategy Tester and on any symbol.
 
 ## 5. The causal order inside `OnCalculate`
 
-`OnCalculate` begins at **L16153**. The relevant call order, verified:
+`OnCalculate` begins at **L16157**. The relevant call order, verified:
 
 ```
-L16418  OB age bound            inline, LAST within the closed bar (price outranks time)
-L16532  P3_Update(closed)
-L16533  SB_Update(closed)
-L16537  WY_Update(closed)
-L16583  TopDown_Update(rates_total,false)   <-- publishes the plan RM may adopt
-L16605  PMI_Update()
-L16786  MVP_Update(...)                     <-- volume profile / POC
-L16795  PA_Update(closed)
-L16803  MR_Update(closed,rates_total,full_indicators)
-L16816  CF_Update(closed,rates_total)       <-- reads PA, MR, WY, P3, SB
-L16821  RM_Update(closed,rates_total)       <-- reads CF's verdict + TopDown's plan
-L16828  ZRE_Update(...)
+L16422  OB age bound            inline, LAST within the closed bar (price outranks time)
+L16536  P3_Update(closed)
+L16537  SB_Update(closed)
+L16541  WY_Update(closed)
+L16587  TopDown_Update(rates_total,false)   <-- publishes the plan RM may adopt
+L16609  PMI_Update()
+L16791  MVP_Update(...)                     <-- volume profile / POC
+L16800  PA_Update(closed)
+L16808  MR_Update(closed,rates_total,full_indicators)
+L16821  CF_Update(closed,rates_total)       <-- reads PA, MR, WY, P3, SB
+L16826  RM_Update(closed,rates_total)       <-- reads CF's verdict + TopDown's plan
+L16833  ZRE_Update(...)
 ```
 
 Two properties this order guarantees:
@@ -393,7 +393,7 @@ Two properties this order guarantees:
 
 Each module's driver calls its own `Clear()` **as its first statement**, then
 early-exits. A disabled or blocked module can therefore never leave a previous
-bar's verdict on the dashboard. `RM_Clear()` is also called in `OnInit` (L15833)
+bar's verdict on the dashboard. `RM_Clear()` is also called in `OnInit` (L15837)
 after `CF_Clear()`.
 
 Every module refuses the forming bar with the file's own idiom,
@@ -410,13 +410,13 @@ it. All new content therefore goes into the **tooltip**, in this order:
 
 | Guard line | Block |
 |---|---|
-| L34762 | CF summary — **first**, ahead of the per-module detail |
-| L34793 | RM advisory |
-| L34821 | Power of 3 |
-| L34833 | Silver Bullet |
-| L34850 | Wyckoff |
-| L34870 | Price Action |
-| L34888 | Mean Reversion |
+| L34767 | CF summary — **first**, ahead of the per-module detail |
+| L34798 | RM advisory |
+| L34826 | Power of 3 |
+| L34838 | Silver Bullet |
+| L34855 | Wyckoff |
+| L34875 | Price Action |
+| L34893 | Mean Reversion |
 
 Each is guarded by its own `InpEnable… && Inp…ShowOnDashboard` pair, so with the
 switches off the tooltip is byte-identical to before this work.
@@ -470,7 +470,7 @@ mixed a body edge with a wick edge. `InpOBZoneBodyOnly` now makes that a choice,
 
 **C1 — three candle implementations coexist, and they disagree.**
 `AnalyzeClosedCandle` (def **L5797**), `AnalyzeCandleIntelligence` (decl L2819,
-def **L21342**) and `MTF_SniperEvaluateEntryTriggers` (decl L6926, def **L45723** —
+def **L21347**) and `MTF_SniperEvaluateEntryTriggers` (decl L6926, def **L45728** —
 the **C1 gate**)
 classify the same bar differently. With body/range `(95,100,90,95)` the C1 gate
 returns **TRUE** while the ACC label reads **DOJI**. **Pinned, not repaired** —
@@ -485,7 +485,7 @@ state those scorers read *is* fresh: `BuildCausalEventGraph` (which also clears
 `g_selected_structure_event`) and `ComputeHTFBias` both run before the call site.
 
 **C3 — `AUDIT-CF1`: the existing weights sum to 1.1000, not 1.0000.** Both
-`final_score` branches (assignments at **L22694–22574**) do this — the default branch
+`final_score` branches (assignments at **L22699–22574**) do this — the default branch
 (`.18/.12/.14/.10/.08/.12/.16/.10/.10`) and the institutional branch
 (`.22/.14/.16/.10/.10/.18/.10/.05/.05`). **Reported, not fixed.** The new
 engine's weights sum to exactly 100 and are validated every bar.
@@ -499,15 +499,15 @@ file**. They are therefore zeroed **locally inside `CF_Update`** (the MTF leg
 reads `g_htf_bias` directly and never calls `ScoreHTF()`), and the two existing
 functions are pinned byte-for-byte by the test suite.
 
-**C5 — `AUDIT-MR1`: two divergence helpers were dead code.** `IsFractalHigh` (def **L35942**),
-`IsFractalLow` (def **L35953**) and `FractalRightBars` (def **L25250**) had a declaration and a definition and **no caller**. Phase 5 wired them
+**C5 — `AUDIT-MR1`: two divergence helpers were dead code.** `IsFractalHigh` (def **L35947**),
+`IsFractalLow` (def **L35958**) and `FractalRightBars` (def **L25255**) had a declaration and a definition and **no caller**. Phase 5 wired them
 in rather than writing a fourth swing detector.
 
 **C6 — `AUDIT-RM1`: the named inputs do not exist.** See §3.7. Reused, not
 invented; the reported risk percentage is **1.50, not 1.0**.
 
 **C7 — `AUDIT-RM1`: a complete risk model already existed.**
-`MTF_SniperComputeTradeManagement` (decl L6927, def **L45876–46619**) already computes entry, a stop
+`MTF_SniperComputeTradeManagement` (decl L6927, def **L45881–46619**) already computes entry, a stop
 behind the zone or the opposing swing, a hard ATR cap that yields
 `SKIP_SL_MAX`, TP1/2/3 from the nearest opposing zone / HTF zone / D1-W1
 liquidity with 1R/2R/3R fallback, break-even, trailing and `rec_lot_size`. The
@@ -1357,13 +1357,13 @@ saturates at 100.
 
 ### C4 — two free points exist, and the confluence engine already neutralises them
 
-Verified at the source: `ScoreSession()` (**L19218–19051**) falls through to
+Verified at the source: `ScoreSession()` (**L19223–19051**) falls through to
 `return 30.0;` when no session matched — free credit for absent evidence — and
-`ScoreHTF()` (**L19227–19057**) returns **50.0** twice, for "bias disabled" and for
+`ScoreHTF()` (**L19232–19057**) returns **50.0** twice, for "bias disabled" and for
 "no higher-timeframe structure". Both feed the **legacy** weighted score.
 
 The engine built in this pass does not inherit them: `CF_Update`
-(**L28564–28541**) detects the floor (`sess_raw>CF_SESSION_NO_EVIDENCE+0.001`) and
+(**L28569–28541**) detects the floor (`sess_raw>CF_SESSION_NO_EVIDENCE+0.001`) and
 zeroes that pillar, and it reads `g_htf_bias` directly rather than calling
 `ScoreHTF()` at all. Both checks are pinned. So C4 is **closed by mitigation**: the
 two functions are untouched (and pinned byte-for-byte) because editing them would
@@ -1372,7 +1372,7 @@ score itself is ever revisited.
 
 ### C1 — a textbook doji passes the entry gate as a pin bar
 
-The pin-bar branch of `MTF_SniperEvaluateEntryTriggers` (**L45723–46503**) reads
+The pin-bar branch of `MTF_SniperEvaluateEntryTriggers` (**L45728–46503**) reads
 `bull_pin=(lower_wick>=0.50*c_range && c_close>=c_open)`, and `c1_candle_inside`
 never consults the body. With the example from §8 — body/range `(95,100,90,95)`,
 i.e. body `0`, range `10`, lower wick `5` — the test passes **exactly at its

@@ -29,7 +29,7 @@
 //| InpWarmupWaitHTFData         (false)                              |
 //|   E. While the Sniper HTF buffers (ADX_H1, ATR W1..M30) are not   |
 //|   DATA_READY the CORE evaluation is deferred and logged WARMUP    |
-//|   (quality class WARMUP, not NO_SETUP); the same closed bar is    |
+//|   (quality class WARMUP, not NO_SETUP); the last closed bar is   |
 //|   re-evaluated as soon as they are ready.                         |
 //| InpLogCompactBarLine         (false)                              |
 //|   G. One [BAR] line per closed bar: structure refs + last break,  |
@@ -15332,7 +15332,9 @@ AlertDispatcherClear();
       (InpChaseFilter && g_cfgChaseMaxATR<=0.0) ||
       InpMaxChartObjects<0 || InpMaxZonesPerSide<1 ||
       (InpLabelFontSize<0 || InpLabelFontSize>72) ||
-      InpSignalDedupCooldownBars<0)
+      InpSignalDedupCooldownBars<0 ||
+      (InpRearmStructureAfterBreak && InpRearmStructureBars<2) ||
+      (InpAllowContinuationChain && InpSweepToStructureMaxBarsContinuation<2))
    {
       // v6.6.15: name the offending parameter so an operator (or the EA's
       // iCustom default-input path) can tell which input was wrong rather
@@ -15368,6 +15370,8 @@ AlertDispatcherClear();
       else if(InpMaxZonesPerSide<1) bad="InpMaxZonesPerSide";
       else if(InpLabelFontSize<0 || InpLabelFontSize>72) bad="InpLabelFontSize";
       else if(InpSignalDedupCooldownBars<0) bad="InpSignalDedupCooldownBars";
+      else if(InpRearmStructureAfterBreak && InpRearmStructureBars<2) bad="InpRearmStructureBars (must be >= 2)";
+      else if(InpAllowContinuationChain && InpSweepToStructureMaxBarsContinuation<2) bad="InpSweepToStructureMaxBarsContinuation (must be >= 2)";
       else if(InpAsianStart<0 || InpAsianStart>23) bad="InpAsianStart";
       else if(InpAsianEnd<0 || InpAsianEnd>23) bad="InpAsianEnd";
       else if(InpLondonStart<0 || InpLondonStart>23) bad="InpLondonStart";
@@ -16606,7 +16610,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    MTF_SniperZone_Update();
 
    // v6.6.25 (E): defer the CORE evaluation while the HTF buffers warm up and
-   // re-run it for the same closed bar once they are ready. OFF: no effect.
+   // re-run it for the last closed bar once they are ready. OFF: no effect.
    g_warmup_deferred_now=false;
    bool warmup_rerun=false;
    if(InpWarmupWaitHTFData && InpUseSniperZoneEngine)
@@ -16615,15 +16619,16 @@ int OnCalculate(const int rates_total, const int prev_calculated,
       {
          if(detection_updated) g_warmup_pending=true;
          g_warmup_deferred_now=g_warmup_pending;
-         if(g_warmup_deferred_now) WarmupLogDeferred(closed);
+         if(g_warmup_deferred_now && !QSMC_IsReaderSilent()) WarmupLogDeferred(closed);
       }
       else if(g_warmup_pending)
       {
          g_warmup_pending=false;
          warmup_rerun=true;
-         Print("[WARMUP] ",_Symbol," ",TFName((ENUM_TIMEFRAMES)_Period),
-               " HTF data DATA_READY - re-evaluating closed bar ",
-               TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES));
+         if(!QSMC_IsReaderSilent())
+            Print("[WARMUP] ",_Symbol," ",TFName((ENUM_TIMEFRAMES)_Period),
+                  " HTF data DATA_READY - re-evaluating closed bar ",
+                  TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES));
       }
    }
 
@@ -17742,8 +17747,8 @@ string ContinuationBiasWord(const int bias)
 
 // H1 closed-structure bias AS OF `boundary` through the existing as-of path of
 // ComputeClosedStructureBias(): only H1 bars whose close is <= boundary are read.
-// A non-zero answer for a past boundary is immutable, so it is cached; a zero
-// (neutral or data not loaded yet) is recomputed on the next request.
+// v6.6.25: an answer computed from data that WAS present is immutable for a past
+// boundary, so it is cached - a true NEUTRAL 0 too; a NO_DATA 0 is not, and retries.
 int H1StructureBiasAsOf(const datetime boundary)
 {
    if(boundary<=0) return 0;
@@ -17755,7 +17760,7 @@ int H1StructureBiasAsOf(const datetime boundary)
    datetime ev=0,cf=0,av=0;
    int bias=ComputeClosedStructureBias(PERIOD_H1,InpSwingLookback,InpHTFStructureFractalN,
                                        eq,st,ev,cf,av,boundary);
-   if(bias!=0)
+   if(bias!=0 || StringFind(st,"NO_DATA")<0)
    {
       int slot=g_h1bias_cache_n%QSMC_H1BIAS_CACHE;
       g_h1bias_cache_t[slot]=boundary;
