@@ -22,13 +22,13 @@ would only invite the two to disagree.
 
 | File | Kind | Inputs | Undocumented in source |
 |---|---|---|---|
-| [`nadir2.mq5`](#nadir2-mq5) | program | 545 | 130 |
+| [`nadir2.mq5`](#nadir2-mq5) | program | 553 | 130 |
 | [`MQL5/Experts/QSMC_AutoTrader.mq5`](#mql5-experts-qsmc-autotrader-mq5) | program | 71 | 0 |
 | [`MQL5/Experts/QSMC_ConfirmationEngine.mq5`](#mql5-experts-qsmc-confirmationengine-mq5) | program | 55 | 2 |
 | [`MQL5/Indicators/QSMC_SmcVpEngine.mq5`](#mql5-indicators-qsmc-smcvpengine-mq5) | program | 77 | 0 |
-| [`MQL5/Indicators/QSMC_ScannerProbe.mq5`](#mql5-indicators-qsmc-scannerprobe-mq5) | program | 16 | 2 |
+| [`MQL5/Indicators/QSMC_ScannerProbe.mq5`](#mql5-indicators-qsmc-scannerprobe-mq5) | program | 15 | 2 |
 | [`MQL5/Experts/KLJ_DataFeeder.mq5`](#mql5-experts-klj-datafeeder-mq5) | program | 17 | 6 |
-| [`MQL5/Experts/QuantumAutonomousTradingSystem.mq5`](#mql5-experts-quantumautonomoustradingsystem-mq5) | program | 74 | 0 |
+| [`MQL5/Experts/QuantumAutonomousTradingSystem.mq5`](#mql5-experts-quantumautonomoustradingsystem-mq5) | program | 73 | 0 |
 | [`MQL5/Scripts/QSMC_FixedRangeDump.mq5`](#mql5-scripts-qsmc-fixedrangedump-mq5) | program | 7 | 0 |
 | [`MQL5/Scripts/QSMC_ResetGuards.mq5`](#mql5-scripts-qsmc-resetguards-mq5) | program | 4 | 0 |
 | [`MQL5/Scripts/QSMC_BufferDump.mq5`](#mql5-scripts-qsmc-bufferdump-mq5) | program | 3 | 0 |
@@ -39,13 +39,13 @@ would only invite the two to disagree.
 | [`MQL5/Include/QSMC/QSMC_Preset.mqh`](#mql5-include-qsmc-qsmc-preset-mqh) | header | 40 | 1 |
 | [`MQL5/Include/QSMC/QSMC_UnifiedDecision.mqh`](#mql5-include-qsmc-qsmc-unifieddecision-mqh) | header | 3 | 0 |
 
-**Total: 928 inputs across 16 files, 143 of them undocumented in source.**
+**Total: 934 inputs across 16 files, 143 of them undocumented in source.**
 
 ---
 
 ## nadir2.mq5
 
-*program · 545 inputs · 130 undocumented in source*
+*program · 553 inputs · 130 undocumented in source*
 
 | Input | Type | Default | Group | Meaning |
 |---|---|---|---|---|
@@ -96,11 +96,16 @@ would only invite the two to disagree.
 | `InpShowPDHPDL` | `bool` | `true` | | UNDOCUMENTED IN SOURCE |
 | `InpShowConfluentSR` | `bool` | `true` | | UNDOCUMENTED IN SOURCE |
 | `InpMaxConfluentSRLevels` | `int` | `5` | | renderer clamps to 3..5 |
-| `InpAsianStart` | `int` | `9, InpAsianEnd = 18` | | Tokyo local session (09:00-18:00 JST = 00:00-09:00 UTC) |
-| `InpLondonStart` | `int` | `8, InpLondonEnd = 16` | | London local session |
-| `InpNewYorkStart` | `int` | `8, InpNewYorkEnd = 16` | | New York local session |
-| `InpLondonKillZoneStart` | `int` | `7, InpLondonKillZoneEnd = 10` | | London local |
-| `InpNewYorkKillZoneStart` | `int` | `7, InpNewYorkKillZoneEnd = 10` | | New York local |
+| `InpAsianStart` | `int` | `9` | | declared alongside `InpAsianEnd` on one input line |
+| `InpAsianEnd` | `int` | `18` | | Tokyo local session (09:00-18:00 JST = 00:00-09:00 UTC) |
+| `InpLondonStart` | `int` | `8` | | declared alongside `InpLondonEnd` on one input line |
+| `InpLondonEnd` | `int` | `16` | | London local session |
+| `InpNewYorkStart` | `int` | `8` | | declared alongside `InpNewYorkEnd` on one input line |
+| `InpNewYorkEnd` | `int` | `16` | | New York local session |
+| `InpLondonKillZoneStart` | `int` | `7` | | declared alongside `InpLondonKillZoneEnd` on one input line |
+| `InpLondonKillZoneEnd` | `int` | `10` | | London local |
+| `InpNewYorkKillZoneStart` | `int` | `7` | | declared alongside `InpNewYorkKillZoneEnd` on one input line |
+| `InpNewYorkKillZoneEnd` | `int` | `10` | | New York local |
 | **====== Session Clock / DST ======** | | | | |
 | `InpBrokerUTCOffsetWinterMinutes` | `int` | `120` | | UNDOCUMENTED IN SOURCE |
 | `InpBrokerDSTRule` | `ENUM_BROKER_DST_RULE` | `BROKER_DST_EU` | | UNDOCUMENTED IN SOURCE |
@@ -158,9 +163,12 @@ would only invite the two to disagree.
 | `InpSBShowOnDashboard` | `bool` | `false` | | append the Silver Bullet state to the dashboard tooltip |
 | `InpSBShowEntryZone` | `bool` | `false` | | draw the FVG retrace zone the window resolved to |
 | `InpSBUseNYLocalTime` | `bool` | `true` | | true = windows are New York local; false = broker-server local |
-| `InpSBWin1Start` | `int` | `180, InpSBWin1End = 240` | | window 1, 03:00-04:00 |
-| `InpSBWin2Start` | `int` | `600, InpSBWin2End = 660` | | window 2, 10:00-11:00 |
-| `InpSBWin3Start` | `int` | `840, InpSBWin3End = 900` | | window 3, 14:00-15:00 |
+| `InpSBWin1Start` | `int` | `180` | | declared alongside `InpSBWin1End` on one input line |
+| `InpSBWin1End` | `int` | `240` | | window 1, 03:00-04:00 |
+| `InpSBWin2Start` | `int` | `600` | | declared alongside `InpSBWin2End` on one input line |
+| `InpSBWin2End` | `int` | `660` | | window 2, 10:00-11:00 |
+| `InpSBWin3Start` | `int` | `840` | | declared alongside `InpSBWin3End` on one input line |
+| `InpSBWin3End` | `int` | `900` | | window 3, 14:00-15:00 |
 | `InpSBChainMaxAgeBars` | `int` | `240` | | a chain element older than this many closed bars cannot open a window setup |
 | **====== Wyckoff Spring / Upthrust (AUDIT-WY1, display only) ======** | | | | |
 | `InpEnableWyckoff` | `bool` | `false` | | detect Spring / Upthrust at a structural range |
@@ -900,12 +908,11 @@ would only invite the two to disagree.
 
 ## MQL5/Indicators/QSMC_ScannerProbe.mq5
 
-*program · 16 inputs · 2 undocumented in source*
+*program · 15 inputs · 2 undocumented in source*
 
 | Input | Type | Default | Group | Meaning |
 |---|---|---|---|---|
 | **(no group)** | | | | |
-| `InpProbeSymbols` | `string` | `"EURUSD,GBPUSD,USDJPY,XAUUSD,US500,DE40"` | | --- honest answer when the broker's naming has been checked by nobody. |
 | `InpProbeTF` | `ENUM_TIMEFRAMES` | `PERIOD_CURRENT` | | chart TF for the scan |
 | `InpProbeBars` | `int` | `400` | | bars per symbol |
 | `InpProbeAtr` | `int` | `14` | | ATR period |
@@ -949,7 +956,7 @@ would only invite the two to disagree.
 
 ## MQL5/Experts/QuantumAutonomousTradingSystem.mq5
 
-*program · 74 inputs · 0 undocumented in source*
+*program · 73 inputs · 0 undocumented in source*
 
 | Input | Type | Default | Group | Meaning |
 |---|---|---|---|---|
@@ -1021,7 +1028,6 @@ would only invite the two to disagree.
 | `InpNewsFilterEnable` | `bool` | `false` | | block entries around high-impact calendar events (opt-in) |
 | `InpNewsBlockBeforeMin` | `int` | `30` | | block this many minutes BEFORE the event |
 | `InpNewsBlockAfterMin` | `int` | `30` | | ... and AFTER it |
-| `InpNewsCurrencies` | `string` | `"USD,XAU"` | | comma-separated currencies to watch |
 | `InpNewsMinImportance` | `long` | `3` | | 3 = CALENDAR_IMPORTANCE_HIGH, 2 = moderate too (0 none .. 3 high) |
 | `InpPdSwingMinATR` | `double` | `0.5` | | range C: minimum width in H1 ATRs |
 | `InpPdStaleBufferATR` | `double` | `0.5` | | a range whose extreme is older than InpPdSwingMaxAge AND is more than this x ATR from price is rejected (stale extremes dominating) |

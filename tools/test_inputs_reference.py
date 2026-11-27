@@ -61,7 +61,8 @@ def read(path):
     return io.open(path, encoding="utf-8", errors="replace").read().replace("\r\n", "\n")
 
 
-DECL = re.compile(r"^input\s+([A-Za-z_][\w:]*(?:\s*<[^>]*>)?)\s+([A-Za-z_]\w*)\s*=\s*(.*?);\s*(?://\s*(.*))?$")
+DECL = re.compile(r"^input\s+([A-Za-z_][\w:]*(?:\s*<[^>]*>)?)\s+(.+?);\s*(?://\s*(.*))?$")
+NAMES = re.compile(r"([A-Za-z_]\w*)\s*=\s*([^,]+?)(?=,\s*[A-Za-z_]\w*\s*=|$)")
 
 
 def tracked_mql():
@@ -70,14 +71,23 @@ def tracked_mql():
 
 
 def declarations(rel):
-    """[(line, type, name, default, trailing comment or None)] for one file."""
+    """[(line, type, name, default, trailing comment or None)] for one file.
+
+    One `input` line may declare several names (`input int A = 1, B = 2;`), and
+    this parser is deliberately independent of the generator's, so it expands
+    them itself rather than trusting the document.
+    """
     lines = read(os.path.join(ROOT, rel)).split("\n")
     out = []
     for i, l in enumerate(lines):
+        if not l.startswith("input ") or l.startswith("input group"):
+            continue
         m = DECL.match(l)
-        if m:
-            out.append((i + 1, m.group(1).strip(), m.group(2), m.group(3).strip(),
-                        (m.group(4) or "").strip() or None))
+        if not m:
+            continue
+        for name, default in NAMES.findall(m.group(2)):
+            out.append((i + 1, m.group(1).strip(), name, default.strip(),
+                        (m.group(3) or "").strip() or None))
     return out
 
 
@@ -132,10 +142,29 @@ check(len(rows) > 0, "R3 the document has parseable input rows (%d)" % len(rows)
 
 # map each input name back to the file(s) that declare it, for the verbatim test
 cache = {}
+decl_cache = {}
+SIBLING = re.compile(r"^declared alongside `([A-Za-z_]\w*)` on one input line$")
 invented = []
 for name, typ, default, meaning in rows:
     meaning = meaning.replace("\\|", "|").strip()
     if meaning == UNDOC:
+        continue
+    sib = SIBLING.match(meaning)
+    if sib:
+        # not a comment - a statement about the declaration form. Verify it the
+        # same way: the named sibling must really share the input line.
+        partner = sib.group(1)
+        ok = False
+        for f in sorted(src_names.get(name, ())):
+            if f not in decl_cache:
+                decl_cache[f] = {}
+                for ln, _, n, _, _ in declarations(f):
+                    decl_cache[f].setdefault(n, set()).add(ln)
+            if decl_cache[f].get(name, set()) & decl_cache[f].get(partner, set()):
+                ok = True
+                break
+        if not ok:
+            invented.append("%s: claims to share a line with %s and does not" % (name, partner))
         continue
     for f in sorted(src_names.get(name, ())):
         if f not in cache:
@@ -186,11 +215,15 @@ undoc_src = 0
 for f in files:
     lines = read(os.path.join(ROOT, f)).split("\n")
     for i, l in enumerate(lines):
+        if not l.startswith("input ") or l.startswith("input group"):
+            continue
         m = DECL.match(l)
         if not m:
             continue
-        if (m.group(4) or "").strip():
+        if (m.group(3) or "").strip():
             continue
+        if len(NAMES.findall(m.group(2))) > 1:
+            continue   # comma-siblings carry no comment of their own by construction
         j = i - 1
         found = False
         while j >= 0 and lines[j].lstrip().startswith("//"):

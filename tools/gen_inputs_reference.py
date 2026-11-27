@@ -60,7 +60,11 @@ PROGRAMS = [
     "MQL5/Scripts/QSMC_ArbiterTest.mq5",
 ]
 
-DECL = re.compile(r"^input\s+([A-Za-z_][\w:]*(?:\s*<[^>]*>)?)\s+([A-Za-z_]\w*)\s*=\s*(.*?);\s*(?://\s*(.*))?$")
+DECL = re.compile(r"^input\s+([A-Za-z_][\w:]*(?:\s*<[^>]*>)?)\s+(.+?);\s*(?://\s*(.*))?$")
+# One `input` line may declare several names: `input int A = 1, B = 2;`.
+# tools/test_input_fingerprint_parser.py exists because that form once produced
+# 32 MetaEditor errors, so it is real and it must not be silently dropped.
+PAIR = re.compile(r"([A-Za-z_]\w*)\s*=\s*([^,]+)$|([A-Za-z_]\w*)\s*=\s*([^,]+),")
 GROUP = re.compile(r'^input\s+group\s+"(.*)"')
 UNDOC = "UNDOCUMENTED IN SOURCE"
 
@@ -104,7 +108,14 @@ def collect(rel):
         m = DECL.match(l)
         if not m:
             continue
-        typ, name, default, trail = m.group(1), m.group(2), m.group(3), m.group(4)
+        typ, body, trail = m.group(1), m.group(2), m.group(3)
+        names = re.findall(r"([A-Za-z_]\w*)\s*=\s*([^,]+?)(?=,\s*[A-Za-z_]\w*\s*=|$)", body)
+        if not names:
+            continue
+        for name, default in names[:-1]:
+            rows.append((group, typ.strip(), name, default.strip(),
+                         "declared alongside `%s` on one input line" % names[-1][0], i + 1))
+        name, default = names[-1]
         meaning = (trail or "").strip()
         if not meaning:
             # walk up over a contiguous comment block and take its last line
