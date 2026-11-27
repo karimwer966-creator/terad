@@ -2005,6 +2005,8 @@ input int    InpRearmStructureBars       = 5;     // B: K = closed bars after th
 input bool   InpAllowContinuationChain   = false; // C: accept a sweep-less CONTINUATION chain: H1-aligned BOS + displacement leg (impulse body >= InpDisplacementATR x ATR) bound to an unmitigated OB/FVG; tagged CONTINUATION everywhere
 input int    InpSweepToStructureMaxBarsContinuation = 12; // C: max bars from the continuation leg origin to the BOS (InpSweepToStructureMaxBars is untouched)
 input bool   InpTargetLiquidityAware     = false; // D: top-down TP1 = nearest liquidity pool / swing / ATR multiple that PAYS InpTopDownMinRR (floor unchanged); WEAK only with H1 bias + Asia/London + RR1 >= InpWeakSignalMinRR
+input bool   InpWarmupWaitHTFData        = false; // E: defer CORE evaluation (log WARMUP, not NO_SETUP) until the Sniper HTF buffers (ADX_H1, ATR W1..M30) are DATA_READY, then re-evaluate the last closed bar
+
 //====================================================================
 // v6.6.15 iCustom init-race WRITABLE SHADOWS for threshold ATR doubles.
 //
@@ -2519,6 +2521,10 @@ int      g_cont_confirmed=0;    // CONTINUATION signals confirmed (journal facts
 datetime g_h1bias_cache_t[QSMC_H1BIAS_CACHE];
 int      g_h1bias_cache_v[QSMC_H1BIAS_CACHE];
 int      g_h1bias_cache_n=0;
+// v6.6.25 (E, InpWarmupWaitHTFData): HTF warm-up deferral state (inert while OFF).
+bool     g_warmup_pending=false;       // a closed bar's CORE evaluation is owed
+bool     g_warmup_deferred_now=false;  // this pass deferred it (replay audit is not armed)
+datetime g_warmup_logged_bar=0;        // one [WARMUP] line per closed bar
 double g_d1_high=0, g_d1_low=0, g_d1_close=0;
 // v6.5.3: provenance of the ONE prior-D1 reference published to every consumer
 // (price levels, PMI ledger, S/R cluster, targets, dashboards, zone age).
@@ -16019,6 +16025,27 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
 }
 
 //====================================================================
+// v6.6.25 (E) HTF WARM-UP - InpWarmupWaitHTFData (default OFF)
+// At attach the Sniper engine's HTF handles (ADX_H1, ATR W1/D1/H4/H1/M30) are
+// often not calculated yet ("BarsCalculated -1 < 5", DATA_INCOMPLETE H1_ADX).
+// Legacy evaluates CORE anyway and reports NO_SETUP. With the switch ON the
+// closed bar is deferred, reported once as WARMUP, and re-evaluated on the
+// first pass where the Sniper data is DATA_READY. Closed-bar data only: the
+// deferred evaluation reads exactly what the bar-open pass would have read.
+//====================================================================
+void WarmupLogDeferred(const int closed)
+{
+   if(closed<0 || closed>=ArraySize(g_buf_t)) return;
+   if(g_warmup_logged_bar==g_buf_t[closed]) return;
+   g_warmup_logged_bar=g_buf_t[closed];
+   Print("[WARMUP] ",_Symbol," ",TFName((ENUM_TIMEFRAMES)_Period)," closed_bar=",
+         TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES),
+         " | HTF data not ready (",(g_sniper_data_status=="" ? "no Sniper status yet" : g_sniper_data_status),
+         ") - CORE evaluation deferred: this bar is WARMUP, not NO_SETUP; it is re-evaluated",
+         " as soon as ADX_H1 / ATR W1..M30 are DATA_READY (InpWarmupWaitHTFData=true)");
+}
+
+//====================================================================
 // MAIN - OnCalculate with chronological enforcement & delta rendering
 //====================================================================
 int OnCalculate(const int rates_total, const int prev_calculated,
@@ -16476,7 +16503,29 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    PMI_Update();
    MTF_SniperZone_Update();
 
-   if(detection_updated && !direct_confirmed_now &&
+   // v6.6.25 (E): defer the CORE evaluation while the HTF buffers warm up and
+   // re-run it for the same closed bar once they are ready. OFF: no effect.
+   g_warmup_deferred_now=false;
+   bool warmup_rerun=false;
+   if(InpWarmupWaitHTFData && InpUseSniperZoneEngine)
+   {
+      if(!g_sniper_data_ready)
+      {
+         if(detection_updated) g_warmup_pending=true;
+         g_warmup_deferred_now=g_warmup_pending;
+         if(g_warmup_deferred_now) WarmupLogDeferred(closed);
+      }
+      else if(g_warmup_pending)
+      {
+         g_warmup_pending=false;
+         warmup_rerun=true;
+         Print("[WARMUP] ",_Symbol," ",TFName((ENUM_TIMEFRAMES)_Period),
+               " HTF data DATA_READY - re-evaluating closed bar ",
+               TimeToString(g_buf_t[closed],TIME_DATE|TIME_MINUTES));
+      }
+   }
+
+   if((detection_updated || warmup_rerun) && !g_warmup_deferred_now && !direct_confirmed_now &&
       (!InpUseRetestLifecycle || (!g_active_setup.active && !g_trade_setup.valid)))
       CalculateAITradeSetup(rates_total,g_buf_o,g_buf_h,g_buf_l,g_buf_c);
 
@@ -16495,7 +16544,7 @@ int OnCalculate(const int rates_total, const int prev_calculated,
    // Periodically snapshot the incremental market-event graph and force a
    // same-bar full replay on the next tick.
    if(InpEnableCausalInvariantChecks && InpReplayAuditEveryBars>0 && useIncremental &&
-      detection_updated && !g_replay_audit_pending &&
+      detection_updated && !g_replay_audit_pending && !g_warmup_deferred_now &&
       (closed%InpReplayAuditEveryBars)==0)
    {
       g_replay_expected_time=g_buf_t[closed];
@@ -24250,7 +24299,8 @@ void ComputeEntryQuality(const int total)
    //--- quality class (classification, NOT a probability)
    bool candidate=(g_quality.gate_structure_event || have_setup);
    if(!candidate)
-      g_quality.quality_class="NO_SETUP";
+      g_quality.quality_class=((InpWarmupWaitHTFData && InpUseSniperZoneEngine && !g_sniper_data_ready) ?
+                               "WARMUP" : "NO_SETUP");   // v6.6.25 (E)
    else if(g_quality.gates_passed<8 && !confirmed)
       g_quality.quality_class="WATCH";
    else

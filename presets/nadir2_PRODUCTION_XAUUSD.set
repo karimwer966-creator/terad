@@ -644,3 +644,4 @@ InpRearmStructureBars=5
 InpAllowContinuationChain=false
 InpSweepToStructureMaxBarsContinuation=12
 InpTargetLiquidityAware=false
+InpWarmupWaitHTFData=false
