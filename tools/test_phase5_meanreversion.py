@@ -703,12 +703,12 @@ check(code_only.count("int closed=g_rates_total-2;") == 8,
       "D all 8 replay-path closed-bar sites are unchanged")
 check(TEXT.count('#property version   "6.624"') == 1, "D the version property is 6.624 (v6.6.24 audit release)")
 check(TEXT.count('"v6.6.24"') >= 1, "D the version text is v6.6.24 (v6.6.24 audit release)")
-check(len(re.findall(r'(?m)^#property indicator_buffers\s+26\b', TEXT)) == 1,
-      "D indicator_buffers is 26 (21 shipped + 5 classification, v6.6.21)")
+check(len(re.findall(r'(?m)^#property indicator_buffers\s+27\b', TEXT)) == 1,
+      "D indicator_buffers is 27 (21 shipped + 5 classification v6.6.21 + 1 chain kind v6.6.25)")
 check(len(re.findall(r'(?m)^#property indicator_plots\s+7\b', TEXT)) == 1,
       "D indicator_plots is still 7")
 idx = sorted(int(m) for m in re.findall(r'SetIndexBuffer\(\s*(\d+)', TEXT))
-check(idx == list(range(26)), "D buffer indices are 0..25 with no gap or shift", str(idx))
+check(idx == list(range(27)), "D buffer indices are 0..26 with no gap or shift", str(idx))
 ENUMS = len(re.findall(r'(?m)^enum\s+ENUM_', TEXT))
 check(ENUMS == 47, "D enum count is 47: 44 before this phase + execution profile, signal class, and the v6.6.21 pair (%d)" % ENUMS)
 check(re.search(r"enum\s+ENUM_", mr_section) is None,

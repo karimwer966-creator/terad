@@ -344,7 +344,7 @@ Supporting anchors, all verified at `ebc43bc`:
 
 | Thing | Line |
 |---|---|
-| `#property indicator_buffers 26` / `indicator_plots 7` | L627 / L628 |
+| `#property indicator_buffers 27` / `indicator_plots 7` | L627 / L628 |
 | `enum ENUM_P3_PHASE` / `enum ENUM_WYCKOFF_EVENT` | L756 / L766 |
 | `SNIPER_SL_BUFFER_ATR 0.30` / `SL_HARD_MAX_H1_ATR 2.00` / `BE_DISP_ATR 2.00` / `TRAIL_M15_ATR 0.50` | L2106 / L2107 / L2108 / L2109 |
 | `struct STopDownState` | L2140 |
@@ -527,7 +527,7 @@ and did not add one.
 
 | Invariant | Value | Enforced by |
 |---|---|---|
-| New buffers | **zero** from this work — `indicator_buffers` 26 (21 at v6.6.13 + the five v6.6.21 classification buffers 21–25), `indicator_plots` 7 | all seven suites |
+| New buffers | **zero** from this work — `indicator_buffers` 27 (21 at v6.6.13 + the five v6.6.21 classification buffers 21–25 + the v6.6.25 chain-kind buffer 26), `indicator_plots` 7 | all seven suites |
 | Trade API in the indicator | **zero** after comment-stripping | `check_release_gate.py` G4 + Phase 7 suite |
 | Existing score state | `g_score.` 74, `final_score` 21, `setup_quality_score` 6 — unchanged | Phase 6 suite |
 | Closed-bar idioms | `rates_total-2` ×12, `ArraySize(g_buf_c)-2` ×3, `g_rates_total-2` ×8 — unchanged | Phases 5 & 6 suites |

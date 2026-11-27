@@ -128,8 +128,8 @@ def find_def(name):
 ANCHORS = [
     # --- structure the doc's whole argument leans on
     ('OnCalculate starts at L15918', 15918, r"^int OnCalculate\(", None),
-    ('#property indicator_buffers 26 at L627', 627,
-     r"^#property indicator_buffers\s+26\b", None),
+    ('#property indicator_buffers 27 at L627', 627,
+     r"^#property indicator_buffers\s+27\b", None),
     ('#property indicator_plots 7 at L628', 628,
      r"^#property indicator_plots\s+7\b", None),
     ('enum ENUM_P3_PHASE at L756', 756, r"^enum\s+ENUM_P3_PHASE\s*$", None),
@@ -408,11 +408,11 @@ check("Enums | 47" in DOC_FLAT and "43 at v6.6.13" in DOC_FLAT,
       "D the doc states 47 enums and records that 43 shipped at v6.6.13",
       "phrase absent from the doc")
 
-check("#property indicator_buffers 26" in RAW and
+check("#property indicator_buffers 27" in RAW and
       "#property indicator_plots   7" in RAW,
-      "D indicator_buffers is 26 (21 shipped + 5 classification) and indicator_plots is still 7")
-check("indicator_buffers 26" in DOC_FLAT or "indicator_buffers` 26" in DOC_FLAT,
-      "D the doc states buffers 26 / plots 7")
+      "D indicator_buffers is 27 (21 shipped + 5 classification + 1 v6.6.25 chain kind) and indicator_plots is still 7")
+check("indicator_buffers 27" in DOC_FLAT or "indicator_buffers` 27" in DOC_FLAT,
+      "D the doc states buffers 27 / plots 7")
 
 # G1 moved the triple to v6.6.13; the current release is v6.6.22. What is
 # pinned here is that the two halves still agree and that the doc states the

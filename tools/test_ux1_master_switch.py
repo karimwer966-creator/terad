@@ -183,8 +183,8 @@ code = re.sub(r"//[^\n]*", "", RAW)
 for api in ("OrderSend", "OrderSendAsync", "PositionOpen", "CTrade"):
     check(len(re.findall(r"\b%s\b" % api, code)) == 0,
           "H still zero %s in the indicator's code" % api)
-check(re.search(r"#property indicator_buffers\s+26", RAW) is not None,
-      "H indicator_buffers is still 21 - the master switch adds no buffer (buffers 19-20 pre-existed for verdict codes)")
+check(re.search(r"#property indicator_buffers\s+27", RAW) is not None,
+      "H indicator_buffers is 27 (v6.6.21 classification + v6.6.25 chain kind) - the master switch adds no buffer (buffers 19-20 pre-existed for verdict codes)")
 check(re.search(r"#property indicator_plots\s+7", RAW) is not None,
       "H indicator_plots is still 7")
 check(re.search(r'QSMC_VERSION_TEXT\s+"v6\.6\.24"', RAW) is not None,

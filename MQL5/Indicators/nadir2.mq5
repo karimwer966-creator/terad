@@ -624,7 +624,7 @@
 // #property version and the banner now use this release's value (v6.6.15).
 #define QSMC_VERSION_TEXT "v6.6.24"
 #property indicator_chart_window
-#property indicator_buffers 26   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21)
+#property indicator_buffers 27   // 0-2 lines, 3-6 entry marks (plotted), 7-18 hidden signal export (CORE/ZRE legs), 19-20 verdict codes, 21-25 unified classification (score/class/reliability/RR1/risk-mult, v6.6.21), 26 CORE chain kind (v6.6.25)
 #property indicator_plots   7
 //+------------------------------------------------------------------+
 //| v6.6.0 SIGNAL ARBITRATION LAYER                                  |
@@ -13829,8 +13829,10 @@ double BufSigCoreVerdict[],BufSigZREVerdict[];
 // score-based risk scaling without re-deriving the class from score alone.
 // 21=confidence 22=class(1/2/3) 23=reliability 24=RR1 25=risk-mult(0.25/0.5/1.0)
 double BufSigCoreScore[],BufSigCoreClass[],BufSigCoreReliability[],BufSigCoreRR1[],BufSigCoreRiskMult[];
+// v6.6.25 (C): buffer 26, chain kind of a published CORE signal. 0 = no signal or
 // InpAllowContinuationChain OFF (so the OFF output of buffers 0-25 is unchanged and
 // 26 stays all-zero), 1 = REVERSAL (sweep chain), 2 = CONTINUATION (sweep-less).
+double BufSigCoreChain[];
 
 // SIGLOG_CORE_BEGIN - pure functions: no chart state, no globals, no I/O
 void SigLog_RecInit(SSigLogRec &r)
@@ -14474,6 +14476,7 @@ int        g_sigbuf_src[];
 double     g_sigbuf_dir[],g_sigbuf_e[],g_sigbuf_sl[],g_sigbuf_tp1[],g_sigbuf_tp2[],g_sigbuf_tp3[];
 double     g_sigbuf_score[],g_sigbuf_reliability[],g_sigbuf_rr1[];
 int        g_sigbuf_class[];
+int        g_sigbuf_chain[];   // v6.6.25 (C): 0 none/OFF, 1 REVERSAL, 2 CONTINUATION
 
 void SigLog_Init()
 {
@@ -14497,6 +14500,7 @@ void SigLog_Init()
    ArrayResize(g_sigbuf_reliability,0);
    ArrayResize(g_sigbuf_rr1,0);
    ArrayResize(g_sigbuf_class,0);
+   ArrayResize(g_sigbuf_chain,0);
 }
 
 bool SigLog_SeenHas(const string id)
@@ -14575,18 +14579,26 @@ void SigLog_BufWriteClass(const int idx,const double score,const int cls,
    BufSigCoreRiskMult[idx]=risk_mult;
 }
 
+// v6.6.25 (C): chain-kind buffer 26 (CORE only).
+void SigLog_BufWriteChain(const int idx,const int chain)
+{
+   if(idx<0 || idx>=ArraySize(BufSigCoreChain)) return;
+   BufSigCoreChain[idx]=(double)chain;
+}
+
 void SigLog_BufZero(const int idx)
 {
    SigLog_BufWrite(idx,0,0.0,0.0,0.0,0.0,0.0,0.0);
    SigLog_BufWrite(idx,1,0.0,0.0,0.0,0.0,0.0,0.0);
    SigLog_BufWriteClass(idx,0.0,QSMC_CLASS_NONE,0.0,0.0,0.0);
+   SigLog_BufWriteChain(idx,0);
 }
 
 // Registers a published signal for the calculation buffers and writes it.
 void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,const double e,
                         const double sl,const double t1,const double t2,const double t3,const int rates_total,
                         const double score=0.0,const int cls=QSMC_CLASS_NONE,
-                        const double reliability=0.0,const double rr1=0.0)
+                        const double reliability=0.0,const double rr1=0.0,const int chain=0)
 {
    int n=ArraySize(g_sigbuf_time);
    if(n>=SIGLOG_BUF_MAX)
@@ -14607,6 +14619,7 @@ void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,con
          g_sigbuf_reliability[i]=g_sigbuf_reliability[j];
          g_sigbuf_rr1[i]=g_sigbuf_rr1[j];
          g_sigbuf_class[i]=g_sigbuf_class[j];
+         g_sigbuf_chain[i]=g_sigbuf_chain[j];
       }
       n=keep;
    }
@@ -14622,6 +14635,7 @@ void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,con
    ArrayResize(g_sigbuf_reliability,n+1,256);
    ArrayResize(g_sigbuf_rr1,n+1,256);
    ArrayResize(g_sigbuf_class,n+1,256);
+   ArrayResize(g_sigbuf_chain,n+1,256);
    g_sigbuf_time[n]=bar_time;
    g_sigbuf_src[n]=src;
    g_sigbuf_dir[n]=(buy ? 1.0 : -1.0);
@@ -14634,11 +14648,13 @@ void SigLog_BufRegister(const datetime bar_time,const int src,const bool buy,con
    g_sigbuf_reliability[n]=reliability;
    g_sigbuf_rr1[n]=rr1;
    g_sigbuf_class[n]=cls;
+   g_sigbuf_chain[n]=(src==0 ? chain : 0);
    int idx=SigLog_FindBar(bar_time,rates_total);
    if(idx>=0)
    {
       SigLog_BufWrite(idx,src,g_sigbuf_dir[n],e,sl,t1,t2,t3);
       if(src==0) SigLog_BufWriteClass(idx,score,cls,reliability,rr1,QSMC_RiskMultForClass(cls));
+      if(src==0) SigLog_BufWriteChain(idx,g_sigbuf_chain[n]);
    }
 }
 
@@ -14656,7 +14672,7 @@ void SigLog_PrepareBuffers(const int rates_total,const int prev_calculated)
       ArraySize(BufSigZRETP2)<rates_total || ArraySize(BufSigZRETP3)<rates_total ||
       ArraySize(BufSigCoreScore)<rates_total || ArraySize(BufSigCoreClass)<rates_total ||
       ArraySize(BufSigCoreReliability)<rates_total || ArraySize(BufSigCoreRR1)<rates_total ||
-      ArraySize(BufSigCoreRiskMult)<rates_total) return;
+      ArraySize(BufSigCoreRiskMult)<rates_total || ArraySize(BufSigCoreChain)<rates_total) return;
    int from=(prev_calculated>0 ? (int)MathMax(0,MathMin(prev_calculated,rates_total)-1) : 0);
    if(from==0)
    {
@@ -14684,6 +14700,7 @@ void SigLog_PrepareBuffers(const int rates_total,const int prev_calculated)
       ArrayInitialize(BufSigCoreReliability,0.0);
       ArrayInitialize(BufSigCoreRR1,0.0);
       ArrayInitialize(BufSigCoreRiskMult,0.0);
+      ArrayInitialize(BufSigCoreChain,0.0);        // v6.6.25 (C)
       ArrayInitialize(BufEntryBuy0,EMPTY_VALUE);    // v6.4.1: marks must start EMPTY.
       ArrayInitialize(BufEntrySell0,EMPTY_VALUE);   // Uninitialised 0.0 would paint a
       ArrayInitialize(BufPrevBuy0,EMPTY_VALUE);     // stray arrow at price 0 on every
@@ -14704,6 +14721,7 @@ void SigLog_PrepareBuffers(const int rates_total,const int prev_calculated)
             SigLog_BufWriteClass(idx,g_sigbuf_score[i],g_sigbuf_class[i],
                                  g_sigbuf_reliability[i],g_sigbuf_rr1[i],
                                  QSMC_RiskMultForClass(g_sigbuf_class[i]));
+         if(g_sigbuf_src[i]==0) SigLog_BufWriteChain(idx,g_sigbuf_chain[i]);
       }
    }
 }
@@ -14933,7 +14951,9 @@ void SigLog_CollectCore(const int rates_total,const int closed)
                             (double)g_confirmed_signal_journal[i].exec_score,
                             g_confirmed_signal_journal[i].exec_class,
                             (double)g_confirmed_signal_journal[i].exec_reliability,
-                            g_confirmed_signal_journal[i].exec_rr1);
+                            g_confirmed_signal_journal[i].exec_rr1,
+                            (InpAllowContinuationChain ?
+                             (g_confirmed_signal_journal[i].continuation ? 2 : 1) : 0));
       if(want_csv) SigLog_AddCore(g_confirmed_signal_journal[i],idx,closed);
    }
    g_siglog_core_seen=n;
@@ -15447,6 +15467,7 @@ AlertDispatcherClear();
    SetIndexBuffer(23, BufSigCoreReliability, INDICATOR_CALCULATIONS);
    SetIndexBuffer(24, BufSigCoreRR1,         INDICATOR_CALCULATIONS);
    SetIndexBuffer(25, BufSigCoreRiskMult,    INDICATOR_CALCULATIONS);
+   SetIndexBuffer(26, BufSigCoreChain,       INDICATOR_CALCULATIONS);   // v6.6.25 (C) chain kind
    ArraySetAsSeries(BufSigCoreDir,false);
    ArraySetAsSeries(BufSigCoreEntry,false);
    ArraySetAsSeries(BufSigCoreSL,false);
@@ -15466,6 +15487,7 @@ AlertDispatcherClear();
    ArraySetAsSeries(BufSigCoreReliability,false);
    ArraySetAsSeries(BufSigCoreRR1,false);
    ArraySetAsSeries(BufSigCoreRiskMult,false);
+   ArraySetAsSeries(BufSigCoreChain,false);
 
    h_ema_fast = iMA(_Symbol, PERIOD_CURRENT, InpEMAFast, 0, MODE_EMA, PRICE_CLOSE);
    h_ema_slow = iMA(_Symbol, PERIOD_CURRENT, InpEMASlow, 0, MODE_EMA, PRICE_CLOSE);
