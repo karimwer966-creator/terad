@@ -15104,7 +15104,7 @@ void QSMC_ArbiterFeedAndFinalize(const int rates_total,const int closed,
                                  const bool authoritative_pending)
 {
 CQuantumRoot *arb=QSMC_Root();
-if(arb==NULL) return;
+if(arb==NULL || !arb.Ready()) return;   // AUD-07: allocated is not ready
 if(!InpArbEnabled) return;
 if(closed<0 || closed>=ArraySize(g_buf_t)) return;
 
@@ -15273,7 +15273,7 @@ AlertDispatcherClear();
       ObjectsDeleteAll(0,PFX);
       g_lbl_count=0;
      }
-   QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod);
+   if(!QSMC_RootCreate(SelectExecutionTF(),300,InpATRPeriod)) Print("[QSMC_ARB] root create FAILED (AUD-07) - arbitration OFF for this instance; signals and buffers are unaffected");   // AUD-07: the return value is no longer discarded
 
    // v6.6.15: auto-heal iCustom init-race zero defaults.
    // When the EA calls iCustom(_Symbol,_Period,name) with NO arguments,

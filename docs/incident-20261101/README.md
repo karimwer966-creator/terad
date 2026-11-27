@@ -58,7 +58,7 @@ stale by construction — a frozen log cannot be re-run:
 
 | Claim inside this folder | True then | True now |
 |---|---|---|
-| `fingerprint-fix/NOTE.md` — "43 files `tools/test_*.py`" | yes | no — the tree holds 82 `test_*.py` (including the gate that checks this table) and 6 `check_*.py` |
+| `fingerprint-fix/NOTE.md` — "43 files `tools/test_*.py`" | yes | no — the tree holds 83 `test_*.py` (including the gate that checks this table) and 6 `check_*.py` |
 | `fingerprint-fix/test_instance_identity.log` — "manifest: 576 inputs" | yes | no — `tools/test_instance_identity.py` reports **610** today |
 | `static_check.log` — header 98,805 bytes | yes | no — 105,006 bytes today |
 | `47 checks; failures: []` | yes, on 2026-11-01 | **not a statement about the current tree.** The current count is whatever `tools/*.py` returns when you run it. |

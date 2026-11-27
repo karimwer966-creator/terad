@@ -1098,14 +1098,39 @@ public:
 //====================================================================
 CQuantumRoot *g_qsmc_root=NULL;
 
+// AUD-07 (P1): "created" means READY, not merely allocated.
+//
+// CQuantumRoot::Init() sets m_ready=true only at the very end; it returns false
+// early on a market-data failure or a failed ConfigureStructure(). The shape
+// before this fix had two consequences for that case:
+//
+//   1. the failed Init() left g_qsmc_root pointing at a half-initialised root,
+//      so the NEXT call took the `!=NULL` short circuit and returned true -
+//      reporting success over a root that had never become ready, and never
+//      getting another chance to initialise;
+//   2. every consumer asks QSMC_Root()!=NULL, which a half-initialised root
+//      satisfies, so the arbitration path looked live while it was not.
+//
+// Both are fixed here rather than at each call site: an existing root reports
+// Ready(), and a failed Init() destroys the root so the next call starts clean
+// and the NULL check means what it says. Nothing about a SUCCESSFUL Init()
+// changes - same order, same arguments, same banner.
 bool QSMC_RootCreate(const ENUM_TIMEFRAMES exec_tf,const int bars,const int atr_period)
   {
-   if(g_qsmc_root!=NULL) return true;
+   if(g_qsmc_root!=NULL) return g_qsmc_root.Ready();
    g_qsmc_root=new CQuantumRoot();
    if(g_qsmc_root==NULL) { Print("[QSMC_ARB] root allocation failed"); return false; }
-   return g_qsmc_root.Init(_Symbol,(ENUM_TIMEFRAMES)_Period,exec_tf,bars,atr_period,
-                           InpArbTacticalMayConfirm,InpArbGateCore,InpArbCSVLog,
-                           InpArbMinSample,!QSMC_SilentReader());
+   bool ok=g_qsmc_root.Init(_Symbol,(ENUM_TIMEFRAMES)_Period,exec_tf,bars,atr_period,
+                            InpArbTacticalMayConfirm,InpArbGateCore,InpArbCSVLog,
+                            InpArbMinSample,!QSMC_SilentReader());
+   if(!ok)
+     {
+      Print("[QSMC_ARB] root Init() failed - destroying the half-initialised root so "
+            "the next attempt starts clean; arbitration is OFF for this instance");
+      delete g_qsmc_root;
+      g_qsmc_root=NULL;
+     }
+   return ok;
   }
 
 void QSMC_RootDestroy()

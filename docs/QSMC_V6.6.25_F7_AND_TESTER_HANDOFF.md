@@ -173,8 +173,13 @@ review has something to reject.
   A window no hour can satisfy used to return `INIT_SUCCEEDED` and then refuse
   every signal for the whole session. The wrap over midnight (`22 -> 6`) and the
   `Start == End` OFF switch are both still legal. Asserted by block **D13**.
-- **AUD-07 (P1)** — `QSMC_RootCreate()` returning `true` over a half-initialised
-  root. Still open.
+- ~~**AUD-07 (P1)**~~ — **fixed.** `QSMC_RootCreate()` now reports `Ready()` for
+  an existing root instead of a bare `true`, and destroys the root when `Init()`
+  fails so the next call starts clean (`QSMC_Root.mqh:1118`–`1134`). The host no
+  longer discards the verdict (`nadir2.mq5:15276`), and the arbiter feed refuses
+  a root that is allocated but not ready (`nadir2.mq5:15107`). Asserted by
+  `test_runtime_diagnostics.py`, including a native harness that runs the
+  lifecycle and reproduces the old shape as the defect.
 
 `docs/QSMC_AUDIT_2026-11-25.md` still lists all three as deferred. That document
 is the audit as it stood on its date and has not been rewritten; this list is the
