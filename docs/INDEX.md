@@ -31,7 +31,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 
 | Document | What it answers |
 |---|---|
-| [`QSMC_AUTOTRADER.md`](QSMC_AUTOTRADER.md) | the companion EA: every input, every guard, what it refuses |
+| [`QSMC_AUTOTRADER.md`](QSMC_AUTOTRADER.md) | the companion EA as an operator guide: what it trades, what it refuses, the attach banner, the why-no-trade report. **Not an input reference** — it names 34 of the EA's 71 inputs; for the complete list read [`INPUTS_REFERENCE.md`](INPUTS_REFERENCE.md) |
 | [`EA_RISK_INPUTS.md`](EA_RISK_INPUTS.md) | the five EA inputs that size the order: aggregate risk cap, profile match, and the WEAK/MODERATE/STRONG multipliers — meaning, units, default, effect on lots, and the two hard ceilings that bound them |
 | [`BUFFER_CONTRACT.md`](BUFFER_CONTRACT.md) | the 27-buffer contract between the indicator and the EA: index, array, writer, whether the EA reads it, value range — and why buffer 26 is a label, not a gate |
 | [`SEVEN_THRESHOLDS_2026-11-27.md`](SEVEN_THRESHOLDS_2026-11-27.md) | the seven thresholds behind the missed trade: current value, the `was` value its comment claims, every code site, what it gates — and the exact Strategy Tester A/B that would validate it |

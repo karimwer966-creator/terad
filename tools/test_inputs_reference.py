@@ -258,6 +258,64 @@ check("No meaning in\nthis file was invented" in doc or "No meaning in this file
 check("source-contract ready" in doc,
       "R7 the document carries the source-contract status line")
 
+# ------------------------------------- R8 other documents' coverage claims
+# docs/INDEX.md described docs/QSMC_AUTOTRADER.md as *"the companion EA: every
+# input, every guard, what it refuses"*. It names 34 of that file's 71 inputs,
+# and the 37 it omits include every multiplier that sizes a position. The claim
+# was the defect, not the document: an operator guide is allowed to be selective,
+# an index is not allowed to say it is exhaustive. So the index now says what the
+# document is, and this check holds both numbers.
+INDEX = os.path.join(ROOT, "docs", "INDEX.md")
+GUIDE = os.path.join(ROOT, "docs", "QSMC_AUTOTRADER.md")
+if os.path.isfile(INDEX) and os.path.isfile(GUIDE):
+    idx = io.open(INDEX, encoding="utf-8", errors="replace").read()
+    guide = io.open(GUIDE, encoding="utf-8", errors="replace").read()
+    row = ""
+    for line in idx.split("\n"):
+        if "QSMC_AUTOTRADER.md" in line and line.startswith("|"):
+            row = line
+            break
+    check(row != "", "R8 docs/INDEX.md has a row for QSMC_AUTOTRADER.md")
+
+    EA_REL = "MQL5/Experts/QSMC_AutoTrader.mq5"
+    ea_names = [n for _, _, n, _, _ in declarations(EA_REL)]
+    named = sorted(set(n for n in ea_names if n in guide))
+    check(len(ea_names) == 71,
+          "R8 the EA declares 71 inputs (found %d)" % len(ea_names))
+    check(len(named) == 34,
+          "R8 QSMC_AUTOTRADER.md names 34 of them (found %d)" % len(named))
+
+    check("every input" not in row,
+          "R8 the index no longer claims the operator guide covers every input")
+    check("Not an input reference" in row,
+          "R8 and says plainly that it is not an input reference")
+    check("34" in row and "71" in row,
+          "R8 the index states the coverage it actually has (34 of 71)")
+    check("INPUTS_REFERENCE.md" in row,
+          "R8 and points at the generated reference for the complete list")
+
+    # The sizing inputs are the ones whose absence actually matters, so they are
+    # named rather than counted: an operator guide may skip a log switch, it may
+    # not silently skip everything that decides how large a position is.
+    SIZING = ["InpFixedLotsMaxRiskPercent", "InpMaxAggregateRiskPercent",
+              "InpModerateRiskMultiplier", "InpRealMaxAggregateRiskPercent",
+              "InpRealMaxRiskPercent", "InpStrongRiskMultiplier",
+              "InpWeakRiskMultiplier"]
+    absent = [n for n in SIZING if n not in guide]
+    check(len(absent) == 7,
+          "R8 all seven position-sizing inputs are absent from the operator "
+          "guide (%d present) - which is why the index must not call it "
+          "exhaustive" % (7 - len(absent)))
+    check(all(n in doc for n in SIZING),
+          "R8 and every one of them IS in the generated reference")
+
+    # The guide is scoped to the release it was written for. Saying so is the
+    # honest fix; retitling it v6.6.25 would claim a currency nobody checked.
+    check("v6.6.24" in guide.split("\n")[0],
+          "R8 the operator guide still carries the release it was written against")
+else:
+    check(False, "R8 docs/INDEX.md and docs/QSMC_AUTOTRADER.md both exist")
+
 print("=" * 60)
 print("inputs-reference checks: %d checks, failures: %d" % (CHECKS[0], len(FAILURES)))
 if FAILURES:
