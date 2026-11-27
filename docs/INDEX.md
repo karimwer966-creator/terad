@@ -1,6 +1,6 @@
 # Index — every document, by what it is for
 
-113 documents in this folder, plus 5 more in `history/` and the incident
+114 documents in this folder, plus 5 more in `history/` and the incident
 subfolders. This file is the map: which ones are **instructions** (true today, follow them), which ones are **architecture**
 (explain the code as it is now), which ones are **QATS** (a separate product), and
 which ones are **frozen history** (true on the date printed inside them, and not a
@@ -36,6 +36,7 @@ repository layout: [`PROJECT_MAP_AR.md`](PROJECT_MAP_AR.md)
 | [`BUFFER_CONTRACT.md`](BUFFER_CONTRACT.md) | the 27-buffer contract between the indicator and the EA: index, array, writer, whether the EA reads it, value range — and why buffer 26 is a label, not a gate |
 | [`SEVEN_THRESHOLDS_2026-11-27.md`](SEVEN_THRESHOLDS_2026-11-27.md) | the seven thresholds behind the missed trade: current value, the `was` value its comment claims, every code site, what it gates — and the exact Strategy Tester A/B that would validate it |
 | [`INPUTS_REFERENCE.md`](INPUTS_REFERENCE.md) | **generated** — every input in every shipped program and header: type, default, group, and the source's own one-line meaning (`UNDOCUMENTED IN SOURCE` where the author wrote none) |
+| [`F7_CHECKLIST.md`](F7_CHECKLIST.md) | **the only thing left to do by hand**: press F7 on the nine v6.6.25 programs, expect 0 errors, then run the seven-threshold A/B in the Strategy Tester — settings, which `.set`, and the exact table to paste back |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | the whole system on one page: size, dependency graph, internal modules, the market→buffer→EA→trade data flow, the signal outcome model, and where the risk is concentrated |
 | [`QSMC_CHART_READING_AR.md`](QSMC_CHART_READING_AR.md) | معنى كل نص على الشارت، وترتيب سلطة الطبقات |
 | [`QSMC_DASHBOARD_CLARITY.md`](QSMC_DASHBOARD_CLARITY.md) | compact decision card, grouped SMC explainability panel, `DATA_WAITING`, verdict codes and caps |
