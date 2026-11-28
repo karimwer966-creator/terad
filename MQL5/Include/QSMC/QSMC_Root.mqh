@@ -459,7 +459,7 @@ public:
       m_bars=0;
       // v6.6.16 (audit B): EA_READER instances do not print the ARB banner (the
       // VISUAL instance already owns user-facing diagnostics). QSMC_SilentReader()
-      // is forward-declared in nadir2.mq5 before this include.
+      // comes from the host hook in QSMC_Types.mqh; the reasoning is there.
       if(!QSMC_SilentReader())
          Print("[QSMC_ARB] v6.6.25 arbitration layer ON | preset ",m_preset.EffectiveName(),
                " | gates ",IntegerToString(m_arbiter.GateCount()),

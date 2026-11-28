@@ -18,6 +18,12 @@ in this repository or a near-miss observed while the gate was written:
     the norm for three headers and an accident for a fourth;
   * a host that splices a context-coupled header BEFORE `QSMC_Root.mqh` compiles
     only by luck, because the aggregator is what declares the types it needs.
+  * `QSMC_Root.mqh` called `QSMC_SilentReader()`, which only `nadir2.mq5`
+    defined, so `QSMC_ArbiterTest.mq5` could not compile - F7 reported eight
+    errors while every offline gate passed. I5 cannot see it (it looks for `g_`
+    globals, and skips any header that includes something, which exempts the
+    aggregator). I7 covers it; T10-T12 prove it both fires and does not cry wolf
+    on `const` methods and plain calls.
 
 Run:  python3 tools/test_include_graph.py
 """
@@ -118,13 +124,73 @@ def main() -> int:
     finally:
         sys.stdout = real_stdout
     case(rc == 0, "T9 the live tree must pass all include-graph checks")
-    case(len(g.PASSES) == 6, "T9 expected 6 passing checks, got %d" % len(g.PASSES))
+    case(len(g.PASSES) == 7, "T9 expected 7 passing checks, got %d" % len(g.PASSES))
     text = "\n".join(g.PASSES)
     for token in ("34 header(s)", "54 edge(s)", "well-formed"):
         case(token in text, "T9 %r missing from the gate's own report" % token)
 
+    # ---- T10: a header calling a function only one host defines ------------
+    # This is the defect F7 found and every offline gate passed. QSMC_Root.mqh
+    # called QSMC_SilentReader(), defined only in nadir2.mq5, so
+    # QSMC_ArbiterTest.mq5 - which reaches the aggregator through
+    # QSMC_Selftest.mqh with no indicator in its translation unit - could not
+    # compile: eight errors, four of them "undeclared identifier". I5 cannot see
+    # it, for two reasons: it looks for g_ GLOBALS, and a function is not one;
+    # and it skips any header that includes something, which exempts
+    # QSMC_Root.mqh, the one aggregator every program reaches.
+    hosts10 = {
+        "nadir2.mq5": "int g_host = 0;\nbool HostFlag() { return (g_host!=0); }\n",
+        "MQL5/Scripts/QSMC_Probe.mq5": "#include <QSMC/QSMC_Root.mqh>\n",
+    }
+    reach10 = {"nadir2.mq5": {"QSMC_Hook.mqh", "QSMC_Root.mqh"},
+               "MQL5/Scripts/QSMC_Probe.mq5": {"QSMC_Hook.mqh", "QSMC_Root.mqh"}}
+    reset(g)
+    g.check_host_only_calls(
+        {"QSMC_Hook.mqh": "bool QSMC_Probe() { return HostFlag(); }\n",
+         "QSMC_Root.mqh": "#include <QSMC/QSMC_Hook.mqh>\n"},
+        hosts10, reach10)
+    case(any("HostFlag" in f and "QSMC_Probe.mq5" in f for f in g.FAILS),
+         "T10 a header calling a host-only function must fail for the program "
+         "that does not define it: %r" % (g.FAILS,))
+    case(not any("HostFlag" in f and f.endswith("nadir2.mq5 has no definition")
+                 for f in g.FAILS),
+         "T10 the host that DOES define it must not be reported: %r" % (g.FAILS,))
+
+    # ---- T11: the same call passes once the header carries the definition --
+    reset(g)
+    g.check_host_only_calls(
+        {"QSMC_Hook.mqh": "bool HostFlag() { return false; }\n"
+                          "bool QSMC_Probe() { return HostFlag(); }\n"},
+        hosts10, {"MQL5/Scripts/QSMC_Probe.mq5": {"QSMC_Hook.mqh"}})
+    case(not g.FAILS,
+         "T11 the same call must pass once the header defines it: %r" % (g.FAILS,))
+
+    # ---- T12: a `const` method and a call are not host-only symbols --------
+    # Both were false positives while I7 was being written. Missing the `const`
+    # between a method's parameter list and its brace made HighestHigh() and
+    # LowestLow() - declared in QSMC_MarketData.mqh - look host-only, and
+    # counting `return MathMax(a,b);` as a definition made the built-ins look
+    # host-only too. Together they produced 87 failures on a clean tree.
+    reset(g)
+    g.check_host_only_calls(
+        {"QSMC_M.mqh": "double HighestHigh(const int a,const int b) const\r\n"
+                       "     { return 0.0; }\r\n"},
+        {"MQL5/Experts/QATS.mq5": "double HighestHigh(const int a){ return 0.0; }\r\n"},
+        {"MQL5/Scripts/P.mq5": {"QSMC_M.mqh"}})
+    case(not g.FAILS,
+         "T12 a const method the header declares itself is not host-only: %r" % (g.FAILS,))
+
+    reset(g)
+    g.check_host_only_calls(
+        {"QSMC_M.mqh": "double f(){ return MathMax(1.0,2.0); }\r\n"},
+        {"MQL5/Experts/QATS.mq5": "double MathMax(double a,double b){ return a; }\r\n"},
+        {"MQL5/Scripts/P.mq5": {"QSMC_M.mqh"}})
+    case(g.FAILS,
+         "T12 control: a genuinely host-only call must still be reported "
+         "(otherwise T12 above proves nothing): %r" % (g.FAILS,))
+
     print("PASS include-graph gate: comment trap, cycles, guards, coupling, order, "
-          "and the live 34-header / 54-edge tree")
+          "host-only calls, and the live 34-header / 54-edge tree")
     return 0
 
 

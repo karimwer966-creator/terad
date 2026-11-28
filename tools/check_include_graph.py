@@ -39,6 +39,14 @@ WHAT IT CHECKS
   I6 Every host includes its context-coupled headers AFTER `QSMC_Root.mqh` (the
      one aggregator), never before it - that ordering is what makes the splice
      reproducible.
+  I7 No header calls a FUNCTION that only one host `.mq5` defines. I5 covers
+     `g_` globals and skips any header that includes something, so it cannot see
+     this: `QSMC_Root.mqh` called `QSMC_SilentReader()`, defined only in
+     `nadir2.mq5`, and `QSMC_ArbiterTest.mq5` reaches the aggregator through
+     `QSMC_Selftest.mqh` with no indicator in its translation unit. F7 reported
+     eight errors for that program; every offline gate passed. A header is
+     spliced into whatever includes it, so what it calls must exist in EVERY
+     translation unit that reaches it.
 
 WHAT IT DELIBERATELY DOES NOT DO
 -------------------------------
@@ -361,6 +369,99 @@ def check_order(host_texts: dict[str, str]) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# I7 - no header calls a function that only one host defines
+# --------------------------------------------------------------------------- #
+STR_RE = re.compile(r'"(?:\\.|[^"\\])*"')
+
+
+def strip_strings(text: str) -> str:
+    return STR_RE.sub('""', text)
+
+
+# A global-scope definition: a type token, then the name, then an open paren.
+# Two identifiers are required, so a bare call at line start (`Print(`) or one
+# behind an assignment (`got[s]=CopyBuffer(`) does not match.
+CALL_RE = re.compile(r"\b([A-Za-z_]\w*)[ \t]*\(")
+
+
+def funcs_defined(text: str) -> set[str]:
+    # A definition's parameter list is followed by `{`, on the same line or the
+    # next. Requiring that is what keeps `return MathMin(a,b);` and every other
+    # call out of the set - without it the built-ins look like host definitions
+    # and the check drowns in false positives.
+    src = strip_comments(strip_strings(text))
+    out: set[str] = set()
+    for m in re.finditer(r"(?m)^[ \t]*(?:static[ \t]+|const[ \t]+)?"
+                         r"[A-Za-z_]\w*(?:[ \t]*[*&])?[ \t]+([A-Za-z_]\w*)[ \t]*\(",
+                         src):
+        close = src.find(")", m.end())
+        if close < 0:
+            continue
+        tail = src[close + 1:close + 60].lstrip()
+        # A method may carry `const` (and `final`) between the parameter list
+        # and its brace - QSMC_MarketData.mqh declares `HighestHigh(...) const`,
+        # and missing that qualifier made two perfectly local methods look like
+        # host-only symbols.
+        for qual in ("const", "final"):
+            if tail.startswith(qual):
+                tail = tail[len(qual):].lstrip()
+        if tail.startswith("{"):
+            out.add(m.group(1))
+    return out
+
+
+def funcs_called(text: str) -> set[str]:
+    return set(CALL_RE.findall(strip_comments(strip_strings(text))))
+
+
+def check_host_only_calls(hdrs: dict[str, str], host_texts: dict[str, str],
+                          per_host: dict[str, set[str]]) -> None:
+    # A header is spliced into whatever program includes it, so a function it
+    # calls must exist in EVERY translation unit that reaches it - not just in
+    # the host it was first written for. QSMC_Root.mqh called QSMC_SilentReader()
+    # at four sites and that function was defined only in nadir2.mq5, so
+    # QSMC_ArbiterTest.mq5 - which reaches QSMC_Root.mqh through
+    # QSMC_Selftest.mqh with no indicator in its translation unit - could not
+    # compile. F7 reported eight errors for it; every offline gate passed.
+    #
+    # I5 does not catch this class, for two reasons. It only looks for `g_`
+    # prefixed GLOBALS, and a function is not one. And it skips any header that
+    # includes something - which exempts QSMC_Root.mqh, the one aggregator that
+    # every program reaches.
+    host_funcs: dict[str, set[str]] = {
+        h: funcs_defined(t) for h, t in host_texts.items() if h.endswith(".mq5")}
+    # Symbols that exist in exactly one host and in no header: those are the
+    # ones a header has no business calling.
+    only_in_host: dict[str, list[str]] = {}
+    all_header_funcs = set().union(*[funcs_defined(t) for t in hdrs.values()]) \
+        if hdrs else set()
+    for host, fns in host_funcs.items():
+        for f in fns - all_header_funcs:
+            only_in_host.setdefault(f, []).append(host)
+
+    bad: list[str] = []
+    for host, reachable in sorted(per_host.items()):
+        if not reachable:
+            continue
+        defined_here = set(host_funcs.get(host, ()))
+        for h in reachable:
+            defined_here |= funcs_defined(hdrs[h])
+        for h in sorted(reachable):
+            called = funcs_called(hdrs[h]) - funcs_defined(hdrs[h])
+            for f in sorted(called & set(only_in_host) - defined_here):
+                bad.append("%s calls %s(), defined only in %s; %s has no definition"
+                           % (h, f, ", ".join(sorted(only_in_host[f])), host))
+    if bad:
+        for b in bad[:8]:
+            fail("I7 " + b)
+        if len(bad) > 8:
+            fail("I7 ... and %d more host-only call(s)" % (len(bad) - 8))
+    else:
+        ok("I7 no header calls a function that only one host defines "
+           "(checked %d program(s))" % sum(1 for v in per_host.values() if v))
+
+
+# --------------------------------------------------------------------------- #
 def main(argv: list[str]) -> int:
     verbose = "--verbose" in argv
     hdrs = headers()
@@ -378,6 +479,7 @@ def main(argv: list[str]) -> int:
     per_host = check_reachability(hdrs, hosts_)
     check_context_coupled(hdrs, hosts_)
     check_order(hosts_)
+    check_host_only_calls(hdrs, hosts_, per_host)
 
     if verbose:
         for line in PASSES:
