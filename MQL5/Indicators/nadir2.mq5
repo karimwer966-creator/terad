@@ -682,7 +682,7 @@
 //| input block (see audit B comment there) for full diagnostics.    |
 //+------------------------------------------------------------------+
 int  g_qsmc_silent_reader = 0;    // set to 1 in OnInit when detected EA_READER
-bool QSMC_SilentReader() { return (g_qsmc_silent_reader!=0); }
+#define QSMC_SILENT_READER_FLAG (g_qsmc_silent_reader!=0)
 
 #include <QSMC/QSMC_Root.mqh>
 // v6.6.0 QSMC_ARB_PATCH_MARKER

@@ -20,6 +20,37 @@
 #define __QSMC_TYPES_MQH__
 
 //--------------------------------------------------------------------
+// HOST HOOK - QSMC_SilentReader()
+//
+// The arbitration layer asks this before it prints, so an EA-owned
+// reader instance stays quiet while the VISUAL instance on the same
+// chart owns the user-facing diagnostics (v6.6.16, audit B).
+//
+// Only the indicator can answer it: the reader role is derived in
+// nadir2.mq5's OnInit and held in its own g_qsmc_silent_reader. The
+// host therefore supplies the CONDITION as a macro and the accessor
+// is emitted here, at the splice point, ahead of every call site in
+// QSMC_Root.mqh.
+//
+// Why a hook and not a bare call. QSMC_ArbiterTest.mq5 reaches this
+// layer through QSMC_Selftest.mqh with no indicator anywhere in the
+// translation unit, and F7 reported eight errors there: four
+// "undeclared identifier 'QSMC_SilentReader'" in QSMC_Root.mqh, each
+// paired with a "')' - expression expected" on the same line because
+// the parser gave up on the call. The default is false, which is the
+// safe answer for a standalone program: it has no VISUAL twin to
+// defer to, so its own diagnostics are the only ones anyone sees.
+//
+// The hook keeps nadir2.mq5's line count unchanged, so the 292
+// entries in tools/pinmap.json - and every doc citation that reads
+// through them - stay where they are.
+//--------------------------------------------------------------------
+#ifndef QSMC_SILENT_READER_FLAG
+#define QSMC_SILENT_READER_FLAG false
+#endif
+bool QSMC_SilentReader() { return (QSMC_SILENT_READER_FLAG); }
+
+//--------------------------------------------------------------------
 // Zone role. A role is a CAUSAL fact (birth-bar side); it is reversed
 // only by a closed-bar break of the role edge followed by a retest.
 //--------------------------------------------------------------------
