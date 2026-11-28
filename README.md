@@ -23,9 +23,9 @@ MQL5/Include/QSMC/*.mqh             34 headers, aggregated by QSMC_Root.mqh
 MQL5/Indicators/QSMC_ScannerProbe.mq5, QSMC_SmcVpEngine.mq5
 MQL5/Scripts/QSMC_ArbiterTest.mq5, QSMC_ResetGuards.mq5
 presets/*.set                       10 files, each bound to its source (see below)
-tools/                              70 test suites, 98 Python files in total
+tools/                              83 test suites, 115 Python files in total
                                     (gates, generators, simulators, fixtures)
-docs/                               90 documents + docs/INDEX.md + docs/history/
+docs/                               115 documents + docs/INDEX.md + docs/history/
 ```
 
 ## Presets — one file per decision, all validated offline
@@ -65,7 +65,7 @@ python3 tools/generate_set_presets.py --check   # derived presets vs the MQL5 so
 python3 tools/mql5_rules.py --quiet         # dialect rules                             (~1 s)
 python3 tools/static_check.py               # static contracts                          (~2 s)
 python3 tools/check_release_gate.py         # release gate (GO/NO-GO)                   (~5 s)
-python3 tools/check_production_ready.py     # 63 curated checks: 64 suites + 4 gates    (~400 s)
+python3 tools/check_production_ready.py     # 72 curated checks: 59 suites + 13 gates   (~400 s)
 ```
 
 CI runs the curated gate on every push (`.github/workflows/qsmc-verify.yml`),

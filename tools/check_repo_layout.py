@@ -324,6 +324,81 @@ def check_audit_markers() -> None:
            "CHANGELOG.md (%s)" % (len(markers), ", ".join(sorted(markers))))
 
 
+# --------------------------------------------------------------------------- #
+# L10 - the README's inventory counts are measured, not remembered
+# --------------------------------------------------------------------------- #
+def check_readme_counts() -> None:
+    # README.md is the first file an operator reads, and its tree diagram states
+    # four counts in prose. All four had drifted: it claimed 70 test suites and
+    # 98 Python files against 83 and 115 in the tree, 90 documents against 115,
+    # and "63 curated checks: 64 suites + 4 gates" against a CHECKS list of 72
+    # entries. Nothing compared the sentence to the tree, so each number was
+    # last true whenever it was written. A wrong count is not cosmetic: it is how
+    # an operator decides whether the checkout they cloned is the one described.
+    readme = ROOT / "README.md"
+    if not readme.is_file():
+        fail("L10 README.md is missing")
+        return
+    text = io.open(readme, encoding="utf-8", errors="replace").read()
+
+    def stated(pattern: str, what: str) -> int | None:
+        m = re.search(pattern, text)
+        if not m:
+            fail("L10 README.md no longer states %s - the sentence was removed "
+                 "or reworded, so the count is unheld" % what)
+            return None
+        return int(m.group(1))
+
+    suites = len(list((ROOT / "tools").glob("test_*.py")))
+    pys = len(list((ROOT / "tools").glob("*.py")))
+    docs = len([p for p in (ROOT / "docs").glob("*.md") if p.name != "INDEX.md"])
+
+    claimed_suites = stated(r"(\d+)\s+test suites", "its test-suite count")
+    claimed_pys = stated(r"(\d+)\s+Python files", "its Python-file count")
+    claimed_docs = stated(r"docs/\s+(\d+)\s+documents", "its document count")
+
+    for label, claim, actual in (("test suites", claimed_suites, suites),
+                                 ("Python files in tools/", claimed_pys, pys),
+                                 ("documents in docs/", claimed_docs, docs)):
+        if claim is None:
+            continue
+        if claim != actual:
+            fail("L10 README.md says %d %s, the tree holds %d - update the diagram"
+                 % (claim, label, actual))
+        else:
+            ok("L10 README.md's %s count (%d) equals the tree" % (label, actual))
+
+    # The curated-gate line is checked against the CHECKS list itself, imported
+    # rather than run: importing gives the real entries without spending 400 s.
+    m = re.search(r"check_production_ready\.py[^\n]*?(\d+)\s+curated checks:\s*"
+                  r"(\d+)\s+suites\s*\+\s*(\d+)\s+gates", text)
+    if not m:
+        fail("L10 README.md no longer states the curated-gate breakdown, so the "
+             "count is unheld")
+    else:
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "_cpr_counts", str(ROOT / "tools" / "check_production_ready.py"))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            entries = list(mod.CHECKS)
+            n_suites = sum(1 for e in entries
+                           if len(e) > 1 and str(e[1][1]).replace("\\", "/").endswith(".py")
+                           and "/test_" in str(e[1][1]).replace("\\", "/"))
+            n_gates = len(entries) - n_suites
+            got = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            if got != (len(entries), n_suites, n_gates):
+                fail("L10 README.md says %d curated checks (%d suites + %d gates), "
+                     "CHECKS holds %d (%d suites + %d gates)"
+                     % (got + (len(entries), n_suites, n_gates)))
+            else:
+                ok("L10 README.md's curated-gate breakdown (%d = %d suites + %d "
+                   "gates) equals CHECKS" % got)
+        except Exception as exc:                                # pragma: no cover
+            fail("L10 could not import check_production_ready.py to count CHECKS: %s" % exc)
+
+
 def main(argv: list[str]) -> int:
     verbose = "--verbose" in argv
     check_root()
@@ -334,6 +409,7 @@ def main(argv: list[str]) -> int:
     check_versions()
     check_index()
     check_audit_markers()
+    check_readme_counts()
 
     if verbose:
         for line in PASSES:
