@@ -8,8 +8,17 @@
 **Why:** the 2026-11-27 XAUUSD M15 Asia rally (3562–3570 range, vertical leg to ~3684) produced
 no CORE signal. Root causes and evidence: [`docs/MISSED_TRADE_2026-11-27_HYPOTHESES.md`](docs/MISSED_TRADE_2026-11-27_HYPOTHESES.md).
 
-**Every new switch defaults OFF. With all of them OFF the indicator and the EA behave exactly
-as v6.6.24** (buffers 0–25, journal, SigLog CSV, causal fingerprint, refusal/purge paths).
+**Every new switch defaults OFF. With all of them OFF the signal path behaves exactly as
+v6.6.24** (buffers 0–25, journal, SigLog CSV, causal fingerprint, refusal/purge paths) —
+proved bar by bar against the frozen v6.6.24 body by `tools/test_missed_trade_fixes_native.py`.
+
+*That equivalence covers the signal path only.* Three later fixes refuse work **without any
+switch to turn them off**, so "all switches OFF" is no longer the same as "behaves as v6.6.24":
+AUD-06 and the sizing-input check refuse the **attach** with `INIT_PARAMETERS_INCORRECT`, and
+AUD-07 refuses the **arbitration feed** at runtime. All ten shipped presets pass the two
+attach checks — measured — so nothing that loaded before stops loading; what changed is that a
+hand-edited value the EA used to rewrite silently now stops the attach and says why. See
+*Repair round merged after the release* below.
 
 ### New inputs — `nadir2.mq5` (group *v6.6.25 MISSED-TRADE FIXES*)
 
@@ -57,6 +66,31 @@ These are behaviour changes, so they are listed even though they add no new inpu
 | Input validation | The seven new inputs are validated in `OnInit()` and rejected by name (`nadir2.mq5:15335`), so a bad value cannot reach the signal path silently. |
 | H1 bias cache | `H1StructureBiasAsOf()` caches only answers computed from data that was present (a true `NEUTRAL` 0 included); a `NO_DATA` 0 is not cached and is retried. |
 | Docs | [`docs/SIGNAL_VISIBILITY_DIAGNOSIS.md`](docs/SIGNAL_VISIBILITY_DIAGNOSIS.md) records the seven threshold relaxations and what each one is load-bearing for. [`docs/QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md`](docs/QSMC_V6.6.25_F7_AND_TESTER_HANDOFF.md) is the F7 / Strategy Tester plan. `test_tool_reference_integrity.py` now fails on a `docs/` citation that points at a file that does not exist. |
+
+### Repair round merged after the release (PR #90, `ee262b9`)
+
+Twenty-seven commits landed on this release after it was cut. Most are documents and gates, but
+**three change behaviour**, and none of the three is behind a switch:
+
+| Fix | What changed for the operator |
+|---|---|
+| AUD-06 | `OnInit()` refuses the attach when `InpSessionStartHour` / `InpSessionEndHour` is outside `0..23` (`QSMC_AutoTrader.mq5:4523`–`4540`). Before this a window no hour could satisfy returned `INIT_SUCCEEDED` and then refused every signal for the whole session with no cause line. Wrap over midnight (`22 -> 6`) and `Start == End` (filter OFF) both stay legal. |
+| AUD-07 | `QSMC_RootCreate()` reports `Ready()` for an existing root instead of a bare `true`, and destroys the root when `Init()` fails so the next attempt starts clean (`QSMC_Root.mqh:1118`–`1134`). The host no longer discards the verdict (`nadir2.mq5:15276`) and the arbiter feed refuses a root that is allocated but not ready (`nadir2.mq5:15107`). Arbitration is analytical, so signals and buffers are unaffected. |
+| Sizing inputs | `InpWeakRiskMultiplier` / `InpModerateRiskMultiplier` / `InpStrongRiskMultiplier` are refused outside `0.00`…`1.00` and `InpMaxAggregateRiskPercent` outside `0.00`…`HardMaxAggregateRiskPercent()` (`QSMC_AutoTrader.mq5:4548`–`4582`). Each was previously clamped at use, so `InpWeakRiskMultiplier = 3` sized a WEAK signal like a STRONG one and the only trace was `risk_mult=1.00` in a per-signal line. The bounds are the enforcement's own numbers, so **no size changed**; `0.00` stays legal for all four. |
+
+All ten presets in `presets/` still load — measured against both attach checks. The REAL
+profile's `InpRealMaxRiskPercent` / `InpRealMaxAggregateRiskPercent` are **still** clamp-at-use
+only; see [`docs/EA_RISK_INPUTS.md`](docs/EA_RISK_INPUTS.md) §5.
+
+The rest of the round is evidence, not behaviour: [`docs/F7_CHECKLIST.md`](docs/F7_CHECKLIST.md)
+and [`docs/F7_RESULTS_TEMPLATE.md`](docs/F7_RESULTS_TEMPLATE.md) are the F7 / Tester plan and its
+answer sheet; [`docs/BUFFER_CONTRACT.md`](docs/BUFFER_CONTRACT.md),
+[`docs/SEVEN_THRESHOLDS_2026-11-27.md`](docs/SEVEN_THRESHOLDS_2026-11-27.md),
+[`docs/EA_RISK_INPUTS.md`](docs/EA_RISK_INPUTS.md),
+[`docs/INPUTS_REFERENCE.md`](docs/INPUTS_REFERENCE.md) (generated, 934 rows) and
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) are new, each with a gate that fails when the
+document and the source disagree. Six suites were added, twenty-two that were green but unrun
+were wired into `qsmc-verify.yml`, and the pin-drift suites were promoted to blocking.
 
 ### Not done here
 

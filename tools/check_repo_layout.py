@@ -282,6 +282,123 @@ def check_index() -> None:
            % (m.group(1), actual))
 
 
+# --------------------------------------------------------------------------- #
+# L9 - an audit marker in shipped source is a promise the release note keeps
+# --------------------------------------------------------------------------- #
+def check_audit_markers() -> None:
+    # AUD-06 and AUD-07 shipped in the EA, the root header and the host with the
+    # marker written into the source comments, while CHANGELOG.md - the document
+    # an operator reads to learn what a release changed - never mentioned either
+    # one. Nothing compared the two, because the marker is a comment and the
+    # release note is prose: no compiler reads either. A fix that changes
+    # behaviour and never reaches the release note is a fix the operator cannot
+    # find, and the note's own "behave exactly as the previous version" claim
+    # goes quietly false on the same day.
+    changelog = ROOT / "CHANGELOG.md"
+    if not changelog.is_file():
+        fail("L9 CHANGELOG.md is missing, so no audit marker can be recorded")
+        return
+    note = io.open(changelog, encoding="utf-8", errors="replace").read()
+
+    markers: dict[str, list[str]] = {}
+    for sub in ("MQL5/Experts", "MQL5/Indicators", "MQL5/Scripts", "MQL5/Include"):
+        for p in sorted((ROOT / sub).glob("**/*.mq5")) + sorted((ROOT / sub).glob("**/*.mqh")):
+            text = io.open(p, encoding="utf-8", errors="replace").read()
+            for marker in re.findall(r"\bAUD-[0-9]+\b", text):
+                markers.setdefault(marker, []).append(str(p.relative_to(ROOT)))
+    host = io.open(ROOT / "nadir2.mq5", encoding="utf-8", errors="replace").read()
+    for marker in re.findall(r"\bAUD-[0-9]+\b", host):
+        markers.setdefault(marker, []).append("nadir2.mq5")
+
+    if not markers:
+        fail("L9 no AUD-xx marker found in shipped source - the scan is broken, "
+             "not the release note")
+        return
+    missing = sorted(m for m in markers if m not in note)
+    for marker in missing:
+        fail("L9 %s is marked in shipped source (%s) but CHANGELOG.md never "
+             "records it - an operator reading the release note cannot find the "
+             "behaviour change" % (marker, ", ".join(sorted(set(markers[marker])))))
+    if not missing:
+        ok("L9 all %d audit markers in shipped source are recorded in "
+           "CHANGELOG.md (%s)" % (len(markers), ", ".join(sorted(markers))))
+
+
+# --------------------------------------------------------------------------- #
+# L10 - the README's inventory counts are measured, not remembered
+# --------------------------------------------------------------------------- #
+def check_readme_counts() -> None:
+    # README.md is the first file an operator reads, and its tree diagram states
+    # four counts in prose. All four had drifted: it claimed 70 test suites and
+    # 98 Python files against 83 and 115 in the tree, 90 documents against 115,
+    # and "63 curated checks: 64 suites + 4 gates" against a CHECKS list of 72
+    # entries. Nothing compared the sentence to the tree, so each number was
+    # last true whenever it was written. A wrong count is not cosmetic: it is how
+    # an operator decides whether the checkout they cloned is the one described.
+    readme = ROOT / "README.md"
+    if not readme.is_file():
+        fail("L10 README.md is missing")
+        return
+    text = io.open(readme, encoding="utf-8", errors="replace").read()
+
+    def stated(pattern: str, what: str) -> int | None:
+        m = re.search(pattern, text)
+        if not m:
+            fail("L10 README.md no longer states %s - the sentence was removed "
+                 "or reworded, so the count is unheld" % what)
+            return None
+        return int(m.group(1))
+
+    suites = len(list((ROOT / "tools").glob("test_*.py")))
+    pys = len(list((ROOT / "tools").glob("*.py")))
+    docs = len([p for p in (ROOT / "docs").glob("*.md") if p.name != "INDEX.md"])
+
+    claimed_suites = stated(r"(\d+)\s+test suites", "its test-suite count")
+    claimed_pys = stated(r"(\d+)\s+Python files", "its Python-file count")
+    claimed_docs = stated(r"docs/\s+(\d+)\s+documents", "its document count")
+
+    for label, claim, actual in (("test suites", claimed_suites, suites),
+                                 ("Python files in tools/", claimed_pys, pys),
+                                 ("documents in docs/", claimed_docs, docs)):
+        if claim is None:
+            continue
+        if claim != actual:
+            fail("L10 README.md says %d %s, the tree holds %d - update the diagram"
+                 % (claim, label, actual))
+        else:
+            ok("L10 README.md's %s count (%d) equals the tree" % (label, actual))
+
+    # The curated-gate line is checked against the CHECKS list itself, imported
+    # rather than run: importing gives the real entries without spending 400 s.
+    m = re.search(r"check_production_ready\.py[^\n]*?(\d+)\s+curated checks:\s*"
+                  r"(\d+)\s+suites\s*\+\s*(\d+)\s+gates", text)
+    if not m:
+        fail("L10 README.md no longer states the curated-gate breakdown, so the "
+             "count is unheld")
+    else:
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "_cpr_counts", str(ROOT / "tools" / "check_production_ready.py"))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            entries = list(mod.CHECKS)
+            n_suites = sum(1 for e in entries
+                           if len(e) > 1 and str(e[1][1]).replace("\\", "/").endswith(".py")
+                           and "/test_" in str(e[1][1]).replace("\\", "/"))
+            n_gates = len(entries) - n_suites
+            got = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            if got != (len(entries), n_suites, n_gates):
+                fail("L10 README.md says %d curated checks (%d suites + %d gates), "
+                     "CHECKS holds %d (%d suites + %d gates)"
+                     % (got + (len(entries), n_suites, n_gates)))
+            else:
+                ok("L10 README.md's curated-gate breakdown (%d = %d suites + %d "
+                   "gates) equals CHECKS" % got)
+        except Exception as exc:                                # pragma: no cover
+            fail("L10 could not import check_production_ready.py to count CHECKS: %s" % exc)
+
+
 def main(argv: list[str]) -> int:
     verbose = "--verbose" in argv
     check_root()
@@ -291,6 +408,8 @@ def main(argv: list[str]) -> int:
     check_paths()
     check_versions()
     check_index()
+    check_audit_markers()
+    check_readme_counts()
 
     if verbose:
         for line in PASSES:
