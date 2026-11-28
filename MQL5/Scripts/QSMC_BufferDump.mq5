@@ -80,12 +80,32 @@ void OnStart()
    names[6]="class";      names[7]="score";      names[8]="reliability";
    names[9]="rr1";        names[10]="risk_mult";
 
-   double buf[11][];
-   int got[11];
+   //--- MQL5 has no jagged array type. `double buf[11][]` is not a declaration
+   //--- the compiler accepts: F7 reports "invalid index value" on it, then an
+   //--- "invalid array access" and a CopyBuffer overload failure at every use,
+   //--- because buf[s] is a double rather than a dynamic array. The eleven
+   //--- per-slot series are stored in one flat row-major array instead and read
+   //--- back as buf[s*bars+i], which holds exactly what the jagged form would
+   //--- have held. Rows are still filled oldest-first, matching CopyTime below.
+   double buf[];
+   if(ArrayResize(buf,11*bars)!=11*bars)
+     {
+      Print("[QSMC_DUMP] FATAL: cannot allocate ",IntegerToString(11*bars),
+            " doubles for the dump (error ",IntegerToString(GetLastError()),")");
+      IndicatorRelease(handle);
+      return;
+     }
+   ArrayInitialize(buf,EMPTY_VALUE);
+   int    got[11];
+   double slot[];
    for(int s=0;s<11;s++)
      {
-      ArraySetAsSeries(buf[s],false);
-      got[s]=CopyBuffer(handle,slots[s],0,bars,buf[s]);
+      ArraySetAsSeries(slot,false);
+      ArrayResize(slot,0);
+      got[s]=CopyBuffer(handle,slots[s],0,bars,slot);
+      int n=got[s];
+      if(n>bars) n=bars;
+      for(int k=0;k<n;k++) buf[s*bars+k]=slot[k];
      }
 
    int h=FileOpen(InpOutFile,FILE_WRITE|FILE_CSV|FILE_ANSI,',');
@@ -119,17 +139,17 @@ void OnStart()
                 IntegerToString(i),
                 _Symbol,
                 IntegerToString((int)(PeriodSeconds(_Period)/60)),
-                DoubleToString((got[0]>i  ? buf[0][i]  : EMPTY_VALUE),_Digits),
-                DoubleToString((got[1]>i  ? buf[1][i]  : EMPTY_VALUE),_Digits),
-                DoubleToString((got[2]>i  ? buf[2][i]  : EMPTY_VALUE),_Digits),
-                DoubleToString((got[3]>i  ? buf[3][i]  : EMPTY_VALUE),_Digits),
-                DoubleToString((got[4]>i  ? buf[4][i]  : EMPTY_VALUE),_Digits),
-                DoubleToString((got[5]>i  ? buf[5][i]  : EMPTY_VALUE),_Digits),
-                DoubleToString((got[6]>i  ? buf[6][i]  : EMPTY_VALUE),2),
-                DoubleToString((got[7]>i  ? buf[7][i]  : EMPTY_VALUE),2),
-                DoubleToString((got[8]>i  ? buf[8][i]  : EMPTY_VALUE),2),
-                DoubleToString((got[9]>i  ? buf[9][i]  : EMPTY_VALUE),2),
-                DoubleToString((got[10]>i ? buf[10][i] : EMPTY_VALUE),2),
+                DoubleToString((got[0]>i  ? buf[0*bars+i]  : EMPTY_VALUE),_Digits),
+                DoubleToString((got[1]>i  ? buf[1*bars+i]  : EMPTY_VALUE),_Digits),
+                DoubleToString((got[2]>i  ? buf[2*bars+i]  : EMPTY_VALUE),_Digits),
+                DoubleToString((got[3]>i  ? buf[3*bars+i]  : EMPTY_VALUE),_Digits),
+                DoubleToString((got[4]>i  ? buf[4*bars+i]  : EMPTY_VALUE),_Digits),
+                DoubleToString((got[5]>i  ? buf[5*bars+i]  : EMPTY_VALUE),_Digits),
+                DoubleToString((got[6]>i  ? buf[6*bars+i]  : EMPTY_VALUE),2),
+                DoubleToString((got[7]>i  ? buf[7*bars+i]  : EMPTY_VALUE),2),
+                DoubleToString((got[8]>i  ? buf[8*bars+i]  : EMPTY_VALUE),2),
+                DoubleToString((got[9]>i  ? buf[9*bars+i]  : EMPTY_VALUE),2),
+                DoubleToString((got[10]>i ? buf[10*bars+i] : EMPTY_VALUE),2),
                 IntegerToString(got[0]),IntegerToString(got[1]),IntegerToString(got[2]),
                 IntegerToString(got[3]),IntegerToString(got[4]),IntegerToString(got[5]),
                 IntegerToString(got[6]),IntegerToString(got[7]),IntegerToString(got[8]),
